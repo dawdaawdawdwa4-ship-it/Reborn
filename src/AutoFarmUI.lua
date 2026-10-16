@@ -3,7 +3,17 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Icon = require(ReplicatedStorage:WaitForChild("Icon"))
+local Icon
+local success = pcall(function()
+	local iconModule = ReplicatedStorage:FindFirstChild("Icon")
+		or ReplicatedStorage:FindFirstChild("TopbarPlus")
+	if iconModule then
+		Icon = require(iconModule)
+	end
+end)
+if not success then
+	Icon = nil
+end
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -622,17 +632,7 @@ function AutoFarmUI:_build()
 		end
 	end).LayoutOrder = 1
 
-	-- Start hidden for TopbarPlus toggle
-	mainFrame.Visible = false
-	mainFrame.Size = UDim2.new(0, 300, 0, 0)
-
-	-- TopbarPlus icon
-	self.icon = Icon.new()
-		:setName("AutoFarm")
-		:setImage("rbxassetid://7733960981")
-		:setLabel("Auto Farm")
-		:setOrder(1)
-
+	-- Show/hide helpers
 	local function showPanel()
 		mainFrame.Visible = true
 		mainFrame.AutomaticSize = Enum.AutomaticSize.Y
@@ -652,17 +652,50 @@ function AutoFarmUI:_build()
 		end)
 	end
 
-	self.icon:bindEvent("toggled", function(icon)
-		if icon.isSelected then
-			showPanel()
-		else
-			hidePanel()
-		end
-	end)
+	-- TopbarPlus integration (optional)
+	if Icon then
+		mainFrame.Visible = false
 
-	closeBtn.MouseButton1Click:Connect(function()
-		self.icon:deselect()
-	end)
+		self.icon = Icon.new()
+			:setName("AutoFarm")
+			:setImage("rbxassetid://7733960981")
+			:setLabel("Auto Farm")
+			:setOrder(1)
+
+		self.icon:bindEvent("toggled", function(icon)
+			if icon.isSelected then
+				showPanel()
+			else
+				hidePanel()
+			end
+		end)
+
+		closeBtn.MouseButton1Click:Connect(function()
+			self.icon:deselect()
+		end)
+	else
+		-- No TopbarPlus: show panel immediately, close button hides it,
+		-- press RightControl to toggle
+		mainFrame.Visible = true
+
+		local panelOpen = true
+		closeBtn.MouseButton1Click:Connect(function()
+			panelOpen = false
+			hidePanel()
+		end)
+
+		UserInputService.InputBegan:Connect(function(input, processed)
+			if processed then return end
+			if input.KeyCode == Enum.KeyCode.RightControl then
+				panelOpen = not panelOpen
+				if panelOpen then
+					showPanel()
+				else
+					hidePanel()
+				end
+			end
+		end)
+	end
 end
 
 function AutoFarmUI:SetOrbitTarget(name)
