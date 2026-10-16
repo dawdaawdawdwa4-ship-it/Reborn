@@ -1,6 +1,9 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Icon = require(ReplicatedStorage:WaitForChild("Icon"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -333,6 +336,19 @@ function AutoFarmUI:_build()
 		Parent = titleBar,
 	})
 
+	-- Close button
+	local closeBtn = create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.new(0, 24, 0, 24),
+		BackgroundTransparency = 1,
+		Text = "\226\156\149",
+		TextColor3 = Theme.TextMuted,
+		Font = FONT,
+		TextSize = 16,
+		Parent = titleBar,
+	})
+
 	-- Make draggable
 	local dragging, dragStart, startPos
 	titleBar.InputBegan:Connect(function(input)
@@ -605,6 +621,48 @@ function AutoFarmUI:_build()
 			callbacks.onAutoHitToggle(enabled)
 		end
 	end).LayoutOrder = 1
+
+	-- Start hidden for TopbarPlus toggle
+	mainFrame.Visible = false
+	mainFrame.Size = UDim2.new(0, 300, 0, 0)
+
+	-- TopbarPlus icon
+	self.icon = Icon.new()
+		:setName("AutoFarm")
+		:setImage("rbxassetid://7733960981")
+		:setLabel("Auto Farm")
+		:setOrder(1)
+
+	local function showPanel()
+		mainFrame.Visible = true
+		mainFrame.AutomaticSize = Enum.AutomaticSize.Y
+		mainFrame.BackgroundTransparency = 1
+		TweenService:Create(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			BackgroundTransparency = 0,
+		}):Play()
+	end
+
+	local function hidePanel()
+		local tween = TweenService:Create(mainFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1,
+		})
+		tween:Play()
+		tween.Completed:Connect(function()
+			mainFrame.Visible = false
+		end)
+	end
+
+	self.icon:bindEvent("toggled", function(icon)
+		if icon.isSelected then
+			showPanel()
+		else
+			hidePanel()
+		end
+	end)
+
+	closeBtn.MouseButton1Click:Connect(function()
+		self.icon:deselect()
+	end)
 end
 
 function AutoFarmUI:SetOrbitTarget(name)
@@ -639,6 +697,9 @@ function AutoFarmUI:OnWalkSpeedChanged(fn)
 end
 
 function AutoFarmUI:Destroy()
+	if self.icon then
+		self.icon:destroy()
+	end
 	if self.screenGui then
 		self.screenGui:Destroy()
 	end
