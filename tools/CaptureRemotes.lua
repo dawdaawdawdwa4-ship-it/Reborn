@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 17 and previous.Resume then
+if previous and previous.Version == 18 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 17, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 18, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -40,6 +40,7 @@ local exactNames = {
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
     qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
+    GDbJa5Ix6UZ8mg = true,
     wKCeyGAO4SqdMY = true,
     XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
     UctIHHAfsCxxzj = true,
@@ -184,6 +185,7 @@ end
 function capture:Stop()
     self.Active, self.Stopped = false, true
     self.LearnWoodOnly = false
+    self.LearnBaitOnly = false
     -- Retain the single hotkey connection so this same recorder can be resumed.
     -- It ignores input while stopped; no extra hooks or listeners are installed.
     -- Leave our hook in pass-through mode; restoring it could overwrite another hook.
@@ -345,12 +347,15 @@ function capture:Place(body)
 end
 local function learnBait(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
-    if remote.Name ~= "wKCeyGAO4SqdMY" and remote.Name ~= "XPQExfDjDSUkYv" and remote.Name ~= "raqRasAwcny1zh"
-        and not string.find(string.lower(remote.Name), "bait", 1, true) then return false end
-    local packet = args[1]
-    local body = type(packet.wGquKmyB3mV2Cf) == "table" and packet.wGquKmyB3mV2Cf
-        or (type(packet.TlSR8Mzd9FLwaZ) == "table" and packet.TlSR8Mzd9FLwaZ or packet)
-    if type(packet.H3ZxjzDRyU5tvI)=="table" then body=packet.H3ZxjzDRyU5tvI end
+    local known=remote.Name=="GDbJa5Ix6UZ8mg" or remote.Name=="wKCeyGAO4SqdMY" or remote.Name=="XPQExfDjDSUkYv" or remote.Name=="raqRasAwcny1zh"
+        or string.find(string.lower(remote.Name),"bait",1,true)
+    local group=remote.Parent
+    if not known and (not group or not group.Parent or group.Parent.Name~="out") then return false end
+    local packet=args[1]
+    local body=packet
+    for _,value in pairs(packet) do
+        if type(value)=="table" and typeof(value.tool)=="Instance" then body=value;break end
+    end
     local tool = body.tool
     if typeof(tool) ~= "Instance" or not tool:IsA("Tool") or string.lower(tool.Name) ~= "bait" then return false end
     capture.BaitBinding = {Remote=remote,Method=method,Args=cloneArguments(args),Target=tool}
@@ -401,13 +406,14 @@ local original
 local function intercept(remote, ...)
     if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
-    if capture.LearnWoodOnly then
+    if capture.LearnWoodOnly or capture.LearnBaitOnly then
         if method == "InvokeServer" then
             local args = table.pack(...)
             pcall(function()
                 if typeof(remote)=="Instance" and remote:IsA("RemoteFunction") then
-                    learnBlockHit(remote,method,args)
-                    if capture.WoodHitBinding then capture.LearnWoodOnly=false;capture:Stop() end
+                    if capture.LearnWoodOnly and learnBlockHit(remote,method,args) and capture.WoodHitBinding then capture.LearnWoodOnly=false end
+                    if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
+                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly then capture:Stop() end
                 end
             end)
         end

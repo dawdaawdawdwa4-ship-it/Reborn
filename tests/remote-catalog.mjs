@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==140)
+assert(#RemoteCatalog.Entries==141)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -242,7 +242,7 @@ response=true
 assert(RemoteCatalog.CallHarvest(cropTarget) and requestedName=='CLIENT_HARVEST_CROP_REQUEST','native game require fallback must restore harvest endpoint')
 assert(RemoteCatalog.CallMine(actualBlock) and requestedName=='BLOCK_HIT_REQUEST','native game require fallback must restore wood/mining endpoint')
 require=gameRequire;getrenv=nil
-return '140 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '141 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}

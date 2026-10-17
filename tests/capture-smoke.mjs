@@ -237,6 +237,19 @@ assert(currentBaitArgs.HrGxW0IGeHngmz=='current-bait-context' and currentBaitArg
 assert(currentBaitPacket.H3ZxjzDRyU5tvI.tool==baitTool,'current bait capture must remain immutable')
 currentBaitRemote.InvokeServer=function() return {success=false} end
 assert(not capture:Bait(nextBait),'current bait rejection must remain a failure')
+local rotatedBait=remote('GDbJa5Ix6UZ8mg')
+local rotatedArgs
+rotatedBait.InvokeServer=function(_,packet) rotatedArgs=packet;return true end
+installedHook(rotatedBait,{o2PTfAjMDqKi5j='new-session-context',YcuvKDybdDE9ik={tool=baitTool}})
+assert(capture:Bait(nextBait) and rotatedArgs.o2PTfAjMDqKi5j=='new-session-context' and rotatedArgs.YcuvKDybdDE9ik.tool==nextBait,'new bait endpoint and independently rotating body keys must preserve context')
+local futureBait=remote('unknown-future-bait-alias')
+futureBait.Name='randomFutureAlias';futureBait.Parent={Parent={Name='out'}}
+futureBait.InvokeServer=rotatedBait.InvokeServer
+installedHook(futureBait,{contextKey='future-context',payloadKey={tool=baitTool}})
+assert(capture:Bait(nextBait) and rotatedArgs.contextKey=='future-context' and rotatedArgs.payloadKey.tool==nextBait,'future bait alias must be learned by concrete tool payload under out')
+local goodBinding=capture.BaitBinding
+installedHook(futureBait,{contextKey='other-tool',payloadKey={tool=nextTree}})
+assert(capture.BaitBinding==goodBinding,'non-bait payload must never replace bait binding')
 capture.MaxCalls=#capture.Records+1
 installedHook(target,{})
 assert(not capture.Active,'record limit failed')
@@ -265,6 +278,13 @@ assert(not capture.WoodHitBinding and capture.LearnWoodOnly and #capture.Records
 installedHook(newestAxe,{HrGxW0IGeHngmz='fresh-session',H3ZxjzDRyU5tvI={block=tree}})
 assert(capture.Stopped and not capture.LearnWoodOnly and #capture.Records==quietCount,'wood learning must stop after its first binding without logging')
 assert(capture:Hit(nextTree,'wood') and newestArgs.HrGxW0IGeHngmz=='fresh-session' and newestArgs.H3ZxjzDRyU5tvI.block==nextTree,'quiet learning must retain fresh context and allow later tree hits')
+capture:Resume();capture.Active=false;capture.LearnBaitOnly=true;capture.BaitBinding=nil
+local quietBaitCount=#capture.Records
+installedHook(target,{})
+assert(capture.LearnBaitOnly and not capture.BaitBinding and #capture.Records==quietBaitCount,'automatic bait learning must ignore unrelated requests without logging')
+installedHook(rotatedBait,{o2PTfAjMDqKi5j='quiet-live-context',YcuvKDybdDE9ik={tool=baitTool}})
+assert(capture.Stopped and not capture.LearnBaitOnly and #capture.Records==quietBaitCount,'automatic bait learner must stop after acquiring one template')
+assert(capture:Bait(nextBait) and rotatedArgs.o2PTfAjMDqKi5j=='quiet-live-context','quiet learned binding must remain usable after capture stops')
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
 const state=await LuauState.createAsync();
