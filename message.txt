@@ -1337,7 +1337,7 @@ local statsOverlay = Instance.new("Frame")
 statsOverlay.Name = "CornerStats"
 statsOverlay.AnchorPoint = Vector2.new(1, 0)
 statsOverlay.Position = UDim2.new(1, -14, 0, 14)
-statsOverlay.Size = UDim2.fromOffset(218, 104)
+statsOverlay.Size = UDim2.fromOffset(300, 174)
 statsOverlay.BackgroundColor3 = COLORS.bg
 statsOverlay.BackgroundTransparency = 0.08
 statsOverlay.BorderSizePixel = 0
@@ -1351,8 +1351,8 @@ statsOverlayStroke.Parent = statsOverlay
 
 local statsOverlayTitle = label({
     Parent = statsOverlay, Text = "FISHING STATS", Font = Enum.Font.GothamBold,
-    TextSize = 11, Color = COLORS.text, Size = UDim2.new(1, -12, 0, 22),
-    Position = UDim2.fromOffset(8, 5),
+    TextSize = 13, Color = COLORS.text, Size = UDim2.new(1, -44, 0, 24),
+    Position = UDim2.fromOffset(12, 5),
 })
 -- Drag the panel by holding its title area (mouse or touch).
 statsOverlayTitle.Active = true
@@ -1389,10 +1389,11 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 local statsOverlayText = label({
-    Parent = statsOverlay, Text = "Catches 0  |  Misses 0\nCasts 0  |  Bites 0\nRate –  |  Mode BALANCED",
-    Font = Enum.Font.Gotham, TextSize = 10, Color = COLORS.good,
-    Size = UDim2.new(1, -16, 0, 68), Position = UDim2.fromOffset(8, 28),
+    Parent = statsOverlay, Text = "Catches 0  |  Misses 0\nCasts 0  |  Bites 0\nCatch rate –  |  BALANCED\nFish/hour –  |  00:00:00\nHarvests 0\nBait OFF",
+    Font = Enum.Font.Gotham, TextSize = 14, Color = COLORS.text,
+    Size = UDim2.new(1, -24, 0, 132), Position = UDim2.fromOffset(12, 34),
 })
+statsOverlayText.TextTruncate = Enum.TextTruncate.None
 statsOverlayText.TextYAlignment = Enum.TextYAlignment.Top
 statsOverlayText.TextWrapped = true
 
@@ -1410,7 +1411,7 @@ local overlayExpanded = true
 overlayToggle.Activated:Connect(function()
     overlayExpanded = not overlayExpanded
     statsOverlayText.Visible = overlayExpanded
-    statsOverlay.Size = overlayExpanded and UDim2.fromOffset(218, 104) or UDim2.fromOffset(218, 30)
+    statsOverlay.Size = overlayExpanded and UDim2.fromOffset(300, 174) or UDim2.fromOffset(300, 32)
     overlayToggle.Text = overlayExpanded and "−" or "+"
 end)
 
@@ -1910,7 +1911,9 @@ local function updateBoard()
 		and string.format("%d%%", math.floor(stats.catches / stats.bites * 100 + 0.5))
 		or "–"
     local rateText = stats.bites > 0 and string.format("%d%%", math.floor(stats.catches / stats.bites * 100 + 0.5)) or "–"
-    statsOverlayText.Text = string.format("Catches %d  |  Misses %d\nCasts %d  |  Bites %d\nRate %s  |  Mode %s", stats.catches, stats.missed, stats.casts, stats.bites, rateText, string.upper(activeFishingMode))
+    local hourly = t >= 30 and string.format("%.0f", stats.catches / (t / 3600)) or "–"
+    local baitState = baitEnabled and (baitToggle.Text:match("%[(.-)%]") or "ON") or "OFF"
+    statsOverlayText.Text = string.format("Catches %d  |  Misses %d\nCasts %d  |  Bites %d\nCatch rate %s  |  %s\nFish/hour %s  |  %s\nHarvests %d\nBait %s", stats.catches, stats.missed, stats.casts, stats.bites, rateText, string.upper(activeFishingMode), hourly, formatTime(t), stats.harvests, baitState)
 	rows.streak.Text = stats.streak .. " / " .. stats.bestStreak
 	rows.perHour.Text = t >= 30
 		and string.format("%.0f", stats.catches / (t / 3600))
