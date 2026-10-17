@@ -5,6 +5,8 @@ const setup=`
 local nativeTypeof=typeof
 local function typeof(v) return type(v)=='table' and v._type or nativeTypeof(v) end
 local logs, environment, calls={}, {}, {}
+local clipboard
+local setclipboard=function(text) clipboard=text end
 local function print(...) table.insert(logs,table.pack(...)) end
 local warn=print
 local currentMethod='InvokeServer'
@@ -39,6 +41,7 @@ local Enum={KeyCode={F8='F8',F9='F9',F10='F10'}}
 const checks=`
 local capture=environment.RebornCapture
 assert(capture and installedHook,'recorder not installed')
+assert(capture:CopyAll()==false and clipboard==nil,'empty capture must not overwrite clipboard')
 local target=remote('CLIENT_HARVEST_CROP_REQUEST')
 local payload={block='wheat',count=3,TrNhTTgExIb1Bg='test-session-id'}
 local returned=table.pack(installedHook(target,payload,nil,'last',nil))
@@ -70,6 +73,12 @@ assert(capture.RequestIds.OEzzgCCBzocxJw=='test-mining-id','observed per-remote 
 local latest=capture.Records[#capture.Records]
 assert(string.find(latest,'DetachedInstance',1,true) and string.find(latest,'Stone',1,true) and string.find(latest,'test-debug-id',1,true),'detached instance metadata missing')
 assert(string.find(latest,'Vector3.new(1, 2, 3)',1,true),'detached part position missing')
+assert(capture:CopyAll()==true and clipboard==capture:Dump(),'copy-all must include full dump')
+for _,record in ipairs(capture.Records) do assert(string.find(clipboard,record,1,true),'record omitted from clipboard') end
+local exported=0
+capture.Export=function() exported+=1 end
+setclipboard=function() error('clipboard unavailable') end
+assert(capture:CopyAll()==true and exported==1,'clipboard failure must export instead')
 capture.MaxCalls=#capture.Records+1
 installedHook(target,{})
 assert(not capture.Active,'record limit failed')

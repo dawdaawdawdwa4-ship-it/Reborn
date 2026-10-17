@@ -8,13 +8,18 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 2 and previous.Resume then
+if previous and previous.Version == 3 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 2, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 3, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+if previous then
+    capture.Records = previous.Records or capture.Records
+    capture.RequestIds = previous.RequestIds or capture.RequestIds
+    capture.Active = #capture.Records < capture.MaxCalls
+end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
@@ -140,6 +145,20 @@ function capture:Export()
         end
     end
     warn("[Reborn capture] File export unavailable; copy the capture from the console.")
+end
+function capture:CopyAll()
+    if #self.Records == 0 then
+        return false, "Ingen kald optaget endnu. Udfør handlingerne manuelt først."
+    end
+    local output = self:Dump()
+    local copy = type(setclipboard) == "function" and setclipboard
+        or (type(toclipboard) == "function" and toclipboard)
+    if copy then
+        local ok = pcall(copy, output)
+        if ok then return true, string.format("Alle %d optagne kald er kopieret. Send teksten her.", #self.Records) end
+    end
+    self:Export()
+    return true, "Udklipsholder utilgængelig. Alle kald er eksporteret til fil/konsol."
 end
 function capture:Stop()
     self.Active, self.Stopped = false, true

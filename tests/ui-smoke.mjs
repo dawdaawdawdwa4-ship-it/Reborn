@@ -49,8 +49,9 @@ if CAPTURE_SUPPORTED then
  RemoteCatalog.CaptureStop.Activated:Fire();assert(recorder.Stopped,'stop button failed')
  RemoteCatalog.CaptureToggle.Activated:Fire();assert(not recorder.Stopped,'restart button failed')
  local exports=0
- recorder.Export=function() exports+=1 end
- RemoteCatalog.CaptureExport.Activated:Fire();assert(exports==1,'export button not connected')
+ recorder.CopyAll=function() exports+=1;return true,"Copied all" end
+ RemoteCatalog.CaptureExport.Activated:Fire();assert(exports==1,'copy-all button not connected')
+ assert(RemoteCatalog.CaptureStatus.Text=='Copied all','copy feedback missing')
  RemoteCatalog.EnableCapture();assert(hookCount==1,'restarting setup stacked hooks')
 else
  assert(not RemoteCatalog.Recorder,'unsupported host must not have recorder')

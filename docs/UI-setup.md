@@ -76,13 +76,13 @@ copy the call blocks from the console. Send the resulting capture file or consol
 text. The export is reference data, not a script to execute.
 
 Capture is capped at 100 calls. Oversized/cyclic/unsupported argument data and
-unparented instances are explicitly marked INCOMPLETE. Stopping disables capture and makes the hook pass-through. Rerunning version 2
+unparented instances are explicitly marked INCOMPLETE. Stopping disables capture and makes the hook pass-through. Rerunning the current version
 resumes the existing recorder, preserving records without adding hooks or listeners.
 Its one hotkey listener ignores input while stopped.
 The mock tests verify interception semantics; live host compatibility is untested.
 
 
-Recorder v2 includes name, class, optional debug ID and position for detached
+The recorder includes name, class, optional debug ID and position for detached
 Instances in a `DetachedInstance({...})` diagnostic marker. These remain marked
 INCOMPLETE: metadata is not a replacement for the real Instance and the exported
 text must not be executed. Actual game calls retain their original Instance.
@@ -104,3 +104,11 @@ and its failing URL are not in this repository, so its original URL was not fixe
 When editing the recorder source, run `node scripts/embed-capture.mjs` to update
 its embedded copy in `message.txt`. The test command checks that the two copies
 match and exercises the integrated UI both with and without hook support.
+
+
+The Remotes tab's **Kopiér alle kald** button copies every recorded call, with
+arguments, to the clipboard. With no captured calls it explains what to do without
+changing the clipboard. If clipboard access is absent or fails, it exports the
+same complete dump to the existing file/console route. Calls not yet performed
+cannot be included. Upgrading the recorder preserves earlier records and observed
+request IDs from the same session.

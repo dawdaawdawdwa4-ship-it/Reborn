@@ -216,13 +216,18 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 2 and previous.Resume then
+if previous and previous.Version == 3 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 2, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 3, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+if previous then
+    capture.Records = previous.Records or capture.Records
+    capture.RequestIds = previous.RequestIds or capture.RequestIds
+    capture.Active = #capture.Records < capture.MaxCalls
+end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
@@ -348,6 +353,20 @@ function capture:Export()
         end
     end
     warn("[Reborn capture] File export unavailable; copy the capture from the console.")
+end
+function capture:CopyAll()
+    if #self.Records == 0 then
+        return false, "Ingen kald optaget endnu. Udfør handlingerne manuelt først."
+    end
+    local output = self:Dump()
+    local copy = type(setclipboard) == "function" and setclipboard
+        or (type(toclipboard) == "function" and toclipboard)
+    if copy then
+        local ok = pcall(copy, output)
+        if ok then return true, string.format("Alle %d optagne kald er kopieret. Send teksten her.", #self.Records) end
+    end
+    self:Export()
+    return true, "Udklipsholder utilgængelig. Alle kald er eksporteret til fil/konsol."
 end
 function capture:Stop()
     self.Active, self.Stopped = false, true
@@ -1171,7 +1190,7 @@ RemoteCatalog.CaptureStatus = label({ Parent = remotesPage, Text = "Starting rec
 RemoteCatalog.CaptureStatus.TextWrapped = true
 RemoteCatalog.CaptureToggle = button({ Parent = remotesPage, Text = "Start / pause capture",
     TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 186) })
-RemoteCatalog.CaptureExport = button({ Parent = remotesPage, Text = "Export capture (F9)",
+RemoteCatalog.CaptureExport = button({ Parent = remotesPage, Text = "Kopiér alle kald",
     TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 226) })
 RemoteCatalog.CaptureStop = button({ Parent = remotesPage, Text = "Stop capture",
     TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 266) })
@@ -1184,7 +1203,7 @@ function RemoteCatalog.UpdateCaptureUI()
     end
     local state = recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused")
     local mining = RemoteCatalog.RequestId("OEzzgCCBzocxJw") and "Mining request ID learned" or "Mine one block manually to learn its request ID"
-    RemoteCatalog.CaptureStatus.Text = string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
+    RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CopyNotice or string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
     RemoteCatalog.CaptureToggle.Text = recorder.Active and "Pause capture (F8)" or "Resume capture (F8)"
 end
 function RemoteCatalog.EnableCapture()
@@ -1193,6 +1212,7 @@ function RemoteCatalog.EnableCapture()
     RemoteCatalog.UpdateCaptureUI()
 end
 track(RemoteCatalog.CaptureToggle.Activated:Connect(function()
+    RemoteCatalog.CopyNotice = nil
     local recorder = RemoteCatalog.Recorder
     if not recorder then
         RemoteCatalog.EnableCapture()
@@ -1204,7 +1224,16 @@ track(RemoteCatalog.CaptureToggle.Activated:Connect(function()
     RemoteCatalog.UpdateCaptureUI()
 end))
 track(RemoteCatalog.CaptureExport.Activated:Connect(function()
-    if RemoteCatalog.Recorder then RemoteCatalog.Recorder:Export() end
+    if RemoteCatalog.Recorder then
+        local ok, result, message = pcall(function() return RemoteCatalog.Recorder:CopyAll() end)
+        -- Keep the result visible until the next action/status refresh.
+        if ok then
+            RemoteCatalog.CopyNotice = message
+        else
+            RemoteCatalog.CopyNotice = "Kopiering fejlede; brug F9 til eksport."
+        end
+        RemoteCatalog.UpdateCaptureUI()
+    end
 end))
 track(RemoteCatalog.CaptureStop.Activated:Connect(function()
     if RemoteCatalog.Recorder then RemoteCatalog.Recorder:Stop() end
