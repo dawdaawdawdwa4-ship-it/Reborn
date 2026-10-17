@@ -46,6 +46,15 @@ bait.GetAttributes=function() return {Amount='51',Count=1} end
 assert(RemoteCatalog.BaitCount(bait)==51,'numeric string Amount must take precedence over generic Count')
 bait.GetAttributes=oldAttributes
 
+current=nil
+local beforeEmptyHand=quantity
+local consumed,detail=RemoteCatalog.WithBaitTool(bait,function()
+ assert(current==bait and baitBusy,'empty-hand startup must equip bait before use')
+ quantity-=1;return true
+end)
+assert(consumed and detail=='bait consumption confirmed' and quantity==beforeEmptyHand-1 and not baitBusy,'empty-hand bait use must confirm and release tool control')
+current=rod
+
 RemoteCatalog.BobberActive=function() return true end
 assert(not RemoteCatalog.WithBaitTool(bait,function() error('must not run during a cast') end) and current==rod,'bait must wait for current bobber')
 RemoteCatalog.BobberActive=nil

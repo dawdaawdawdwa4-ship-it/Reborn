@@ -66,10 +66,17 @@ RemoteCatalog.EquipTool=function(selected) equips+=1;tool=selected;return true e
 tool=baitTool
 assert(RemoteCatalog.EquipFishingRod(1) and tool==savedRod and equips==1,'Fishing must select owned rod after bait even when the previous tool was bait')
 assert(RemoteCatalog.EquipFishingRod(1) and equips==1,'an already equipped rod must not be toggled off')
+tool=nil
+assert(RemoteCatalog.EquipFishingRod(1) and tool==savedRod and equips==2,'starting empty-handed must select the owned rod')
+RemoteCatalog.OwnedTools=function() return {baitTool} end
+tool=nil
+local missing,missingReason=RemoteCatalog.EquipFishingRod(1)
+assert(not missing and string.find(missingReason,'No fishing rod',1,true) and equips==2,'missing rod must show a reason without selecting bait')
+RemoteCatalog.OwnedTools=function() return {baitTool,savedRod} end
 tool=baitTool;enabled=false
-assert(not RemoteCatalog.EquipFishingRod(1) and equips==1,'Fishing OFF must not select tools')
+assert(not RemoteCatalog.EquipFishingRod(1) and equips==2,'Fishing OFF must not select tools')
 enabled=true;baitBusy=true
-assert(not RemoteCatalog.EquipFishingRod(1) and equips==1,'bait application must keep exclusive tool control')
+assert(not RemoteCatalog.EquipFishingRod(1) and equips==2,'bait application must keep exclusive tool control')
 baitBusy=false
 RemoteCatalog.EquipTool=function() return true end
 assert(not RemoteCatalog.EquipFishingRod(1),'an API success without actual rod selection must not count as equipped')
