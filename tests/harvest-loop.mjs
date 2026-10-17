@@ -65,7 +65,7 @@ local function runScenario(scenario)
   return true
  end
  local function fireBlockMine() if scenario=='blocked-wood' then return false,'Obstacle blocks trunk' end;if scenario=='wood-equip' then assert(selectedTool==newTool and time>=.1,'must allow changed axe to equip before hitting');target.Parent=nil end;return true end
- local RemoteCatalog={Navigation={Approach=function(_,obj,reach,active) assert(obj==target and reach==10 and active());walked=true;if scenario=="walk-cancel" then harvestCycleId+=1;return false,"Walking stopped" end;return true end},GameModule=function() return nil end,WoodReach=function() return true end,RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end,HarvestEndpoint=function() return nil end}
+ local RemoteCatalog={Navigation={Approach=function(_,obj,reach,active) assert(obj==target and reach==8 and active());walked=true;if scenario=="walk-cancel" then harvestCycleId+=1;return false,"Walking stopped" end;return true end},GameModule=function() return nil end,WoodReach=function() return true end,RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end,HarvestEndpoint=function() return nil end}
  RemoteCatalog.CallFruit=function(model,obj)
   assert(model==fruitTree and obj==target,'fruit target pair must be preserved')
   obj.Parent=nil

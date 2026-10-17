@@ -1329,6 +1329,7 @@ local CONFIG = {
 	WoodRange = 90,
     CropRange = 60,
     HarvestWalk = true,
+    FarmTravelMode = "Walk",
 	AutoReplant = true,
     FruitEnabled = false,
 	PlantDelay = 0.15,                    -- delay between plant attempts
@@ -1346,7 +1347,7 @@ local mineToolPreference = "Auto best pickaxe"
 local function savePreferences()
     if type(writefile) ~= "function" then return false end
     local data = {
-        HarvestWalk = CONFIG.HarvestWalk, HarvestCrops = CONFIG.HarvestCrops, HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
+        FarmTravelMode = CONFIG.FarmTravelMode, HarvestWalk = CONFIG.HarvestWalk, HarvestCrops = CONFIG.HarvestCrops, HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
         FruitEnabled = CONFIG.FruitEnabled, AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
         WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
@@ -1363,6 +1364,7 @@ local function loadPreferences()
     end)
     if not ok or type(data) ~= "table" then return false end
     if type(data.HarvestCrop) == "string" then CONFIG.HarvestCrop = data.HarvestCrop end
+    if data.FarmTravelMode=="Walk" or data.FarmTravelMode=="Tween" or data.FarmTravelMode=="Teleport" then CONFIG.FarmTravelMode=data.FarmTravelMode end
     if type(data.HarvestWalk)=="boolean" then CONFIG.HarvestWalk=data.HarvestWalk end
     if type(data.HarvestCrops) == "table" then CONFIG.HarvestCrops = data.HarvestCrops end
     if type(data.PlantType) == "string" then CONFIG.PlantType = data.PlantType end
@@ -2016,7 +2018,7 @@ local cropHint = label({ Parent = harvestPage, Text = "Select several crops abov
 cropHint.TextWrapped = true
 
 RemoteCatalog.CropRangeButton = button({ Parent = harvestPage, Text = "Scan range: " .. CONFIG.CropRange .. " studs",
-    TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 286) })
+    TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 328) })
 track(RemoteCatalog.CropRangeButton.Activated:Connect(function()
     CONFIG.CropRange = CONFIG.CropRange >= 120 and 15 or CONFIG.CropRange + 15
     RemoteCatalog.CropRangeButton.Text = "Scan range: " .. CONFIG.CropRange .. " studs"
@@ -2024,20 +2026,42 @@ track(RemoteCatalog.CropRangeButton.Activated:Connect(function()
 end))
 
 local fruitToggle = button({Parent=harvestPage,Text=CONFIG.FruitEnabled and "FRUIT PICKING: ON" or "FRUIT PICKING: OFF",TextSize=12,
-    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,328),Bg=CONFIG.FruitEnabled and COLORS.on or COLORS.off})
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,370),Bg=CONFIG.FruitEnabled and COLORS.on or COLORS.off})
 local fruitHint=label({Parent=harvestPage,Text="Pick fruit from your island's trees without chopping them. Capture one manual fruit pick first.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,370)})
+    Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,412)})
 fruitHint.TextWrapped=true
 
-RemoteCatalog.HarvestWalkButton=button({Parent=harvestPage,Text=CONFIG.HarvestWalk and "AUTO WALK: ON" or "AUTO WALK: OFF",TextSize=12,
+RemoteCatalog.HarvestWalkButton=button({Parent=harvestPage,Text=CONFIG.HarvestWalk and "AUTO MOVE: ON" or "AUTO MOVE: OFF",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,244),Bg=CONFIG.HarvestWalk and COLORS.on or COLORS.off})
 track(RemoteCatalog.HarvestWalkButton.Activated:Connect(function()
     CONFIG.HarvestWalk=not CONFIG.HarvestWalk
-    RemoteCatalog.HarvestWalkButton.Text=CONFIG.HarvestWalk and "AUTO WALK: ON" or "AUTO WALK: OFF"
+    RemoteCatalog.HarvestWalkButton.Text=CONFIG.HarvestWalk and "AUTO MOVE: ON" or "AUTO MOVE: OFF"
     RemoteCatalog.HarvestWalkButton.BackgroundColor3=CONFIG.HarvestWalk and COLORS.on or COLORS.off
     if not CONFIG.HarvestWalk and RemoteCatalog.Navigation then RemoteCatalog.Navigation.Stop() end
     savePreferences()
 end))
+
+RemoteCatalog.TravelSelectors={}
+function RemoteCatalog.TravelSelector(page,y)
+    local selector=button({Parent=page,Text="Travel: "..CONFIG.FarmTravelMode.."  ▾",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,y)})
+    table.insert(RemoteCatalog.TravelSelectors,selector)
+    local options={}
+    for i,mode in ipairs({"Walk","Tween","Teleport"}) do
+        local option=button({Parent=page,Text=mode,TextSize=12,Size=UDim2.new(1,-12,0,30),Position=UDim2.fromOffset(6,y+34+(i-1)*31)})
+        option.Visible=false;option.ZIndex=20
+        table.insert(options,option)
+        track(option.Activated:Connect(function()
+            CONFIG.FarmTravelMode=mode
+            RemoteCatalog.Navigation.Stop()
+            for _,item in ipairs(RemoteCatalog.TravelSelectors) do item.Text="Travel: "..mode.."  ▾" end
+            for _,item in ipairs(options) do item.Visible=false end
+            savePreferences()
+        end))
+    end
+    track(selector.Activated:Connect(function() local show=not options[1].Visible;for _,item in ipairs(options) do item.Visible=show end end))
+end
+RemoteCatalog.TravelSelector(harvestPage,286)
+RemoteCatalog.TravelSelector(woodPage,280)
 
 local woodToggle = button({ Parent = woodPage, Text = "WOOD FARM OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
@@ -3060,19 +3084,25 @@ local function getInteractionPoint(target, origin, visiblePoint, maxDistance)
     if visiblePoint then return best end
     return best or getPartPosition(target)
 end
+function RemoteCatalog.ResourcePosition(target)
+    local char=player.Character
+    local root=char and char:FindFirstChild("HumanoidRootPart")
+    return root and getInteractionPoint(target,root.Position) or getPartPosition(target)
+end
 -- RESOURCE AIM END
 
 -- FARM NAVIGATION BEGIN
 RemoteCatalog.Navigation=(function()
--- Walking only: pathfinding never teleports or crosses jump links.
+-- Farm travel is idle until an active worker asks to approach a target.
 local Navigation={Generation=0}
 function Navigation.Stop()
     Navigation.Generation+=1
+    if Navigation.Tween then Navigation.Tween:Cancel();Navigation.Tween=nil end
     local humanoid=Navigation.Humanoid
     Navigation.Humanoid=nil
     if humanoid then pcall(function() humanoid:Move(Vector3.zero) end) end
 end
-function Navigation.Approach(player,target,reach,active,positionOf)
+function Navigation.Approach(player,target,reach,active,positionOf,mode)
     local character=player.Character
     local humanoid=character and character:FindFirstChildOfClass("Humanoid")
     local root=character and character:FindFirstChild("HumanoidRootPart")
@@ -3085,7 +3115,7 @@ function Navigation.Approach(player,target,reach,active,positionOf)
         local point=positionOf(target)
         return point and (point-root.Position).Magnitude<=reach
     end
-    if not valid() then return false,"Walking stopped" end
+    if not valid() then return false,"Travel stopped" end
     if near() then return true end
     Navigation.Humanoid=humanoid
     local ok,result=pcall(function()
@@ -3093,21 +3123,44 @@ function Navigation.Approach(player,target,reach,active,positionOf)
         if not destination then return false end
         -- Stand beside dense bushes rather than pathfinding into their collision geometry.
         destination=destination+(root.Position-destination).Unit*(reach*.6)
-        local path=game:GetService("PathfindingService"):CreatePath({AgentRadius=2,AgentHeight=5,AgentCanJump=false,WaypointSpacing=4})
+        if mode=="Teleport" or mode=="Tween" then
+            local destinationFrame=root.CFrame+(destination-root.Position)
+            if not valid() then return false end
+            if mode=="Teleport" then
+                root.CFrame=destinationFrame
+                task.wait(.1)
+                return valid() and near()
+            end
+            local duration=math.clamp((destination-root.Position).Magnitude/24,.15,5)
+            local tween=game:GetService("TweenService"):Create(root,TweenInfo.new(duration,Enum.EasingStyle.Linear),{CFrame=destinationFrame})
+            Navigation.Tween=tween
+            tween:Play()
+            local deadline=os.clock()+duration+.5
+            while valid() and not near() and os.clock()<deadline do task.wait(.05) end
+            tween:Cancel()
+            if Navigation.Tween==tween then Navigation.Tween=nil end
+            return valid() and near()
+        end
+        local path=game:GetService("PathfindingService"):CreatePath({AgentRadius=2,AgentHeight=5,AgentCanJump=true,WaypointSpacing=4})
         path:ComputeAsync(root.Position,destination)
         if not valid() or path.Status~=Enum.PathStatus.Success then return false end
         local deadline=os.clock()+10
         for _,waypoint in ipairs(path:GetWaypoints()) do
             if not valid() then return false end
             if near() then return true end
-            if waypoint.Action==Enum.PathWaypointAction.Jump then return false end
+            local function distanceToWaypoint()
+                local offset=waypoint.Position-root.Position
+                return Vector3.new(offset.X,0,offset.Z).Magnitude
+            end
+            -- Waypoint Y is at the feet; HumanoidRootPart stays above it.
+            if waypoint.Action==Enum.PathWaypointAction.Jump then humanoid.Jump=true end
             humanoid:MoveTo(waypoint.Position)
-            local best=(waypoint.Position-root.Position).Magnitude
+            local best=distanceToWaypoint()
             local progressed=os.clock()
-            while (waypoint.Position-root.Position).Magnitude>2 do
+            while distanceToWaypoint()>2 or math.abs(waypoint.Position.Y-root.Position.Y)>6 do
                 if not valid() then return false end
                 if near() then return true end
-                local distance=(waypoint.Position-root.Position).Magnitude
+                local distance=distanceToWaypoint()
                 if distance<best-.3 then best=distance;progressed=os.clock() end
                 if os.clock()>deadline or os.clock()-progressed>1.5 then return false end
                 task.wait(.1)
@@ -3117,10 +3170,11 @@ function Navigation.Approach(player,target,reach,active,positionOf)
     end)
     -- A cancelled old path must not stop a newer worker's movement.
     if Navigation.Generation==generation and Navigation.Humanoid==humanoid then
+        if Navigation.Tween then pcall(function() Navigation.Tween:Cancel() end);Navigation.Tween=nil end
         pcall(function() humanoid:Move(Vector3.zero) end)
         Navigation.Humanoid=nil
     end
-    return ok and result==true,ok and "No walking route in reach; skipping this target" or "Walking unavailable; skipping this target"
+    return ok and result==true,ok and "Target not reached; skipping this target" or "Travel unavailable; skipping this target"
 end
 return Navigation
 
@@ -3253,12 +3307,12 @@ local function harvestLoop(myCycle)
             if not hrp or not position or (position - hrp.Position).Magnitude > FarmLogic.Range(target.category, CONFIG) then continue end
             if target.category=="crop" then
                 local reach=RemoteCatalog.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
-                reach=type(reach)=="number" and math.min(reach,10) or 10
+                reach=type(reach)=="number" and math.min(reach,8) or 8
                 if (position-hrp.Position).Magnitude>reach then
                     local reached,reason=false,"Move closer to "..target.name.." (scan range is not interaction range)"
                     if CONFIG.HarvestWalk then
-                        setStatus("Walking to "..target.name,COLORS.muted)
-                        reached,reason=RemoteCatalog.Navigation.Approach(player,obj,reach,function() return active() and CONFIG.HarvestWalk and harvestEnabled and not enabled end,getPartPosition)
+                        setStatus((CONFIG.FarmTravelMode or "Walk").." to "..target.name,COLORS.muted)
+                        reached,reason=RemoteCatalog.Navigation.Approach(player,obj,reach,function() return active() and CONFIG.HarvestWalk and harvestEnabled and not enabled end,getPartPosition,CONFIG.FarmTravelMode)
                     end
                     if not active() then break end
                     if not reached then
@@ -3273,6 +3327,12 @@ local function harvestLoop(myCycle)
             end
             if target.category=="wood" then
                 local reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position)
+                if not reachable then
+                    setStatus((CONFIG.FarmTravelMode or "Walk").." to "..target.name,COLORS.muted)
+                    reachable,reason=RemoteCatalog.Navigation.Approach(player,obj,8,function() return active() and woodEnabled and not enabled end,RemoteCatalog.ResourcePosition,CONFIG.FarmTravelMode)
+                    if not active() then break end
+                    if reachable then reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position) end
+                end
                 if not reachable then
                     FarmState.LastFailure.wood=reason
                     woodStatus.Text=reason
@@ -3350,7 +3410,7 @@ local function harvestLoop(myCycle)
                 end
             end
             local quickCrop=target.category=="crop" and (confirmed or persistentBerry and ok)
-            FarmState.Cooldowns[obj] = os.clock() + (persistentBerry and ok and 1 or quickCrop and 0.08 or ok and 0.25 or 2)
+            FarmState.Cooldowns[obj] = os.clock() + (persistentBerry and ok and 15 or quickCrop and 0.08 or ok and 0.25 or 2)
             task.wait(quickCrop and math.min(CONFIG.MineDelay,0.08) or CONFIG.MineDelay)
         end
         -- All candidates may be out of prompt range; always yield before rescanning.

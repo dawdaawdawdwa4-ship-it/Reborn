@@ -35,6 +35,12 @@ buildController.Buttons.Preview.Activated:Fire()
 assert(string.find(buildController.Status.Text,"spawn",1,true))
 assert(buildController.Preset=="Farm plots")
 assert(not RemoteCatalog.Recorder,'recorder must be off on actual full startup')
+for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Tween' then option.Activated:Fire() end end
+assert(CONFIG.FarmTravelMode=='Tween' and string.find(RemoteCatalog.TravelSelectors[1].Text,'Tween',1,true),'tree travel selection must update both dropdown labels')
+assert(not enabled and not woodEnabled and not harvestEnabled,'choosing a travel mode must not start automation')
+for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Walk' then option.Activated:Fire() end end
+assert(CONFIG.FarmTravelMode=='Walk','walk travel must remain available')
+
 assert(SETTINGS_FILE=='IslandsFarmingHub_7_settings.json','preferences must be isolated by account')
 local hum={WalkSpeed=16,JumpPower=50,JumpHeight=7.2,UseJumpPower=true}
 local character={FindFirstChildOfClass=function() return hum end,GetChildren=function() return {} end,WaitForChild=function() return hum end}
