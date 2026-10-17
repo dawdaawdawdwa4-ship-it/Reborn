@@ -54,7 +54,7 @@ local function runScenario(scenario)
   time+=dt
   if scenario=='blocked-wood' then
    if dt==CONFIG.MineScanInterval then scanWaits+=1;if scanWaits>=2 then harvestCycleId+=1 end end
-  elseif dt==CONFIG.MineDelay or dt==CONFIG.MineScanInterval or scenario=='prompt-cancel' then harvestCycleId+=1 end
+  elseif dt==CONFIG.MineDelay or dt==.08 or dt==CONFIG.MineScanInterval or scenario=='prompt-cancel' then harvestCycleId+=1 end
  end}
  local function fireModelHarvest(obj)
   if scenario=='removed' or scenario=='learned-prompt' or scenario=='server-replant' or scenario=='multi-carrot' then obj.Parent=nil end
@@ -63,7 +63,7 @@ local function runScenario(scenario)
   return true
  end
  local function fireBlockMine() if scenario=='blocked-wood' then return false,'Obstacle blocks trunk' end;if scenario=='wood-equip' then assert(selectedTool==newTool and time>=.1,'must allow changed axe to equip before hitting');target.Parent=nil end;return true end
- local RemoteCatalog={RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end,HarvestEndpoint=function() return nil end}
+ local RemoteCatalog={WoodReach=function() return true end,RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end,HarvestEndpoint=function() return nil end}
  RemoteCatalog.CallFruit=function(model,obj)
   assert(model==fruitTree and obj==target,'fruit target pair must be preserved')
   obj.Parent=nil

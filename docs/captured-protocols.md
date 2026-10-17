@@ -98,3 +98,5 @@ Endpoint `ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.fZy3jBDaMu
 ### Current wood-cutting envelope
 
 Recorder version 14 recognizes `out.wRLHwn9X7tFCOv.T5XIZMc0DxnCFt` with `HrGxW0IGeHngmz` context and `H3ZxjzDRyU5tvI = { block = actualTree }`. It learns nested block payloads without fixed envelope keys. Future unknown aliases are eligible only under `out` when a matching axe/resource or pickaxe/mineral is observed. Recording remains manually enabled, and live context is preserved; detached capture targets are replaced rather than replayed. Catalog: 138 endpoints.
+
+Berry harvest: `out.wRLHwn9X7tFCOv.UctIHHAfsCxxzj` uses `HrGxW0IGeHngmz` session context and `H3ZxjzDRyU5tvI={model,player}`. Recorder v16 learns it from a live manual harvest. The supplied interact ModuleScript path does not establish an exported API, so no functions are guessed. Confirmed crop actions use an 80 ms cooldown/delay cap; unconfirmed calls retain backoff and confirmation checks. Catalog: 139 endpoints.

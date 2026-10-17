@@ -85,6 +85,12 @@ workspace.Raycast=function() return {Instance=target} end
 reset();assert(resourceInputHit(target),'invisible queryable tree hitboxes must not be excluded')
 workspace.Raycast=function() return {Instance=blocker} end
 reset();assert(not resourceInputHit(target) and #events==0,'real intervening obstacles must still prevent clicks')
+target={Name='tree',Parent=true,Position=vec(100),IsA=function(_,c) return c=='BasePart' end,GetDescendants=function() return {} end}
+local reachable,reason=RemoteCatalog.WoodReach(target,root.Position)
+assert(not reachable and string.find(reason,'Move closer',1,true),'scan range must not permit out-of-reach wood requests')
+target.Position=vec(5);assert(RemoteCatalog.WoodReach(target,root.Position),'nearby tree must remain hittable')
+RemoteCatalog.GameModule=function() return 3 end
+assert(not RemoteCatalog.WoodReach(target,root.Position),'native game reach must override fallback')
 return 'Resource input: mining/wood, aim, reach, visibility, obstruction, UI protection, matching tools, Stop and error release passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(test,'resource-input',true)());}finally{state.destroy();}

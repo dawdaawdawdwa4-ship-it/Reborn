@@ -235,6 +235,11 @@ local laterPacket={iXwUW9mXJ8AVnK='new-live-id',a1tIHk1Kl9GiE5={model=crop,playe
 installedHook(updatedRemote,laterPacket)
 assert(#capture.Records==fullCount and capture:Harvest(nextCrop),'full log must not prevent harvest learning')
 assert(updatedArgs.iXwUW9mXJ8AVnK=='new-live-id','full log retained stale request context')
+local berryRemote=remote('UctIHHAfsCxxzj')
+local berryArgs
+berryRemote.InvokeServer=function(_,packet) berryArgs=packet;return true end
+installedHook(berryRemote,{HrGxW0IGeHngmz='berry-session',H3ZxjzDRyU5tvI={model=crop,player='current-player'}})
+assert(capture:Harvest(nextCrop) and berryArgs.HrGxW0IGeHngmz=='berry-session' and berryArgs.H3ZxjzDRyU5tvI.model==nextCrop,'new berry envelope must retain context and replace target')
 local before=#capture.Records
 capture:Stop();installedHook(target,{})
 assert(#capture.Records==before,'stop must remain pass-through')

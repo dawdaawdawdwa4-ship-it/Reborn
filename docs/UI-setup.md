@@ -287,3 +287,5 @@ Mining's Tool dropdown now includes wooden/stone/iron pickaxes and axes, plus Au
 Tree input fallback checks child meshes and invisible or non-queryable hitboxes, while rejecting obstructed rays and out-of-reach targets.
 
 Wood Farm starts a temporary no-log learning mode when neither a live wood binding nor the native block-hit API is available. Chop one tree manually; learning stops automatically and subsequent targets use that request. Switching Wood Farm off cancels pending automatic learning. Startup and bait remain OFF. Rejoining may require a new chop; captured session values are never hardcoded.
+
+Wood scan range selects candidates; it does not extend axe reach. All wood transports now check the closest tree geometry against the game reach value (20-stud fallback) before equipping or sending a request. Unreachable targets show Move closer and do not increase action counts. Request submission does not confirm damage or guarantee a swing animation.
