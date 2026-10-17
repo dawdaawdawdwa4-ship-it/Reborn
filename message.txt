@@ -1358,7 +1358,7 @@ local CONFIG = {
 	CastTimeout = 2.0,                  -- typical bobber response is quick; allow a small network margin
 	CastHold = 0.35,
     CastDistance = 12,
-    BiteTimeout = 45, -- stop safely if a bobber never tugs
+    BiteTimeout = 45, -- reset the cast if a bobber never tugs
     ReelTimeout = 1.0,                    -- shorter confirmation window after reeling
 	FishingPollInterval = 0.01,           -- check cast/bobber state more frequently
 	ReelSettleDelay = 0.025,              -- brief time for the server to register a reel
@@ -1673,7 +1673,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-click-10",
+    Subtitle = "fishing-recovery-11",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3822,6 +3822,7 @@ local setHarvestEnabled
 local function run(myCycle)
 	local failedCasts = 0
     local countedBites = setmetatable({}, {__mode = "k"})
+    local countedMisses = setmetatable({}, {__mode = "k"})
 
 	while running(myCycle) do
         if baitBusy then task.wait(0.05); continue end
@@ -3867,7 +3868,10 @@ local function run(myCycle)
 					registerCatch(fishName)
 					setStatus("Caught " .. (fishName or "a fish") .. "! 🐟", COLORS.good)
 				else
-					registerMiss()
+                    if not countedMisses[bobber] then
+                        countedMisses[bobber]=true
+                        registerMiss()
+                    end
 					setStatus("Reel not confirmed - retrying", COLORS.warn)
 					task.wait(0.05)
 				end
@@ -4055,6 +4059,7 @@ track(stopAllButton.Activated:Connect(function()
 end))
 
 track(toggle.Activated:Connect(function()
+    if RemoteCatalog.BaitMouseInput then return end
     setEnabled(not enabled)
     refreshModeStatus()
 end))

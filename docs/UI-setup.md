@@ -333,3 +333,5 @@ Build rod-return-9 automatically selects an owned fishing rod whenever Fishing i
 Anti AFK now starts ON automatically at launch. Settings can turn it off; Stop All still disables it and disconnects its idle listener. Farming and fishing remain off at launch.
 
 Build bait-click-10 ignores Auto Bait toggle activations during its own synthetic mouse press/release, preventing accidental self-cancellation when host coordinates hit the hub.
+
+Build fishing-recovery-11 keeps fishing enabled through bite/cast timeouts, guards both fishing and bait toggles during synthetic bait input, and counts at most one miss per bobber while retrying reels.

@@ -113,12 +113,18 @@ for _,button in ipairs({toggle,harvestToggle,woodToggle,mineToggle,baitToggle}) 
 end
 RemoteCatalog.BaitMouseInput=true
 baitToggle.Activated:Fire()
-assert(not baitEnabled,'synthetic bait input must not enable its own toggle')
+toggle.Activated:Fire()
+assert(not enabled and not baitEnabled,'synthetic bait input must not enable fishing or bait')
 RemoteCatalog.BaitMouseInput=false
 local beforeManualBait=baitApplications
 setBaitEnabled(true)
 assert(baitEnabled and baitApplications==beforeManualBait+1,'manual bait must apply immediately')
-setEnabled(true);setEnabled(false)
+setEnabled(true)
+RemoteCatalog.BaitMouseInput=true
+toggle.Activated:Fire();baitToggle.Activated:Fire()
+assert(enabled and baitEnabled,'synthetic bait input must not disable fishing or bait')
+RemoteCatalog.BaitMouseInput=false
+setEnabled(false)
 assert(baitEnabled and baitApplications==beforeManualBait+1,'Fishing must preserve manually enabled bait')
 setBaitEnabled(false);stepWorkers()
 applyBait=function() return false,'bait tool not found' end

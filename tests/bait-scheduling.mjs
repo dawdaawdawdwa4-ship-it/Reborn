@@ -105,6 +105,27 @@ do
  retryRun(1)
  assert(clicks==1 and waited==2,'failed casts must back off without disabling Fishing')
 end
+-- Repeated reel attempts against the same bobber are one missed cast.
+do
+ local enabled=true
+ local function running() return enabled end
+ local CONFIG={ActionCooldown=0,ReelSettleDelay=.01,ReelTimeout=.7}
+ local lastAction=-100
+ local bobber={Parent=true}
+ local stats={bites=0}
+ local function getBobber() return bobber end
+ local function waitForTug() return true,false end
+ local function clickOnce() return true end
+ local function updateBoard() end
+ local attempts,misses=0,0
+ local function waitUntil() attempts+=1;return false end
+ local function registerMiss() misses+=1 end
+ local task={wait=function(delay) if attempts>=2 then enabled=false end end}
+ baitBusy=false
+ ${run.replace('local function run(myCycle)','local function repeatedReel(myCycle)')}
+ repeatedReel(1)
+ assert(attempts==2 and misses==1 and stats.bites==1,'one bobber must not inflate bite/miss counts on retries')
+end
 return 'Bait scheduling: queued priority, long-cast retry, success/OFF release, next-cast blocking and existing-cast completion passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'bait-scheduling',true)());}finally{state.destroy();}
