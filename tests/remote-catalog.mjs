@@ -125,6 +125,11 @@ RemoteCatalog.Recorder.Bait=function() return false,'denied' end
 sent=nil
 assert(not applyBait() and sent==nil,'learned bait rejection must not fall back to legacy')
 RemoteCatalog.Recorder=nil
+local previousRecorder=context.RebornCapture
+local globalBaitCalls=0
+context.RebornCapture={BaitBinding={},Bait=function(_,tool) assert(tool==bait);globalBaitCalls+=1;return true end}
+assert(applyBait() and globalBaitCalls==1,'standalone learned bait binding must survive hub reload')
+context.RebornCapture=previousRecorder
 local requestModule=node('requests','ModuleScript')
 local toolModule=node('tool-meta','ModuleScript')
 local inventoryDataModule=node('inventory-service','ModuleScript')

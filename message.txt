@@ -261,8 +261,17 @@ local RemoteCatalog = (function()
     end
     function catalog.CallBait(tool)
         local recorder = catalog.Recorder
+        if not (recorder and recorder.BaitBinding and recorder.Bait) then
+            local ok, existing = pcall(function()
+                local environment = type(getgenv) == "function" and getgenv() or _G
+                return environment.RebornCapture
+            end)
+            if ok and existing and existing.BaitBinding and existing.Bait then recorder = existing end
+        end
         if recorder and recorder.BaitBinding and recorder.Bait then return recorder:Bait(tool) end
-        return catalog.InvokeCaptured("raqRasAwcny1zh", {tool = tool})
+        local ok, reason, state = catalog.InvokeCaptured("raqRasAwcny1zh", {tool = tool})
+        if state == "unavailable" and catalog.ActivateBait then return catalog.ActivateBait(tool) end
+        return ok, reason
     end
     function catalog.CallMine(target)
         local endpoint = catalog.GameEndpoint("BLOCK_HIT_REQUEST")
@@ -1454,6 +1463,7 @@ local function applyFishingMode(modeName)
     end
 end
 
+local baitBusy, fishingInputBusy = false, false
 local baitEnabled = false
 local enabled = false
 local harvestEnabled = false -- crop farm
@@ -1471,6 +1481,37 @@ local baitInfo = label({
 })
 baitInfo.TextWrapped = true
 
+-- BAIT TOOL INPUT BEGIN
+RemoteCatalog.ActivateBait = function(tool)
+    if baitBusy or fishingInputBusy then return false, "Waiting for current rod input" end
+    local character = player.Character
+    if not character then return false, "Wait for your character" end
+    local previous = character:FindFirstChildOfClass("Tool")
+    local token = baitCycleId
+    local function active() return baitEnabled and baitCycleId == token and gui.Parent ~= nil and player.Character == character end
+    if not active() then return false, "Auto Bait stopped" end
+    baitBusy = true
+    local activated = false
+    local ok, failure = pcall(function()
+        if not RemoteCatalog.EquipTool(tool) then error("Could not equip bait") end
+        task.wait(0.1)
+        if not active() then return end
+        if tool.Parent ~= character or character:FindFirstChildOfClass("Tool") ~= tool then error("Bait tool not equipped") end
+        tool:Activate()
+        activated = true
+        task.wait(0.15)
+    end)
+    -- Restore the rod even after Stop or activation errors; do not overwrite a manual tool change.
+    if previous and previous ~= tool and player.Character == character then
+        local current = character:FindFirstChildOfClass("Tool")
+        if current == tool or current == nil then pcall(RemoteCatalog.EquipTool, previous) end
+    end
+    baitBusy = false
+    if not ok then return false, failure end
+    return activated and active(), "tool activation attempted"
+end
+-- BAIT TOOL INPUT END
+
 local function applyBait()
     local character = player.Character
     local baitTool = character and character:FindFirstChild("bait")
@@ -1484,7 +1525,7 @@ local function applyBait()
     end
     local ok, result = RemoteCatalog.CallBait(baitTool)
     if not ok then setStatus("Auto Bait failed: " .. tostring(result)) end
-    return ok
+    return ok, result
 end
 
 local function setBaitEnabled(state)
@@ -1500,9 +1541,9 @@ local function setBaitEnabled(state)
     end
     task.spawn(function()
         while baitEnabled and baitCycleId == myCycle and gui.Parent do
-            local applied = applyBait()
+            local applied, detail = applyBait()
             if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
-            if applied then setStatus("Auto Bait applied; refresh in 60s", COLORS.good) end
+            if applied then setStatus(detail == "tool activation attempted" and "Bait tool activated; next attempt in 60s" or "Auto Bait applied; refresh in 60s", COLORS.good) end
             local delay = applied and 60 or 5
             for remaining = delay, 1, -1 do
                 if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
@@ -1927,7 +1968,11 @@ local function updateBoard()
 		or "–"
     local rateText = stats.bites > 0 and string.format("%d%%", math.floor(stats.catches / stats.bites * 100 + 0.5)) or "–"
     local hourly = t >= 30 and string.format("%.0f", stats.catches / (t / 3600)) or "–"
-    local baitState = baitEnabled and (baitToggle.Text:match("%[(.-)%]") or "ON") or "OFF"
+    local baitState = "OFF"
+    if baitEnabled then
+        local countdown = baitToggle.Text:match("%[(.-)%]") or "ON"
+        baitState = string.find(baitToggle.Text, "RETRY", 1, true) and ("Retry in " .. countdown) or countdown
+    end
     statsOverlayText.Text = string.format("Catches %d  |  Misses %d\nCasts %d  |  Bites %d\nCatch rate %s  |  %s\nFish/hour %s  |  %s\nHarvests %d\nBait %s", stats.catches, stats.missed, stats.casts, stats.bites, rateText, string.upper(activeFishingMode), hourly, formatTime(t), stats.harvests, baitState)
 	rows.streak.Text = stats.streak .. " / " .. stats.bestStreak
 	rows.perHour.Text = t >= 30
@@ -2076,7 +2121,7 @@ end
 local lastFishingAim
 local function clickOnce(action, myCycle)
     local camera = workspace.CurrentCamera
-    if not camera or not hasRodEquipped() or not running(myCycle) then return false end
+    if baitBusy or not camera or not hasRodEquipped() or not running(myCycle) then return false end
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local x, y = camera.ViewportSize.X * 0.7, camera.ViewportSize.Y * 0.6
@@ -2102,9 +2147,10 @@ local function clickOnce(action, myCycle)
         local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
         if not moved then return false end
         task.wait(0.03)
-        if not running(myCycle) then return false end
+        if baitBusy or not running(myCycle) then return false end
         lastFishingAim = {X=x,Y=y}
     end
+    fishingInputBusy = true
     local pressed = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0) end)
     local held = pcall(function()
         if not pressed then return end
@@ -2113,6 +2159,7 @@ local function clickOnce(action, myCycle)
     end)
     -- Release independently of both input errors and Stop during the charge.
     local released = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0) end)
+    fishingInputBusy = false
     return pressed and held and released and running(myCycle)
 end
 local function getBobber()
@@ -2538,6 +2585,7 @@ local function run(myCycle)
     local countedBites = setmetatable({}, {__mode = "k"})
 
 	while running(myCycle) do
+        if baitBusy then task.wait(0.05); continue end
 		local bobber = getBobber()
 
 		if bobber then

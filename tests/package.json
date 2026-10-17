@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node ../scripts/embed-capture.mjs --check && node ../scripts/embed-farm.mjs --check && node ../scripts/embed-build.mjs --check && node autobuild-smoke.mjs && node ui-smoke.mjs && node remote-catalog.mjs && node resource-input.mjs && node capture-smoke.mjs && node farm-smoke.mjs && node harvest-loop.mjs && node fishing-smoke.mjs && node full-startup.mjs"
+    "test": "node ../scripts/embed-capture.mjs --check && node ../scripts/embed-farm.mjs --check && node ../scripts/embed-build.mjs --check && node autobuild-smoke.mjs && node ui-smoke.mjs && node remote-catalog.mjs && node resource-input.mjs && node bait-tool.mjs && node capture-smoke.mjs && node farm-smoke.mjs && node harvest-loop.mjs && node fishing-smoke.mjs && node full-startup.mjs"
   },
   "devDependencies": {
     "luau-web": "1.4.0"
