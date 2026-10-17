@@ -322,6 +322,9 @@ local RemoteCatalog = (function()
         return ok,result
     end
     function catalog.CallMine(target, category)
+        if category=="wood" and catalog.Recorder and catalog.Recorder.LearnWoodOnly then
+            return false,"Chop one tree manually to learn this session; Wood Farm will continue automatically"
+        end
         local recorder=catalog.LiveRecorder(category == "wood" and "WoodHitBinding" or "MineHitBinding")
         if recorder and recorder.Hit then return recorder:Hit(target,category) end
         local endpoint = catalog.GameEndpoint("BLOCK_HIT_REQUEST")
@@ -434,13 +437,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 14 and previous.Resume then
+if previous and previous.Version == 15 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 14, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 15, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -607,6 +610,7 @@ function capture:CopyAll()
 end
 function capture:Stop()
     self.Active, self.Stopped = false, true
+    self.LearnWoodOnly = false
     -- Retain the single hotkey connection so this same recorder can be resumed.
     -- It ignores input while stopped; no extra hooks or listeners are installed.
     -- Leave our hook in pass-through mode; restoring it could overwrite another hook.
@@ -822,6 +826,18 @@ local original
 local function intercept(remote, ...)
     if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
+    if capture.LearnWoodOnly then
+        if method == "InvokeServer" then
+            local args = table.pack(...)
+            pcall(function()
+                if typeof(remote)=="Instance" and remote:IsA("RemoteFunction") then
+                    learnBlockHit(remote,method,args)
+                    if capture.WoodHitBinding then capture.LearnWoodOnly=false;capture:Stop() end
+                end
+            end)
+        end
+        return original(remote,...)
+    end
     if not capture.Stopped and (capture.Active or #capture.Records >= capture.MaxCalls)
         and (method == "InvokeServer" or method == "FireServer") then
         local args = table.pack(...)
@@ -2296,7 +2312,7 @@ function RemoteCatalog.UpdateCaptureUI()
         RemoteCatalog.CaptureToggle.Text = RemoteCatalog.CaptureAttempted and "Retry capture setup" or "Start capture (optional)"
         return
     end
-    local state = recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused")
+    local state = recorder.LearnWoodOnly and "Waiting for one manual chop (no call log)" or (recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused"))
     local learned = {}
     for _, name in ipairs({"OEzzgCCBzocxJw", "ohy6O10QKzyGZE", "raqRasAwcny1zh", "RZQQNNDRUvfj1N"}) do
         if RemoteCatalog.RequestId(name) then table.insert(learned, RemoteCatalog.VerifiedRequests[name]) end
@@ -2319,8 +2335,25 @@ function RemoteCatalog.EnableCapture()
     RemoteCatalog.Recorder = ok and recorder or nil
     RemoteCatalog.UpdateCaptureUI()
 end
+function RemoteCatalog.PrepareWoodLearning()
+    if RemoteCatalog.LiveRecorder("WoodHitBinding") or RemoteCatalog.GameEndpoint("BLOCK_HIT_REQUEST") then return end
+    local recorder=RemoteCatalog.Recorder
+    if recorder and not recorder.Stopped and recorder.Active then return end
+    local ok,result=pcall(RemoteCatalog.StartCapture)
+    if ok and result then
+        RemoteCatalog.Recorder=result
+        result.LearnWoodOnly=true
+        result.Active=false
+        RemoteCatalog.UpdateCaptureUI()
+    end
+end
+function RemoteCatalog.StopWoodLearning()
+    local recorder=RemoteCatalog.Recorder
+    if recorder and recorder.LearnWoodOnly then recorder.LearnWoodOnly=false;recorder:Stop() end
+end
 track(RemoteCatalog.CaptureToggle.Activated:Connect(function()
     RemoteCatalog.CopyNotice = nil
+    if RemoteCatalog.Recorder then RemoteCatalog.Recorder.LearnWoodOnly=false end
     local recorder = RemoteCatalog.Recorder
     if not recorder then
         RemoteCatalog.EnableCapture()
@@ -3376,6 +3409,7 @@ local function setFarmMode(mode, state)
     if mode == "crop" then harvestEnabled = state
     elseif mode == "wood" then woodEnabled = state
     else mineEnabled = state end
+    if woodEnabled then RemoteCatalog.PrepareWoodLearning() else RemoteCatalog.StopWoodLearning() end
     harvestCycleId += 1
     refreshFarmButtons()
     refreshModeStatus()

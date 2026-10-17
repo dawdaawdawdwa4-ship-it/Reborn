@@ -242,6 +242,14 @@ local hookBefore=installedHook
 runRecorder();runRecorder()
 assert(installedHook==hookBefore and hookCount==1 and connectionCount==1,'rerun must not stack hooks/listeners')
 assert(environment.RebornCapture==capture and #capture.Records==before and not capture.Stopped,'rerun must preserve records and resume')
+capture.WoodHitBinding=nil
+capture:Resume();capture.Active=false;capture.LearnWoodOnly=true
+local quietCount=#capture.Records
+installedHook(baitRemote,baitPacket)
+assert(not capture.WoodHitBinding and capture.LearnWoodOnly and #capture.Records==quietCount,'wood learning must not log unrelated calls')
+installedHook(newestAxe,{HrGxW0IGeHngmz='fresh-session',H3ZxjzDRyU5tvI={block=tree}})
+assert(capture.Stopped and not capture.LearnWoodOnly and #capture.Records==quietCount,'wood learning must stop after its first binding without logging')
+assert(capture:Hit(nextTree,'wood') and newestArgs.HrGxW0IGeHngmz=='fresh-session' and newestArgs.H3ZxjzDRyU5tvI.block==nextTree,'quiet learning must retain fresh context and allow later tree hits')
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
 const state=await LuauState.createAsync();

@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 14 and previous.Resume then
+if previous and previous.Version == 15 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 14, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 15, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -181,6 +181,7 @@ function capture:CopyAll()
 end
 function capture:Stop()
     self.Active, self.Stopped = false, true
+    self.LearnWoodOnly = false
     -- Retain the single hotkey connection so this same recorder can be resumed.
     -- It ignores input while stopped; no extra hooks or listeners are installed.
     -- Leave our hook in pass-through mode; restoring it could overwrite another hook.
@@ -396,6 +397,18 @@ local original
 local function intercept(remote, ...)
     if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
+    if capture.LearnWoodOnly then
+        if method == "InvokeServer" then
+            local args = table.pack(...)
+            pcall(function()
+                if typeof(remote)=="Instance" and remote:IsA("RemoteFunction") then
+                    learnBlockHit(remote,method,args)
+                    if capture.WoodHitBinding then capture.LearnWoodOnly=false;capture:Stop() end
+                end
+            end)
+        end
+        return original(remote,...)
+    end
     if not capture.Stopped and (capture.Active or #capture.Records >= capture.MaxCalls)
         and (method == "InvokeServer" or method == "FireServer") then
         local args = table.pack(...)

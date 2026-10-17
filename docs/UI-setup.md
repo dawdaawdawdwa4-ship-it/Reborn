@@ -285,3 +285,5 @@ Normal resource input now tries visible, reachable points on the same resource (
 Mining's Tool dropdown now includes wooden/stone/iron pickaxes and axes, plus Auto best options for both types. Explicit axe choices are respected by equip and input paths; default auto mining continues to choose pickaxes. Server tool effectiveness remains unchanged. Tests cover actual UI multi-selection, exclusive farm switching, mixed-crop scans/replanting, blocker persistence, alternate visible aim points and explicit mining-axe selection.
 
 Tree input fallback checks child meshes and invisible or non-queryable hitboxes, while rejecting obstructed rays and out-of-reach targets.
+
+Wood Farm starts a temporary no-log learning mode when neither a live wood binding nor the native block-hit API is available. Chop one tree manually; learning stops automatically and subsequent targets use that request. Switching Wood Farm off cancels pending automatic learning. Startup and bait remain OFF. Rejoining may require a new chop; captured session values are never hardcoded.
