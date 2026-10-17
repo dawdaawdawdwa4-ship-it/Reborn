@@ -31,6 +31,9 @@ local function warn() end
 `;
 const checks=`
 flush()
+buildController.Buttons.Preview.Activated:Fire()
+assert(string.find(buildController.Status.Text,"spawn",1,true))
+assert(buildController.Preset=="Farm plots")
 assert(not RemoteCatalog.Recorder,'recorder must be off on actual full startup')
 assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled and not baitEnabled)
 for _,button in ipairs({toggle,harvestToggle,woodToggle,mineToggle,baitToggle}) do
