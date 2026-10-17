@@ -3,6 +3,9 @@ import {LuauState} from 'luau-web';
 const source=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const block=source.slice(source.indexOf('-- REMOTE CATALOG BEGIN'),source.indexOf('-- REMOTE CATALOG END'));
 const mineFunction=source.slice(source.indexOf('local function fireBlockMine(block)'),source.indexOf('local function fireModelHarvest'));
+const plantFunction=source.slice(source.indexOf('local function firePlant(cf, blockType)'),source.indexOf('-- Plant a grid'));
+const layoutFunction=source.slice(source.indexOf('local function setHotbarLayout(layoutString)'),source.indexOf('-- Shared tool support'));
+const baitFunction=source.slice(source.indexOf('local function applyBait()'),source.indexOf('local function setBaitEnabled'));
 const mock=`
 local function node(name,cls,children)
  local n={Name=name,ClassName=cls,children=children or {}}
@@ -53,15 +56,55 @@ getgenv=function() return context end
 assert(RemoteCatalog.RequestId('OEzzgCCBzocxJw')=='test-current-session','current per-remote ID not read')
 assert(RemoteCatalog.RequestId('different')==nil,'must not reuse IDs across remotes')
 local sent
-local blockRemote={InvokeServer=function(_,payload) sent=payload;return 'server-result' end}
+local requests, responses={},{}
+local names={'OEzzgCCBzocxJw','ohy6O10QKzyGZE','raqRasAwcny1zh','RZQQNNDRUvfj1N'}
+local group=node('ULrMeokpcNr7uD','Folder')
+out.children={group}
+for _,name in ipairs(names) do
+ local remote=node(name,'RemoteFunction')
+ function remote:InvokeServer(payload)
+  sent=payload;requests[self.Name]=payload
+  if responses[self.Name]=='throw' then error('server error') end
+  return responses[self.Name]
+ end
+ table.insert(group.children,remote)
+end
 ${mineFunction}
 local actualBlock={Name='test-block'}
 local ok,result=fireBlockMine(actualBlock)
 assert(ok,'mining call not forwarded')
 assert(sent.TrNhTTgExIb1Bg=='test-current-session' and sent.TlSR8Mzd9FLwaZ.block==actualBlock,'mining must use current ID and actual block Instance')
+local CONFIG={PlantType='wheat'}
+${plantFunction}
+${layoutFunction}
+local bait={Name='bait'}
+local player={Character={FindFirstChild=function(_,name) if name=='bait' then return bait end end}}
+local status
+local function setStatus(message) status=message end
+${baitFunction}
+local cf={Rotation='preserve original CFrame including rotation'}
+context.RebornCapture.RequestIds.ohy6O10QKzyGZE='placement-session'
+context.RebornCapture.RequestIds.raqRasAwcny1zh='bait-session'
+context.RebornCapture.RequestIds.RZQQNNDRUvfj1N='hotbar-session'
+assert(firePlant(cf,'saplingOrange'))
+assert(requests.ohy6O10QKzyGZE.TrNhTTgExIb1Bg=='placement-session')
+assert(requests.ohy6O10QKzyGZE.TlSR8Mzd9FLwaZ.cframe==cf and requests.ohy6O10QKzyGZE.TlSR8Mzd9FLwaZ.blockType=='saplingOrange','placement arguments changed')
+assert(applyBait())
+assert(requests.raqRasAwcny1zh.TrNhTTgExIb1Bg=='bait-session' and requests.raqRasAwcny1zh.TlSR8Mzd9FLwaZ.tool==bait,'bait must use actual tool and own ID')
+local layout='stonePickaxe,stoneAxe,fishingRod,coal,stone,fertilizerBasic,bait,sapling'
+assert(setHotbarLayout(layout))
+assert(requests.RZQQNNDRUvfj1N.TrNhTTgExIb1Bg=='hotbar-session' and requests.RZQQNNDRUvfj1N.TlSR8Mzd9FLwaZ.layout==layout,'hotbar payload changed')
+responses.ohy6O10QKzyGZE=false
+assert(firePlant(cf,'sapling')==false,'explicit rejection must not count as success')
+responses.ohy6O10QKzyGZE='throw'
+assert(firePlant(cf,'sapling')==false,'server error must not escape')
+assert(RemoteCatalog.InvokeCaptured('uncaptured',{})==false,'uncaptured action must not send')
 context.RebornCapture.RequestIds={};sent=nil
+assert(firePlant(cf,'sapling')==false and sent==nil,'placement must not reuse mining ID')
+assert(applyBait()==false and sent==nil,'bait must not use stale ID')
+assert(setHotbarLayout(layout)==false and sent==nil,'hotbar must not use stale ID')
 assert(fireBlockMine(actualBlock)==false and sent==nil,'missing ID must not send stale request')
-return '129 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal passed'
+return '129 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}

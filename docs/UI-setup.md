@@ -45,13 +45,12 @@ use exact-name/type discovery under out for renamed grouping folders. Discovery
 does not invoke any server methods. Existing captured legacy request formats now
 use the same safe path resolver rather than chained WaitForChild calls.
 
-Remote names and paths alone do not specify argument formats. The named mining,
-harvesting, planting, hotbar and fishing requests cannot yet be called correctly
-from this capture. Existing obfuscated payloads are kept on their original legacy
-remotes; they are not sent to similarly named remotes as guessed substitutes.
-To finish those action bindings, capture a manual action's InvokeServer/FireServer
-call and full argument structure for each requested function. Live game checks
-remain necessary even after an argument capture is available.
+Remote names alone do not specify argument formats. The subsequent call captures
+now document four legacy request formats (see `captured-protocols.md`): mining,
+placement, bait and hotbar. These use current-session IDs learned by the embedded
+recorder separately for each remote. There is no fallback to a fixed old ID.
+Crop-harvest and direct fishing remote argument captures remain missing. The
+existing fishing input workflow is separate from direct remote calls.
 
 ## Capture request arguments
 
@@ -92,7 +91,8 @@ Mining now reads the ID observed for OEzzgCCBzocxJw by the recorder in the curre
 session. Start Farming Hub (its embedded recorder starts automatically), mine one block
 manually, then enable Mining in the hub.
 No observed mining ID means no automatic mining request is sent. IDs are held only
-in memory, per remote; other action payloads still need their own manual captures.
+in memory, per remote. Placement, bait and hotbar also use their own observed IDs;
+crop-harvest and direct fishing payloads still need their own manual captures.
 This transport wiring is mock-tested; live mining is not verified here.
 
 If an external loader reports HTTP 404, load this repository's `message.txt` from

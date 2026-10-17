@@ -187,6 +187,28 @@ local RemoteCatalog = (function()
         end)
         return ok and type(id) == "string" and id ~= "" and id or nil
     end
+    catalog.VerifiedRequests = {
+        OEzzgCCBzocxJw = "mining",
+        ohy6O10QKzyGZE = "placement",
+        raqRasAwcny1zh = "bait",
+        RZQQNNDRUvfj1N = "hotbar",
+    }
+    function catalog.InvokeCaptured(remoteName, body)
+        local action = catalog.VerifiedRequests[remoteName]
+        if not action then return false, "No captured request format for this action" end
+        local remote = catalog.FindLegacy(remoteName)
+        if not remote then return false, action .. " remote unavailable" end
+        local requestId = catalog.RequestId(remoteName)
+        if not requestId then return false, "Perform " .. action .. " manually once with capture active first" end
+        local ok, result = pcall(function()
+            return remote:InvokeServer({
+                TrNhTTgExIb1Bg = requestId,
+                TlSR8Mzd9FLwaZ = body,
+            })
+        end)
+        if not ok or result == false then return false, result end
+        return true, result
+    end
     function catalog.Refresh()
         local found = 0
         for _, entry in ipairs(catalog.Entries) do
@@ -914,14 +936,7 @@ local function applyBait()
         setStatus("Auto Bait: bait tool not found")
         return false
     end
-    local ok, result = pcall(function()
-        local remote = RemoteCatalog.FindLegacy("raqRasAwcny1zh")
-        assert(remote and remote:IsA("RemoteFunction"), "bait remote unavailable")
-        return remote:InvokeServer({
-            TrNhTTgExIb1Bg = "06105b98-6d2f-40fb-9979-fbd1b925fe6daa81356f-b501-468d-80f0-5871006ce00a",
-            TlSR8Mzd9FLwaZ = { tool = baitTool },
-        })
-    end)
+    local ok, result = RemoteCatalog.InvokeCaptured("raqRasAwcny1zh", { tool = baitTool })
     if not ok then setStatus("Auto Bait failed: " .. tostring(result)) end
     return ok
 end
@@ -1182,7 +1197,7 @@ RemoteCatalog.Summary = label({ Parent = remotesPage, Text = "Remote discovery",
 RemoteCatalog.RefreshButton = button({ Parent = remotesPage, Text = "Refresh remotes",
     TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 34) })
 RemoteCatalog.Note = label({ Parent = remotesPage,
-    Text = "Discovery only. Named mining, harvesting, planting and fishing requests need captured arguments before they can be sent.",
+    Text = "Captured: mining, placement, bait and hotbar. Perform each manually once this session. Crop harvest and fishing request captures are still missing.",
     TextSize = 11, Color = COLORS.muted, Size = UDim2.new(1, -12, 0, 56), Position = UDim2.fromOffset(6, 74) })
 RemoteCatalog.Note.TextWrapped = true
 RemoteCatalog.CaptureStatus = label({ Parent = remotesPage, Text = "Starting recorder...",
@@ -1202,7 +1217,11 @@ function RemoteCatalog.UpdateCaptureUI()
         return
     end
     local state = recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused")
-    local mining = RemoteCatalog.RequestId("OEzzgCCBzocxJw") and "Mining request ID learned" or "Mine one block manually to learn its request ID"
+    local learned = {}
+    for _, name in ipairs({"OEzzgCCBzocxJw", "ohy6O10QKzyGZE", "raqRasAwcny1zh", "RZQQNNDRUvfj1N"}) do
+        if RemoteCatalog.RequestId(name) then table.insert(learned, RemoteCatalog.VerifiedRequests[name]) end
+    end
+    local mining = #learned > 0 and ("Ready: " .. table.concat(learned, ", ")) or "Perform actions manually once to learn their request IDs"
     RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CopyNotice or string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
     RemoteCatalog.CaptureToggle.Text = recorder.Active and "Pause capture (F8)" or "Resume capture (F8)"
 end
@@ -1575,56 +1594,26 @@ end
 -- These paths come from the Cobalt snippets you provided.
 -- They can break after game updates; re-spy if needed.
 
-local HARVEST_UUID = "06105b98-6d2f-40fb-9979-fbd1b925fe6daa81356f-b501-468d-80f0-5871006ce00a"
-
--- Helper from Cobalt (for nil-parented instances)
-local function GetNil(Name, DebugId)
-	if not getnilinstances then
-		return nil
-	end
-	for _, Object in getnilinstances() do
-		if Object.Name == Name and Object:GetDebugId() == DebugId then
-			return Object
-		end
-	end
-	return nil
-end
-
 local blockRemote = nil
 local modelRemote = nil
-local layoutRemote = nil
-local plantRemote = nil
 
 local function resolveRemotes()
     blockRemote = RemoteCatalog.FindLegacy("OEzzgCCBzocxJw")
     modelRemote = RemoteCatalog.FindLegacy("hFuV0Z1w601mXP")
-    layoutRemote = RemoteCatalog.FindLegacy("RZQQNNDRUvfj1N")
-    plantRemote = RemoteCatalog.FindLegacy("ohy6O10QKzyGZE")
 	return blockRemote ~= nil or modelRemote ~= nil
 end
 
 -- Plant a crop at a CFrame (from Cobalt plant capture)
 local function firePlant(cf, blockType)
-	if not plantRemote then
-		resolveRemotes()
-	end
-	if not plantRemote then
-		return false
-	end
-	blockType = blockType or CONFIG.PlantType
-	return pcall(function()
-		plantRemote:InvokeServer({
-			TrNhTTgExIb1Bg = HARVEST_UUID,
-			TlSR8Mzd9FLwaZ = {
-				cframe = cf,
-				blockType = blockType,
-			},
-		})
-	end)
+    return RemoteCatalog.InvokeCaptured("ohy6O10QKzyGZE", { cframe = cf, blockType = blockType or CONFIG.PlantType })
 end
 
 -- Plant a grid of crops around the player
 local function plantAroundPlayer(blockType)
+    if not RemoteCatalog.RequestId("ohy6O10QKzyGZE") then
+        setStatus("Place one block manually with capture active first.", COLORS.warn)
+        return 0
+    end
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if not hrp then
@@ -1653,20 +1642,7 @@ end
 -- Hotbar layout remote (from Cobalt)
 -- Example: "woodPickaxe,,sapling,hoe,berryHarvested,ironOre,saplingOrange,yellowFlowerSeeds"
 local function setHotbarLayout(layoutString)
-	if not layoutRemote then
-		resolveRemotes()
-	end
-	if not layoutRemote then
-		return false
-	end
-	return pcall(function()
-		layoutRemote:InvokeServer({
-			TrNhTTgExIb1Bg = HARVEST_UUID,
-			TlSR8Mzd9FLwaZ = {
-				layout = layoutString,
-			},
-		})
-	end)
+    return RemoteCatalog.InvokeCaptured("RZQQNNDRUvfj1N", { layout = layoutString })
 end
 
 -- Shared tool support from the Auto Wood Farmer.
@@ -1983,27 +1959,17 @@ local function getMineTargets()
 end
 
 local function fireBlockMine(block)
-	local requestId = RemoteCatalog.RequestId("OEzzgCCBzocxJw")
-	if not blockRemote or not requestId then
-		return false
-	end
-	return pcall(function()
-		blockRemote:InvokeServer({
-			TrNhTTgExIb1Bg = requestId,
-			TlSR8Mzd9FLwaZ = {
-				block = block,
-			},
-		})
-	end)
+    return RemoteCatalog.InvokeCaptured("OEzzgCCBzocxJw", { block = block })
 end
 
 local function fireModelHarvest(model)
-	if not modelRemote then
+	local requestId = RemoteCatalog.RequestId("hFuV0Z1w601mXP")
+	if not modelRemote or not requestId then
 		return false
 	end
 	return pcall(function()
 		modelRemote:InvokeServer({
-			TrNhTTgExIb1Bg = HARVEST_UUID,
+			TrNhTTgExIb1Bg = requestId,
 			TlSR8Mzd9FLwaZ = {
 				model = model,
 				player = player,
@@ -2416,13 +2382,13 @@ end))
 track(layoutBtn.Activated:Connect(function()
 	-- Full layout from your Cobalt capture
 	local ok = setHotbarLayout(
-		"woodPickaxe,,sapling,hoe,berryHarvested,ironOre,saplingOrange,yellowFlowerSeeds"
+		"stonePickaxe,stoneAxe,fishingRod,coal,stone,fertilizerBasic,bait,sapling"
 	)
 	if ok then
 		equipPickaxe()
-		setStatus("Hotbar layout applied", COLORS.good)
+		setStatus("Hotbar layout request sent", COLORS.good)
 	else
-		setStatus("Layout remote failed – re-spy", COLORS.bad)
+		setStatus("Change hotbar manually once with capture active, then retry", COLORS.bad)
 	end
 end))
 
@@ -2430,7 +2396,11 @@ track(plantBtn.Activated:Connect(function()
 	setStatus("🌱 Planting " .. CONFIG.PlantType .. "...", COLORS.good)
 	task.spawn(function()
 		local n = plantAroundPlayer(CONFIG.PlantType)
-		setStatus("🌱 Planted " .. n .. " × " .. CONFIG.PlantType, COLORS.good)
+		if n > 0 then
+            setStatus("Placement requests sent: " .. n .. " × " .. CONFIG.PlantType, COLORS.good)
+        else
+            setStatus("No placement requests sent. Place a block manually first; check tool and range.", COLORS.warn)
+        end
 	end)
 end))
 
