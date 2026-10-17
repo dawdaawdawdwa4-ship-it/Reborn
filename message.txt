@@ -1,7 +1,13 @@
--- Auto Fishing GUI v3 + Scoreboard + Auto Mine / Harvest
--- Draggable, hotkey toggle, rod check, auto-stop, fish names, recent catches
--- + Auto Mine (stone, iron, coal, ores, rocks, trees) using Cobalt remotes
--- Place in StarterPlayerScripts / executor
+-- V20 cast-response tuning + floating corner stats overlay + fishing mode selector.
+-- V15 nearest-target priority + faster recovery pass.
+-- V13 fast-next-cast pass: shorter reel confirmation and cast recovery windows.
+-- V11 reliability pass: safer input release, cancellation-aware waits, and clearer input failures.
+-- Based on V10; other farming systems are retained.
+-- V7 quality pass: improved title dragging, independent wood range, bait countdown, and emergency stop-all control.
+-- Unified Auto Fishing + Auto Mine/Harvest + Auto Wood Farmer
+-- One GUI and one set of hotkeys; tree/wood targets are handled by the
+-- shared harvesting loop, avoiding a duplicate AutoWoodGUI and duplicate loops.
+-- Place in StarterPlayerScripts for your own Roblox experience.
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -19,24 +25,70 @@ local CONFIG = {
 	ToggleKey = Enum.KeyCode.F6,          -- fishing ON/OFF
 	HarvestKey = Enum.KeyCode.F7,         -- mine / harvest ON/OFF
 	RequireTool = true,                   -- only cast while a Tool (rod) is equipped
-	CastTimeout = 10,                     -- seconds to wait for a bobber after casting
-	ReelTimeout = 10,                     -- seconds to wait for bobber to vanish after reeling
+	CastTimeout = 0.75,                  -- typical bobber response is quick; allow a small network margin
+	ReelTimeout = 1.0,                    -- shorter confirmation window after reeling
+	FishingPollInterval = 0.01,           -- check cast/bobber state more frequently
+	ReelSettleDelay = 0.025,              -- brief time for the server to register a reel
+	ActionCooldown = 0.04,                -- minimal guard against duplicate rapid clicks
 	MaxFailedCasts = 5,                   -- auto-stop after this many casts with no bobber
 	RecentCount = 5,                      -- how many recent catches to show
 
 	-- Auto Mine settings
-	MineRange = 80,                       -- studs from character
-	MineDelay = 0.18,                     -- delay between each mine (server needs time)
+	MineRange = 90,                       -- studs from character
+	MineDelay = 0.10,                     -- faster sequential actions while leaving server time to register drops
 	MineBatchSize = 1,                    -- 1 at a time so drops actually register
-	MineScanInterval = 0.4,               -- how often to rescan for targets
+	MineScanInterval = 0.20,              -- rescan a little more often when targets are absent
 
 	-- Auto Plant settings
 	PlantEnabled = true,                  -- plant after harvesting crops
-	PlantType = "wheat",                  -- default crop to plant
+	PlantType = "wheat",                  -- selected crop to plant
+	HarvestCrop = "wheat",                 -- crop type to harvest
+	WoodRange = 90,
+	AutoReplant = true,
 	PlantDelay = 0.15,                    -- delay between plant attempts
 	PlantRadius = 12,                     -- how far around player to plant
 	PlantSpacing = 3,                     -- grid spacing between plants
 }
+
+-- Optional persistence: supported only where the host exposes file APIs.
+-- Failures are intentionally non-fatal so the UI still works in standard Roblox.
+local HttpService = game:GetService("HttpService")
+local SETTINGS_FILE = "IslandsFarmingHub_settings.json"
+-- Declare these before persistence helpers so the helpers capture the intended locals.
+local woodToolPreference = "Auto best axe"
+local mineToolPreference = "Auto best pickaxe"
+local function savePreferences()
+    if type(writefile) ~= "function" then return false end
+    local data = {
+        HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
+        AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
+        WoodRange = CONFIG.WoodRange, MineDelay = CONFIG.MineDelay,
+        MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
+        WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
+    }
+    local ok = pcall(function() writefile(SETTINGS_FILE, HttpService:JSONEncode(data)) end)
+    return ok
+end
+local function loadPreferences()
+    if type(readfile) ~= "function" or type(isfile) ~= "function" then return false end
+    local ok, data = pcall(function()
+        if not isfile(SETTINGS_FILE) then return nil end
+        return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+    end)
+    if not ok or type(data) ~= "table" then return false end
+    if type(data.HarvestCrop) == "string" then CONFIG.HarvestCrop = data.HarvestCrop end
+    if type(data.PlantType) == "string" then CONFIG.PlantType = data.PlantType end
+    if type(data.AutoReplant) == "boolean" then CONFIG.AutoReplant = data.AutoReplant end
+    if type(data.MineRange) == "number" then CONFIG.MineRange = math.clamp(data.MineRange, 15, 150) end
+    if type(data.WoodRange) == "number" then CONFIG.WoodRange = math.clamp(data.WoodRange, 15, 150) end
+    if type(data.MineDelay) == "number" then CONFIG.MineDelay = math.clamp(data.MineDelay, 0.08, 1) end
+    if type(data.MineScanInterval) == "number" then CONFIG.MineScanInterval = math.clamp(data.MineScanInterval, 0.15, 2) end
+    if type(data.PlantDelay) == "number" then CONFIG.PlantDelay = math.clamp(data.PlantDelay, 0.08, 1) end
+    if type(data.WoodToolPreference) == "string" then woodToolPreference = data.WoodToolPreference end
+    if type(data.MineToolPreference) == "string" then mineToolPreference = data.MineToolPreference end
+    return true
+end
+local preferencesLoaded = loadPreferences()
 
 -- Remove previous GUI (this also stops the previous script's loops)
 local old = playerGui:FindFirstChild("AutoFishingGUI")
@@ -48,24 +100,24 @@ end
 -- Colors / sizes
 --------------------------------------------------------------------
 local COLORS = {
-	bg = Color3.fromRGB(22, 25, 32),
-	panel = Color3.fromRGB(32, 36, 46),
-	stroke = Color3.fromRGB(55, 60, 72),
-	text = Color3.new(1, 1, 1),
-	muted = Color3.fromRGB(150, 156, 170),
-	on = Color3.fromRGB(46, 180, 100),
-	off = Color3.fromRGB(200, 55, 55),
+	bg = Color3.fromRGB(13, 17, 28),
+	panel = Color3.fromRGB(21, 27, 44),
+	stroke = Color3.fromRGB(32, 41, 63),
+	text = Color3.fromRGB(226, 232, 240),
+	muted = Color3.fromRGB(128, 141, 166),
+	on = Color3.fromRGB(70, 190, 145),
+	off = Color3.fromRGB(52, 62, 84),
 	gold = Color3.fromRGB(255, 200, 60),
 	good = Color3.fromRGB(80, 230, 130),
 	bad = Color3.fromRGB(240, 80, 80),
 	warn = Color3.fromRGB(255, 170, 50),
-	harvest = Color3.fromRGB(100, 190, 255),
-	accent = Color3.fromRGB(90, 140, 255),
+	harvest = Color3.fromRGB(122, 162, 247),
+	accent = Color3.fromRGB(122, 162, 247),
 }
 
-local WIDTH = 260
-local FULL_HEIGHT = 500
-local MINI_HEIGHT = 110
+local WIDTH = 520
+local FULL_HEIGHT = 420
+local MINI_HEIGHT = 74
 
 --------------------------------------------------------------------
 -- Connection bookkeeping
@@ -103,8 +155,8 @@ end
 
 local function button(props)
 	local b = Instance.new("TextButton")
-	b.Size = props.Size
-	b.Position = props.Position
+	b.Size = props.Size or UDim2.new(0, 100, 0, 32)
+	b.Position = props.Position or UDim2.new(0, 0, 0, 0)
 	b.BackgroundColor3 = props.Bg or COLORS.panel
 	b.TextColor3 = props.Color or COLORS.text
 	b.Text = props.Text
@@ -141,7 +193,7 @@ local function panel(parent, size, position)
 end
 
 --------------------------------------------------------------------
--- GUI
+-- GUI: tabbed layout
 --------------------------------------------------------------------
 local gui = Instance.new("ScreenGui")
 gui.Name = "AutoFishingGUI"
@@ -149,8 +201,9 @@ gui.ResetOnSpawn = false
 gui.Parent = playerGui
 
 local frame = Instance.new("Frame")
+frame.Name = "Main"
 frame.Size = UDim2.fromOffset(WIDTH, FULL_HEIGHT)
-frame.Position = UDim2.new(0.5, -WIDTH / 2, 0.5, -FULL_HEIGHT / 2)
+frame.Position = UDim2.new(0.5, -WIDTH/2, 0.5, -FULL_HEIGHT/2)
 frame.BackgroundColor3 = COLORS.bg
 frame.BorderSizePixel = 0
 frame.ClipsDescendants = true
@@ -158,161 +211,590 @@ frame.Active = true
 frame.Parent = gui
 corner(frame, 10)
 
+-- Scale the hub down on smaller screens instead of letting it run off-screen.
+local uiScale = Instance.new("UIScale")
+uiScale.Name = "ResponsiveScale"
+uiScale.Scale = 1
+uiScale.Parent = frame
+local function updateUIScale()
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    local viewport = camera.ViewportSize
+    uiScale.Scale = math.clamp(math.min((viewport.X - 20) / WIDTH, (viewport.Y - 20) / FULL_HEIGHT), 0.55, 1)
+end
+updateUIScale()
+if workspace.CurrentCamera then
+    track(workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateUIScale))
+end
+
 local stroke = Instance.new("UIStroke")
 stroke.Color = COLORS.stroke
+stroke.Thickness = 1
 stroke.Parent = frame
 
 local title = label({
-	Parent = frame,
-	Text = "🎣 AUTO FISH + MINE",
-	Font = Enum.Font.GothamBold,
-	TextSize = 14,
-	Size = UDim2.new(1, -40, 0, 30),
-	Position = UDim2.fromOffset(12, 0),
+    Parent = frame,
+    Text = "ISLANDS  •  FARMING HUB",
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    Size = UDim2.new(1, -48, 0, 30),
+    Position = UDim2.fromOffset(14, 2),
 })
-title.Active = true -- drag handle
+title.Active = true
+
 
 local minimize = button({
-	Parent = frame,
-	Text = "–",
-	TextSize = 14,
-	Size = UDim2.fromOffset(24, 22),
-	Position = UDim2.new(1, -30, 0, 4),
-	Radius = 5,
+    Parent = frame, Text = "–", TextSize = 14,
+    Size = UDim2.fromOffset(26, 24),
+    Position = UDim2.new(1, -32, 0, 4), Radius = 5,
 })
 
-local toggle = button({
-	Parent = frame,
-	Text = "FISH OFF  [" .. CONFIG.ToggleKey.Name .. "]",
-	TextSize = 13,
-	Bg = COLORS.off,
-	Size = UDim2.new(1, -20, 0, 28),
-	Position = UDim2.fromOffset(10, 34),
-})
+local tabBar = Instance.new("Frame")
+tabBar.Name = "Tabs"
+tabBar.Size = UDim2.new(0, 112, 1, -94)
+tabBar.Position = UDim2.fromOffset(8, 42)
+tabBar.BackgroundTransparency = 1
+tabBar.Parent = frame
+local sidebarDivider = Instance.new("Frame")
+sidebarDivider.Name = "SidebarDivider"
+sidebarDivider.Size = UDim2.new(0, 1, 1, -52)
+sidebarDivider.Position = UDim2.fromOffset(126, 42)
+sidebarDivider.BackgroundColor3 = COLORS.stroke
+sidebarDivider.BorderSizePixel = 0
+sidebarDivider.Parent = frame
 
-local harvestToggle = button({
-	Parent = frame,
-	Text = "MINE OFF  [" .. CONFIG.HarvestKey.Name .. "]",
-	TextSize = 13,
-	Bg = COLORS.off,
-	Size = UDim2.new(1, -20, 0, 28),
-	Position = UDim2.fromOffset(10, 66),
-})
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.FillDirection = Enum.FillDirection.Vertical
+tabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Padding = UDim.new(0, 7)
+tabLayout.Parent = tabBar
+
+local pageHost = Instance.new("Frame")
+pageHost.Name = "Pages"
+pageHost.Size = UDim2.new(1, -144, 1, -88)
+pageHost.Position = UDim2.fromOffset(132, 42)
+pageHost.BackgroundTransparency = 1
+pageHost.Parent = frame
+
+local pages, tabButtons = {}, {}
+local cropDropdown, cropDropdownOpen
+local activeTab = "Fishing"
+
+local function createPage(name)
+    local page = Instance.new("ScrollingFrame")
+    page.Name = name .. "Page"
+    page.Size = UDim2.fromScale(1, 1)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 4
+    page.ScrollBarImageColor3 = COLORS.stroke
+    page.CanvasSize = UDim2.new()
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.ScrollingDirection = Enum.ScrollingDirection.Y
+    page.Visible = false
+    page.Parent = pageHost
+    pages[name] = page
+    return page
+end
+
+local fishingPage = createPage("Fishing")
+local harvestPage = createPage("Harvest")
+local woodPage = createPage("Wood Farm")
+local minePage = createPage("Mining")
+local statsPage = createPage("Stats")
+local settingsPage = createPage("Settings")
+
+local function showTab(name)
+    activeTab = name
+    cropDropdownOpen = false
+    if cropDropdown then cropDropdown.Visible = false end
+    for _, child in ipairs(woodPage:GetChildren()) do
+        if child.Name == "AxeDropdown" then child.Visible = false end
+    end
+    for _, child in ipairs(minePage:GetChildren()) do
+        if child.Name == "PickaxeDropdown" then child.Visible = false end
+    end
+    for pageName, page in pairs(pages) do
+        page.Visible = pageName == name
+    end
+    for tabName, tab in pairs(tabButtons) do
+        tab.BackgroundColor3 = tabName == name and COLORS.accent or COLORS.panel
+        tab.TextColor3 = tabName == name and COLORS.text or COLORS.muted
+    end
+end
+
+for order, name in ipairs({"Fishing", "Harvest", "Wood Farm", "Mining", "Stats", "Settings"}) do
+    local tab = button({
+        Parent = tabBar,
+        Text = name,
+        TextSize = 12,
+        Size = UDim2.new(1, 0, 0, 38),
+        Bg = name == activeTab and COLORS.accent or COLORS.panel,
+        Radius = 6,
+    })
+    tab.LayoutOrder = order
+    tabButtons[name] = tab
+    track(tab.Activated:Connect(function() showTab(name) end))
+end
 
 local status = label({
-	Parent = frame,
-	Text = "Idle",
-	Color = COLORS.muted,
-	Size = UDim2.new(1, -20, 0, 18),
-	Position = UDim2.fromOffset(10, 98),
+    Parent = frame,
+    Text = "Idle",
+    Color = COLORS.muted,
+    Size = UDim2.new(1, -144, 0, 20),
+    Position = UDim2.new(0, 132, 1, -28),
+    TextSize = 11,
 })
 
--- Scoreboard
-local board = panel(frame, UDim2.new(1, -20, 0, 210), UDim2.fromOffset(10, 120))
+local function pageHeading(parent, text, y)
+    return label({
+        Parent = parent, Text = text, Font = Enum.Font.GothamBold,
+        TextSize = 11, Color = COLORS.muted,
+        Size = UDim2.new(1, -12, 0, 18), Position = UDim2.fromOffset(6, y),
+    })
+end
+
+local toggle = button({
+    Parent = fishingPage,
+    Text = "FISH OFF  [" .. CONFIG.ToggleKey.Name .. "]",
+    TextSize = 13, Bg = COLORS.off,
+    Size = UDim2.new(1, -12, 0, 36),
+    Position = UDim2.fromOffset(6, 8),
+})
+local fishInfo = label({
+    Parent = fishingPage,
+    Text = "Responsive fishing: checks for a tug quickly, then reels in.",
+    Color = COLORS.muted, TextSize = 11,
+    Size = UDim2.new(1, -16, 0, 34),
+    Position = UDim2.fromOffset(8, 50),
+})
+fishInfo.TextWrapped = true
+
+-- Fishing profiles are selectable at runtime for controlled in-game comparisons.
+local FISHING_MODES = {
+    Safe =     { poll = 0.05, castTimeout = 4.0, reelTimeout = 2.0, settle = 0.10, cooldown = 0.25 },
+    Balanced = { poll = 0.01, castTimeout = 0.75, reelTimeout = 0.9, settle = 0.025, cooldown = 0.04 },
+    Fast =     { poll = 0.005, castTimeout = 0.55, reelTimeout = 0.7, settle = 0.015, cooldown = 0.025 },
+    Test =     { poll = 0.01, castTimeout = 0.75, reelTimeout = 0.9, settle = 0.025, cooldown = 0.04 },
+}
+local activeFishingMode = "Balanced"
+local modeHeading = label({
+    Parent = fishingPage, Text = "FISHING MODE  ·  BALANCED", TextSize = 11,
+    Color = COLORS.muted, Size = UDim2.new(1, -16, 0, 18), Position = UDim2.fromOffset(8, 164),
+})
+local modeButtons = {}
+local modeNames = {"Safe", "Balanced", "Fast", "Test"}
+for i, modeName in ipairs(modeNames) do
+    local modeButton = button({
+        Parent = fishingPage, Text = modeName, TextSize = 11,
+        Bg = modeName == activeFishingMode and COLORS.accent or COLORS.panel,
+        Size = UDim2.new(0.25, -7, 0, 30),
+        Position = UDim2.new((i - 1) * 0.25, 6, 0, 185), Radius = 5,
+    })
+    modeButtons[modeName] = modeButton
+end
+local modeInfo = label({
+    Parent = fishingPage,
+    Text = "Balanced: responsive timing with extra catch-confirmation time. Test mode uses a longer confirmation window to compare missed-catch behavior.",
+    Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 36),
+    Position = UDim2.fromOffset(8, 219),
+})
+modeInfo.TextWrapped = true
+
+-- Floating stats overlay: independent of the main hub, anchored in the screen corner.
+-- It stays visible even when the hub is on another tab or minimized/closed.
+local statsOverlayGui = Instance.new("ScreenGui")
+statsOverlayGui.Name = "FishingStatsOverlay"
+statsOverlayGui.ResetOnSpawn = false
+statsOverlayGui.DisplayOrder = 20
+statsOverlayGui.Parent = playerGui
+
+local statsOverlay = Instance.new("Frame")
+statsOverlay.Name = "CornerStats"
+statsOverlay.AnchorPoint = Vector2.new(1, 0)
+statsOverlay.Position = UDim2.new(1, -14, 0, 14)
+statsOverlay.Size = UDim2.fromOffset(218, 104)
+statsOverlay.BackgroundColor3 = COLORS.bg
+statsOverlay.BackgroundTransparency = 0.08
+statsOverlay.BorderSizePixel = 0
+statsOverlay.Active = true
+statsOverlay.Parent = statsOverlayGui
+corner(statsOverlay, 8)
+local statsOverlayStroke = Instance.new("UIStroke")
+statsOverlayStroke.Color = COLORS.stroke
+statsOverlayStroke.Thickness = 1
+statsOverlayStroke.Parent = statsOverlay
+
+local statsOverlayTitle = label({
+    Parent = statsOverlay, Text = "FISHING STATS", Font = Enum.Font.GothamBold,
+    TextSize = 11, Color = COLORS.text, Size = UDim2.new(1, -12, 0, 22),
+    Position = UDim2.fromOffset(8, 5),
+})
+-- Drag the panel by holding its title area (mouse or touch).
+statsOverlayTitle.Active = true
+local draggingOverlay = false
+local overlayDragInput = nil
+local overlayDragStart = nil
+local overlayStartPosition = nil
+statsOverlayTitle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingOverlay = true
+        overlayDragStart = input.Position
+        overlayStartPosition = statsOverlay.Position
+        overlayDragInput = input
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                draggingOverlay = false
+                overlayDragInput = nil
+            end
+        end)
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if draggingOverlay and overlayDragStart and overlayStartPosition then
+        local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
+        local isTouchMove = overlayDragInput and input == overlayDragInput
+        if isMouseMove or isTouchMove then
+            local delta = input.Position - overlayDragStart
+            statsOverlay.Position = UDim2.new(
+                overlayStartPosition.X.Scale, overlayStartPosition.X.Offset + delta.X,
+                overlayStartPosition.Y.Scale, overlayStartPosition.Y.Offset + delta.Y
+            )
+        end
+    end
+end)
+
+local statsOverlayText = label({
+    Parent = statsOverlay, Text = "Catches 0  |  Misses 0\nCasts 0  |  Bites 0\nRate –  |  Mode BALANCED",
+    Font = Enum.Font.Gotham, TextSize = 10, Color = COLORS.good,
+    Size = UDim2.new(1, -16, 0, 68), Position = UDim2.fromOffset(8, 28),
+})
+statsOverlayText.TextYAlignment = Enum.TextYAlignment.Top
+statsOverlayText.TextWrapped = true
+
+local overlayToggle = Instance.new("TextButton")
+overlayToggle.Name = "HideStats"
+overlayToggle.Size = UDim2.fromOffset(20, 20)
+overlayToggle.Position = UDim2.new(1, -24, 0, 3)
+overlayToggle.BackgroundTransparency = 1
+overlayToggle.Text = "−"
+overlayToggle.TextColor3 = COLORS.text
+overlayToggle.Font = Enum.Font.GothamBold
+overlayToggle.TextSize = 15
+overlayToggle.Parent = statsOverlay
+local overlayExpanded = true
+overlayToggle.Activated:Connect(function()
+    overlayExpanded = not overlayExpanded
+    statsOverlayText.Visible = overlayExpanded
+    statsOverlay.Size = overlayExpanded and UDim2.fromOffset(218, 104) or UDim2.fromOffset(218, 30)
+    overlayToggle.Text = overlayExpanded and "−" or "+"
+end)
+
+local function applyFishingMode(modeName)
+    local profile = FISHING_MODES[modeName]
+    if not profile then return end
+    activeFishingMode = modeName
+    CONFIG.FishingPollInterval = profile.poll
+    CONFIG.CastTimeout = profile.castTimeout
+    CONFIG.ReelTimeout = profile.reelTimeout
+    CONFIG.ReelSettleDelay = profile.settle
+    CONFIG.ActionCooldown = profile.cooldown
+    for name, modeButton in pairs(modeButtons) do
+        modeButton.BackgroundColor3 = name == modeName and COLORS.accent or COLORS.panel
+    end
+    modeHeading.Text = "FISHING MODE  ·  " .. string.upper(modeName)
+    if modeName == "Safe" then
+        modeInfo.Text = "Safe: slower polling and longer waits; best for high latency or checking reliability."
+    elseif modeName == "Balanced" then
+        modeInfo.Text = "Balanced: responsive timing with extra catch-confirmation time for everyday use."
+    elseif modeName == "Fast" then
+        modeInfo.Text = "Fast: shortest waits and quickest retry; may count a slow server response as a miss."
+    else
+        modeInfo.Text = "Test: conservative confirmation timing for comparing catch rate against Fast mode. Reset Stats between runs."
+    end
+end
+
+local baitEnabled = false
+local enabled = false
+local harvestEnabled = false -- crop farm
+local woodEnabled = false
+local mineEnabled = false
+local baitCycleId = 0
+local baitToggle = button({
+    Parent = fishingPage, Text = "AUTO BAIT OFF  [120s]", TextSize = 12, Bg = COLORS.off,
+    Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 90),
+})
+local baitInfo = label({
+    Parent = fishingPage, Text = "Reapplies bait every 2 minutes while enabled. Requires the bait tool.",
+    Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 30),
+    Position = UDim2.fromOffset(8, 128),
+})
+baitInfo.TextWrapped = true
+
+local function applyBait()
+    local character = player.Character
+    local baitTool = character and character:FindFirstChild("bait")
+    if not baitTool then
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        baitTool = backpack and backpack:FindFirstChild("bait")
+    end
+    if not baitTool then
+        setStatus("Auto Bait: bait tool not found")
+        return false
+    end
+    local ok, result = pcall(function()
+        local net = game:GetService("ReplicatedStorage"):FindFirstChild("rbxts_include")
+        local nodeModules = net and net:FindFirstChild("node_modules")
+        local rbxts = nodeModules and nodeModules:FindFirstChild("@rbxts")
+        local netFolder = rbxts and rbxts:FindFirstChild("net")
+        local outFolder = netFolder and netFolder:FindFirstChild("out")
+        local remoteGroup = outFolder and outFolder:FindFirstChild("ULrMeokpcNr7uD")
+        local remote = remoteGroup and remoteGroup:FindFirstChild("raqRasAwcny1zh")
+        assert(remote and remote:IsA("RemoteFunction"), "bait remote unavailable")
+        return remote:InvokeServer({
+            TrNhTTgExIb1Bg = "06105b98-6d2f-40fb-9979-fbd1b925fe6daa81356f-b501-468d-80f0-5871006ce00a",
+            TlSR8Mzd9FLwaZ = { tool = baitTool },
+        })
+    end)
+    if not ok then setStatus("Auto Bait failed: " .. tostring(result)) end
+    return ok
+end
+
+local function setBaitEnabled(state)
+    baitEnabled = state
+    baitCycleId += 1
+    local myCycle = baitCycleId
+    baitToggle.Text = baitEnabled and "AUTO BAIT ON  [120s]" or "AUTO BAIT OFF  [120s]"
+    baitToggle.BackgroundColor3 = baitEnabled and COLORS.on or COLORS.off
+    if not baitEnabled then
+        setStatus("Auto Bait stopped")
+        return
+    end
+    task.spawn(function()
+        while baitEnabled and baitCycleId == myCycle and gui.Parent do
+            local applied = applyBait()
+            if applied then setStatus("Auto Bait applied; refresh in 120s", COLORS.good) end
+            for remaining = 120, 1, -1 do
+                if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
+                baitToggle.Text = string.format("AUTO BAIT ON  [%ds]", remaining)
+                task.wait(1)
+            end
+        end
+    end)
+end
+
+local harvestToggle = button({
+    Parent = harvestPage, Text = "CROP FARM OFF", TextSize = 13, Bg = COLORS.off,
+    Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8),
+})
+local harvestInfo = label({
+    Parent = harvestPage,
+    Text = "Harvest only the crop selected below. Auto-replant can replace harvested crops with your selected type.",
+    Color = COLORS.muted, TextSize = 11,
+    Size = UDim2.new(1, -16, 0, 42), Position = UDim2.fromOffset(8, 50),
+})
+harvestInfo.TextWrapped = true
+pageHeading(harvestPage, "SELECT CROP TO HARVEST", 98)
+local cropOptions = {"wheat", "carrot", "potato", "corn", "tomato", "pumpkin", "melon", "cabbage", "lettuce", "berryBush"}
+local cropIndex = 1
+for i, name in ipairs(cropOptions) do
+    if name == CONFIG.HarvestCrop then cropIndex = i; break end
+end
+local cropSelect = button({ Parent = harvestPage, Text = "Crop: " .. CONFIG.HarvestCrop .. "  ▼", TextSize = 12,
+    Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 120), Bg = COLORS.panel })
+cropDropdown = Instance.new("Frame")
+cropDropdown.Name = "CropDropdown"
+cropDropdown.Size = UDim2.new(1, -12, 0, 0)
+cropDropdown.Position = UDim2.fromOffset(6, 156)
+cropDropdown.BackgroundColor3 = COLORS.panel
+cropDropdown.BorderSizePixel = 0
+cropDropdown.Visible = false
+cropDropdown.ClipsDescendants = true
+cropDropdown.ZIndex = 20
+cropDropdown.Parent = harvestPage
+corner(cropDropdown, 6)
+local cropList = Instance.new("UIListLayout")
+cropList.Padding = UDim.new(0, 2)
+cropList.SortOrder = Enum.SortOrder.LayoutOrder
+cropList.Parent = cropDropdown
+local cropButtons = {}
+for i, cropName in ipairs(cropOptions) do
+    local option = button({ Parent = cropDropdown, Text = cropName, TextSize = 11,
+        Size = UDim2.new(1, -6, 0, 26), Position = UDim2.new(), Bg = COLORS.panel })
+    option.LayoutOrder = i
+    option.ZIndex = 21
+    cropButtons[i] = option
+end
+cropDropdown.Size = UDim2.new(1, -12, 0, math.min(#cropOptions * 28, 220))
+local cropScroll = Instance.new("ScrollingFrame")
+-- Keep the existing menu/options intact while allowing every option to be reached on small screens.
+cropScroll.Name = "CropOptionsScroll"
+cropScroll.BackgroundTransparency = 1
+cropScroll.BorderSizePixel = 0
+cropScroll.Size = UDim2.new(1, 0, 1, 0)
+cropScroll.CanvasSize = UDim2.new(0, 0, 0, #cropOptions * 28)
+cropScroll.ScrollBarThickness = 4
+cropScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+cropScroll.ZIndex = 20
+cropScroll.Parent = cropDropdown
+cropList.Parent = cropScroll
+for _, option in ipairs(cropButtons) do option.Parent = cropScroll end
+cropDropdownOpen = false
+local replantToggle = button({ Parent = harvestPage, Text = "AUTO-REPLANT: ON", TextSize = 12,
+    Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 160), Bg = COLORS.on })
+local cropHint = label({ Parent = harvestPage, Text = "Crop filter is name-based; exact names depend on the game's current island objects.",
+    Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 36), Position = UDim2.fromOffset(8, 198) })
+cropHint.TextWrapped = true
+
+local woodToggle = button({ Parent = woodPage, Text = "WOOD FARM OFF", TextSize = 13, Bg = COLORS.off,
+    Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
+local woodInfo = label({ Parent = woodPage, Text = "Dedicated tree and wood farming. Skips saplings/seedlings and prioritizes nearby targets.",
+    Color = COLORS.muted, TextSize = 11, Size = UDim2.new(1, -16, 0, 44), Position = UDim2.fromOffset(8, 50) })
+woodInfo.TextWrapped = true
+pageHeading(woodPage, "WOOD FARM CONTROLS", 100)
+local woodRangeBtn = button({ Parent = woodPage, Text = "Range: 90 studs  (+ / −)", TextSize = 12,
+    Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 122) })
+local woodStatus = label({ Parent = woodPage, Text = "Target types: trees, oak, pine, birch, palm, logs", Color = COLORS.muted,
+    TextSize = 11, Size = UDim2.new(1, -16, 0, 42), Position = UDim2.fromOffset(8, 164) })
+woodStatus.TextWrapped = true
+pageHeading(woodPage, "TOOL PREFERENCE", 210)
+local woodToolOptions = {"Auto best axe", "Iron axe", "Stone axe", "Wood axe"}
+local woodToolIndex = table.find(woodToolOptions, woodToolPreference) or 1
+local woodToolSelect = button({ Parent = woodPage, Text = "Axe: " .. woodToolPreference .. "  ▼", TextSize = 12,
+    Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 232) })
+
+local mineToggle = button({ Parent = minePage, Text = "MINING OFF", TextSize = 13, Bg = COLORS.off,
+    Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
+local mineInfo = label({ Parent = minePage, Text = "Mine rocks and ores separately from crop and wood farming.", Color = COLORS.muted,
+    TextSize = 11, Size = UDim2.new(1, -16, 0, 40), Position = UDim2.fromOffset(8, 50) })
+mineInfo.TextWrapped = true
+local mineRangeBtn = button({ Parent = minePage, Text = "Mining range: 90 studs  (+ / −)", TextSize = 12,
+    Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 100) })
+pageHeading(minePage, "TOOL PREFERENCE", 144)
+local mineToolOptions = {"Auto best pickaxe", "Iron pickaxe", "Stone pickaxe", "Wood pickaxe"}
+local mineToolIndex = table.find(mineToolOptions, mineToolPreference) or 1
+local mineToolSelect = button({ Parent = minePage, Text = "Pickaxe: " .. mineToolPreference .. "  ▼", TextSize = 12,
+    Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 166) })
+
+-- Stats scoreboard
+pageHeading(statsPage, "SESSION STATISTICS", 6)
+local board = panel(statsPage, UDim2.new(1, -12, 0, 226), UDim2.fromOffset(6, 28))
+board.AutomaticSize = Enum.AutomaticSize.None
 
 local function makeRow(parent, labelText, order, valueColor)
-	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, 0, 0, 18)
-	row.BackgroundTransparency = 1
-	row.LayoutOrder = order
-	row.Parent = parent
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 18)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = order
+    row.Parent = parent
 
-	label({
-		Parent = row,
-		Text = labelText,
-		Color = COLORS.muted,
-		Size = UDim2.new(0.55, 0, 1, 0),
-	})
-
-	return label({
-		Parent = row,
-		Text = "0",
-		Font = Enum.Font.GothamBold,
-		Color = valueColor or COLORS.text,
-		Align = Enum.TextXAlignment.Right,
-		Size = UDim2.new(0.45, 0, 1, 0),
-		Position = UDim2.fromScale(0.55, 0),
-	})
+    label({
+        Parent = row, Text = labelText, Color = COLORS.muted,
+        Size = UDim2.new(0.55, 0, 1, 0),
+    })
+    return label({
+        Parent = row, Text = "0", Font = Enum.Font.GothamBold,
+        Color = valueColor or COLORS.text, Align = Enum.TextXAlignment.Right,
+        Size = UDim2.new(0.45, 0, 1, 0), Position = UDim2.fromScale(0.55, 0),
+    })
 end
 
 local rows = {
-	harvests = makeRow(board, "⛏ Mined", 1, COLORS.harvest),
-	mineRate = makeRow(board, "Mine / min", 2, COLORS.accent),
-	lastMine = makeRow(board, "Last mined", 3, COLORS.gold),
-	catches = makeRow(board, "🐟 Fish caught", 4, COLORS.good),
-	missed = makeRow(board, "Missed", 5, COLORS.bad),
-	casts = makeRow(board, "Casts", 6),
-	bites = makeRow(board, "Bites", 7),
-	rate = makeRow(board, "Catch rate", 8),
-	streak = makeRow(board, "Streak / best", 9, COLORS.gold),
-	perHour = makeRow(board, "Fish / hour", 10),
-	time = makeRow(board, "Active time", 11),
+    harvests = makeRow(board, "⛏ Mined / harvested", 1, COLORS.harvest),
+    mineRate = makeRow(board, "Mine / min", 2, COLORS.accent),
+    lastMine = makeRow(board, "Last resource", 3, COLORS.gold),
+    catches = makeRow(board, "🐟 Fish caught", 4, COLORS.good),
+    missed = makeRow(board, "Missed", 5, COLORS.bad),
+    casts = makeRow(board, "Casts", 6),
+    bites = makeRow(board, "Bites", 7),
+    rate = makeRow(board, "Catch rate", 8),
+    streak = makeRow(board, "Streak / best", 9, COLORS.gold),
+    perHour = makeRow(board, "Fish / hour", 10),
+    time = makeRow(board, "Active time", 11),
 }
 
--- Recent catches
-label({
-	Parent = frame,
-	Text = "RECENT CATCHES",
-	Font = Enum.Font.GothamBold,
-	TextSize = 11,
-	Color = COLORS.muted,
-	Size = UDim2.new(1, -20, 0, 16),
-	Position = UDim2.fromOffset(12, 338),
-})
-
+pageHeading(statsPage, "RECENT CATCHES", 264)
 local recentPanel = panel(
-	frame,
-	UDim2.new(1, -20, 0, CONFIG.RecentCount * 16 + 12),
-	UDim2.fromOffset(10, 356)
+    statsPage,
+    UDim2.new(1, -12, 0, CONFIG.RecentCount * 18 + 12),
+    UDim2.fromOffset(6, 286)
 )
-
 local recentLabels = {}
 for i = 1, CONFIG.RecentCount do
-	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, 0, 0, 16)
-	row.BackgroundTransparency = 1
-	row.LayoutOrder = i
-	row.Parent = recentPanel
-
-	recentLabels[i] = {
-		name = label({ Parent = row, Size = UDim2.new(0.7, 0, 1, 0), TextSize = 12 }),
-		time = label({
-			Parent = row,
-			Size = UDim2.new(0.3, 0, 1, 0),
-			Position = UDim2.fromScale(0.7, 0),
-			Align = Enum.TextXAlignment.Right,
-			Color = COLORS.muted,
-			TextSize = 11,
-		}),
-	}
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 18)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = i
+    row.Parent = recentPanel
+    recentLabels[i] = {
+        name = label({ Parent = row, Size = UDim2.new(0.7, 0, 1, 0), TextSize = 12 }),
+        time = label({
+            Parent = row, Size = UDim2.new(0.3, 0, 1, 0),
+            Position = UDim2.fromScale(0.7, 0),
+            Align = Enum.TextXAlignment.Right, Color = COLORS.muted, TextSize = 11,
+        }),
+    }
 end
 
+pageHeading(settingsPage, "QUICK ACTIONS", 6)
 local reset = button({
-	Parent = frame,
-	Text = "Reset",
-	TextSize = 11,
-	Color = COLORS.muted,
-	Size = UDim2.new(0.3, -8, 0, 26),
-	Position = UDim2.fromOffset(10, FULL_HEIGHT - 34),
+    Parent = settingsPage, Text = "Reset statistics", TextSize = 12,
+    Color = COLORS.muted, Size = UDim2.new(1, -12, 0, 32),
+    Position = UDim2.fromOffset(6, 30),
 })
-
 local layoutBtn = button({
-	Parent = frame,
-	Text = "Hotbar",
-	TextSize = 11,
-	Color = COLORS.muted,
-	Size = UDim2.new(0.3, -8, 0, 26),
-	Position = UDim2.new(0.3, 2, 0, FULL_HEIGHT - 34),
+    Parent = settingsPage, Text = "Apply hotbar layout", TextSize = 12,
+    Color = COLORS.muted, Size = UDim2.new(1, -12, 0, 32),
+    Position = UDim2.fromOffset(6, 70),
+})
+local plantBtn = button({
+    Parent = settingsPage, Text = "Plant selected crop", TextSize = 12,
+    Color = COLORS.muted, Size = UDim2.new(1, -12, 0, 32),
+    Position = UDim2.fromOffset(6, 110),
 })
 
-local plantBtn = button({
-	Parent = frame,
-	Text = "Plant wheat",
-	TextSize = 11,
-	Color = COLORS.muted,
-	Size = UDim2.new(0.4, -8, 0, 26),
-	Position = UDim2.new(0.6, 2, 0, FULL_HEIGHT - 34),
+pageHeading(settingsPage, "CURRENT SETTINGS", 158)
+local stopAllButton = button({ Parent = settingsPage, Text = "STOP ALL AUTOMATION", TextSize = 13,
+    Bg = COLORS.bad, Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
+
+local settingsText = label({
+    Parent = settingsPage,
+    Text = string.format(
+        "Fish toggle: %s\nHarvest toggle: %s\nMine range: %d studs\nPlant type: %s\nHarvest crop: %s\nPlant radius: %d studs",
+        CONFIG.ToggleKey.Name, CONFIG.HarvestKey.Name, CONFIG.MineRange,
+        CONFIG.PlantType, CONFIG.HarvestCrop, CONFIG.PlantRadius
+    ),
+    Color = COLORS.muted, TextSize = 11,
+    Size = UDim2.new(1, -16, 0, 100),
+    Position = UDim2.fromOffset(8, 182),
 })
+settingsText.TextYAlignment = Enum.TextYAlignment.Top
+settingsText.TextWrapped = true
+settingsText.Text = settingsText.Text .. "\n\nV5: optional saved preferences, scan-delay controls, mode status."
+
+local modeStatus = label({
+    Parent = settingsPage, Text = "Fishing: OFF  |  Crops: OFF  |  Wood: OFF  |  Mining: OFF",
+    Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 36),
+    Position = UDim2.fromOffset(8, 292),
+})
+modeStatus.TextWrapped = true
+local delayButton = button({ Parent = settingsPage, Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  (click to adjust",
+    TextSize = 11, Size = UDim2.new(1, -12, 0, 30), Position = UDim2.fromOffset(6, 330) })
+local scanButton = button({ Parent = settingsPage, Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  (click to adjust",
+    TextSize = 11, Size = UDim2.new(1, -12, 0, 30), Position = UDim2.fromOffset(6, 364) })
+local saveButton = button({ Parent = settingsPage, Text = preferencesLoaded and "Preferences loaded" or "Save preferences",
+    TextSize = 11, Size = UDim2.new(1, -12, 0, 30), Position = UDim2.fromOffset(6, 398) })
+
+-- Reflect restored preference values in the controls.
+replantToggle.Text = CONFIG.AutoReplant and "AUTO-REPLANT: ON" or "AUTO-REPLANT: OFF"
+replantToggle.BackgroundColor3 = CONFIG.AutoReplant and COLORS.on or COLORS.off
+woodRangeBtn.Text = "Wood range: " .. CONFIG.WoodRange .. " studs  (+ / −)"
+mineRangeBtn.Text = "Mining range: " .. CONFIG.MineRange .. " studs  (+ / −)"
+delayButton.Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  (click to adjust)"
+scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  (click to adjust)"
+saveButton.Text = preferencesLoaded and "Preferences loaded" or "Save preferences"
+showTab("Fishing")
 
 --------------------------------------------------------------------
 -- Stats
@@ -392,6 +874,8 @@ local function updateBoard()
 	rows.rate.Text = stats.bites > 0
 		and string.format("%d%%", math.floor(stats.catches / stats.bites * 100 + 0.5))
 		or "–"
+    local rateText = stats.bites > 0 and string.format("%d%%", math.floor(stats.catches / stats.bites * 100 + 0.5)) or "–"
+    statsOverlayText.Text = string.format("Catches %d  |  Misses %d\nCasts %d  |  Bites %d\nRate %s  |  Mode %s", stats.catches, stats.missed, stats.casts, stats.bites, rateText, string.upper(activeFishingMode))
 	rows.streak.Text = stats.streak .. " / " .. stats.bestStreak
 	rows.perHour.Text = t >= 30
 		and string.format("%.0f", stats.catches / (t / 3600))
@@ -464,8 +948,17 @@ local function registerHarvest(name)
 end
 
 local function setStatus(text, color)
-	status.Text = text
-	status.TextColor3 = color or COLORS.muted
+    status.Text = tostring(text)
+    status.TextColor3 = color or COLORS.muted
+end
+
+local function refreshModeStatus()
+    if modeStatus then
+        modeStatus.Text = string.format("Fishing: %s  |  Bait: %s  |  Crops: %s  |  Wood: %s  |  Mining: %s",
+            enabled and "ON" or "OFF", baitEnabled and "ON" or "OFF",
+            harvestEnabled and "ON" or "OFF", woodEnabled and "ON" or "OFF", mineEnabled and "ON" or "OFF")
+        modeStatus.TextColor3 = (enabled or harvestEnabled or woodEnabled or mineEnabled or baitEnabled) and COLORS.good or COLORS.muted
+    end
 end
 
 --------------------------------------------------------------------
@@ -511,45 +1004,63 @@ end
 track(player.CharacterAdded:Connect(markKnown))
 
 --------------------------------------------------------------------
--- Dragging (title bar only)
+-- Window dragging (single handler; mouse + touch; keep the title reachable)
 --------------------------------------------------------------------
 local dragging = false
 local dragStart, startPosition
+local dragInputType
 
-track(title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		startPosition = frame.Position
-	end
-end))
+local function beginDrag(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPosition = frame.Position
+        dragInputType = input.UserInputType
+    end
+end
+
+track(title.InputBegan:Connect(beginDrag))
+if titleBar and titleBar ~= title then
+    track(titleBar.InputBegan:Connect(beginDrag))
+end
 
 track(UserInputService.InputChanged:Connect(function(input)
-	if dragging and (
-		input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch
-	) then
-		local delta = input.Position - dragStart
-		frame.Position = UDim2.new(
-			startPosition.X.Scale, startPosition.X.Offset + delta.X,
-			startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
-		)
-	end
+    if not dragging or not dragStart or not startPosition then return end
+    local isMouseMove = dragInputType == Enum.UserInputType.MouseButton1
+        and input.UserInputType == Enum.UserInputType.MouseMovement
+    local isTouchMove = dragInputType == Enum.UserInputType.Touch
+        and input.UserInputType == Enum.UserInputType.Touch
+    if not isMouseMove and not isTouchMove then return end
+
+    local delta = input.Position - dragStart
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    local scale = (uiScale and uiScale.Scale) or 1
+    local visibleW = WIDTH * scale
+    local visibleH = (minimized and MINI_HEIGHT or FULL_HEIGHT) * scale
+    local x = startPosition.X.Offset + delta.X
+    local y = startPosition.Y.Offset + delta.Y
+    x = math.clamp(x, 8 - visibleW, math.max(8, viewport.X - 40))
+    y = math.clamp(y, 0, math.max(0, viewport.Y - math.min(40, visibleH)))
+    frame.Position = UDim2.new(startPosition.X.Scale, x, startPosition.Y.Scale, y)
 end))
 
 track(UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = false
-	end
+    if (input.UserInputType == Enum.UserInputType.MouseButton1
+        and dragInputType == Enum.UserInputType.MouseButton1)
+        or (input.UserInputType == Enum.UserInputType.Touch
+        and dragInputType == Enum.UserInputType.Touch) then
+        dragging = false
+        dragStart = nil
+        startPosition = nil
+        dragInputType = nil
+    end
 end))
 
 --------------------------------------------------------------------
 -- Fishing helpers
 --------------------------------------------------------------------
-local enabled = false
-local harvestEnabled = false
 local cycleId = 0
 local harvestCycleId = 0
 local lastAction = 0
@@ -572,11 +1083,20 @@ local function clickOnce()
 	local x = camera.ViewportSize.X / 2
 	local y = camera.ViewportSize.Y / 2
 
-	return (pcall(function()
+	local pressed = pcall(function()
 		VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, nil, 0)
-		task.wait(0.05)
+	end)
+	if not pressed then
+		-- Standard LocalScripts commonly cannot use VirtualInputManager.
+		return false
+	end
+	task.wait(0.01)
+	-- Always attempt release independently so an input error cannot leave the
+	-- simulated mouse button held down.
+	local released = pcall(function()
 		VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, nil, 0)
-	end))
+	end)
+	return released
 end
 
 local function hasRodEquipped()
@@ -613,7 +1133,7 @@ local function waitForTug(bobber, myCycle)
 	local conn = bobber:GetAttributeChangedSignal("Tug"):Connect(checkTug)
 
 	while running(myCycle) and bobber.Parent and not tugged do
-		task.wait(0.05)
+		task.wait(CONFIG.FishingPollInterval)
 	end
 
 	conn:Disconnect()
@@ -627,9 +1147,10 @@ local function waitUntil(myCycle, timeout, predicate)
 		if predicate() then
 			return true
 		end
-		task.wait(0.1)
+		task.wait(CONFIG.FishingPollInterval)
 	end
-	return predicate()
+	-- A stopped/restarted cycle must not report a stale success after cancellation.
+	return running(myCycle) and predicate()
 end
 
 --------------------------------------------------------------------
@@ -750,12 +1271,15 @@ local function setHotbarLayout(layoutString)
 	end)
 end
 
--- Put pickaxe in slot 1 so mining actually yields items
+-- Shared tool support from the Auto Wood Farmer.
+-- Prefer an axe when available; otherwise fall back to a pickaxe.
 local function ensurePickaxeLayout()
-	-- Prefer better pickaxes if the game has them
 	local layouts = {
-		"stonePickaxe,,,,,,,",
+		"woodAxe,,,,,,,",
+		"stoneAxe,,,,,,,",
+		"ironAxe,,,,,,,",
 		"ironPickaxe,,,,,,,",
+		"stonePickaxe,,,,,,,",
 		"woodPickaxe,,,,,,,",
 	}
 	for _, layout in ipairs(layouts) do
@@ -765,30 +1289,67 @@ local function ensurePickaxeLayout()
 	end
 end
 
--- Equip any pickaxe from backpack/character
+local function equipBestResourceTool(category)
+    local character = player.Character
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return false end
+
+    local preference = category == "wood" and woodToolPreference or mineToolPreference
+    local wantAxe = category == "wood"
+    local best, bestScore = nil, -math.huge
+    local containers = {character, backpack}
+    for _, container in ipairs(containers) do
+        if container then
+            for _, tool in ipairs(container:GetChildren()) do
+                if tool:IsA("Tool") then
+                    local name = string.lower(tool.Name)
+                    local isPick = string.find(name, "pickaxe", 1, true) ~= nil
+                    local isAxe = string.find(name, "axe", 1, true) ~= nil and not isPick
+                    if (wantAxe and isAxe) or (not wantAxe and isPick) then
+                        local score = 1
+                        if string.find(name, "mythic", 1, true) then score = 100
+                        elseif string.find(name, "diamond", 1, true) then score = 90
+                        elseif string.find(name, "gold", 1, true) then score = 80
+                        elseif string.find(name, "steel", 1, true) then score = 70
+                        elseif string.find(name, "iron", 1, true) then score = 60
+                        elseif string.find(name, "stone", 1, true) then score = 40
+                        elseif string.find(name, "wood", 1, true) then score = 20 end
+                        if not string.find(string.lower(preference), "auto best", 1, true) then
+                            local wanted = string.lower(preference):gsub(" axe", ""):gsub(" pickaxe", "")
+                            if not string.find(name, wanted, 1, true) then
+                                score = -math.huge -- manual preference means exact material only
+                            else
+                                score = score + 1000
+                            end
+                        end
+                        if score > bestScore then best, bestScore = tool, score end
+                    end
+                end
+            end
+        end
+    end
+    if best and bestScore > -math.huge then
+        local ok, err = pcall(function() humanoid:EquipTool(best) end)
+        if not ok then
+            if setStatus then setStatus("Tool equip failed: " .. tostring(err), COLORS.bad) end
+            return false
+        end
+        return true
+    end
+    if setStatus then
+        setStatus((category == "wood" and "No matching axe: " or "No matching pickaxe: ") .. tostring(preference), COLORS.warn)
+    end
+    return false
+end
+
 local function equipPickaxe()
-	local function tryEquip(container)
-		if not container then
-			return false
-		end
-		for _, tool in ipairs(container:GetChildren()) do
-			if tool:IsA("Tool") and string.find(string.lower(tool.Name), "pickaxe") then
-				local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-				if humanoid then
-					humanoid:EquipTool(tool)
-					return true
-				end
-			end
-		end
-		return false
-	end
-	if tryEquip(player.Character) then
-		return true
-	end
-	return tryEquip(player:FindFirstChildOfClass("Backpack"))
+    return equipBestResourceTool(woodEnabled and "wood" or "mine")
 end
 
 -- Mining / resource name patterns (stone, iron, coal, ores, rocks, trees...)
+-- This replaces the separate Auto Wood Farmer target scanner/loop: tree targets
+-- are included here and use the same GUI, F7 toggle, stats, and cleanup.
 -- All of these use the BLOCK remote (OEzzgCCBzocxJw)
 local MINE_PATTERNS = {
 	-- ores & rocks (hub + island)
@@ -893,8 +1454,30 @@ local function getPartPosition(obj)
 	return nil
 end
 
+local function targetCategory(name)
+    if matchesAny(name, MODEL_PATTERNS) then return "crop" end
+    local lower = string.lower(name)
+    if string.find(lower, "tree", 1, true) or string.find(lower, "wood", 1, true)
+        or string.find(lower, "log", 1, true) or string.find(lower, "oak", 1, true)
+        or string.find(lower, "pine", 1, true) or string.find(lower, "birch", 1, true)
+        or string.find(lower, "palm", 1, true) then return "wood" end
+    return "mine"
+end
+
+local function modeAllows(name)
+    local category = targetCategory(name)
+    if category == "crop" then
+        local n, wanted = string.lower(name), string.lower(CONFIG.HarvestCrop)
+        return harvestEnabled and (wanted == "berrybush" and string.find(n, "berry", 1, true) ~= nil or string.find(n, wanted, 1, true) ~= nil)
+    elseif category == "wood" then
+        return woodEnabled
+    end
+    return mineEnabled
+end
+
 local function getMineTargets()
 	local targets = {}
+	local seenTargets = {}
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if not hrp then
@@ -912,10 +1495,8 @@ local function getMineTargets()
 		for _, obj in ipairs(blocksFolder:GetChildren()) do
 			-- Mine EVERY child in hub rocks (rockStone, rockIron, rockCoal, etc.)
 			local pos = getPartPosition(obj)
-			if pos and (pos - myPos).Magnitude <= range then
-				table.insert(targets, { kind = "block", instance = obj, name = obj.Name })
-			elseif not pos then
-				-- no position found – still try (server may accept it)
+			if pos and (pos - myPos).Magnitude <= range and not seenTargets[obj] and modeAllows(obj.Name) then
+				seenTargets[obj] = true
 				table.insert(targets, { kind = "block", instance = obj, name = obj.Name })
 			end
 		end
@@ -967,7 +1548,7 @@ local function getMineTargets()
 					local pos = getPartPosition(obj)
 					-- crops get a slightly larger range
 					local maxDist = matchesAny(name, MODEL_PATTERNS) and (range + 40) or range
-					if pos and (pos - myPos).Magnitude <= maxDist then
+					if pos and (pos - myPos).Magnitude <= maxDist and modeAllows(name) then
 						if matchesAny(name, MODEL_PATTERNS) then
 							-- berryBush, wheat, crops → MODEL remote
 							table.insert(targets, { kind = "model", instance = obj, name = name })
@@ -981,6 +1562,25 @@ local function getMineTargets()
 		end
 	end
 
+	-- Process the nearest resource/tree first (from Auto Wood Farmer).
+	local hrpNow = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if hrpNow then
+		table.sort(targets, function(a, b)
+			local pa = getPartPosition(a.instance)
+			local pb = getPartPosition(b.instance)
+			if not pa then return false end
+			if not pb then return true end
+			return (pa - hrpNow.Position).Magnitude < (pb - hrpNow.Position).Magnitude
+		end)
+	end
+	-- Nearby-first ordering improves throughput without sending parallel requests.
+	table.sort(targets, function(a, b)
+		local pa = getPartPosition(a.instance)
+		local pb = getPartPosition(b.instance)
+		if not pa then return false end
+		if not pb then return true end
+		return (pa - myPos).Magnitude < (pb - myPos).Magnitude
+	end)
 	return targets
 end
 
@@ -1019,7 +1619,7 @@ local function harvestLoop(myCycle)
 		return
 	end
 
-	while harvestRunning(myCycle) do
+	while harvestCycleId == myCycle and (harvestEnabled or woodEnabled or mineEnabled) and gui.Parent ~= nil do
 		local targets = getMineTargets()
 		if #targets == 0 then
 			-- Debug: check if path exists
@@ -1035,7 +1635,7 @@ local function harvestLoop(myCycle)
 		else
 			-- Sequential mining – one rock at a time so the server grants items
 			for _, t in ipairs(targets) do
-				if not harvestRunning(myCycle) then
+				if harvestCycleId ~= myCycle or not (harvestEnabled or woodEnabled or mineEnabled) then
 					break
 				end
 
@@ -1043,6 +1643,14 @@ local function harvestLoop(myCycle)
 				if not t.instance or not t.instance.Parent then
 					continue
 				end
+
+				-- Equip the matching tool for this target before interacting.
+                local category = targetCategory(t.name)
+                if category == "wood" then
+                    equipBestResourceTool("wood")
+                elseif category == "mine" then
+                    equipBestResourceTool("mine")
+                end
 
 				-- Remember position before harvest (for replant)
 				local harvestPos = getPartPosition(t.instance)
@@ -1062,14 +1670,8 @@ local function harvestLoop(myCycle)
 					if t.kind == "model" then
 						setStatus("🌾 " .. t.name .. "  ×" .. stats.harvests, COLORS.good)
 						-- Replant at the same spot after harvesting crops
-						if CONFIG.PlantEnabled and harvestPos then
-							local plantType = "wheat"
-							local n = string.lower(t.name)
-							if string.find(n, "berry") then
-								plantType = "berryBush"
-							elseif string.find(n, "wheat") then
-								plantType = "wheat"
-							end
+						if CONFIG.PlantEnabled and CONFIG.AutoReplant and harvestPos and targetCategory(t.name) == "crop" then
+							local plantType = CONFIG.PlantType
 							local cf = CFrame.new(harvestPos)
 							if firePlant(cf, plantType) then
 								setStatus("🌱 planted " .. plantType, COLORS.good)
@@ -1087,7 +1689,7 @@ local function harvestLoop(myCycle)
 		end
 	end
 
-	if harvestCycleId == myCycle and not harvestEnabled then
+	if harvestCycleId == myCycle and not (harvestEnabled or woodEnabled or mineEnabled) then
 		if not enabled then
 			setStatus("Idle")
 		end
@@ -1109,89 +1711,75 @@ local function run(myCycle)
 		if bobber then
 			failedCasts = 0
 			setStatus("Waiting for fish...")
-
 			local tugged = waitForTug(bobber, myCycle)
-			if not running(myCycle) then
-				break
-			end
+			if not running(myCycle) then break end
 
-			if tugged and os.clock() - lastAction >= 1 then
+			if not tugged then
+				setStatus("Bobber disappeared")
+				task.wait(0.1)
+			elseif os.clock() - lastAction >= CONFIG.ActionCooldown then
 				lastAction = os.clock()
 				local reelTime = os.clock()
-
 				stats.bites += 1
 				updateBoard()
-
 				setStatus("Tug! Reeling in...", COLORS.gold)
 				clickOnce()
-				task.wait(1)
-
+				task.wait(CONFIG.ReelSettleDelay)
 				setStatus("Waiting for catch...")
 				local gone = waitUntil(myCycle, CONFIG.ReelTimeout, function()
 					return getBobber() == nil
 				end)
-
-				if not running(myCycle) then
-					break
-				end
-
+				if not running(myCycle) then break end
 				if gone then
-					-- Give the item a brief moment to land in the Backpack
-					task.wait(0.3)
+					task.wait(0.05)
 					local fishName
-					if lastNewItem and lastNewItem.at >= reelTime then
-						fishName = lastNewItem.name
-					end
+					if lastNewItem and lastNewItem.at >= reelTime then fishName = lastNewItem.name end
 					registerCatch(fishName)
 					setStatus("Caught " .. (fishName or "a fish") .. "! 🐟", COLORS.good)
 				else
 					registerMiss()
-					setStatus("Missed - bobber still out", COLORS.bad)
-					task.wait(1)
+					setStatus("Reel not confirmed - retrying", COLORS.warn)
+					task.wait(0.05)
 				end
-			elseif not tugged then
-				setStatus("Bobber disappeared")
-				task.wait(0.5)
 			end
 		elseif not hasRodEquipped() then
 			setStatus("Equip your fishing rod", COLORS.warn)
 			task.wait(0.5)
 		else
-			if os.clock() - lastAction >= 1 then
+			if os.clock() - lastAction >= CONFIG.ActionCooldown then
 				lastAction = os.clock()
 				setStatus("Casting...")
 				if clickOnce() then
 					stats.casts += 1
 					updateBoard()
+					-- Only wait for a bobber after an actual cast input; this avoids
+					-- burning the full timeout on frames where the cooldown is active.
+					local found = waitUntil(myCycle, CONFIG.CastTimeout, function()
+						return getBobber() ~= nil
+					end)
+					if not running(myCycle) then break end
+					if not found then
+						failedCasts += 1
+						if failedCasts >= CONFIG.MaxFailedCasts then
+							setEnabled(false)
+							setStatus("Stopped: no bobber after " .. failedCasts .. " casts", COLORS.bad)
+							return
+						end
+						setStatus(string.format("No bobber (%d/%d) - retrying", failedCasts, CONFIG.MaxFailedCasts), COLORS.warn)
+						 task.wait(0.03)
+					end
+				else
+					setStatus("Input blocked - run in a supported client", COLORS.bad)
+					task.wait(0.25)
 				end
-			end
-
-			local found = waitUntil(myCycle, CONFIG.CastTimeout, function()
-				return getBobber() ~= nil
-			end)
-
-			if not running(myCycle) then
-				break
-			end
-
-			if not found then
-				failedCasts += 1
-				if failedCasts >= CONFIG.MaxFailedCasts then
-					setEnabled(false)
-					setStatus("Stopped: no bobber after " .. failedCasts .. " casts", COLORS.bad)
-					return
-				end
-				setStatus(
-					string.format("No bobber (%d/%d) - retrying", failedCasts, CONFIG.MaxFailedCasts),
-					COLORS.warn
-				)
-				task.wait(1)
+			else
+				task.wait(0.02)
 			end
 		end
 	end
 
 	if cycleId == myCycle and not enabled then
-		if not harvestEnabled then
+		if not (harvestEnabled or woodEnabled or mineEnabled) then
 			setStatus("Idle")
 		end
 	end
@@ -1219,11 +1807,11 @@ setEnabled = function(state)
 	else
 		toggle.Text = "FISH OFF  [" .. CONFIG.ToggleKey.Name .. "]"
 		toggle.BackgroundColor3 = COLORS.off
-		if not harvestEnabled and stats.onSince then
+		if not (harvestEnabled or woodEnabled or mineEnabled) and stats.onSince then
 			stats.activeTime += os.clock() - stats.onSince
 			stats.onSince = nil
 		end
-		if not harvestEnabled then
+		if not (harvestEnabled or woodEnabled or mineEnabled) then
 			setStatus("Idle")
 		end
 	end
@@ -1231,46 +1819,174 @@ setEnabled = function(state)
 	updateBoard()
 end
 
-setHarvestEnabled = function(state)
-	if state == harvestEnabled then
-		return
-	end
-
-	harvestEnabled = state
-	harvestCycleId += 1
-
-	if harvestEnabled then
-		if not stats.onSince then
-			stats.onSince = os.clock()
-		end
-		harvestToggle.Text = "MINE ON  [" .. CONFIG.HarvestKey.Name .. "]"
-		harvestToggle.BackgroundColor3 = COLORS.on
-		-- Ensure pickaxe is in hotbar + equipped so mining actually grants items
-		ensurePickaxeLayout()
-		equipPickaxe()
-		setStatus("Auto Mine started...")
-		task.spawn(harvestLoop, harvestCycleId)
-	else
-		harvestToggle.Text = "MINE OFF  [" .. CONFIG.HarvestKey.Name .. "]"
-		harvestToggle.BackgroundColor3 = COLORS.off
-		if not enabled and stats.onSince then
-			stats.activeTime += os.clock() - stats.onSince
-			stats.onSince = nil
-		end
-		if not enabled then
-			setStatus("Idle")
-		end
-	end
-
-	updateBoard()
+local function refreshFarmButtons()
+    harvestToggle.Text = harvestEnabled and "CROP FARM ON" or "CROP FARM OFF"
+    harvestToggle.BackgroundColor3 = harvestEnabled and COLORS.on or COLORS.off
+    woodToggle.Text = woodEnabled and "WOOD FARM ON" or "WOOD FARM OFF"
+    woodToggle.BackgroundColor3 = woodEnabled and COLORS.on or COLORS.off
+    mineToggle.Text = mineEnabled and "MINING ON" or "MINING OFF"
+    mineToggle.BackgroundColor3 = mineEnabled and COLORS.on or COLORS.off
 end
 
-track(toggle.Activated:Connect(function()
-	setEnabled(not enabled)
+local function setFarmMode(mode, state)
+    -- Resolve the requested mode explicitly. The old chained `and/or`
+    -- expression could read another mode's state when this mode was off.
+    local current
+    if mode == "crop" then
+        current = harvestEnabled
+    elseif mode == "wood" then
+        current = woodEnabled
+    elseif mode == "mine" then
+        current = mineEnabled
+    else
+        return
+    end
+    if current == state then return end
+    if mode == "crop" then harvestEnabled = state
+    elseif mode == "wood" then woodEnabled = state
+    else mineEnabled = state end
+    harvestCycleId += 1
+    if harvestEnabled or woodEnabled or mineEnabled then
+        if not stats.onSince then stats.onSince = os.clock() end
+        ensurePickaxeLayout()
+        equipPickaxe()
+        setStatus(mode == "crop" and "Crop farming started" or mode == "wood" and "Wood farming started" or "Mining started", COLORS.good)
+        task.spawn(harvestLoop, harvestCycleId)
+    else
+        if not enabled and stats.onSince then
+            stats.activeTime += os.clock() - stats.onSince
+            stats.onSince = nil
+        end
+        if not enabled then setStatus("Idle") end
+    end
+    refreshFarmButtons()
+    refreshModeStatus()
+    updateBoard()
+    savePreferences()
+end
+
+setHarvestEnabled = function(state) setFarmMode("crop", state) end
+
+track(stopAllButton.Activated:Connect(function()
+    cycleId += 1
+    harvestCycleId += 1
+    setEnabled(false)
+    setBaitEnabled(false)
+    setFarmMode("crop", false)
+    setFarmMode("wood", false)
+    setFarmMode("mine", false)
+    setStatus("All automation stopped — all cycle tokens invalidated", COLORS.warn)
+    refreshModeStatus()
+    if stopAllButton then stopAllButton.Text = "ALL STOPPED ✓"; task.delay(1.5, function() if stopAllButton and stopAllButton.Parent then stopAllButton.Text = "STOP ALL AUTOMATION" end end) end
 end))
 
-track(harvestToggle.Activated:Connect(function()
-	setHarvestEnabled(not harvestEnabled)
+track(toggle.Activated:Connect(function()
+    setEnabled(not enabled)
+    refreshModeStatus()
+end))
+for modeName, modeButton in pairs(modeButtons) do
+    track(modeButton.Activated:Connect(function() applyFishingMode(modeName) end))
+end
+applyFishingMode(activeFishingMode)
+track(baitToggle.Activated:Connect(function() setBaitEnabled(not baitEnabled); refreshModeStatus() end))
+
+track(harvestToggle.Activated:Connect(function() setHarvestEnabled(not harvestEnabled) end))
+track(woodToggle.Activated:Connect(function() setFarmMode("wood", not woodEnabled) end))
+track(mineToggle.Activated:Connect(function() setFarmMode("mine", not mineEnabled) end))
+track(cropSelect.Activated:Connect(function()
+    cropDropdownOpen = not cropDropdownOpen
+    cropDropdown.Visible = cropDropdownOpen
+    cropSelect.Text = "Crop: " .. CONFIG.HarvestCrop .. (cropDropdownOpen and "  ▲" or "  ▼")
+end))
+for i, option in ipairs(cropButtons) do
+    track(option.Activated:Connect(function()
+        cropIndex = i
+        CONFIG.HarvestCrop = cropOptions[i]
+        CONFIG.PlantType = CONFIG.HarvestCrop
+        savePreferences()
+        cropSelect.Text = "Crop: " .. CONFIG.HarvestCrop .. "  ▼"
+        cropDropdownOpen = false
+        cropDropdown.Visible = false
+        settingsText.Text = string.format("Fish toggle: %s\nHarvest toggle: %s\nMine range: %d studs\nPlant type: %s\nHarvest crop: %s\nPlant radius: %d studs", CONFIG.ToggleKey.Name, CONFIG.HarvestKey.Name, CONFIG.MineRange, CONFIG.PlantType, CONFIG.HarvestCrop, CONFIG.PlantRadius)
+    end))
+end
+track(replantToggle.Activated:Connect(function()
+    CONFIG.AutoReplant = not CONFIG.AutoReplant
+    replantToggle.Text = CONFIG.AutoReplant and "AUTO-REPLANT: ON" or "AUTO-REPLANT: OFF"
+    replantToggle.BackgroundColor3 = CONFIG.AutoReplant and COLORS.on or COLORS.off
+    savePreferences()
+end))
+track(woodRangeBtn.Activated:Connect(function()
+    CONFIG.WoodRange = CONFIG.WoodRange >= 120 and 30 or CONFIG.WoodRange + 15
+    woodRangeBtn.Text = "Wood range: " .. CONFIG.WoodRange .. " studs  (+ / −)"
+    woodStatus.Text = string.format("Tree targeting range: %d studs. Targets trees, oak, pine, birch, palm and logs.", CONFIG.WoodRange)
+    savePreferences()
+end))
+-- Real expanding dropdowns matching the crop selector's visual style.
+local function makeToolDropdown(page, anchor, options, kind, yPosition, onChoose)
+    local menu = Instance.new("Frame")
+    menu.Name = kind .. "Dropdown"
+    menu.Size = UDim2.new(1, -12, 0, #options * 27)
+    menu.Position = UDim2.fromOffset(6, yPosition)
+    menu.BackgroundColor3 = COLORS.panel
+    menu.BorderSizePixel = 0
+    menu.Visible = false
+    menu.ClipsDescendants = true
+    menu.ZIndex = 25
+    menu.Parent = page
+    corner(menu, 6)
+    local list = Instance.new("UIListLayout")
+    list.Padding = UDim.new(0, 1)
+    list.SortOrder = Enum.SortOrder.LayoutOrder
+    list.Parent = menu
+    for i, optionName in ipairs(options) do
+        local opt = button({Parent = menu, Text = optionName, TextSize = 11,
+            Size = UDim2.new(1, -4, 0, 26), Position = UDim2.new(), Bg = COLORS.panel})
+        opt.LayoutOrder = i
+        opt.ZIndex = 26
+        track(opt.Activated:Connect(function()
+            onChoose(i)
+            anchor.Text = kind .. ": " .. optionName .. "  ▼"
+            menu.Visible = false
+        end))
+    end
+    track(anchor.Activated:Connect(function()
+        menu.Visible = not menu.Visible
+    end))
+end
+
+makeToolDropdown(woodPage, woodToolSelect, woodToolOptions, "Axe", 266, function(i)
+    woodToolIndex = i
+    woodToolPreference = woodToolOptions[i]
+    savePreferences()
+    woodStatus.Text = "Axe preference: " .. woodToolPreference .. ". Matching axe will be equipped before tree actions."
+end)
+makeToolDropdown(minePage, mineToolSelect, mineToolOptions, "Pickaxe", 200, function(i)
+    mineToolIndex = i
+    mineToolPreference = mineToolOptions[i]
+    savePreferences()
+    mineInfo.Text = "Pickaxe preference: " .. mineToolPreference .. ". Matching pickaxe will be equipped before ore actions."
+end)
+track(mineRangeBtn.Activated:Connect(function()
+    CONFIG.MineRange = CONFIG.MineRange >= 120 and 30 or CONFIG.MineRange + 15
+    mineRangeBtn.Text = "Mining range: " .. CONFIG.MineRange .. " studs  (+ / −)"
+    savePreferences()
+end))
+
+track(delayButton.Activated:Connect(function()
+    CONFIG.MineDelay = CONFIG.MineDelay >= 0.40 and 0.08 or math.min(0.40, CONFIG.MineDelay + 0.04)
+    delayButton.Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  (click to adjust)"
+    savePreferences()
+end))
+track(scanButton.Activated:Connect(function()
+    CONFIG.MineScanInterval = CONFIG.MineScanInterval >= 1.0 and 0.15 or math.min(1.0, CONFIG.MineScanInterval + 0.15)
+    scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  (click to adjust)"
+    savePreferences()
+end))
+track(saveButton.Activated:Connect(function()
+    local saved = savePreferences()
+    saveButton.Text = saved and "Preferences saved ✓" or "Save unavailable in this environment"
+    saveButton.BackgroundColor3 = saved and COLORS.on or COLORS.warn
 end))
 
 track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -1336,6 +2052,8 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
+    baitEnabled = false
+    baitCycleId += 1
 	enabled = false
 	harvestEnabled = false
 	cycleId += 1
