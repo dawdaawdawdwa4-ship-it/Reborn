@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 12 and previous.Resume then
+if previous and previous.Version == 13 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 12, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 13, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -33,6 +33,7 @@ end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    OAVO4xgiY252ym = true, -- Updated axe/block-hit endpoint.
     Gu0tNi2YAOdeYv = true, -- Updated hotbar-layout capture.
     Y6oBjV1u9qIAAS = true, -- Fruit-picking capture.
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
@@ -266,10 +267,11 @@ function capture:SetAutoReplant(value)
 end
 local function learnBlockHit(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
-    if remote.Name ~= "qn1PInnZJmfDd1" and remote.Name ~= "OEzzgCCBzocxJw"
+    if remote.Name ~= "OAVO4xgiY252ym" and remote.Name ~= "qn1PInnZJmfDd1" and remote.Name ~= "OEzzgCCBzocxJw"
         and not string.find(string.lower(remote.Name), "block_hit_request", 1, true) then return false end
     local packet=args[1]
-    local body=type(packet.wGquKmyB3mV2Cf)=="table" and packet.wGquKmyB3mV2Cf
+    local body=type(packet.P1ZFEJgXWM4k62)=="table" and packet.P1ZFEJgXWM4k62
+        or type(packet.wGquKmyB3mV2Cf)=="table" and packet.wGquKmyB3mV2Cf
         or (type(packet.TlSR8Mzd9FLwaZ)=="table" and packet.TlSR8Mzd9FLwaZ or packet)
     local block=body.block
     if typeof(block)~="Instance" or not (block:IsA("Model") or block:IsA("BasePart")) then return false end

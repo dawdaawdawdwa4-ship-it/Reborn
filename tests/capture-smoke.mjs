@@ -151,6 +151,18 @@ assert(hitArgs.E6N43ldyV5t9lg=='live-axe-context' and hitArgs.wGquKmyB3mV2Cf.blo
 assert(hitPacket.wGquKmyB3mV2Cf.block==tree,'axe template mutated')
 assert(not capture:Hit(nextTree,'mine'),'must not reuse wood binding for mining')
 axeRemote.InvokeServer=function() return false end;assert(not capture:Hit(nextTree,'wood'),'axe rejection must remain failure')
+local updatedAxe=remote('OAVO4xgiY252ym')
+local detachedTree={_type='Instance',Name='tree4',ClassName='Model',IsA=tree.IsA,GetDebugId=function() return 'old-tree-debug-id' end}
+local updatedAxeArgs
+updatedAxe.InvokeServer=function(_,packet) updatedAxeArgs=packet;return true end
+local updatedAxePacket={fno9F0nWmx8xVf='new-live-axe-session',P1ZFEJgXWM4k62={block=detachedTree}}
+installedHook(updatedAxe,updatedAxePacket)
+assert(capture.WoodHitBinding and capture.WoodHitBinding.Remote==updatedAxe,'new wood endpoint must be learned even when original tree is detached')
+assert(capture:Hit(nextTree,'wood'),'new axe payload must execute with an actual tree')
+assert(updatedAxeArgs.fno9F0nWmx8xVf=='new-live-axe-session' and updatedAxeArgs.P1ZFEJgXWM4k62.block==nextTree,'new context or actual tree target lost')
+assert(updatedAxeArgs.E6N43ldyV5t9lg==nil and updatedAxePacket.P1ZFEJgXWM4k62.block==detachedTree,'new axe envelope or original packet mutated')
+updatedAxe.InvokeServer=function() return {success=false} end
+assert(not capture:Hit(nextTree,'wood'),'new axe rejection must remain failure')
 local settingRemote=remote('nrGQVrxpfb3dKr')
 local settingArgs
 settingRemote.InvokeServer=function(_,packet) settingArgs=packet;return true end
