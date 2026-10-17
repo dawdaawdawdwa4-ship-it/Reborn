@@ -35,6 +35,10 @@ buildController.Buttons.Preview.Activated:Fire()
 assert(string.find(buildController.Status.Text,"spawn",1,true))
 assert(buildController.Preset=="Farm plots")
 assert(not RemoteCatalog.Recorder,'recorder must be off on actual full startup')
+assert(CONFIG.CastDistance==12 and activeFishingMode=='Fast' and CONFIG.FishingPollInterval==.005,'startup must use fixed Fast mode and 12-stud aim')
+applyFishingMode('Safe')
+assert(activeFishingMode=='Fast' and CONFIG.CastDistance==12 and not modeButtons.Safe and not modeButtons.Balanced,'other profiles must not override fixed settings')
+
 for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Tween' then option.Activated:Fire() end end
 assert(CONFIG.FarmTravelMode=='Tween' and string.find(RemoteCatalog.TravelSelectors[1].Text,'Tween',1,true),'tree travel selection must update both dropdown labels')
 assert(not enabled and not woodEnabled and not harvestEnabled,'choosing a travel mode must not start automation')

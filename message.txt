@@ -1310,7 +1310,7 @@ local CONFIG = {
 	RequireTool = true,                   -- only cast while a Tool (rod) is equipped
 	CastTimeout = 2.0,                  -- typical bobber response is quick; allow a small network margin
 	CastHold = 0.35,
-    CastDistance = 24,
+    CastDistance = 12,
     BiteTimeout = 45, -- stop safely if a bobber never tugs
     ReelTimeout = 1.0,                    -- shorter confirmation window after reeling
 	FishingPollInterval = 0.01,           -- check cast/bobber state more frequently
@@ -1646,47 +1646,41 @@ local fishInfo = label({
 })
 fishInfo.TextWrapped = true
 
--- Fishing profiles are selectable at runtime for controlled in-game comparisons.
+-- Fixed fishing settings requested: Fast timing and 12-stud cast aim.
 local FISHING_MODES = {
     Safe =     { poll = 0.05, castTimeout = 4.0, reelTimeout = 2.0, settle = 0.10, cooldown = 0.25 },
     Balanced = { poll = 0.01, castTimeout = 2.0, reelTimeout = 0.9, settle = 0.025, cooldown = 0.04 },
     Fast =     { poll = 0.005, castTimeout = 1.5, reelTimeout = 0.7, settle = 0.015, cooldown = 0.025 },
     Test =     { poll = 0.01, castTimeout = 2.0, reelTimeout = 0.9, settle = 0.025, cooldown = 0.04 },
 }
-local activeFishingMode = "Balanced"
+local activeFishingMode = "Fast"
 local modeHeading = label({
-    Parent = fishingPage, Text = "FISHING MODE  ·  BALANCED", TextSize = 11,
+    Parent = fishingPage, Text = "FISHING MODE  ·  FAST", TextSize = 11,
     Color = COLORS.muted, Size = UDim2.new(1, -16, 0, 18), Position = UDim2.fromOffset(8, 164),
 })
 local modeButtons = {}
-local modeNames = {"Safe", "Balanced", "Fast", "Test"}
+local modeNames = {"Fast"}
 for i, modeName in ipairs(modeNames) do
     local modeButton = button({
         Parent = fishingPage, Text = modeName, TextSize = 11,
         Bg = modeName == activeFishingMode and COLORS.accent or COLORS.panel,
-        Size = UDim2.new(0.25, -7, 0, 30),
+        Size = UDim2.new(1, -12, 0, 30),
         Position = UDim2.new((i - 1) * 0.25, 6, 0, 185), Radius = 5,
     })
     modeButtons[modeName] = modeButton
 end
 local modeInfo = label({
     Parent = fishingPage,
-    Text = "Balanced: responsive timing with extra catch-confirmation time. Test mode uses a longer confirmation window to compare missed-catch behavior.",
+    Text = "Fast mode is fixed. Cast aim is fixed at 12 studs.",
     Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 36),
     Position = UDim2.fromOffset(8, 219),
 })
 modeInfo.TextWrapped = true
 
-local castDistances = {12, 24, 36}
-local castDistanceButton = button({Parent = fishingPage, Text = "Cast aim: 24 studs (click to change)", TextSize = 12,
+local castDistanceButton = label({Parent = fishingPage, Text = "Cast aim: 12 studs (fixed)", TextSize = 12,
     Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 267)})
-track(castDistanceButton.Activated:Connect(function()
-    local index = table.find(castDistances, CONFIG.CastDistance) or 2
-    CONFIG.CastDistance = castDistances[index % #castDistances + 1]
-    castDistanceButton.Text = "Cast aim: " .. CONFIG.CastDistance .. " studs (click to change)"
-end))
 local castAimHelp = label({Parent = fishingPage,
-    Text = "12: nearby water • 24: normal • 36: farther out. Aim distance does not change the game's cast limits.",
+    Text = "Fixed at 12 studs for nearby water. Aim distance does not change the game's cast limits.",
     TextSize = 10, Color = COLORS.muted, Size = UDim2.new(1, -16, 0, 40), Position = UDim2.fromOffset(8, 305)})
 castAimHelp.TextWrapped = true
 
@@ -1808,6 +1802,8 @@ overlayToggle.Activated:Connect(function()
 end)
 
 local function applyFishingMode(modeName)
+    modeName="Fast"
+    CONFIG.CastDistance=12
     local profile = FISHING_MODES[modeName]
     if not profile then return end
     activeFishingMode = modeName
@@ -2747,7 +2743,7 @@ local function clickOnce(action, myCycle)
     if action == "reel" and lastFishingAim then
         x, y = lastFishingAim.X, lastFishingAim.Y
     elseif root then
-        local aim = root.Position + root.CFrame.LookVector * (CONFIG.CastDistance or 24) - Vector3.new(0, 4, 0)
+        local aim = root.Position + root.CFrame.LookVector * 12 - Vector3.new(0, 4, 0)
         local point, visible = camera:WorldToScreenPoint(aim)
         if visible then x, y = point.X, point.Y end
     end
