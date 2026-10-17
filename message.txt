@@ -2016,7 +2016,7 @@ local cropHint = label({ Parent = harvestPage, Text = "Select several crops abov
 cropHint.TextWrapped = true
 
 RemoteCatalog.CropRangeButton = button({ Parent = harvestPage, Text = "Scan range: " .. CONFIG.CropRange .. " studs",
-    TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 244) })
+    TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 286) })
 track(RemoteCatalog.CropRangeButton.Activated:Connect(function()
     CONFIG.CropRange = CONFIG.CropRange >= 120 and 15 or CONFIG.CropRange + 15
     RemoteCatalog.CropRangeButton.Text = "Scan range: " .. CONFIG.CropRange .. " studs"
@@ -2024,13 +2024,13 @@ track(RemoteCatalog.CropRangeButton.Activated:Connect(function()
 end))
 
 local fruitToggle = button({Parent=harvestPage,Text=CONFIG.FruitEnabled and "FRUIT PICKING: ON" or "FRUIT PICKING: OFF",TextSize=12,
-    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,288),Bg=CONFIG.FruitEnabled and COLORS.on or COLORS.off})
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,328),Bg=CONFIG.FruitEnabled and COLORS.on or COLORS.off})
 local fruitHint=label({Parent=harvestPage,Text="Pick fruit from your island's trees without chopping them. Capture one manual fruit pick first.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,330)})
+    Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,370)})
 fruitHint.TextWrapped=true
 
 RemoteCatalog.HarvestWalkButton=button({Parent=harvestPage,Text=CONFIG.HarvestWalk and "AUTO WALK: ON" or "AUTO WALK: OFF",TextSize=12,
-    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,380),Bg=CONFIG.HarvestWalk and COLORS.on or COLORS.off})
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,244),Bg=CONFIG.HarvestWalk and COLORS.on or COLORS.off})
 track(RemoteCatalog.HarvestWalkButton.Activated:Connect(function()
     CONFIG.HarvestWalk=not CONFIG.HarvestWalk
     RemoteCatalog.HarvestWalkButton.Text=CONFIG.HarvestWalk and "AUTO WALK: ON" or "AUTO WALK: OFF"
