@@ -1,0 +1,1347 @@
+-- Auto Fishing GUI v3 + Scoreboard + Auto Mine / Harvest
+-- Draggable, hotkey toggle, rod check, auto-stop, fish names, recent catches
+-- + Auto Mine (stone, iron, coal, ores, rocks, trees) using Cobalt remotes
+-- Place in StarterPlayerScripts / executor
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+--------------------------------------------------------------------
+-- Config
+--------------------------------------------------------------------
+local CONFIG = {
+	ToggleKey = Enum.KeyCode.F6,          -- fishing ON/OFF
+	HarvestKey = Enum.KeyCode.F7,         -- mine / harvest ON/OFF
+	RequireTool = true,                   -- only cast while a Tool (rod) is equipped
+	CastTimeout = 10,                     -- seconds to wait for a bobber after casting
+	ReelTimeout = 10,                     -- seconds to wait for bobber to vanish after reeling
+	MaxFailedCasts = 5,                   -- auto-stop after this many casts with no bobber
+	RecentCount = 5,                      -- how many recent catches to show
+
+	-- Auto Mine settings
+	MineRange = 80,                       -- studs from character
+	MineDelay = 0.18,                     -- delay between each mine (server needs time)
+	MineBatchSize = 1,                    -- 1 at a time so drops actually register
+	MineScanInterval = 0.4,               -- how often to rescan for targets
+
+	-- Auto Plant settings
+	PlantEnabled = true,                  -- plant after harvesting crops
+	PlantType = "wheat",                  -- default crop to plant
+	PlantDelay = 0.15,                    -- delay between plant attempts
+	PlantRadius = 12,                     -- how far around player to plant
+	PlantSpacing = 3,                     -- grid spacing between plants
+}
+
+-- Remove previous GUI (this also stops the previous script's loops)
+local old = playerGui:FindFirstChild("AutoFishingGUI")
+if old then
+	old:Destroy()
+end
+
+--------------------------------------------------------------------
+-- Colors / sizes
+--------------------------------------------------------------------
+local COLORS = {
+	bg = Color3.fromRGB(22, 25, 32),
+	panel = Color3.fromRGB(32, 36, 46),
+	stroke = Color3.fromRGB(55, 60, 72),
+	text = Color3.new(1, 1, 1),
+	muted = Color3.fromRGB(150, 156, 170),
+	on = Color3.fromRGB(46, 180, 100),
+	off = Color3.fromRGB(200, 55, 55),
+	gold = Color3.fromRGB(255, 200, 60),
+	good = Color3.fromRGB(80, 230, 130),
+	bad = Color3.fromRGB(240, 80, 80),
+	warn = Color3.fromRGB(255, 170, 50),
+	harvest = Color3.fromRGB(100, 190, 255),
+	accent = Color3.fromRGB(90, 140, 255),
+}
+
+local WIDTH = 260
+local FULL_HEIGHT = 500
+local MINI_HEIGHT = 110
+
+--------------------------------------------------------------------
+-- Connection bookkeeping
+--------------------------------------------------------------------
+local connections = {}
+local function track(conn)
+	table.insert(connections, conn)
+	return conn
+end
+
+--------------------------------------------------------------------
+-- GUI helpers
+--------------------------------------------------------------------
+local function corner(parent, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = parent
+	return c
+end
+
+local function label(props)
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1
+	l.Font = props.Font or Enum.Font.Gotham
+	l.TextSize = props.TextSize or 12
+	l.TextColor3 = props.Color or COLORS.text
+	l.TextXAlignment = props.Align or Enum.TextXAlignment.Left
+	l.Text = props.Text or ""
+	l.Size = props.Size
+	l.Position = props.Position or UDim2.new()
+	l.TextTruncate = Enum.TextTruncate.AtEnd
+	l.Parent = props.Parent
+	return l
+end
+
+local function button(props)
+	local b = Instance.new("TextButton")
+	b.Size = props.Size
+	b.Position = props.Position
+	b.BackgroundColor3 = props.Bg or COLORS.panel
+	b.TextColor3 = props.Color or COLORS.text
+	b.Text = props.Text
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = props.TextSize or 13
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = true
+	b.Parent = props.Parent
+	corner(b, props.Radius or 6)
+	return b
+end
+
+local function panel(parent, size, position)
+	local p = Instance.new("Frame")
+	p.Size = size
+	p.Position = position
+	p.BackgroundColor3 = COLORS.panel
+	p.BorderSizePixel = 0
+	p.Parent = parent
+	corner(p, 8)
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop = UDim.new(0, 6)
+	pad.PaddingBottom = UDim.new(0, 6)
+	pad.PaddingLeft = UDim.new(0, 10)
+	pad.PaddingRight = UDim.new(0, 10)
+	pad.Parent = p
+
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = p
+
+	return p
+end
+
+--------------------------------------------------------------------
+-- GUI
+--------------------------------------------------------------------
+local gui = Instance.new("ScreenGui")
+gui.Name = "AutoFishingGUI"
+gui.ResetOnSpawn = false
+gui.Parent = playerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.fromOffset(WIDTH, FULL_HEIGHT)
+frame.Position = UDim2.new(0.5, -WIDTH / 2, 0.5, -FULL_HEIGHT / 2)
+frame.BackgroundColor3 = COLORS.bg
+frame.BorderSizePixel = 0
+frame.ClipsDescendants = true
+frame.Active = true
+frame.Parent = gui
+corner(frame, 10)
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = COLORS.stroke
+stroke.Parent = frame
+
+local title = label({
+	Parent = frame,
+	Text = "🎣 AUTO FISH + MINE",
+	Font = Enum.Font.GothamBold,
+	TextSize = 14,
+	Size = UDim2.new(1, -40, 0, 30),
+	Position = UDim2.fromOffset(12, 0),
+})
+title.Active = true -- drag handle
+
+local minimize = button({
+	Parent = frame,
+	Text = "–",
+	TextSize = 14,
+	Size = UDim2.fromOffset(24, 22),
+	Position = UDim2.new(1, -30, 0, 4),
+	Radius = 5,
+})
+
+local toggle = button({
+	Parent = frame,
+	Text = "FISH OFF  [" .. CONFIG.ToggleKey.Name .. "]",
+	TextSize = 13,
+	Bg = COLORS.off,
+	Size = UDim2.new(1, -20, 0, 28),
+	Position = UDim2.fromOffset(10, 34),
+})
+
+local harvestToggle = button({
+	Parent = frame,
+	Text = "MINE OFF  [" .. CONFIG.HarvestKey.Name .. "]",
+	TextSize = 13,
+	Bg = COLORS.off,
+	Size = UDim2.new(1, -20, 0, 28),
+	Position = UDim2.fromOffset(10, 66),
+})
+
+local status = label({
+	Parent = frame,
+	Text = "Idle",
+	Color = COLORS.muted,
+	Size = UDim2.new(1, -20, 0, 18),
+	Position = UDim2.fromOffset(10, 98),
+})
+
+-- Scoreboard
+local board = panel(frame, UDim2.new(1, -20, 0, 210), UDim2.fromOffset(10, 120))
+
+local function makeRow(parent, labelText, order, valueColor)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 18)
+	row.BackgroundTransparency = 1
+	row.LayoutOrder = order
+	row.Parent = parent
+
+	label({
+		Parent = row,
+		Text = labelText,
+		Color = COLORS.muted,
+		Size = UDim2.new(0.55, 0, 1, 0),
+	})
+
+	return label({
+		Parent = row,
+		Text = "0",
+		Font = Enum.Font.GothamBold,
+		Color = valueColor or COLORS.text,
+		Align = Enum.TextXAlignment.Right,
+		Size = UDim2.new(0.45, 0, 1, 0),
+		Position = UDim2.fromScale(0.55, 0),
+	})
+end
+
+local rows = {
+	harvests = makeRow(board, "⛏ Mined", 1, COLORS.harvest),
+	mineRate = makeRow(board, "Mine / min", 2, COLORS.accent),
+	lastMine = makeRow(board, "Last mined", 3, COLORS.gold),
+	catches = makeRow(board, "🐟 Fish caught", 4, COLORS.good),
+	missed = makeRow(board, "Missed", 5, COLORS.bad),
+	casts = makeRow(board, "Casts", 6),
+	bites = makeRow(board, "Bites", 7),
+	rate = makeRow(board, "Catch rate", 8),
+	streak = makeRow(board, "Streak / best", 9, COLORS.gold),
+	perHour = makeRow(board, "Fish / hour", 10),
+	time = makeRow(board, "Active time", 11),
+}
+
+-- Recent catches
+label({
+	Parent = frame,
+	Text = "RECENT CATCHES",
+	Font = Enum.Font.GothamBold,
+	TextSize = 11,
+	Color = COLORS.muted,
+	Size = UDim2.new(1, -20, 0, 16),
+	Position = UDim2.fromOffset(12, 338),
+})
+
+local recentPanel = panel(
+	frame,
+	UDim2.new(1, -20, 0, CONFIG.RecentCount * 16 + 12),
+	UDim2.fromOffset(10, 356)
+)
+
+local recentLabels = {}
+for i = 1, CONFIG.RecentCount do
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 16)
+	row.BackgroundTransparency = 1
+	row.LayoutOrder = i
+	row.Parent = recentPanel
+
+	recentLabels[i] = {
+		name = label({ Parent = row, Size = UDim2.new(0.7, 0, 1, 0), TextSize = 12 }),
+		time = label({
+			Parent = row,
+			Size = UDim2.new(0.3, 0, 1, 0),
+			Position = UDim2.fromScale(0.7, 0),
+			Align = Enum.TextXAlignment.Right,
+			Color = COLORS.muted,
+			TextSize = 11,
+		}),
+	}
+end
+
+local reset = button({
+	Parent = frame,
+	Text = "Reset",
+	TextSize = 11,
+	Color = COLORS.muted,
+	Size = UDim2.new(0.3, -8, 0, 26),
+	Position = UDim2.fromOffset(10, FULL_HEIGHT - 34),
+})
+
+local layoutBtn = button({
+	Parent = frame,
+	Text = "Hotbar",
+	TextSize = 11,
+	Color = COLORS.muted,
+	Size = UDim2.new(0.3, -8, 0, 26),
+	Position = UDim2.new(0.3, 2, 0, FULL_HEIGHT - 34),
+})
+
+local plantBtn = button({
+	Parent = frame,
+	Text = "Plant wheat",
+	TextSize = 11,
+	Color = COLORS.muted,
+	Size = UDim2.new(0.4, -8, 0, 26),
+	Position = UDim2.new(0.6, 2, 0, FULL_HEIGHT - 34),
+})
+
+--------------------------------------------------------------------
+-- Stats
+--------------------------------------------------------------------
+local stats
+
+local function newStats()
+	return {
+		casts = 0,
+		bites = 0,
+		catches = 0,
+		missed = 0,
+		streak = 0,
+		bestStreak = 0,
+		harvests = 0,
+		lastMineName = "–",
+		activeTime = 0,
+		onSince = nil,
+		perFish = {},   -- [name] = count
+		recent = {},    -- { {name=, at=}, ... } newest first
+	}
+end
+
+stats = newStats()
+
+local function getActiveTime()
+	local t = stats.activeTime
+	if stats.onSince then
+		t += os.clock() - stats.onSince
+	end
+	return t
+end
+
+local function formatTime(seconds)
+	seconds = math.floor(seconds)
+	return string.format("%02d:%02d:%02d",
+		math.floor(seconds / 3600),
+		math.floor((seconds % 3600) / 60),
+		seconds % 60)
+end
+
+local function formatAgo(seconds)
+	seconds = math.floor(seconds)
+	if seconds < 60 then
+		return seconds .. "s ago"
+	elseif seconds < 3600 then
+		return math.floor(seconds / 60) .. "m ago"
+	end
+	return math.floor(seconds / 3600) .. "h ago"
+end
+
+local function getTopFish()
+	local bestName, bestCount = nil, 0
+	for name, count in pairs(stats.perFish) do
+		if count > bestCount then
+			bestName, bestCount = name, count
+		end
+	end
+	if bestName then
+		return bestName .. " ×" .. bestCount
+	end
+	return "–"
+end
+
+local function updateBoard()
+	local t = getActiveTime()
+
+	rows.harvests.Text = tostring(stats.harvests)
+	rows.mineRate.Text = t >= 5
+		and string.format("%.0f", stats.harvests / (t / 60))
+		or "–"
+	rows.lastMine.Text = stats.lastMineName or "–"
+	rows.catches.Text = tostring(stats.catches)
+	rows.missed.Text = tostring(stats.missed)
+	rows.casts.Text = tostring(stats.casts)
+	rows.bites.Text = tostring(stats.bites)
+	rows.rate.Text = stats.bites > 0
+		and string.format("%d%%", math.floor(stats.catches / stats.bites * 100 + 0.5))
+		or "–"
+	rows.streak.Text = stats.streak .. " / " .. stats.bestStreak
+	rows.perHour.Text = t >= 30
+		and string.format("%.0f", stats.catches / (t / 3600))
+		or "–"
+	rows.time.Text = formatTime(t)
+
+	local now = os.clock()
+	for i, slot in ipairs(recentLabels) do
+		local entry = stats.recent[i]
+		if entry then
+			slot.name.Text = "🐟 " .. entry.name
+			slot.name.TextColor3 = COLORS.text
+			slot.time.Text = formatAgo(now - entry.at)
+		else
+			slot.name.Text = i == 1 and "Nothing yet" or ""
+			slot.name.TextColor3 = COLORS.muted
+			slot.time.Text = ""
+		end
+	end
+end
+
+local function flash(lbl, color)
+	lbl.TextColor3 = Color3.new(1, 1, 1)
+	lbl.TextSize = 15
+	TweenService:Create(lbl, TweenInfo.new(0.4, Enum.EasingStyle.Quad), {
+		TextColor3 = color,
+		TextSize = 12,
+	}):Play()
+end
+
+local function registerCatch(fishName)
+	fishName = fishName or "Fish"
+
+	stats.catches += 1
+	stats.streak += 1
+	stats.perFish[fishName] = (stats.perFish[fishName] or 0) + 1
+
+	table.insert(stats.recent, 1, { name = fishName, at = os.clock() })
+	if #stats.recent > CONFIG.RecentCount then
+		table.remove(stats.recent)
+	end
+
+	if stats.streak > stats.bestStreak then
+		stats.bestStreak = stats.streak
+		if stats.bestStreak > 1 then
+			flash(rows.streak, COLORS.gold)
+		end
+	end
+
+	flash(rows.catches, COLORS.good)
+	updateBoard()
+end
+
+local function registerMiss()
+	stats.missed += 1
+	stats.streak = 0
+	flash(rows.missed, COLORS.bad)
+	updateBoard()
+end
+
+local function registerHarvest(name)
+	stats.harvests += 1
+	if name then
+		stats.lastMineName = name
+	end
+	if stats.harvests % 10 == 0 then
+		flash(rows.harvests, COLORS.harvest)
+	end
+	updateBoard()
+end
+
+local function setStatus(text, color)
+	status.Text = text
+	status.TextColor3 = color or COLORS.muted
+end
+
+--------------------------------------------------------------------
+-- New-item detection (used to name the fish you caught)
+-- Rods moving between Backpack and Character are the same instance,
+-- so only genuinely new instances count.
+--------------------------------------------------------------------
+local knownItems = setmetatable({}, { __mode = "k" })
+local lastNewItem = nil -- { name = string, at = number }
+
+local function markKnown(container)
+	for _, child in ipairs(container:GetChildren()) do
+		knownItems[child] = true
+	end
+end
+
+local function onItemAdded(child)
+	if not knownItems[child] then
+		knownItems[child] = true
+		lastNewItem = { name = child.Name, at = os.clock() }
+	end
+end
+
+local function hookBackpack(backpack)
+	markKnown(backpack)
+	track(backpack.ChildAdded:Connect(onItemAdded))
+end
+
+local currentBackpack = player:FindFirstChildOfClass("Backpack")
+if currentBackpack then
+	hookBackpack(currentBackpack)
+end
+
+track(player.ChildAdded:Connect(function(child)
+	if child:IsA("Backpack") then
+		hookBackpack(child)
+	end
+end))
+
+if player.Character then
+	markKnown(player.Character)
+end
+track(player.CharacterAdded:Connect(markKnown))
+
+--------------------------------------------------------------------
+-- Dragging (title bar only)
+--------------------------------------------------------------------
+local dragging = false
+local dragStart, startPosition
+
+track(title.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPosition = frame.Position
+	end
+end))
+
+track(UserInputService.InputChanged:Connect(function(input)
+	if dragging and (
+		input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch
+	) then
+		local delta = input.Position - dragStart
+		frame.Position = UDim2.new(
+			startPosition.X.Scale, startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
+		)
+	end
+end))
+
+track(UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
+end))
+
+--------------------------------------------------------------------
+-- Fishing helpers
+--------------------------------------------------------------------
+local enabled = false
+local harvestEnabled = false
+local cycleId = 0
+local harvestCycleId = 0
+local lastAction = 0
+
+local function running(myCycle)
+	return enabled and cycleId == myCycle and gui.Parent ~= nil
+end
+
+local function harvestRunning(myCycle)
+	return harvestEnabled and harvestCycleId == myCycle and gui.Parent ~= nil
+end
+
+-- Note: VirtualInputManager is normally blocked in a standard LocalScript.
+local function clickOnce()
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return false
+	end
+
+	local x = camera.ViewportSize.X / 2
+	local y = camera.ViewportSize.Y / 2
+
+	return (pcall(function()
+		VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, nil, 0)
+		task.wait(0.05)
+		VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, nil, 0)
+	end))
+end
+
+local function hasRodEquipped()
+	if not CONFIG.RequireTool then
+		return true
+	end
+	local character = player.Character
+	return character ~= nil and character:FindFirstChildOfClass("Tool") ~= nil
+end
+
+local function getBobber()
+	local folder = workspace:FindFirstChild("FishingBobbers")
+	if not folder then
+		return nil
+	end
+	local bobber = folder:FindFirstChild(player.Name .. "Bobber")
+	if bobber and bobber:IsA("BasePart") then
+		return bobber
+	end
+	return nil
+end
+
+local function waitForTug(bobber, myCycle)
+	local tugged = false
+
+	local function checkTug()
+		local value = bobber:GetAttribute("Tug")
+		if value and value ~= false then
+			tugged = true
+		end
+	end
+
+	checkTug()
+	local conn = bobber:GetAttributeChangedSignal("Tug"):Connect(checkTug)
+
+	while running(myCycle) and bobber.Parent and not tugged do
+		task.wait(0.05)
+	end
+
+	conn:Disconnect()
+	return tugged and running(myCycle)
+end
+
+-- Polls until predicate() is true, the cycle stops, or timeout. Returns predicate result.
+local function waitUntil(myCycle, timeout, predicate)
+	local deadline = os.clock() + timeout
+	while running(myCycle) and os.clock() < deadline do
+		if predicate() then
+			return true
+		end
+		task.wait(0.1)
+	end
+	return predicate()
+end
+
+--------------------------------------------------------------------
+-- Auto Mine (Cobalt remotes for Islands)
+-- Works with stone, iron, coal, ores, rocks, trees, etc.
+--------------------------------------------------------------------
+-- These paths come from the Cobalt snippets you provided.
+-- They can break after game updates; re-spy if needed.
+
+local HARVEST_UUID = "06105b98-6d2f-40fb-9979-fbd1b925fe6daa81356f-b501-468d-80f0-5871006ce00a"
+
+-- Helper from Cobalt (for nil-parented instances)
+local function GetNil(Name, DebugId)
+	if not getnilinstances then
+		return nil
+	end
+	for _, Object in getnilinstances() do
+		if Object.Name == Name and Object:GetDebugId() == DebugId then
+			return Object
+		end
+	end
+	return nil
+end
+
+local function getNetFolder()
+	local ok, folder = pcall(function()
+		return ReplicatedStorage
+			:WaitForChild("rbxts_include", 5)
+			:WaitForChild("node_modules", 5)
+			:WaitForChild("@rbxts", 5)
+			:WaitForChild("net", 5)
+			:WaitForChild("out", 5)
+			:WaitForChild("ULrMeokpcNr7uD", 5)
+	end)
+	return ok and folder or nil
+end
+
+local blockRemote = nil
+local modelRemote = nil
+local layoutRemote = nil
+local plantRemote = nil
+
+local function resolveRemotes()
+	local folder = getNetFolder()
+	if not folder then
+		return false
+	end
+	blockRemote = folder:FindFirstChild("OEzzgCCBzocxJw")
+	modelRemote = folder:FindFirstChild("hFuV0Z1w601mXP")
+	layoutRemote = folder:FindFirstChild("RZQQNNDRUvfj1N")
+	plantRemote = folder:FindFirstChild("ohy6O10QKzyGZE")
+	return blockRemote ~= nil or modelRemote ~= nil
+end
+
+-- Plant a crop at a CFrame (from Cobalt plant capture)
+local function firePlant(cf, blockType)
+	if not plantRemote then
+		resolveRemotes()
+	end
+	if not plantRemote then
+		return false
+	end
+	blockType = blockType or CONFIG.PlantType
+	return pcall(function()
+		plantRemote:InvokeServer({
+			TrNhTTgExIb1Bg = HARVEST_UUID,
+			TlSR8Mzd9FLwaZ = {
+				cframe = cf,
+				blockType = blockType,
+			},
+		})
+	end)
+end
+
+-- Plant a grid of crops around the player
+local function plantAroundPlayer(blockType)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		return 0
+	end
+	blockType = blockType or CONFIG.PlantType
+	local origin = hrp.Position
+	local planted = 0
+	local r = CONFIG.PlantRadius
+	local step = CONFIG.PlantSpacing
+
+	for x = -r, r, step do
+		for z = -r, r, step do
+			local pos = Vector3.new(origin.X + x, origin.Y, origin.Z + z)
+			-- Keep upright rotation like the Cobalt sample
+			local cf = CFrame.new(pos) * CFrame.Angles(0, 0, 0)
+			if firePlant(cf, blockType) then
+				planted += 1
+			end
+			task.wait(CONFIG.PlantDelay)
+		end
+	end
+	return planted
+end
+
+-- Hotbar layout remote (from Cobalt)
+-- Example: "woodPickaxe,,sapling,hoe,berryHarvested,ironOre,saplingOrange,yellowFlowerSeeds"
+local function setHotbarLayout(layoutString)
+	if not layoutRemote then
+		resolveRemotes()
+	end
+	if not layoutRemote then
+		return false
+	end
+	return pcall(function()
+		layoutRemote:InvokeServer({
+			TrNhTTgExIb1Bg = HARVEST_UUID,
+			TlSR8Mzd9FLwaZ = {
+				layout = layoutString,
+			},
+		})
+	end)
+end
+
+-- Put pickaxe in slot 1 so mining actually yields items
+local function ensurePickaxeLayout()
+	-- Prefer better pickaxes if the game has them
+	local layouts = {
+		"stonePickaxe,,,,,,,",
+		"ironPickaxe,,,,,,,",
+		"woodPickaxe,,,,,,,",
+	}
+	for _, layout in ipairs(layouts) do
+		if setHotbarLayout(layout) then
+			break
+		end
+	end
+end
+
+-- Equip any pickaxe from backpack/character
+local function equipPickaxe()
+	local function tryEquip(container)
+		if not container then
+			return false
+		end
+		for _, tool in ipairs(container:GetChildren()) do
+			if tool:IsA("Tool") and string.find(string.lower(tool.Name), "pickaxe") then
+				local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					humanoid:EquipTool(tool)
+					return true
+				end
+			end
+		end
+		return false
+	end
+	if tryEquip(player.Character) then
+		return true
+	end
+	return tryEquip(player:FindFirstChildOfClass("Backpack"))
+end
+
+-- Mining / resource name patterns (stone, iron, coal, ores, rocks, trees...)
+-- All of these use the BLOCK remote (OEzzgCCBzocxJw)
+local MINE_PATTERNS = {
+	-- ores & rocks (hub + island)
+	"rock", "Rock", "stone", "Stone", "ore", "Ore",
+	"iron", "Iron", "coal", "Coal", "gold", "Gold",
+	"copper", "Copper", "tin", "Tin", "silver", "Silver",
+	"crystal", "Crystal", "gem", "Gem", "mineral", "Mineral",
+	"rockStone", "rockIron", "rockCoal", "rockGold",
+	-- trees / wood
+	"tree", "Tree", "wood", "Wood", "log", "Log",
+	"oak", "Oak", "pine", "Pine", "birch", "Birch",
+	"treeOrange", "treeApple", "treePalm",
+}
+
+-- Crop / bush models use the MODEL remote (hFuV0Z1w601mXP)
+local MODEL_PATTERNS = {
+	"berry", "Berry", "berryBush", "bush", "Bush",
+	"wheat", "Wheat",
+	"crop", "Crop",
+	"flower", "Flower",
+	"carrot", "potato", "corn", "tomato",
+	"pumpkin", "melon", "cabbage", "lettuce",
+	"berryHarvested",
+}
+
+-- Never harvest/mine these
+local SKIP_PATTERNS = {
+	"sapling", "Sapling", "seedling", "Seedling",
+}
+
+local function matchesAny(name, patterns)
+	local lower = string.lower(name)
+	for _, p in ipairs(patterns) do
+		if string.find(lower, string.lower(p), 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function getPlayerIsland()
+	local islands = workspace:FindFirstChild("Islands")
+	if not islands then
+		return nil
+	end
+	-- Prefer the island closest to the player
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		local best, bestDist = nil, math.huge
+		for _, island in ipairs(islands:GetChildren()) do
+			if island:IsA("Model") or island:IsA("Folder") then
+				local blocks = island:FindFirstChild("Blocks")
+				if blocks then
+					for _, child in ipairs(blocks:GetChildren()) do
+						local pos
+						if child:IsA("BasePart") then
+							pos = child.Position
+						elseif child:IsA("Model") then
+							pos = child:GetPivot().Position
+						end
+						if pos then
+							local d = (pos - hrp.Position).Magnitude
+							if d < bestDist and d < 250 then
+								bestDist = d
+								best = island
+							end
+						end
+					end
+				end
+			end
+		end
+		if best then
+			return best
+		end
+	end
+	-- fallback
+	for _, island in ipairs(islands:GetChildren()) do
+		if string.find(island.Name, tostring(player.UserId), 1, true)
+			or string.find(string.lower(island.Name), "island", 1, true) then
+			return island
+		end
+	end
+	return islands:GetChildren()[1]
+end
+
+local function getPartPosition(obj)
+	if obj:IsA("BasePart") then
+		return obj.Position
+	elseif obj:IsA("Model") then
+		local ok, pivot = pcall(function()
+			return obj:GetPivot().Position
+		end)
+		if ok and pivot then
+			return pivot
+		end
+	end
+	local part = obj:FindFirstChildWhichIsA("BasePart", true)
+	if part then
+		return part.Position
+	end
+	return nil
+end
+
+local function getMineTargets()
+	local targets = {}
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		return targets
+	end
+	local myPos = hrp.Position
+	local range = CONFIG.MineRange
+
+	-- 1) PRIMARY: exact path from Cobalt
+	--    workspace.spawnPrefabs.regenBlocks.hubRocks.Blocks.rockStone
+	local function scanHubBlocks(blocksFolder)
+		if not blocksFolder then
+			return
+		end
+		for _, obj in ipairs(blocksFolder:GetChildren()) do
+			-- Mine EVERY child in hub rocks (rockStone, rockIron, rockCoal, etc.)
+			local pos = getPartPosition(obj)
+			if pos and (pos - myPos).Magnitude <= range then
+				table.insert(targets, { kind = "block", instance = obj, name = obj.Name })
+			elseif not pos then
+				-- no position found – still try (server may accept it)
+				table.insert(targets, { kind = "block", instance = obj, name = obj.Name })
+			end
+		end
+	end
+
+	local ok, hubBlocks = pcall(function()
+		return workspace.spawnPrefabs.regenBlocks.hubRocks.Blocks
+	end)
+	if ok and hubBlocks then
+		scanHubBlocks(hubBlocks)
+	end
+
+	-- Also scan any other areas under regenBlocks
+	local ok2, regen = pcall(function()
+		return workspace.spawnPrefabs.regenBlocks
+	end)
+	if ok2 and regen then
+		for _, area in ipairs(regen:GetChildren()) do
+			if area.Name ~= "hubRocks" then
+				local blocks = area:FindFirstChild("Blocks")
+				if blocks then
+					scanHubBlocks(blocks)
+				end
+			end
+		end
+	end
+
+	-- 2) ALL island Blocks + Prefabs (stone, trees, berryBush, wheat, crops)
+	local islands = workspace:FindFirstChild("Islands")
+	if islands then
+		for _, island in ipairs(islands:GetChildren()) do
+			local foldersToScan = {}
+			local blocksFolder = island:FindFirstChild("Blocks")
+			if blocksFolder then
+				table.insert(foldersToScan, blocksFolder)
+			end
+			local prefabs = island:FindFirstChild("Prefabs")
+			if prefabs then
+				table.insert(foldersToScan, prefabs)
+			end
+
+			for _, folder in ipairs(foldersToScan) do
+				for _, obj in ipairs(folder:GetChildren()) do
+					local name = obj.Name
+					-- Never touch saplings / seedlings
+					if matchesAny(name, SKIP_PATTERNS) then
+						continue
+					end
+					local pos = getPartPosition(obj)
+					-- crops get a slightly larger range
+					local maxDist = matchesAny(name, MODEL_PATTERNS) and (range + 40) or range
+					if pos and (pos - myPos).Magnitude <= maxDist then
+						if matchesAny(name, MODEL_PATTERNS) then
+							-- berryBush, wheat, crops → MODEL remote
+							table.insert(targets, { kind = "model", instance = obj, name = name })
+						elseif matchesAny(name, MINE_PATTERNS) then
+							-- stone, trees, ores → BLOCK remote
+							table.insert(targets, { kind = "block", instance = obj, name = name })
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return targets
+end
+
+local function fireBlockMine(block)
+	if not blockRemote then
+		return false
+	end
+	return pcall(function()
+		blockRemote:InvokeServer({
+			TrNhTTgExIb1Bg = HARVEST_UUID,
+			TlSR8Mzd9FLwaZ = {
+				block = block,
+			},
+		})
+	end)
+end
+
+local function fireModelHarvest(model)
+	if not modelRemote then
+		return false
+	end
+	return pcall(function()
+		modelRemote:InvokeServer({
+			TrNhTTgExIb1Bg = HARVEST_UUID,
+			TlSR8Mzd9FLwaZ = {
+				model = model,
+				player = player,
+			},
+		})
+	end)
+end
+
+local function harvestLoop(myCycle)
+	if not resolveRemotes() then
+		setStatus("Mine remotes not found – re-spy with Cobalt", COLORS.bad)
+		return
+	end
+
+	while harvestRunning(myCycle) do
+		local targets = getMineTargets()
+		if #targets == 0 then
+			-- Debug: check if path exists
+			local pathOk = pcall(function()
+				return workspace.spawnPrefabs.regenBlocks.hubRocks.Blocks
+			end)
+			if pathOk then
+				setStatus("Mine: hub found, no rocks in range", COLORS.warn)
+			else
+				setStatus("Mine: hub path missing – stand near rocks", COLORS.warn)
+			end
+			task.wait(CONFIG.MineScanInterval)
+		else
+			-- Sequential mining – one rock at a time so the server grants items
+			for _, t in ipairs(targets) do
+				if not harvestRunning(myCycle) then
+					break
+				end
+
+				-- Skip if already destroyed
+				if not t.instance or not t.instance.Parent then
+					continue
+				end
+
+				-- Remember position before harvest (for replant)
+				local harvestPos = getPartPosition(t.instance)
+
+				local ok
+				if t.kind == "block" then
+					ok = fireBlockMine(t.instance)
+				else
+					ok = fireModelHarvest(t.instance)
+				end
+
+				if ok then
+					-- Wait briefly and check if the target was removed
+					task.wait(0.08)
+					local destroyed = not t.instance.Parent
+					registerHarvest(t.name)
+					if t.kind == "model" then
+						setStatus("🌾 " .. t.name .. "  ×" .. stats.harvests, COLORS.good)
+						-- Replant at the same spot after harvesting crops
+						if CONFIG.PlantEnabled and harvestPos then
+							local plantType = "wheat"
+							local n = string.lower(t.name)
+							if string.find(n, "berry") then
+								plantType = "berryBush"
+							elseif string.find(n, "wheat") then
+								plantType = "wheat"
+							end
+							local cf = CFrame.new(harvestPos)
+							if firePlant(cf, plantType) then
+								setStatus("🌱 planted " .. plantType, COLORS.good)
+							end
+						end
+					elseif destroyed then
+						setStatus("⛏ " .. t.name .. "  ×" .. stats.harvests, COLORS.harvest)
+					else
+						setStatus("⛏ hitting " .. t.name, COLORS.muted)
+					end
+				end
+
+				task.wait(CONFIG.MineDelay)
+			end
+		end
+	end
+
+	if harvestCycleId == myCycle and not harvestEnabled then
+		if not enabled then
+			setStatus("Idle")
+		end
+	end
+end
+
+--------------------------------------------------------------------
+-- Main fishing loop
+--------------------------------------------------------------------
+local setEnabled -- forward declaration
+local setHarvestEnabled
+
+local function run(myCycle)
+	local failedCasts = 0
+
+	while running(myCycle) do
+		local bobber = getBobber()
+
+		if bobber then
+			failedCasts = 0
+			setStatus("Waiting for fish...")
+
+			local tugged = waitForTug(bobber, myCycle)
+			if not running(myCycle) then
+				break
+			end
+
+			if tugged and os.clock() - lastAction >= 1 then
+				lastAction = os.clock()
+				local reelTime = os.clock()
+
+				stats.bites += 1
+				updateBoard()
+
+				setStatus("Tug! Reeling in...", COLORS.gold)
+				clickOnce()
+				task.wait(1)
+
+				setStatus("Waiting for catch...")
+				local gone = waitUntil(myCycle, CONFIG.ReelTimeout, function()
+					return getBobber() == nil
+				end)
+
+				if not running(myCycle) then
+					break
+				end
+
+				if gone then
+					-- Give the item a brief moment to land in the Backpack
+					task.wait(0.3)
+					local fishName
+					if lastNewItem and lastNewItem.at >= reelTime then
+						fishName = lastNewItem.name
+					end
+					registerCatch(fishName)
+					setStatus("Caught " .. (fishName or "a fish") .. "! 🐟", COLORS.good)
+				else
+					registerMiss()
+					setStatus("Missed - bobber still out", COLORS.bad)
+					task.wait(1)
+				end
+			elseif not tugged then
+				setStatus("Bobber disappeared")
+				task.wait(0.5)
+			end
+		elseif not hasRodEquipped() then
+			setStatus("Equip your fishing rod", COLORS.warn)
+			task.wait(0.5)
+		else
+			if os.clock() - lastAction >= 1 then
+				lastAction = os.clock()
+				setStatus("Casting...")
+				if clickOnce() then
+					stats.casts += 1
+					updateBoard()
+				end
+			end
+
+			local found = waitUntil(myCycle, CONFIG.CastTimeout, function()
+				return getBobber() ~= nil
+			end)
+
+			if not running(myCycle) then
+				break
+			end
+
+			if not found then
+				failedCasts += 1
+				if failedCasts >= CONFIG.MaxFailedCasts then
+					setEnabled(false)
+					setStatus("Stopped: no bobber after " .. failedCasts .. " casts", COLORS.bad)
+					return
+				end
+				setStatus(
+					string.format("No bobber (%d/%d) - retrying", failedCasts, CONFIG.MaxFailedCasts),
+					COLORS.warn
+				)
+				task.wait(1)
+			end
+		end
+	end
+
+	if cycleId == myCycle and not enabled then
+		if not harvestEnabled then
+			setStatus("Idle")
+		end
+	end
+end
+
+--------------------------------------------------------------------
+-- Controls
+--------------------------------------------------------------------
+setEnabled = function(state)
+	if state == enabled then
+		return
+	end
+
+	enabled = state
+	cycleId += 1
+
+	if enabled then
+		if not stats.onSince then
+			stats.onSince = os.clock()
+		end
+		toggle.Text = "FISH ON  [" .. CONFIG.ToggleKey.Name .. "]"
+		toggle.BackgroundColor3 = COLORS.on
+		setStatus("Fishing started...")
+		task.spawn(run, cycleId)
+	else
+		toggle.Text = "FISH OFF  [" .. CONFIG.ToggleKey.Name .. "]"
+		toggle.BackgroundColor3 = COLORS.off
+		if not harvestEnabled and stats.onSince then
+			stats.activeTime += os.clock() - stats.onSince
+			stats.onSince = nil
+		end
+		if not harvestEnabled then
+			setStatus("Idle")
+		end
+	end
+
+	updateBoard()
+end
+
+setHarvestEnabled = function(state)
+	if state == harvestEnabled then
+		return
+	end
+
+	harvestEnabled = state
+	harvestCycleId += 1
+
+	if harvestEnabled then
+		if not stats.onSince then
+			stats.onSince = os.clock()
+		end
+		harvestToggle.Text = "MINE ON  [" .. CONFIG.HarvestKey.Name .. "]"
+		harvestToggle.BackgroundColor3 = COLORS.on
+		-- Ensure pickaxe is in hotbar + equipped so mining actually grants items
+		ensurePickaxeLayout()
+		equipPickaxe()
+		setStatus("Auto Mine started...")
+		task.spawn(harvestLoop, harvestCycleId)
+	else
+		harvestToggle.Text = "MINE OFF  [" .. CONFIG.HarvestKey.Name .. "]"
+		harvestToggle.BackgroundColor3 = COLORS.off
+		if not enabled and stats.onSince then
+			stats.activeTime += os.clock() - stats.onSince
+			stats.onSince = nil
+		end
+		if not enabled then
+			setStatus("Idle")
+		end
+	end
+
+	updateBoard()
+end
+
+track(toggle.Activated:Connect(function()
+	setEnabled(not enabled)
+end))
+
+track(harvestToggle.Activated:Connect(function()
+	setHarvestEnabled(not harvestEnabled)
+end))
+
+track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then
+		return
+	end
+	if input.KeyCode == CONFIG.ToggleKey then
+		setEnabled(not enabled)
+	elseif input.KeyCode == CONFIG.HarvestKey then
+		setHarvestEnabled(not harvestEnabled)
+	end
+end))
+
+local minimized = false
+track(minimize.Activated:Connect(function()
+	minimized = not minimized
+	minimize.Text = minimized and "+" or "–"
+	TweenService:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+		Size = UDim2.fromOffset(WIDTH, minimized and MINI_HEIGHT or FULL_HEIGHT),
+	}):Play()
+end))
+
+track(reset.Activated:Connect(function()
+	local wasOn = stats.onSince ~= nil
+	stats = newStats()
+	if wasOn then
+		stats.onSince = os.clock()
+	end
+	updateBoard()
+end))
+
+track(layoutBtn.Activated:Connect(function()
+	-- Full layout from your Cobalt capture
+	local ok = setHotbarLayout(
+		"woodPickaxe,,sapling,hoe,berryHarvested,ironOre,saplingOrange,yellowFlowerSeeds"
+	)
+	if ok then
+		equipPickaxe()
+		setStatus("Hotbar layout applied", COLORS.good)
+	else
+		setStatus("Layout remote failed – re-spy", COLORS.bad)
+	end
+end))
+
+track(plantBtn.Activated:Connect(function()
+	setStatus("🌱 Planting " .. CONFIG.PlantType .. "...", COLORS.good)
+	task.spawn(function()
+		local n = plantAroundPlayer(CONFIG.PlantType)
+		setStatus("🌱 Planted " .. n .. " × " .. CONFIG.PlantType, COLORS.good)
+	end)
+end))
+
+--------------------------------------------------------------------
+-- Live refresh + cleanup
+--------------------------------------------------------------------
+updateBoard()
+
+task.spawn(function()
+	while gui.Parent do
+		updateBoard()
+		task.wait(1)
+	end
+end)
+
+gui.Destroying:Connect(function()
+	enabled = false
+	harvestEnabled = false
+	cycleId += 1
+	harvestCycleId += 1
+	for _, conn in ipairs(connections) do
+		conn:Disconnect()
+	end
+	table.clear(connections)
+end)
