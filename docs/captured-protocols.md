@@ -36,3 +36,29 @@ responses, and the changed actions have not been live-tested here.
 The existing crop-model request no longer uses an old fixed ID either. It requires
 its own observed ID; this capture does not establish that request's body or a
 working crop harvest. No direct fishing request format appears in these files.
+
+
+## Confirmed crop harvest (subsequent Cobalt snippet)
+
+The user confirmed this RemoteFunction as the crop-harvest endpoint:
+`ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.mEn0GOcgVLtb4o.COtnYCOPUThadM`.
+It takes one table with the observed field names:
+
+```lua
+{
+    iXwUW9mXJ8AVnK = currentSessionRequestId,
+    a1tIHk1Kl9GiE5 = { model = actualCropInstance, player = currentPlayer },
+}
+```
+
+The recorder recognizes this endpoint and payload without converting it to the old
+field names. The model/player/session context is learned from a manual harvest in
+the running session. Only the target Instance is replaced on subsequent harvests;
+the pasted island name, GetChildren index, and request-ID value are not embedded.
+A learned, live remote is preferred over the prompt for matching target types.
+Learning continues after the capture log reaches its size limit, without adding
+more records; Stop still disables interception processing. The remote catalog now
+contains the original 129 references plus this confirmed endpoint (130 total).
+The tests verify the new envelope and preservation of player/context, original
+packet immutability, and learning while the log is full. Live execution remains
+unverified here.

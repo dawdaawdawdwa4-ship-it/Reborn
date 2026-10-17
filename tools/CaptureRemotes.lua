@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 4 and previous.Resume then
+if previous and previous.Version == 5 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 4, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 5, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -24,6 +24,7 @@ end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    COtnYCOPUThadM = true, -- Supplied crop-harvest capture (new network group).
 }
 local function wanted(remote)
     if typeof(remote) ~= "Instance" then return false end
@@ -187,7 +188,8 @@ end
 local function learnHarvest(remote, method, args)
     if args.n < 1 or type(args[1]) ~= "table" then return false end
     local packet = args[1]
-    local body = type(packet.TlSR8Mzd9FLwaZ) == "table" and packet.TlSR8Mzd9FLwaZ or packet
+    local body = type(packet.a1tIHk1Kl9GiE5) == "table" and packet.a1tIHk1Kl9GiE5
+        or (type(packet.TlSR8Mzd9FLwaZ) == "table" and packet.TlSR8Mzd9FLwaZ or packet)
     local target = body.model
     if typeof(target) ~= "Instance" or not (target:IsA("Model") or target:IsA("BasePart")) then return false end
     local name = string.lower(target.Name)
@@ -196,7 +198,7 @@ local function learnHarvest(remote, method, args)
         if string.find(name, word, 1, true) then crop = true; break end
     end
     if not crop then return false end
-    if not string.find(string.lower(remote.Name), "harvest", 1, true) and remote.Name ~= "hFuV0Z1w601mXP" then return false end
+    if not string.find(string.lower(remote.Name), "harvest", 1, true) and remote.Name ~= "hFuV0Z1w601mXP" and remote.Name ~= "COtnYCOPUThadM" then return false end
     capture.HarvestBinding = { Remote = remote, Method = method, Args = cloneArguments(args), Target = target }
     return true
 end
@@ -214,7 +216,8 @@ end
 local original
 local function intercept(remote, ...)
     local method = getnamecallmethod()
-    if capture.Active and (method == "InvokeServer" or method == "FireServer") then
+    if not capture.Stopped and (capture.Active or #capture.Records >= capture.MaxCalls)
+        and (method == "InvokeServer" or method == "FireServer") then
         local args = table.pack(...)
         -- Recorder failures must never cancel or replace the original game call.
         pcall(function()
@@ -229,6 +232,8 @@ local function intercept(remote, ...)
                 and type(args[1].TrNhTTgExIb1Bg) == "string" then
                 capture.RequestIds[remote.Name] = args[1].TrNhTTgExIb1Bg
             end
+            -- Keep learning live context after the log fills, without adding more records.
+            if not capture.Active then return end
             local budget = { count = 0, complete = true }
             local path, validPath = instancePath(remote)
             if not validPath then budget.complete = false end

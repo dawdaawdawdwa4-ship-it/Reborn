@@ -95,9 +95,25 @@ harvestRemote.InvokeServer=function() return false end
 assert(capture:Harvest(nextCrop)==false,'harvest rejection must remain failure')
 harvestRemote.Parent=nil
 assert(capture:Harvest(nextCrop)==false,'removed remote must not be used')
+local updatedRemote=remote('COtnYCOPUThadM')
+updatedRemote.Parent={_type='Instance',ClassName='Folder',Name='mEn0GOcgVLtb4o',Parent=game}
+local updatedArgs
+updatedRemote.InvokeServer=function(_,packet) updatedArgs=packet;return true end
+local updatedPacket={iXwUW9mXJ8AVnK='current-crop-session',a1tIHk1Kl9GiE5={model=crop,player='current-player'}}
+installedHook(updatedRemote,updatedPacket)
+assert(capture.HarvestBinding.Remote==updatedRemote,'new harvest route not recognized')
+assert(capture:Harvest(nextCrop),'new harvest payload not replayed')
+assert(updatedArgs.iXwUW9mXJ8AVnK=='current-crop-session' and updatedArgs.a1tIHk1Kl9GiE5.model==nextCrop,'new envelope fields or crop target lost')
+assert(updatedArgs.a1tIHk1Kl9GiE5.player=='current-player' and updatedPacket.a1tIHk1Kl9GiE5.model==crop,'player context changed or original packet mutated')
+assert(updatedArgs.TrNhTTgExIb1Bg==nil,'new request must not be rewritten to old field names')
 capture.MaxCalls=#capture.Records+1
 installedHook(target,{})
 assert(not capture.Active,'record limit failed')
+local fullCount=#capture.Records
+local laterPacket={iXwUW9mXJ8AVnK='new-live-id',a1tIHk1Kl9GiE5={model=crop,player='current-player'}}
+installedHook(updatedRemote,laterPacket)
+assert(#capture.Records==fullCount and capture:Harvest(nextCrop),'full log must not prevent harvest learning')
+assert(updatedArgs.iXwUW9mXJ8AVnK=='new-live-id','full log retained stale request context')
 local before=#capture.Records
 capture:Stop();installedHook(target,{})
 assert(#capture.Records==before,'stop must remain pass-through')

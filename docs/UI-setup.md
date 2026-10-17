@@ -49,7 +49,7 @@ Remote names alone do not specify argument formats. The subsequent call captures
 now document four legacy request formats (see `captured-protocols.md`): mining,
 placement, bait and hotbar. These use current-session IDs learned by the embedded
 recorder separately for each remote. There is no fallback to a fixed old ID.
-Crop-harvest and direct fishing remote argument captures remain missing. The
+Crop harvest is documented by the subsequent Cobalt snippet in `captured-protocols.md`; direct fishing remote argument captures remain missing. The
 existing fishing input workflow is separate from direct remote calls.
 
 ## Capture request arguments
@@ -92,7 +92,7 @@ session. Start Farming Hub (its embedded recorder starts automatically), mine on
 manually, then enable Mining in the hub.
 No observed mining ID means no automatic mining request is sent. IDs are held only
 in memory, per remote. Placement, bait and hotbar also use their own observed IDs;
-crop-harvest and direct fishing payloads still need their own manual captures.
+the confirmed crop-harvest route is learned from a manual crop action; direct fishing payloads still need a capture.
 This transport wiring is mock-tested; live mining is not verified here.
 
 If an external loader reports HTTP 404, load this repository's `message.txt` from
@@ -159,3 +159,10 @@ snapshots, game-module requests, seed mapping and inventory slot selection.
 Mocks verify logic and API wiring; actual Roblox rendering/input/server behavior
 remains unverified. Explicit readiness flags are used when available; unknown
 numeric growth stages are not treated as proof of maturity.
+
+
+The confirmed crop remote is now
+`mEn0GOcgVLtb4o.COtnYCOPUThadM`, using the newly observed `iXwUW9mXJ8AVnK`
+and `a1tIHk1Kl9GiE5` envelope. Reload the hub, harvest one crop manually with
+capture running, then enable Crop Farm. A learned compatible remote takes
+precedence over a prompt. No pasted session ID or child index is hard-coded.
