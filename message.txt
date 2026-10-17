@@ -1446,11 +1446,11 @@ local woodEnabled = false
 local mineEnabled = false
 local baitCycleId = 0
 local baitToggle = button({
-    Parent = fishingPage, Text = "AUTO BAIT OFF  [120s]", TextSize = 12, Bg = COLORS.off,
+    Parent = fishingPage, Text = "AUTO BAIT OFF  [60s]", TextSize = 12, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 90),
 })
 local baitInfo = label({
-    Parent = fishingPage, Text = "Starts with Fishing and applies bait immediately, then every 2 minutes. Retries if bait is unavailable.",
+    Parent = fishingPage, Text = "Starts with Fishing and applies bait immediately, then every 60 seconds. Retries if bait is unavailable.",
     Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 30),
     Position = UDim2.fromOffset(8, 128),
 })
@@ -1477,7 +1477,7 @@ local function setBaitEnabled(state)
     baitEnabled = state
     baitCycleId += 1
     local myCycle = baitCycleId
-    baitToggle.Text = baitEnabled and "AUTO BAIT ON  [120s]" or "AUTO BAIT OFF  [120s]"
+    baitToggle.Text = baitEnabled and "AUTO BAIT ON  [60s]" or "AUTO BAIT OFF  [60s]"
     baitToggle.BackgroundColor3 = baitEnabled and COLORS.on or COLORS.off
     if not baitEnabled then
         setStatus("Auto Bait stopped")
@@ -1487,8 +1487,8 @@ local function setBaitEnabled(state)
         while baitEnabled and baitCycleId == myCycle and gui.Parent do
             local applied = applyBait()
             if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
-            if applied then setStatus("Auto Bait applied; refresh in 120s", COLORS.good) end
-            local delay = applied and 120 or 5
+            if applied then setStatus("Auto Bait applied; refresh in 60s", COLORS.good) end
+            local delay = applied and 60 or 5
             for remaining = delay, 1, -1 do
                 if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
                 baitToggle.Text = string.format(applied and "AUTO BAIT ON  [%ds]" or "AUTO BAIT ON · RETRY  [%ds]", remaining)
