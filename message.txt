@@ -2500,6 +2500,7 @@ RemoteCatalog.AntiAFK=RemoteCatalog.AntiAFKClass.new(player,function() return ga
         RemoteCatalog.AntiAFKButton.BackgroundColor3=on and COLORS.on or COLORS.off
     end)
 track(RemoteCatalog.AntiAFKButton.Activated:Connect(function() RemoteCatalog.AntiAFK:SetEnabled(not RemoteCatalog.AntiAFK.Enabled) end))
+RemoteCatalog.AntiAFK:SetEnabled(true)
 -- ANTI AFK END
 
 pageHeading(settingsPage, "QUICK ACTIONS", 100)
