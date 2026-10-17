@@ -157,6 +157,7 @@ local RemoteCatalog = (function()
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.qn1PInnZJmfDd1", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.xC1fgcQXCzOPJ7.nrGQVrxpfb3dKr", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.Y6oBjV1u9qIAAS", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.fZy3jBDaMuAsal.Gu0tNi2YAOdeYv", Class = "RemoteFunction" },
     } }
     function catalog.FindPath(path, expectedClass)
         local ok, found = pcall(function()
@@ -335,7 +336,18 @@ local RemoteCatalog = (function()
             if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
             return true, result
         end
+        local recorder=catalog.LiveRecorder("HotbarBinding")
+        if recorder and recorder.Hotbar then return recorder:Hotbar(layout) end
         return catalog.InvokeCaptured("RZQQNNDRUvfj1N", {layout = layout})
+    end
+    function catalog.WoodHotbarLayout()
+        local recorder=catalog.LiveRecorder("HotbarBinding")
+        local layout=recorder and recorder.HotbarLayout
+        if type(layout)~="string" then return nil end
+        for slot in string.gmatch(layout,"[^,]+") do
+            local name=string.lower(slot)
+            if string.find(name,"axe",1,true) and not string.find(name,"pickaxe",1,true) then return layout end
+        end
     end
     function catalog.OwnedTools()
         local tools, seen = {}, {}
@@ -420,13 +432,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 11 and previous.Resume then
+if previous and previous.Version == 12 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 11, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 12, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -437,12 +449,15 @@ if previous then
     capture.MineHitBinding = previous.MineHitBinding
     capture.AutoReplantBinding = previous.AutoReplantBinding
     capture.FruitBinding = previous.FruitBinding
+    capture.HotbarBinding = previous.HotbarBinding
+    capture.HotbarLayout = previous.HotbarLayout
     capture.AutoReplantState = previous.AutoReplantState
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    Gu0tNi2YAOdeYv = true, -- Updated hotbar-layout capture.
     Y6oBjV1u9qIAAS = true, -- Fruit-picking capture.
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
     qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
@@ -609,6 +624,32 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
 end
+local function learnHotbar(remote,method,args)
+    if method~="InvokeServer" or type(args[1])~="table" then return false end
+    if remote.Name~="Gu0tNi2YAOdeYv" and remote.Name~="RZQQNNDRUvfj1N" and not string.find(string.lower(remote.Name),"hotbar_layout",1,true) then return false end
+    local packet=args[1]
+    local key=type(packet.P1ZFEJgXWM4k62)=="table" and "P1ZFEJgXWM4k62"
+        or (type(packet.wGquKmyB3mV2Cf)=="table" and "wGquKmyB3mV2Cf"
+        or (type(packet.TlSR8Mzd9FLwaZ)=="table" and "TlSR8Mzd9FLwaZ" or nil))
+    local body=key and packet[key] or packet
+    if type(body.layout)~="string" then return false end
+    capture.HotbarBinding={Remote=remote,Method=method,Args=cloneArguments(args),BodyKey=key}
+    capture.HotbarLayout=body.layout
+    return true
+end
+function capture:Hotbar(layout)
+    local binding=self.HotbarBinding
+    if not binding or not binding.Remote.Parent or type(layout)~="string" then return false,"Change hotbar manually once with capture active" end
+    local ok,result=pcall(function()
+        local args=cloneArguments(binding.Args)
+        local body=binding.BodyKey and args[1][binding.BodyKey] or args[1]
+        body.layout=layout
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    self.HotbarLayout=layout
+    return true,result
+end
 local function learnFruit(remote, method, args)
     if remote.Name~="Y6oBjV1u9qIAAS" or method~="InvokeServer" or type(args[1])~="table" then return false end
     local body=args[1].wGquKmyB3mV2Cf
@@ -763,7 +804,7 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnFruit(remote, method, args) or learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args) or learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -2197,6 +2238,7 @@ function RemoteCatalog.UpdateCaptureUI()
     if recorder.MineHitBinding then table.insert(learned, "mining hit") end
     if recorder.AutoReplantBinding then table.insert(learned, "game AutoReplant") end
     if recorder.FruitBinding then table.insert(learned, "fruit picking") end
+    if recorder.HotbarBinding then table.insert(learned, "hotbar (current remote)") end
     local mining = #learned > 0 and ("Ready: " .. table.concat(learned, ", ")) or "Perform actions manually once to learn their request IDs"
     RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CopyNotice or string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
     RemoteCatalog.CaptureToggle.Text = recorder.Active and "Pause capture (F8)" or "Resume capture (F8)"
@@ -3245,7 +3287,18 @@ local function setFarmMode(mode, state)
         if not stats.onSince then stats.onSince = os.clock() end
         setStatus(mode == "crop" and "Crop farming started" or mode == "wood" and "Wood farming started" or "Mining started", COLORS.good)
         task.spawn(function(token)
-            local ok, failure = pcall(harvestLoop, token)
+            local ok, failure = pcall(function()
+                if mode=="wood" and state and woodEnabled and token==harvestCycleId then
+                    local layout=RemoteCatalog.WoodHotbarLayout()
+                    if layout then
+                        local applied,reason=RemoteCatalog.CallHotbar(layout)
+                        if token~=harvestCycleId or not gui.Parent then return end
+                        woodStatus.Text=applied and "Wood hotbar ready. Equipping the selected axe for tree hits."
+                            or "Hotbar update failed: "..tostring(reason)..". Using owned axe directly."
+                    end
+                end
+                if token==harvestCycleId and gui.Parent then harvestLoop(token) end
+            end)
             if not ok and token == harvestCycleId then
                 harvestEnabled, woodEnabled, mineEnabled = false, false, false
                 refreshFarmButtons()
@@ -3435,12 +3488,10 @@ track(reset.Activated:Connect(function()
 end))
 
 track(layoutBtn.Activated:Connect(function()
-	-- Full layout from your Cobalt capture
-	local ok = setHotbarLayout(
-		"stonePickaxe,stoneAxe,fishingRod,coal,stone,fertilizerBasic,bait,sapling"
-	)
+    local recorder=RemoteCatalog.LiveRecorder("HotbarBinding")
+    local layout=recorder and recorder.HotbarLayout or "stonePickaxe,stoneAxe,fishingRod,coal,stone,fertilizerBasic,bait,sapling"
+    local ok = setHotbarLayout(layout)
 	if ok then
-		equipPickaxe()
 		setStatus("Hotbar layout request sent", COLORS.good)
 	else
 		setStatus("Change hotbar manually once with capture active, then retry", COLORS.bad)

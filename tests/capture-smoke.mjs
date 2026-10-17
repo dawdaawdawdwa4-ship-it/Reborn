@@ -113,6 +113,17 @@ assert(updatedArgs.E6N43ldyV5t9lg=='rotated-crop-context','crop context must be 
 updatedRemote.InvokeServer=function() return {success=false} end
 assert(not capture:Harvest(nextCrop),'structured crop rejection must remain failure')
 updatedRemote.InvokeServer=function(_,packet) updatedArgs=packet;return true end
+local hotbarRemote=remote('Gu0tNi2YAOdeYv')
+local hotbarPacket={fno9F0nWmx8xVf='new-hotbar-session',P1ZFEJgXWM4k62={layout='woodAxe,wood,sapling,,,,,'}}
+local hotbarArgs
+hotbarRemote.InvokeServer=function(_,packet) hotbarArgs=packet;return true end
+installedHook(hotbarRemote,hotbarPacket)
+assert(capture.HotbarBinding and capture.HotbarLayout=='woodAxe,wood,sapling,,,,,','starter hotbar must be learned exactly, including empty slots')
+assert(capture:Hotbar('woodenAxe,wood,sapling,,,,,'),'hotbar replay failed')
+assert(hotbarArgs.fno9F0nWmx8xVf=='new-hotbar-session' and hotbarArgs.P1ZFEJgXWM4k62.layout=='woodenAxe,wood,sapling,,,,,','new hotbar context or layout lost')
+assert(hotbarArgs.E6N43ldyV5t9lg==nil and hotbarPacket.P1ZFEJgXWM4k62.layout=='woodAxe,wood,sapling,,,,,','hotbar envelope rewritten or source packet changed')
+hotbarRemote.InvokeServer=function() return {success=false} end
+assert(not capture:Hotbar('stoneAxe,,,,,,,'),'hotbar rejection must remain failure')
 local fruitRemote=remote('Y6oBjV1u9qIAAS')
 local fruitPlayer={_type='Instance',Name='Player',Parent=game}
 local fruitTree={_type='Instance',Name='treeOrange',Parent=game}

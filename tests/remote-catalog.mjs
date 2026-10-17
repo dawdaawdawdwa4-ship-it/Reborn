@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==135)
+assert(#RemoteCatalog.Entries==136)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -152,6 +152,16 @@ context.RebornCapture={AutoReplantBinding={Remote={Parent=true}},SetAutoReplant=
 assert(RemoteCatalog.SetAutoReplant(true) and RemoteCatalog.ServerAutoReplant==true,'game setting must mark server replant only on acceptance')
 assert(not RemoteCatalog.SetAutoReplant(false) and RemoteCatalog.ServerAutoReplant==true,'rejected setting must preserve previous server state')
 RemoteCatalog.ServerAutoReplant=nil;context.RebornCapture=savedContext
+local hotbarContext=context.RebornCapture
+local updatedHotbarCalls=0
+context.RebornCapture={HotbarBinding={Remote={Parent=true}},HotbarLayout='woodAxe,wood,sapling,,,,,',Hotbar=function(_,layout)
+ updatedHotbarCalls+=1;assert(layout=='woodAxe,wood,sapling,,,,,');return true
+end}
+assert(RemoteCatalog.WoodHotbarLayout()=='woodAxe,wood,sapling,,,,,','wood layout should preserve starter slots')
+assert(RemoteCatalog.CallHotbar(RemoteCatalog.WoodHotbarLayout()) and updatedHotbarCalls==1,'wood layout must route through new hotbar binding')
+context.RebornCapture.HotbarLayout='woodPickaxe,,,,,,,'
+assert(RemoteCatalog.WoodHotbarLayout()==nil,'mining-only layout must not be applied to wood cutting')
+context.RebornCapture=hotbarContext
 local requestModule=node('requests','ModuleScript')
 local toolModule=node('tool-meta','ModuleScript')
 local inventoryDataModule=node('inventory-service','ModuleScript')
@@ -229,7 +239,7 @@ response=true
 assert(RemoteCatalog.CallHarvest(cropTarget) and requestedName=='CLIENT_HARVEST_CROP_REQUEST','native game require fallback must restore harvest endpoint')
 assert(RemoteCatalog.CallMine(actualBlock) and requestedName=='BLOCK_HIT_REQUEST','native game require fallback must restore wood/mining endpoint')
 require=gameRequire;getrenv=nil
-return '135 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '136 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}
