@@ -17,7 +17,8 @@ local hookCount, connectionCount=0,0
 local game={_type='Instance'}
 local keyListener
 local disconnected=false
-local gamePlayer
+local basePlayer={UserId=7,Character={}}
+local gamePlayer=basePlayer
 function game:GetService(name)
  if name=="Players" then return {LocalPlayer=gamePlayer} end
  return {InputBegan={Connect=function(_,fn)
@@ -188,7 +189,7 @@ local rock={_type='Instance',Name='rockCoal',Parent=game,IsA=tree.IsA}
 local futureMine=remote('futureMiningName');futureMine.Parent=futureAxe.Parent
 installedHook(futureMine,{newContext='mining-context',newBody={block=rock}})
 assert(capture.MineHitBinding.Remote==futureMine and capture.WoodHitBinding.Remote==futureAxe,'mineral/pickaxe learning must stay separate from wood')
-gamePlayer=nil
+gamePlayer=basePlayer
 local settingRemote=remote('nrGQVrxpfb3dKr')
 local settingArgs
 settingRemote.InvokeServer=function(_,packet) settingArgs=packet;return true end
@@ -285,6 +286,18 @@ assert(capture.LearnBaitOnly and not capture.BaitBinding and #capture.Records==q
 installedHook(rotatedBait,{o2PTfAjMDqKi5j='quiet-live-context',YcuvKDybdDE9ik={tool=baitTool}})
 assert(capture.Stopped and not capture.LearnBaitOnly and #capture.Records==quietBaitCount,'automatic bait learner must stop after acquiring one template')
 assert(capture:Bait(nextBait) and rotatedArgs.o2PTfAjMDqKi5j=='quiet-live-context','quiet learned binding must remain usable after capture stops')
+local sentBefore=#calls
+local originalCharacter=gamePlayer.Character
+local originalUserId=gamePlayer.UserId
+assert(capture:CanUseBaitBinding(),'same account/character binding must remain usable')
+gamePlayer.UserId=99
+assert(not capture:CanUseBaitBinding() and not capture:Bait(nextBait) and #calls==sentBefore,'another account must not send a captured bait request')
+gamePlayer.UserId=originalUserId;gamePlayer.Character={}
+assert(not capture:CanUseBaitBinding() and not capture:Bait(nextBait),'respawn must invalidate the old bait character binding')
+gamePlayer.Character=originalCharacter
+game.JobId='different-server'
+assert(not capture:CanUseBaitBinding(),'another server must invalidate bait context')
+game.JobId=nil;assert(capture:CanUseBaitBinding(),'restoring exact live context must restore binding validity')
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
 const state=await LuauState.createAsync();

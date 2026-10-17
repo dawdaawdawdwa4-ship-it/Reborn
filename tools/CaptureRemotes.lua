@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 18 and previous.Resume then
+if previous and previous.Version == 19 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 18, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 19, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -358,12 +358,22 @@ local function learnBait(remote, method, args)
     end
     local tool = body.tool
     if typeof(tool) ~= "Instance" or not tool:IsA("Tool") or string.lower(tool.Name) ~= "bait" then return false end
-    capture.BaitBinding = {Remote=remote,Method=method,Args=cloneArguments(args),Target=tool}
+    local owner=game:GetService("Players").LocalPlayer
+    if not owner or not owner.Character then return false end
+    capture.BaitBinding = {Remote=remote,Method=method,Args=cloneArguments(args),Target=tool,
+        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId}
     return true
+end
+function capture:CanUseBaitBinding()
+    local binding=self.BaitBinding
+    local owner=game:GetService("Players").LocalPlayer
+    return binding~=nil and binding.Remote~=nil and binding.Remote.Parent~=nil and owner~=nil
+        and binding.OwnerCharacter==owner.Character and owner.Character~=nil
+        and binding.OwnerUserId==owner.UserId and binding.JobId==game.JobId
 end
 function capture:Bait(tool)
     local binding = self.BaitBinding
-    if not binding or not binding.Remote.Parent then return false, "Use bait manually once with capture active" end
+    if not self:CanUseBaitBinding() then return false, "Use bait once on this account and character to learn its current request" end
     if typeof(tool) ~= "Instance" or not tool:IsA("Tool") or string.lower(tool.Name) ~= "bait" then return false, "Bait tool unavailable" end
     local ok, result = pcall(function()
         local args = cloneArguments(binding.Args, binding.Target, tool)

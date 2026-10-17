@@ -42,6 +42,10 @@ bait.GetAttributes=function() return {} end
 assert(not RemoteCatalog.WithBaitTool(bait,function() return true end),'unknown quantity must not be reported as confirmed')
 bait.GetAttributes=oldAttributes
 assert(RemoteCatalog.BaitCount(bait)==quantity,'quantity must be read from live attributes')
+bait.GetAttributes=function() return {Amount='51',Count=1} end
+assert(RemoteCatalog.BaitCount(bait)==51,'numeric string Amount must take precedence over generic Count')
+bait.GetAttributes=oldAttributes
+
 RemoteCatalog.BobberActive=function() return true end
 assert(not RemoteCatalog.WithBaitTool(bait,function() error('must not run during a cast') end) and current==rod,'bait must wait for current bobber')
 RemoteCatalog.BobberActive=nil
