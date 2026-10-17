@@ -1853,6 +1853,7 @@ end
 local baitBusy, fishingInputBusy = false, false
 local baitEnabled = false
 local enabled = false
+local setEnabled -- used by confirmed bait startup
 local harvestEnabled = false -- crop farm
 local woodEnabled = false
 local mineEnabled = false
@@ -1862,7 +1863,7 @@ local baitToggle = button({
     Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 90),
 })
 local baitInfo = label({
-    Parent = fishingPage, Text = "Enable manually to apply bait, then refresh every 60 seconds. Retries if bait is unavailable.",
+    Parent = fishingPage, Text = "Enable to apply bait. Confirmed consumption starts Fishing once; refreshes every 60s.",
     Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 30),
     Position = UDim2.fromOffset(8, 128),
 })
@@ -1990,6 +1991,7 @@ end
 local function setBaitEnabled(state)
     if baitEnabled == state then return end
     RemoteCatalog.BaitPending=state
+    RemoteCatalog.StartFishingOnBait=state
     baitEnabled = state
     baitCycleId += 1
     local myCycle = baitCycleId
@@ -2012,6 +2014,10 @@ local function setBaitEnabled(state)
                 baitToggle.Text="AUTO BAIT ON · QUEUED"
                 task.wait(.1)
                 continue
+            end
+            if applied and detail=="bait consumption confirmed" and RemoteCatalog.StartFishingOnBait then
+                RemoteCatalog.StartFishingOnBait=false
+                if not enabled then setEnabled(true) end
             end
             if applied then setStatus(detail == "tool activation attempted" and "Bait tool activated; next attempt in 60s" or "Auto Bait applied; refresh in 60s", COLORS.good) end
             baitToggle.BackgroundColor3 = applied and COLORS.on or COLORS.off
@@ -3522,7 +3528,6 @@ end
 --------------------------------------------------------------------
 -- Main fishing loop
 --------------------------------------------------------------------
-local setEnabled -- forward declaration
 local setHarvestEnabled
 
 local function run(myCycle)
@@ -3628,6 +3633,7 @@ end
 -- Controls
 --------------------------------------------------------------------
 setEnabled = function(state)
+    RemoteCatalog.StartFishingOnBait=false
 	if state == enabled then
 		return
 	end

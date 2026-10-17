@@ -104,6 +104,14 @@ assert(baitEnabled and baitApplications==beforeManualBait+1,'manual bait must ap
 setEnabled(true);setEnabled(false)
 assert(baitEnabled and baitApplications==beforeManualBait+1,'Fishing must preserve manually enabled bait')
 setBaitEnabled(false);stepWorkers()
+applyBait=function() return false,'bait tool not found' end
+setBaitEnabled(true);assert(not enabled,'missing bait must not start Fishing');setBaitEnabled(false);stepWorkers()
+applyBait=function() return true,'bait consumption confirmed' end
+setBaitEnabled(true)
+assert(enabled and baitEnabled and not RemoteCatalog.StartFishingOnBait,'confirmed bait must start Fishing once and clear the startup request')
+setEnabled(false)
+assert(not enabled and not RemoteCatalog.StartFishingOnBait,'manual Fishing OFF must cancel automatic startup')
+setBaitEnabled(false);stepWorkers()
 assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled and not baitEnabled)
 assert(not string.find(status.Text,'stopped:',1,true),'worker error during actual startup/switch test: '..status.Text)
 gui:Destroy();stepWorkers()
