@@ -212,6 +212,8 @@ for _,name in ipairs({'woodAxe','woodenAxe'}) do
  RemoteCatalog.OwnedTools=function() return {starterAxe} end
  woodToolPreference='Wooden axe'
  assert(equipBestResourceTool('wood') and woodToolPreference=='Wooden axe','Wooden axe selection must match both starter naming variants')
+ mineToolPreference='Wooden axe'
+ assert(equipBestResourceTool('mine') and mineToolPreference=='Wooden axe','Mining must honor explicitly selected axes')
 end
 RemoteCatalog.OwnedTools=allOwned
 assert(RemoteCatalog.PlacementAvailable(),'game request module should permit placement without recorder ID')

@@ -64,6 +64,16 @@ fruitToggle.Activated:Fire()
 assert(CONFIG.FruitEnabled and harvestEnabled,'fruit toggle must start the shared harvest worker')
 fruitToggle.Activated:Fire();setHarvestEnabled(false);stepWorkers()
 assert(not CONFIG.FruitEnabled and not harvestEnabled,'fruit picking must be independently disabled')
+cropSelect.Activated:Fire();cropButtons[2].Activated:Fire()
+assert(CONFIG.HarvestCrops.wheat and CONFIG.HarvestCrops.carrot and cropDropdown.Visible,'multi-select must keep existing crops and leave menu open')
+cropButtons[1].Activated:Fire();assert(not CONFIG.HarvestCrops.wheat and CONFIG.HarvestCrops.carrot,'selected crops can be removed')
+cropButtons[2].Activated:Fire();assert(CONFIG.HarvestCrops.carrot,'last selection must not be removed')
+cropButtons[1].Activated:Fire();cropButtons[2].Activated:Fire();cropSelect.Activated:Fire()
+assert(CONFIG.HarvestCrops.wheat and not CONFIG.HarvestCrops.carrot and not cropDropdown.Visible,'menu must close without losing chosen crops')
+woodToggle.Activated:Fire();harvestToggle.Activated:Fire()
+assert(harvestEnabled and not woodEnabled and not mineEnabled,'Harvest must switch off wood/mining')
+mineToggle.Activated:Fire();assert(mineEnabled and not harvestEnabled and not woodEnabled,'Mining must select only its worker mode')
+mineToggle.Activated:Fire();stepWorkers()
 local baitApplications=0
 applyBait=function() baitApplications+=1;return true end
 for _,button in ipairs({toggle,harvestToggle,woodToggle,mineToggle,baitToggle}) do

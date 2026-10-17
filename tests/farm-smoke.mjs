@@ -54,6 +54,14 @@ FarmState.Cooldowns[wheat]=nil
 woodEnabled=false;mineEnabled=false
 assert(#getMineTargets()==1 and getMineTargets()[1].instance==wheat,'mode isolation failed')
 assert(targets[5].instance==publicTree,'public resource tree not discovered')
+CONFIG.HarvestCrops=FarmLogic.NormalizeCrops({wheat=true,carrot=true,invalid=true},'wheat')
+woodEnabled=false;mineEnabled=false
+assert(FarmLogic.CropsMatch('carrot',CONFIG.HarvestCrops,'wheat') and not FarmLogic.CropsMatch('potato',CONFIG.HarvestCrops,'wheat'),'multi-crop matching must include all and only selected crops')
+assert(#getMineTargets()==2,'multi-crop scan must find ready wheat and carrot on owned island')
+assert(FarmLogic.ReplantType('carrot',CONFIG.HarvestCrops,'wheat')=='carrot','carrots must not be replanted as wheat')
+assert(FarmLogic.NormalizeCrops({},'berryBush').berryBush,'legacy crop preference must migrate')
+CONFIG.HarvestCrops=nil
+
 woodEnabled=false;mineEnabled=true;harvestEnabled=false
 local nearOre=node('rockIron','Model',nil,vec(2,0,0))
 nearOre.GetBoundingBox=function() return {Position=vec(2,0,0)},vec(3,3,3) end

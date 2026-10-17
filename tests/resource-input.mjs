@@ -25,6 +25,7 @@ local RemoteCatalog={GameModule=function() return nil end}
 local RaycastParams={new=function() return {} end}
 local Enum={RaycastFilterType={Exclude=1},KeyCode={F="F"}}
 local focused
+local mineToolPreference="Auto best pickaxe"
 local UserInputService={GetFocusedTextBox=function() return focused end}
 local game={}
 local events={}
@@ -63,6 +64,18 @@ assert(RemoteCatalog.InputHarvest(target),'harvest must work through the visible
 assert(table.concat(events,',')=='move,F-down,F-up','crop interaction must aim then press and release F')
 reset();stopAt=2;assert(not RemoteCatalog.InputHarvest(target) and events[#events]=='F-up','Stop during crop interaction must release F')
 reset();focused={};assert(not RemoteCatalog.InputHarvest(target) and #events==0,'must never type F into chat');focused=nil
+reset();target.Name='stone';tool={Name='woodAxe',Parent=char};mineEnabled=true;woodEnabled=false;harvestEnabled=false
+mineToolPreference='Wooden axe';assert(resourceInputHit(target),'explicit axe choice must be available in Mining input')
+reset();mineToolPreference='Auto best pickaxe';assert(not resourceInputHit(target) and #events==0,'default mining must still require a pickaxe')
+local blocker={IsDescendantOf=function() return false end}
+local treeModel={Name='tree',Parent=true,Position=vec(5),IsA=function() return false end}
+local trunkPart={Position=vec(5),IsA=function(_,c) return c=='BasePart' end,GetClosestPointOnSurface=function() return vec(3) end,IsDescendantOf=function(_,model) return model==treeModel end}
+function treeModel:GetDescendants() return {trunkPart} end
+target=treeModel;woodEnabled=true;mineEnabled=false
+workspace.Raycast=function(_,origin,direction) return {Instance=direction.n<4 and blocker or trunkPart} end
+reset();assert(resourceInputHit(target) and table.concat(events,',')=='move,down,up','blocked nearest surface must fall back to a visible point on the same tree')
+workspace.Raycast=function() return {Instance=blocker} end
+reset();assert(not resourceInputHit(target) and #events==0,'fully obstructed tree must never be clicked')
 return 'Resource input: mining/wood, aim, reach, visibility, obstruction, UI protection, matching tools, Stop and error release passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(test,'resource-input',true)());}finally{state.destroy();}

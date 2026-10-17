@@ -34,6 +34,38 @@ function FarmLogic.CropMatches(name, selected)
     if wanted == "berrybush" then wanted = "berry" end
     return FarmLogic.Category(name) == "crop" and string.find(string.lower(name), wanted, 1, true) ~= nil
 end
+FarmLogic.CropOptions={"wheat","carrot","potato","corn","tomato","pumpkin","melon","cabbage","lettuce","berryBush"}
+function FarmLogic.NormalizeCrops(selection, fallback)
+    local chosen={}
+    if type(selection)=="table" then
+        for key,value in pairs(selection) do
+            local name=type(key)=="number" and value or value==true and key
+            if type(name)=="string" and table.find(FarmLogic.CropOptions,name) then chosen[name]=true end
+        end
+    end
+    if not next(chosen) then chosen[table.find(FarmLogic.CropOptions,fallback) and fallback or "wheat"]=true end
+    return chosen
+end
+function FarmLogic.SelectedCrops(selection,fallback)
+    local names={}
+    for _,name in ipairs(FarmLogic.CropOptions) do
+        if type(selection)=="table" and selection[name] then table.insert(names,name) end
+    end
+    if #names==0 then table.insert(names,fallback or "wheat") end
+    return names
+end
+function FarmLogic.CropsMatch(name,selection,fallback)
+    for _,crop in ipairs(FarmLogic.SelectedCrops(selection,fallback)) do
+        if FarmLogic.CropMatches(name,crop) then return true end
+    end
+    return false
+end
+function FarmLogic.ReplantType(name,selection,fallback)
+    for _,crop in ipairs(FarmLogic.SelectedCrops(selection,fallback)) do
+        if FarmLogic.CropMatches(name,crop) then return crop end
+    end
+    return fallback
+end
 function FarmLogic.Range(category, config)
     if category == "wood" then return config.WoodRange end
     if category == "crop" then return config.CropRange end

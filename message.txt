@@ -903,6 +903,38 @@ function FarmLogic.CropMatches(name, selected)
     if wanted == "berrybush" then wanted = "berry" end
     return FarmLogic.Category(name) == "crop" and string.find(string.lower(name), wanted, 1, true) ~= nil
 end
+FarmLogic.CropOptions={"wheat","carrot","potato","corn","tomato","pumpkin","melon","cabbage","lettuce","berryBush"}
+function FarmLogic.NormalizeCrops(selection, fallback)
+    local chosen={}
+    if type(selection)=="table" then
+        for key,value in pairs(selection) do
+            local name=type(key)=="number" and value or value==true and key
+            if type(name)=="string" and table.find(FarmLogic.CropOptions,name) then chosen[name]=true end
+        end
+    end
+    if not next(chosen) then chosen[table.find(FarmLogic.CropOptions,fallback) and fallback or "wheat"]=true end
+    return chosen
+end
+function FarmLogic.SelectedCrops(selection,fallback)
+    local names={}
+    for _,name in ipairs(FarmLogic.CropOptions) do
+        if type(selection)=="table" and selection[name] then table.insert(names,name) end
+    end
+    if #names==0 then table.insert(names,fallback or "wheat") end
+    return names
+end
+function FarmLogic.CropsMatch(name,selection,fallback)
+    for _,crop in ipairs(FarmLogic.SelectedCrops(selection,fallback)) do
+        if FarmLogic.CropMatches(name,crop) then return true end
+    end
+    return false
+end
+function FarmLogic.ReplantType(name,selection,fallback)
+    for _,crop in ipairs(FarmLogic.SelectedCrops(selection,fallback)) do
+        if FarmLogic.CropMatches(name,crop) then return crop end
+    end
+    return fallback
+end
 function FarmLogic.Range(category, config)
     if category == "wood" then return config.WoodRange end
     if category == "crop" then return config.CropRange end
@@ -1272,7 +1304,7 @@ local mineToolPreference = "Auto best pickaxe"
 local function savePreferences()
     if type(writefile) ~= "function" then return false end
     local data = {
-        HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
+        HarvestCrops = CONFIG.HarvestCrops, HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
         FruitEnabled = CONFIG.FruitEnabled, AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
         WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
@@ -1289,6 +1321,7 @@ local function loadPreferences()
     end)
     if not ok or type(data) ~= "table" then return false end
     if type(data.HarvestCrop) == "string" then CONFIG.HarvestCrop = data.HarvestCrop end
+    if type(data.HarvestCrops) == "table" then CONFIG.HarvestCrops = data.HarvestCrops end
     if type(data.PlantType) == "string" then CONFIG.PlantType = data.PlantType end
     if type(data.AutoReplant) == "boolean" then CONFIG.AutoReplant = data.AutoReplant end
     if type(data.FruitEnabled) == "boolean" then CONFIG.FruitEnabled = data.FruitEnabled end
@@ -1299,10 +1332,11 @@ local function loadPreferences()
     if type(data.MineScanInterval) == "number" then CONFIG.MineScanInterval = math.clamp(data.MineScanInterval, 0.15, 2) end
     if type(data.PlantDelay) == "number" then CONFIG.PlantDelay = math.clamp(data.PlantDelay, 0.08, 1) end
     if type(data.WoodToolPreference) == "string" then woodToolPreference = data.WoodToolPreference == "Wood axe" and "Wooden axe" or data.WoodToolPreference end
-    if type(data.MineToolPreference) == "string" then mineToolPreference = data.MineToolPreference end
+    if type(data.MineToolPreference) == "string" then mineToolPreference = data.MineToolPreference == "Wood pickaxe" and "Wooden pickaxe" or data.MineToolPreference end
     return true
 end
 local preferencesLoaded = loadPreferences()
+CONFIG.HarvestCrops = FarmLogic.NormalizeCrops(CONFIG.HarvestCrops, CONFIG.HarvestCrop)
 
 -- Remove previous GUI (this also stops the previous script's loops)
 local old = playerGui:FindFirstChild("AutoFishingGUI")
@@ -1521,7 +1555,7 @@ local function showTab(name)
         if child.Name == "AxeDropdown" then child.Visible = false end
     end
     for _, child in ipairs(minePage:GetChildren()) do
-        if child.Name == "PickaxeDropdown" then child.Visible = false end
+        if child.Name == "PickaxeDropdown" or child.Name == "ToolDropdown" then child.Visible = false end
     end
     hub:SelectTab(airflowTabs[name])
 end
@@ -1870,13 +1904,13 @@ local harvestToggle = button({
 })
 local harvestInfo = label({
     Parent = harvestPage,
-    Text = "Harvest the selected ready crop using the game API, learned request or harvest prompt. Replant only after removal.",
+    Text = "Harvest your selected ready crops. Starting Harvest switches off Wood Farm and Mining.",
     Color = COLORS.muted, TextSize = 11,
     Size = UDim2.new(1, -16, 0, 42), Position = UDim2.fromOffset(8, 50),
 })
 harvestInfo.TextWrapped = true
-pageHeading(harvestPage, "SELECT CROP TO HARVEST", 98)
-local cropOptions = {"wheat", "carrot", "potato", "corn", "tomato", "pumpkin", "melon", "cabbage", "lettuce", "berryBush"}
+pageHeading(harvestPage, "SELECT CROPS TO HARVEST", 98)
+local cropOptions = FarmLogic.CropOptions
 local cropIndex = 1
 for i, name in ipairs(cropOptions) do
     if name == CONFIG.HarvestCrop then cropIndex = i; break end
@@ -1921,9 +1955,20 @@ cropScroll.Parent = cropDropdown
 cropList.Parent = cropScroll
 for _, option in ipairs(cropButtons) do option.Parent = cropScroll end
 cropDropdownOpen = false
+local function refreshCropSelectionUI()
+    local selected=FarmLogic.SelectedCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)
+    local summary=#selected<=2 and table.concat(selected,", ") or tostring(#selected).." selected"
+    cropSelect.Text=(#selected==1 and "Crop: " or "Crops: ")..summary..(cropDropdownOpen and "  ▲" or "  ▼")
+    for i,option in ipairs(cropButtons) do
+        local chosen=CONFIG.HarvestCrops[cropOptions[i]]==true
+        option.Text=(chosen and "[x] " or "[ ] ")..cropOptions[i]
+        option.BackgroundColor3=chosen and COLORS.off or COLORS.panel
+    end
+end
+refreshCropSelectionUI()
 local replantToggle = button({ Parent = harvestPage, Text = "AUTO-REPLANT: ON", TextSize = 12,
     Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 160), Bg = COLORS.on })
-local cropHint = label({ Parent = harvestPage, Text = "Choose your crop above. Auto-replant replaces crops after a confirmed harvest.",
+local cropHint = label({ Parent = harvestPage, Text = "Select several crops above. Click the selector again to close. Replanting preserves each crop type.",
     Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 36), Position = UDim2.fromOffset(8, 198) })
 cropHint.TextWrapped = true
 
@@ -1966,9 +2011,9 @@ mineInfo.TextWrapped = true
 local mineRangeBtn = button({ Parent = minePage, Text = "Mining range: 90 studs  (+ / −)", TextSize = 12,
     Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 100) })
 pageHeading(minePage, "TOOL PREFERENCE", 144)
-local mineToolOptions = {"Auto best pickaxe", "Iron pickaxe", "Stone pickaxe", "Wood pickaxe"}
+local mineToolOptions = {"Auto best pickaxe", "Iron pickaxe", "Stone pickaxe", "Wooden pickaxe", "Auto best axe", "Iron axe", "Stone axe", "Wooden axe"}
 local mineToolIndex = table.find(mineToolOptions, mineToolPreference) or 1
-local mineToolSelect = button({ Parent = minePage, Text = "Pickaxe: " .. mineToolPreference .. "  ▼", TextSize = 12,
+local mineToolSelect = button({ Parent = minePage, Text = "Tool: " .. mineToolPreference .. "  ▼", TextSize = 12,
     Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 166) })
 
 -- Stats scoreboard
@@ -2424,7 +2469,7 @@ local function updateBoard()
         overlayLabels.harvests.Text="Last collected"
         overlayValues.harvests.Text=stats.resourceLast[category] or "–"
         overlayLabels.bait.Text=category=="crop" and "Crop" or "Tool"
-        overlayValues.bait.Text=category=="wood" and woodToolPreference or category=="mine" and mineToolPreference or CONFIG.HarvestCrop
+        overlayValues.bait.Text=category=="wood" and woodToolPreference or category=="mine" and mineToolPreference or (#FarmLogic.SelectedCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)>1 and tostring(#FarmLogic.SelectedCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)).." selected" or CONFIG.HarvestCrop)
         overlayValues.bait.TextColor3=COLORS.text
     else
         statsOverlayTitle.Text="FISHING STATS"
@@ -2741,7 +2786,8 @@ local function equipBestResourceTool(category)
     if not humanoid then return false end
 
     local preference = category == "wood" and woodToolPreference or mineToolPreference
-    local wantAxe = category == "wood"
+    local preferenceName=string.lower(preference)
+    local wantAxe = category == "wood" or string.find(preferenceName,"axe",1,true) and not string.find(preferenceName,"pickaxe",1,true)
     local best, bestScore = nil, -math.huge
     local fallback, fallbackScore = nil, -math.huge
     for _, tool in ipairs(RemoteCatalog.OwnedTools()) do
@@ -2776,8 +2822,8 @@ local function equipBestResourceTool(category)
             if woodToolSelect then woodToolSelect.Text="Axe: Auto best axe  ▼" end
             if woodStatus then woodStatus.Text=preference.." unavailable. Using "..fallback.Name.."." end
         else
-            mineToolPreference="Auto best pickaxe";mineToolIndex=1
-            if mineToolSelect then mineToolSelect.Text="Pickaxe: Auto best pickaxe  ▼" end
+            mineToolPreference=wantAxe and "Auto best axe" or "Auto best pickaxe";mineToolIndex=table.find(mineToolOptions or {},mineToolPreference) or 1
+            if mineToolSelect then mineToolSelect.Text="Tool: "..mineToolPreference.."  ▼" end
             if mineInfo then mineInfo.Text=preference.." unavailable. Using "..fallback.Name.."." end
         end
         if type(savePreferences)=="function" then savePreferences() end
@@ -2792,7 +2838,7 @@ local function equipBestResourceTool(category)
         return true
     end
     if setStatus then
-        setStatus(category == "wood" and "No axe found. Put an axe in your inventory." or "No pickaxe found. Put a pickaxe in your inventory.", COLORS.warn)
+        setStatus(wantAxe and "No axe found. Put an axe in your inventory." or "No pickaxe found. Put a pickaxe in your inventory.", COLORS.warn)
     end
     return false
 end
@@ -2836,7 +2882,7 @@ end
 local function targetCategory(name) return FarmLogic.Category(name) end
 local function modeAllows(name)
     local category = targetCategory(name)
-    if category == "crop" then return harvestEnabled and FarmLogic.CropMatches(name, CONFIG.HarvestCrop) end
+    if category == "crop" then return harvestEnabled and FarmLogic.CropsMatch(name, CONFIG.HarvestCrops, CONFIG.HarvestCrop) end
     if category == "wood" then return woodEnabled end
     return category == "mine" and mineEnabled
 end
@@ -2920,18 +2966,27 @@ local function getMineTargets()
 end
 
 -- RESOURCE AIM BEGIN
-local function getInteractionPoint(target, origin)
+local function getInteractionPoint(target, origin, visiblePoint, maxDistance)
     local best, distance
-    local function consider(part)
-        if not part:IsA("BasePart") or part.CanQuery == false or part.Transparency == 1 then return end
-        local point=part.Position
-        local ok,closest=pcall(function() return part:GetClosestPointOnSurface(origin) end)
-        if ok and closest then point=closest end
+    local function candidate(point)
         local magnitude=(point-origin).Magnitude
+        if maxDistance and magnitude>maxDistance then return end
+        if visiblePoint and not visiblePoint(point) then return end
         if not distance or magnitude<distance then best,distance=point,magnitude end
+    end
+    local function consider(part)
+        if not part:IsA("BasePart") or part.CanQuery==false or part.Transparency==1 then return end
+        local ok,closest=pcall(function() return part:GetClosestPointOnSurface(origin) end)
+        if ok and closest then candidate(closest) end
+        candidate(part.Position)
+        if part.CFrame and part.Size then
+            candidate(part.CFrame:PointToWorldSpace(Vector3.new(0,-part.Size.Y*.25,0)))
+            candidate(part.CFrame:PointToWorldSpace(Vector3.new(0,part.Size.Y*.25,0)))
+        end
     end
     if target:IsA("BasePart") then consider(target)
     else for _,part in ipairs(target:GetDescendants()) do consider(part) end end
+    if visiblePoint then return best end
     return best or getPartPosition(target)
 end
 -- RESOURCE AIM END
@@ -2946,7 +3001,6 @@ local function resourceInputHit(target)
     end
     if enabled then return false, "Pause Fishing before using resource input" end
     if not active() then return false, "Resource action stopped" end
-    if enabled then return false, "Pause Fishing before using resource input" end
     local char = player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local tool = char and char:FindFirstChildOfClass("Tool")
@@ -2954,7 +3008,9 @@ local function resourceInputHit(target)
     local toolName = tool and string.lower(tool.Name) or ""
     local pickaxe = string.find(toolName, "pickaxe", 1, true) ~= nil
     local axe = string.find(toolName, "axe", 1, true) ~= nil and not pickaxe
-    if not root or category == "mine" and not pickaxe or category == "wood" and not axe then
+    local choice=type(mineToolPreference)=="string" and string.lower(mineToolPreference) or ""
+    local miningAxe=string.find(choice,"axe",1,true) and not string.find(choice,"pickaxe",1,true)
+    if not root or category == "mine" and not (miningAxe and axe or not miningAxe and pickaxe) or category == "wood" and not axe then
         return false, "Wait for the matching axe/pickaxe to equip"
     end
     local position = getInteractionPoint(target, root.Position)
@@ -2968,6 +3024,16 @@ local function resourceInputHit(target)
     end
     local camera = workspace.CurrentCamera
     if not camera then return false, "Camera unavailable" end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {char}
+    position=getInteractionPoint(target,root.Position,function(candidate)
+        local screen,visible=camera:WorldToScreenPoint(candidate)
+        if not visible or screen.Z<=0 then return false end
+        local hit=workspace:Raycast(camera.CFrame.Position,candidate-camera.CFrame.Position,params)
+        return hit and (hit.Instance==target or hit.Instance:IsDescendantOf(target))
+    end,reach)
+    if not position then return false,"No clear point within reach; face "..target.Name.." or move around the obstacle" end
     local point, visible = camera:WorldToScreenPoint(position)
     if not visible or point.Z <= 0 then return false, "Face " .. target.Name .. " so it is on screen" end
     local x, y = point.X, point.Y
@@ -2984,13 +3050,6 @@ local function resourceInputHit(target)
                 return false, "Move the resource clear of on-screen controls"
             end
         end
-    end
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {char}
-    local hit = workspace:Raycast(camera.CFrame.Position, position - camera.CFrame.Position, params)
-    if not hit or hit.Instance ~= target and not hit.Instance:IsDescendantOf(target) then
-        return false, "Resource is obstructed; move or turn toward " .. target.Name
     end
     local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
     if not moved then return false, "Tool input unavailable in this environment" end
@@ -3020,6 +3079,7 @@ local function fireModelHarvest(model)
 end
 
 local function harvestLoop(myCycle)
+    FarmState.LastFailure=FarmState.LastFailure or {}
     local function active()
         return harvestCycleId == myCycle and (harvestEnabled or woodEnabled or mineEnabled) and gui.Parent ~= nil
     end
@@ -3027,7 +3087,10 @@ local function harvestLoop(myCycle)
         if baitBusy then task.wait(0.05);continue end
         local targets = getMineTargets()
         if #targets == 0 then
-            setStatus("No matching ready crops on your island, or nearby wood/mining targets.", COLORS.muted)
+            local category=harvestEnabled and "crop" or woodEnabled and "wood" or "mine"
+            local failure=FarmState.LastFailure[category]
+            local scan=category=="crop" and "Scanning your island for selected ready crops." or category=="wood" and "Scanning nearby trees; recent targets may be cooling down." or "Scanning nearby rocks and ores."
+            setStatus(failure and (category.." waiting: "..failure) or scan,failure and COLORS.warn or COLORS.muted)
             task.wait(CONFIG.MineScanInterval)
             continue
         end
@@ -3057,6 +3120,7 @@ local function harvestLoop(myCycle)
             local learned = binding and binding.Remote.Parent and (binding.Target:IsA("Model") == obj:IsA("Model"))
             local nativeHarvest = target.category == "crop" and RemoteCatalog.HarvestEndpoint()
             local prompt = target.kind ~= "fruit" and target.category == "crop" and not learned and not nativeHarvest and FarmLogic.HarvestPrompt(obj) or nil
+            local plantedType=target.category=="crop" and target.kind~="fruit" and FarmLogic.ReplantType(target.name,CONFIG.HarvestCrops,CONFIG.PlantType) or nil
             local plantedFrame
             if obj:IsA("BasePart") then plantedFrame = obj.CFrame
             elseif obj:IsA("Model") then plantedFrame = obj:GetPivot() end
@@ -3080,6 +3144,10 @@ local function harvestLoop(myCycle)
                 ok, failure = fireBlockMine(obj)
                 if not ok then setStatus("Mining waiting: " .. tostring(failure), COLORS.warn) end
             end
+            FarmState.LastFailure[target.category]=not ok and tostring(failure or "input not accepted") or nil
+            if target.category=="wood" and woodStatus then
+                woodStatus.Text=ok and ("Hit sent to "..target.name.."; waiting for tree removal.") or ("Wood waiting: "..tostring(failure))
+            end
             local confirmed = false
             if ok then
                 local deadline = os.clock() + 0.8
@@ -3098,7 +3166,7 @@ local function harvestLoop(myCycle)
                 -- A plant that regrows in place must never be planted over.
                 if target.category == "crop" and target.kind ~= "fruit" and not obj.Parent and plantedFrame and CONFIG.PlantEnabled and CONFIG.AutoReplant and not (RemoteCatalog.ServerAutoReplant or RemoteCatalog.ServerReplantEnabled and RemoteCatalog.ServerReplantEnabled()) then
                     if RemoteCatalog.PlacementAvailable() then
-                        if active() then firePlant(plantedFrame, CONFIG.PlantType) end
+                        if active() then firePlant(plantedFrame, plantedType) end
                     else
                         setStatus("Harvest confirmed. Place one crop manually to enable replanting.", COLORS.warn)
                     end
@@ -3279,6 +3347,10 @@ local function setFarmMode(mode, state)
         return
     end
     if current == state then return end
+    if state then
+        harvestEnabled,woodEnabled,mineEnabled=false,false,false
+        if FarmState and FarmState.LastFailure then FarmState.LastFailure[mode]=nil end
+    end
     if mode == "crop" then harvestEnabled = state
     elseif mode == "wood" then woodEnabled = state
     else mineEnabled = state end
@@ -3355,18 +3427,20 @@ track(mineToggle.Activated:Connect(function() setFarmMode("mine", not mineEnable
 track(cropSelect.Activated:Connect(function()
     cropDropdownOpen = not cropDropdownOpen
     cropDropdown.Visible = cropDropdownOpen
-    cropSelect.Text = "Crop: " .. CONFIG.HarvestCrop .. (cropDropdownOpen and "  ▲" or "  ▼")
+    refreshCropSelectionUI()
 end))
 for i, option in ipairs(cropButtons) do
     track(option.Activated:Connect(function()
-        cropIndex = i
-        for index, item in ipairs(cropButtons) do item.BackgroundColor3 = index == i and COLORS.off or COLORS.panel end
-        CONFIG.HarvestCrop = cropOptions[i]
-        CONFIG.PlantType = CONFIG.HarvestCrop
+        local name=cropOptions[i]
+        if CONFIG.HarvestCrops[name] and #FarmLogic.SelectedCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)==1 then
+            setStatus("Keep at least one crop selected.",COLORS.warn);return
+        end
+        CONFIG.HarvestCrops[name]=not CONFIG.HarvestCrops[name] or nil
+        local selected=FarmLogic.SelectedCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)
+        CONFIG.HarvestCrop=selected[1];CONFIG.PlantType=selected[1]
+        cropIndex=table.find(cropOptions,selected[1]) or 1
         savePreferences()
-        cropSelect.Text = "Crop: " .. CONFIG.HarvestCrop .. "  ▼"
-        cropDropdownOpen = false
-        cropDropdown.Visible = false
+        refreshCropSelectionUI()
         settingsText.Text = string.format("Fish toggle: %s\nHarvest toggle: %s\nMine range: %d studs\nPlant type: %s\nHarvest crop: %s\nPlant radius: %d studs", CONFIG.ToggleKey.Name, CONFIG.HarvestKey.Name, CONFIG.MineRange, CONFIG.PlantType, CONFIG.HarvestCrop, CONFIG.PlantRadius)
     end))
 end
@@ -3442,11 +3516,11 @@ makeToolDropdown(woodPage, woodToolSelect, woodToolOptions, "Axe", 266, function
     savePreferences()
     woodStatus.Text = "Axe preference: " .. woodToolPreference .. ". Matching axe will be equipped before tree actions."
 end)
-makeToolDropdown(minePage, mineToolSelect, mineToolOptions, "Pickaxe", 200, function(i)
+makeToolDropdown(minePage, mineToolSelect, mineToolOptions, "Tool", 200, function(i)
     mineToolIndex = i
     mineToolPreference = mineToolOptions[i]
     savePreferences()
-    mineInfo.Text = "Pickaxe preference: " .. mineToolPreference .. ". Matching pickaxe will be equipped before ore actions."
+    mineInfo.Text = "Mining tool: " .. mineToolPreference .. ". Selected tool is equipped before mining."
 end)
 track(mineRangeBtn.Activated:Connect(function()
     CONFIG.MineRange = CONFIG.MineRange >= 120 and 30 or CONFIG.MineRange + 15

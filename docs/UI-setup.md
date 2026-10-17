@@ -273,3 +273,13 @@ Recorder version 11 supports the newer envelope on the already confirmed crop en
 ### Missing saved tools
 
 If a selected axe/pickaxe material is absent, farming now falls back to the best owned tool of the matching type, updates the selector to Auto best, and saves that preference. An available selected material remains preferred; axes are never substituted with pickaxes. If no matching tool exists, the status asks for the missing tool. Settings files are now account-specific (`IslandsFarmingHub_<UserId>_settings.json`) to prevent another account's material choices from blocking starter equipment. Existing shared settings are left untouched and are not automatically imported.
+
+### Multi-select harvest and farm-mode separation
+
+The Harvest selector now supports several crops at once. Checked entries remain selected while the dropdown stays open; click the selector again to close it. At least one crop remains selected. Account preferences retain the selection and migrate the former single-crop preference. The scanner checks all selected crop types on the owned island, and local replant uses the original target's crop type captured before the request.
+
+Starting Harvest, Wood Farm or Mining switches off the other two farm modes. Their switches and scan messages now reflect the selected mode, so Harvest no longer displays wood/mining scan text. The optional fruit-picking preference still belongs to Harvest. Blocked action messages remain visible through cooldown scans and are also shown on the Wood Farm page.
+
+Normal resource input now tries visible, reachable points on the same resource (nearest surface, part centre and intermediate-height points). This can aim above a rock blocking the closest trunk point; it still refuses fully obstructed targets. No obstacle or reach checks are bypassed.
+
+Mining's Tool dropdown now includes wooden/stone/iron pickaxes and axes, plus Auto best options for both types. Explicit axe choices are respected by equip and input paths; default auto mining continues to choose pickaxes. Server tool effectiveness remains unchanged. Tests cover actual UI multi-selection, exclusive farm switching, mixed-crop scans/replanting, blocker persistence, alternate visible aim points and explicit mining-axe selection.
