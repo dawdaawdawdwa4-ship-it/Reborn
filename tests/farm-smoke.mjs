@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const source=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const farm=fs.readFileSync(new URL('../tools/FarmLogic.lua',import.meta.url),'utf8');
-const targeting=source.slice(source.indexOf('local function getPlayerIsland()'),source.indexOf('local function fireBlockMine(block)'));
+const targeting=source.slice(source.indexOf('local function getPlayerIsland()'),source.indexOf('-- RESOURCE INPUT BEGIN'));
 const mock=`
 local vmt={}
 local function vec(x,y,z) return setmetatable({X=x,Y=y,Z=z},vmt) end

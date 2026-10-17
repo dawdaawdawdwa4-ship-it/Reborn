@@ -8,22 +8,24 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 5 and previous.Resume then
+if previous and previous.Version == 6 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 5, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 6, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
+    capture.BaitBinding = previous.BaitBinding
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
     COtnYCOPUThadM = true, -- Supplied crop-harvest capture (new network group).
 }
 local function wanted(remote)
@@ -185,6 +187,29 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
 end
+local function learnBait(remote, method, args)
+    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
+    if remote.Name ~= "XPQExfDjDSUkYv" and remote.Name ~= "raqRasAwcny1zh"
+        and not string.find(string.lower(remote.Name), "bait", 1, true) then return false end
+    local packet = args[1]
+    local body = type(packet.wGquKmyB3mV2Cf) == "table" and packet.wGquKmyB3mV2Cf
+        or (type(packet.TlSR8Mzd9FLwaZ) == "table" and packet.TlSR8Mzd9FLwaZ or packet)
+    local tool = body.tool
+    if typeof(tool) ~= "Instance" or not tool:IsA("Tool") or string.lower(tool.Name) ~= "bait" then return false end
+    capture.BaitBinding = {Remote=remote,Method=method,Args=cloneArguments(args),Target=tool}
+    return true
+end
+function capture:Bait(tool)
+    local binding = self.BaitBinding
+    if not binding or not binding.Remote.Parent then return false, "Use bait manually once with capture active" end
+    if typeof(tool) ~= "Instance" or not tool:IsA("Tool") or string.lower(tool.Name) ~= "bait" then return false, "Bait tool unavailable" end
+    local ok, result = pcall(function()
+        local args = cloneArguments(binding.Args, binding.Target, tool)
+        return binding.Remote[binding.Method](binding.Remote, table.unpack(args,1,args.n))
+    end)
+    if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
+    return true, result
+end
 local function learnHarvest(remote, method, args)
     if args.n < 1 or type(args[1]) ~= "table" then return false end
     local packet = args[1]
@@ -224,7 +249,7 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnHarvest(remote, method, args)
+                learned = learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.

@@ -106,6 +106,21 @@ assert(capture:Harvest(nextCrop),'new harvest payload not replayed')
 assert(updatedArgs.iXwUW9mXJ8AVnK=='current-crop-session' and updatedArgs.a1tIHk1Kl9GiE5.model==nextCrop,'new envelope fields or crop target lost')
 assert(updatedArgs.a1tIHk1Kl9GiE5.player=='current-player' and updatedPacket.a1tIHk1Kl9GiE5.model==crop,'player context changed or original packet mutated')
 assert(updatedArgs.TrNhTTgExIb1Bg==nil,'new request must not be rewritten to old field names')
+local baitTool={_type='Instance',Name='bait',IsA=function(_,cls) return cls=='Tool' end}
+local nextBait={_type='Instance',Name='bait',IsA=function(_,cls) return cls=='Tool' end}
+local baitRemote=remote('XPQExfDjDSUkYv')
+local baitArgs
+baitRemote.InvokeServer=function(_,...) baitArgs=table.pack(...);return true end
+local baitPacket={E6N43ldyV5t9lg='live-bait-session',wGquKmyB3mV2Cf={tool=baitTool,extra=17}}
+installedHook(baitRemote,baitPacket,nil,'tail')
+assert(capture.BaitBinding and capture.BaitBinding.Remote==baitRemote,'new bait remote must be learned')
+assert(capture:Bait(nextBait),'bait replay failed')
+assert(baitArgs.n==3 and baitArgs[3]=='tail','bait argument positions changed')
+assert(baitArgs[1].E6N43ldyV5t9lg=='live-bait-session' and baitArgs[1].wGquKmyB3mV2Cf.tool==nextBait,'bait envelope or replacement tool lost')
+assert(baitPacket.wGquKmyB3mV2Cf.tool==baitTool,'bait source packet mutated')
+baitRemote.InvokeServer=function() return {success=false} end
+assert(not capture:Bait(nextBait),'bait rejection must remain failure')
+baitRemote.Parent=nil;assert(not capture:Bait(nextBait),'removed bait remote must not be used')
 capture.MaxCalls=#capture.Records+1
 installedHook(target,{})
 assert(not capture.Active,'record limit failed')

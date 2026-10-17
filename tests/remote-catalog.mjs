@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==130)
+assert(#RemoteCatalog.Entries==131)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -108,6 +108,23 @@ assert(firePlant(cf,'sapling')==false and sent==nil,'placement must not reuse mi
 assert(applyBait()==false and sent==nil,'bait must not use stale ID')
 assert(setHotbarLayout(layout)==false and sent==nil,'hotbar must not use stale ID')
 assert(fireBlockMine(actualBlock)==false and sent==nil,'missing ID must not send stale request')
+local inputCalls=0
+RemoteCatalog.InputMine=function(target) inputCalls+=1;assert(target==actualBlock);return true end
+assert(RemoteCatalog.CallMine(actualBlock) and inputCalls==1,'missing session must use tool input')
+local oldChildren=out.children;out.children={}
+assert(RemoteCatalog.CallMine(actualBlock) and inputCalls==2,'changed remote group must use tool input')
+out.children=oldChildren
+context.RebornCapture.RequestIds.OEzzgCCBzocxJw='current-session'
+responses.OEzzgCCBzocxJw=false
+assert(not RemoteCatalog.CallMine(actualBlock) and inputCalls==2,'rejected request must not click again')
+responses.OEzzgCCBzocxJw=nil
+RemoteCatalog.InputMine=nil
+RemoteCatalog.Recorder={BaitBinding={},Bait=function(_,tool) assert(tool==bait);return true end}
+assert(applyBait(),'learned bait request must work without old endpoint')
+RemoteCatalog.Recorder.Bait=function() return false,'denied' end
+sent=nil
+assert(not applyBait() and sent==nil,'learned bait rejection must not fall back to legacy')
+RemoteCatalog.Recorder=nil
 local requestModule=node('requests','ModuleScript')
 local toolModule=node('tool-meta','ModuleScript')
 local inventoryDataModule=node('inventory-service','ModuleScript')
@@ -163,7 +180,7 @@ assert(RemoteCatalog.CallHarvest(cropTarget)==false and sent==nil,'harvest rejec
 assert(RemoteCatalog.CallMine(actualBlock)==false and sent==nil,'mining rejection must not replay through legacy')
 assert(firePlant(cf,'stone')==false and sent==nil,'game API rejection must not retry through legacy remote')
 
-return '130 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '131 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}

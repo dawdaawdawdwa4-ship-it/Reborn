@@ -152,6 +152,7 @@ local RemoteCatalog = (function()
         { Path = "RobloxReplicatedStorage.UpdatePlayerBlockList", Class = "RemoteEvent" },
         { Path = "RobloxReplicatedStorage.UpdatePlayerProfileSettings", Class = "RemoteEvent" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.mEn0GOcgVLtb4o.COtnYCOPUThadM", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.XPQExfDjDSUkYv", Class = "RemoteFunction" },
     } }
     function catalog.FindPath(path, expectedClass)
         local ok, found = pcall(function()
@@ -198,9 +199,9 @@ local RemoteCatalog = (function()
         local action = catalog.VerifiedRequests[remoteName]
         if not action then return false, "No captured request format for this action" end
         local remote = catalog.FindLegacy(remoteName)
-        if not remote then return false, action .. " remote unavailable" end
+        if not remote then return false, action .. " remote unavailable", "unavailable" end
         local requestId = catalog.RequestId(remoteName)
-        if not requestId then return false, "Perform " .. action .. " manually once with capture active first" end
+        if not requestId then return false, "Perform " .. action .. " manually once with capture active first", "unavailable" end
         local ok, result = pcall(function()
             return remote:InvokeServer({
                 TrNhTTgExIb1Bg = requestId,
@@ -258,10 +259,18 @@ local RemoteCatalog = (function()
         if recorder and recorder.Harvest then return recorder:Harvest(target) end
         return false, "Harvest API unavailable; harvest one crop manually with capture active"
     end
+    function catalog.CallBait(tool)
+        local recorder = catalog.Recorder
+        if recorder and recorder.BaitBinding and recorder.Bait then return recorder:Bait(tool) end
+        return catalog.InvokeCaptured("raqRasAwcny1zh", {tool = tool})
+    end
     function catalog.CallMine(target)
         local endpoint = catalog.GameEndpoint("BLOCK_HIT_REQUEST")
         if endpoint then return catalog.SendEndpoint(endpoint, {block = target}) end
-        return catalog.InvokeCaptured("OEzzgCCBzocxJw", {block = target})
+        local ok, reason, state = catalog.InvokeCaptured("OEzzgCCBzocxJw", {block = target})
+        -- Only use normal tool input when no request was sent. A rejected call must not be duplicated.
+        if state == "unavailable" and catalog.InputMine then return catalog.InputMine(target) end
+        return ok, reason
     end
     function catalog.CallHotbar(layout)
         local client = catalog.PlacementClient()
@@ -354,22 +363,24 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 5 and previous.Resume then
+if previous and previous.Version == 6 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 5, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 6, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
+    capture.BaitBinding = previous.BaitBinding
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
     COtnYCOPUThadM = true, -- Supplied crop-harvest capture (new network group).
 }
 local function wanted(remote)
@@ -531,6 +542,29 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
 end
+local function learnBait(remote, method, args)
+    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
+    if remote.Name ~= "XPQExfDjDSUkYv" and remote.Name ~= "raqRasAwcny1zh"
+        and not string.find(string.lower(remote.Name), "bait", 1, true) then return false end
+    local packet = args[1]
+    local body = type(packet.wGquKmyB3mV2Cf) == "table" and packet.wGquKmyB3mV2Cf
+        or (type(packet.TlSR8Mzd9FLwaZ) == "table" and packet.TlSR8Mzd9FLwaZ or packet)
+    local tool = body.tool
+    if typeof(tool) ~= "Instance" or not tool:IsA("Tool") or string.lower(tool.Name) ~= "bait" then return false end
+    capture.BaitBinding = {Remote=remote,Method=method,Args=cloneArguments(args),Target=tool}
+    return true
+end
+function capture:Bait(tool)
+    local binding = self.BaitBinding
+    if not binding or not binding.Remote.Parent then return false, "Use bait manually once with capture active" end
+    if typeof(tool) ~= "Instance" or not tool:IsA("Tool") or string.lower(tool.Name) ~= "bait" then return false, "Bait tool unavailable" end
+    local ok, result = pcall(function()
+        local args = cloneArguments(binding.Args, binding.Target, tool)
+        return binding.Remote[binding.Method](binding.Remote, table.unpack(args,1,args.n))
+    end)
+    if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
+    return true, result
+end
 local function learnHarvest(remote, method, args)
     if args.n < 1 or type(args[1]) ~= "table" then return false end
     local packet = args[1]
@@ -570,7 +604,7 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnHarvest(remote, method, args)
+                learned = learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -1417,7 +1451,7 @@ local function applyBait()
         setStatus("Auto Bait: bait tool not found")
         return false
     end
-    local ok, result = RemoteCatalog.InvokeCaptured("raqRasAwcny1zh", { tool = baitTool })
+    local ok, result = RemoteCatalog.CallBait(baitTool)
     if not ok then setStatus("Auto Bait failed: " .. tostring(result)) end
     return ok
 end
@@ -1535,7 +1569,7 @@ local woodToolSelect = button({ Parent = woodPage, Text = "Axe: " .. woodToolPre
 
 local mineToggle = button({ Parent = minePage, Text = "MINING OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
-local mineInfo = label({ Parent = minePage, Text = "Mine rocks and ores separately from crop and wood farming.", Color = COLORS.muted,
+local mineInfo = label({ Parent = minePage, Text = "Mine rocks/ores via API or normal tool input. Input mode needs a visible target within tool reach.", Color = COLORS.muted,
     TextSize = 11, Size = UDim2.new(1, -16, 0, 40), Position = UDim2.fromOffset(8, 50) })
 mineInfo.TextWrapped = true
 local mineRangeBtn = button({ Parent = minePage, Text = "Mining range: 90 studs  (+ / −)", TextSize = 12,
@@ -1713,6 +1747,7 @@ function RemoteCatalog.UpdateCaptureUI()
         if RemoteCatalog.RequestId(name) then table.insert(learned, RemoteCatalog.VerifiedRequests[name]) end
     end
     if recorder.HarvestBinding then table.insert(learned, "crop harvest") end
+    if recorder.BaitBinding then table.insert(learned, "bait (current remote)") end
     local mining = #learned > 0 and ("Ready: " .. table.concat(learned, ", ")) or "Perform actions manually once to learn their request IDs"
     RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CopyNotice or string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
     RemoteCatalog.CaptureToggle.Text = recorder.Active and "Pause capture (F8)" or "Resume capture (F8)"
@@ -2293,6 +2328,73 @@ local function getMineTargets()
     table.sort(targets, function(a, b) return a.distance < b.distance end)
     return targets
 end
+
+-- RESOURCE INPUT BEGIN
+-- The equipped tool supplies live request names and session data through its own client code.
+local function resourceInputHit(target)
+    local myCycle = harvestCycleId
+    local function active()
+        return gui.Parent ~= nil and harvestCycleId == myCycle and target.Parent ~= nil
+            and modeAllows(target.Name) and (woodEnabled or mineEnabled) and not enabled
+    end
+    if not active() then return false, "Resource action stopped" end
+    if enabled then return false, "Pause Fishing before using tool-input mining/wood" end
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    local category = targetCategory(target.Name)
+    local toolName = tool and string.lower(tool.Name) or ""
+    local pickaxe = string.find(toolName, "pickaxe", 1, true) ~= nil
+    local axe = string.find(toolName, "axe", 1, true) ~= nil and not pickaxe
+    if not root or not tool or category == "mine" and not pickaxe or category == "wood" and not axe then
+        return false, "Wait for the matching axe/pickaxe to equip"
+    end
+    local position = getPartPosition(target)
+    if not position then return false, "Resource has no position" end
+    local reach = RemoteCatalog.GameModule("ReplicatedStorage.Shared.SharedConfig", "CLIENT_REACH")
+    if type(reach) ~= "number" then reach = 20 end
+    if (position - root.Position).Magnitude > reach then
+        return false, "Move closer to " .. target.Name .. " (tool reach " .. reach .. " studs)"
+    end
+    local camera = workspace.CurrentCamera
+    if not camera then return false, "Camera unavailable" end
+    local point, visible = camera:WorldToScreenPoint(position)
+    if not visible or point.Z <= 0 then return false, "Face " .. target.Name .. " so it is on screen" end
+    local x, y = point.X, point.Y
+    if hub.Root.Visible then
+        local p, size = hub.Root.AbsolutePosition, hub.Root.AbsoluteSize
+        if x >= p.X and x <= p.X + size.X and y >= p.Y and y <= p.Y + size.Y then
+            return false, "Move the hub away from " .. target.Name
+        end
+    end
+    local checked, objects = pcall(function() return playerGui:GetGuiObjectsAtPosition(x, y) end)
+    if checked then
+        for _, object in ipairs(objects) do
+            if object:IsA("GuiButton") or object:IsA("TextBox") then
+                return false, "Move the resource clear of on-screen controls"
+            end
+        end
+    end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {char}
+    local hit = workspace:Raycast(camera.CFrame.Position, position - camera.CFrame.Position, params)
+    if not hit or hit.Instance ~= target and not hit.Instance:IsDescendantOf(target) then
+        return false, "Resource is obstructed; move or turn toward " .. target.Name
+    end
+    local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
+    if not moved then return false, "Tool input unavailable in this environment" end
+    task.wait(0.03)
+    if not active() or tool.Parent ~= char then return false, "Resource action stopped or tool changed" end
+    local pressed = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0) end)
+    local held = pcall(function() if pressed then task.wait(0.06) end end)
+    -- Always release even if Stop, UI cleanup or an input error happened during the press.
+    local released = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0) end)
+    if not pressed or not held or not released then return false, "Tool input unavailable in this environment" end
+    return active(), "Normal tool input"
+end
+RemoteCatalog.InputMine = resourceInputHit
+-- RESOURCE INPUT END
 
 local function fireBlockMine(block)
     return RemoteCatalog.CallMine(block)
