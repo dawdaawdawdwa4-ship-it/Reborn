@@ -5,8 +5,11 @@ const block=source.slice(source.indexOf('-- REMOTE CATALOG BEGIN'),source.indexO
 const mineFunction=source.slice(source.indexOf('local function fireBlockMine(block)'),source.indexOf('local function fireModelHarvest'));
 const plantFunction=source.slice(source.indexOf('local function firePlant(cf, blockType)'),source.indexOf('-- Plant a grid'));
 const layoutFunction=source.slice(source.indexOf('local function setHotbarLayout(layoutString)'),source.indexOf('-- Shared tool support'));
+const equipFunction=source.slice(source.indexOf('local function equipBestResourceTool(category)'),source.indexOf('local function equipPickaxe()'));
 const baitFunction=source.slice(source.indexOf('local function applyBait()'),source.indexOf('local function setBaitEnabled'));
 const mock=`
+local baseTypeof=typeof
+local function typeof(value) return type(value)=="table" and value._testType or baseTypeof(value) end
 local function node(name,cls,children)
  local n={Name=name,ClassName=cls,children=children or {}}
  function n:IsA(c) return self.ClassName==c end
@@ -107,7 +110,8 @@ assert(setHotbarLayout(layout)==false and sent==nil,'hotbar must not use stale I
 assert(fireBlockMine(actualBlock)==false and sent==nil,'missing ID must not send stale request')
 local requestModule=node('requests','ModuleScript')
 local toolModule=node('tool-meta','ModuleScript')
-table.insert(roots.ReplicatedStorage.children,node('TS','Folder',{node('network','Folder',{requestModule}),node('tool','Folder',{toolModule})}))
+local inventoryDataModule=node('inventory-service','ModuleScript')
+table.insert(roots.ReplicatedStorage.children,node('TS','Folder',{node('network','Folder',{requestModule}),node('tool','Folder',{toolModule}),node('inventory','Folder',{inventoryDataModule})}))
 local inventoryModule=node('client-inventory-service','ModuleScript')
 roots.Players=node('Players','Players',{node('TestPlayer','Player',{node('PlayerScripts','Folder',{node('TS','Folder',{node('inventory','Folder',{inventoryModule})})})})})
 local locked=false
@@ -119,8 +123,13 @@ local selected,equipped=0,0
 local inventory={hotbar={[0]=tool},selectedHotbarIndex=-1}
 function inventory:setSelectedHotbarIndex(index) self.selectedHotbarIndex=index;selected+=1;tool.Parent=player.Character end
 function inventory:equipTool(value) equipped+=1;value.Parent=player.Character end
+local hiddenAxe={_testType='Instance',Name='ironAxe',IsA=function(_,cls) return cls=='Tool' end}
+local hiddenSeed={_testType='Instance',Name='blueFlowerSeeds',IsA=hiddenAxe.IsA}
+function player.Character:GetChildren() return {} end
+function player.Character:FindFirstChildOfClass(cls) if cls=='Humanoid' then return {} end end
 local requestedName, gameBody, response
 require=function(module)
+ if module==inventoryDataModule then return {InventoryService={getPlayerInventory=function() return {allTools={hiddenAxe,hiddenSeed,hiddenAxe}} end}} end
  if module==inventoryModule then return {ClientInventoryService=inventory} end
  if module==toolModule then return {ToolMeta={blueFlowerSeeds={cropSeed={cropName='blueFlowers'}}}} end
  return {Requests={Client={Get=function(_,name)
@@ -131,6 +140,12 @@ end
 assert(RemoteCatalog.EquipTool(tool) and inventory.selectedHotbarIndex==0 and selected==1,'hotbar slot zero must be selectable')
 assert(RemoteCatalog.EquipTool(tool) and selected==1 and equipped==1,'selected slot must not be toggled off')
 locked=true;assert(RemoteCatalog.EquipTool(tool)==false,'tools lock ignored');locked=false
+local owned=RemoteCatalog.OwnedTools()
+assert(#owned==2 and owned[1]==hiddenAxe,'inventory-only tools must be found and deduplicated')
+local woodToolPreference,mineToolPreference='Auto best axe','Auto best pickaxe'
+local COLORS={bad=1,warn=2}
+${equipFunction}
+assert(equipBestResourceTool('wood') and hiddenAxe.Parent==player.Character,'auto wood must equip axe from InventoryService, not just Backpack')
 assert(RemoteCatalog.PlacementAvailable(),'game request module should permit placement without recorder ID')
 assert(firePlant(cf,'blueFlowers'))
 assert(requestedName=='BLOCK_PLACE_REQUEST' and gameBody.cframe==cf and gameBody.blockType=='blueFlowers','game placement API used incorrectly')

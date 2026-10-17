@@ -203,3 +203,19 @@ nearby public trees, module harvest/mining routing and rejection without fallbac
 These are mock checks, not evidence of a successful live cast, harvest or tree cut.
 After switching from an older injected script, restarting the client once gives a
 clean baseline without any old recorder hooks; then load the updated message.txt.
+
+
+## Inventory-only tool lookup
+
+Resource-tool and seed selection now merges the character, Backpack, and
+`InventoryService.getPlayerInventory(player).allTools` with instance deduplication.
+The supplied PickBlock and inventory modules use this same owned-tool inventory;
+a tool need not currently be parented to Backpack to be selectable. Auto Wood
+therefore finds an owned axe stored only in that inventory and equips it through
+the existing inventory client. No tools are created or granted.
+
+`tests/full-startup.mjs` runs the complete script in the mock environment, including
+its actual callback registration, worker entry points, OFF/ON/OFF transitions and
+cleanup. It checks startup without a recorder or learned IDs, rather than only
+checking the earlier UI construction prefix. Its no-character scenario validates
+waiting-state behavior; it does not validate real Roblox server outcomes.

@@ -272,6 +272,28 @@ local RemoteCatalog = (function()
         end
         return catalog.InvokeCaptured("RZQQNNDRUvfj1N", {layout = layout})
     end
+    function catalog.OwnedTools()
+        local tools, seen = {}, {}
+        local function add(tool)
+            if typeof(tool) == "Instance" and tool:IsA("Tool") and not seen[tool] then
+                seen[tool] = true
+                table.insert(tools, tool)
+            end
+        end
+        local character = player.Character
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        for _, container in ipairs({character, backpack}) do
+            if container then for _, tool in ipairs(container:GetChildren()) do add(tool) end end
+        end
+        local service = catalog.GameModule("ReplicatedStorage.TS.inventory.inventory-service", "InventoryService")
+        if service then
+            local ok, inventory = pcall(function() return service.getPlayerInventory(player) end)
+            if ok and inventory then
+                for _, tool in ipairs(inventory.allTools or {}) do add(tool) end
+            end
+        end
+        return tools
+    end
     function catalog.EquipTool(tool)
         local character = player.Character
         if not character or player:GetAttribute("ToolsLocked") == true then return false end
@@ -1840,18 +1862,13 @@ end
 -- Plant a crop at a CFrame (from Cobalt plant capture)
 local function firePlant(cf, blockType)
     local character = player.Character
-    local backpack = player:FindFirstChildOfClass("Backpack")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     if humanoid then
         local names = RemoteCatalog.SeedNames(blockType or CONFIG.PlantType)
-        for _, container in ipairs({character, backpack}) do
-            if container then
-                for _, tool in ipairs(container:GetChildren()) do
-                    if tool:IsA("Tool") and table.find(names, tool.Name) then
-                        RemoteCatalog.EquipTool(tool)
-                        break
-                    end
-                end
+        for _, tool in ipairs(RemoteCatalog.OwnedTools()) do
+            if table.find(names, tool.Name) then
+                if not RemoteCatalog.EquipTool(tool) then return false, "Could not equip seed tool" end
+                break
             end
         end
     end
@@ -1899,42 +1916,34 @@ end
 -- Prefer an axe when available; otherwise fall back to a pickaxe.
 local function equipBestResourceTool(category)
     local character = player.Character
-    local backpack = player:FindFirstChildOfClass("Backpack")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return false end
 
     local preference = category == "wood" and woodToolPreference or mineToolPreference
     local wantAxe = category == "wood"
     local best, bestScore = nil, -math.huge
-    local containers = {character, backpack}
-    for _, container in ipairs(containers) do
-        if container then
-            for _, tool in ipairs(container:GetChildren()) do
-                if tool:IsA("Tool") then
-                    local name = string.lower(tool.Name)
-                    local isPick = string.find(name, "pickaxe", 1, true) ~= nil
-                    local isAxe = string.find(name, "axe", 1, true) ~= nil and not isPick
-                    if (wantAxe and isAxe) or (not wantAxe and isPick) then
-                        local score = 1
-                        if string.find(name, "mythic", 1, true) then score = 100
-                        elseif string.find(name, "diamond", 1, true) then score = 90
-                        elseif string.find(name, "gold", 1, true) then score = 80
-                        elseif string.find(name, "steel", 1, true) then score = 70
-                        elseif string.find(name, "iron", 1, true) then score = 60
-                        elseif string.find(name, "stone", 1, true) then score = 40
-                        elseif string.find(name, "wood", 1, true) then score = 20 end
-                        if not string.find(string.lower(preference), "auto best", 1, true) then
-                            local wanted = string.lower(preference):gsub(" axe", ""):gsub(" pickaxe", "")
-                            if not string.find(name, wanted, 1, true) then
-                                score = -math.huge -- manual preference means exact material only
-                            else
-                                score = score + 1000
-                            end
-                        end
-                        if score > bestScore then best, bestScore = tool, score end
-                    end
+    for _, tool in ipairs(RemoteCatalog.OwnedTools()) do
+        local name = string.lower(tool.Name)
+        local isPick = string.find(name, "pickaxe", 1, true) ~= nil
+        local isAxe = string.find(name, "axe", 1, true) ~= nil and not isPick
+        if (wantAxe and isAxe) or (not wantAxe and isPick) then
+            local score = 1
+            if string.find(name, "mythic", 1, true) then score = 100
+            elseif string.find(name, "diamond", 1, true) then score = 90
+            elseif string.find(name, "gold", 1, true) then score = 80
+            elseif string.find(name, "steel", 1, true) then score = 70
+            elseif string.find(name, "iron", 1, true) then score = 60
+            elseif string.find(name, "stone", 1, true) then score = 40
+            elseif string.find(name, "wood", 1, true) then score = 20 end
+            if not string.find(string.lower(preference), "auto best", 1, true) then
+                local wanted = string.lower(preference):gsub(" axe", ""):gsub(" pickaxe", "")
+                if not string.find(name, wanted, 1, true) then
+                    score = -math.huge -- manual preference means exact material only
+                else
+                    score = score + 1000
                 end
             end
+            if score > bestScore then best, bestScore = tool, score end
         end
     end
     if best and bestScore > -math.huge then
