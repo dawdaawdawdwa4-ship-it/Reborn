@@ -1449,7 +1449,7 @@ local baitToggle = button({
     Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 90),
 })
 local baitInfo = label({
-    Parent = fishingPage, Text = "Reapplies bait every 2 minutes while enabled. Requires the bait tool.",
+    Parent = fishingPage, Text = "Starts with Fishing and applies bait immediately, then every 2 minutes. Retries if bait is unavailable.",
     Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 30),
     Position = UDim2.fromOffset(8, 128),
 })
@@ -1472,6 +1472,7 @@ local function applyBait()
 end
 
 local function setBaitEnabled(state)
+    if baitEnabled == state then return end
     baitEnabled = state
     baitCycleId += 1
     local myCycle = baitCycleId
@@ -1484,10 +1485,12 @@ local function setBaitEnabled(state)
     task.spawn(function()
         while baitEnabled and baitCycleId == myCycle and gui.Parent do
             local applied = applyBait()
+            if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
             if applied then setStatus("Auto Bait applied; refresh in 120s", COLORS.good) end
-            for remaining = 120, 1, -1 do
+            local delay = applied and 120 or 5
+            for remaining = delay, 1, -1 do
                 if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
-                baitToggle.Text = string.format("AUTO BAIT ON  [%ds]", remaining)
+                baitToggle.Text = string.format(applied and "AUTO BAIT ON  [%ds]" or "AUTO BAIT ON · RETRY  [%ds]", remaining)
                 task.wait(1)
             end
         end
@@ -2625,6 +2628,7 @@ setEnabled = function(state)
 		toggle.Text = "FISH ON  [" .. CONFIG.ToggleKey.Name .. "]"
 		toggle.BackgroundColor3 = COLORS.on
 		setStatus("Fishing started...")
+        setBaitEnabled(true)
         task.spawn(function(token)
             local ok, failure = pcall(run, token)
             if not ok and token == cycleId then
@@ -2633,6 +2637,7 @@ setEnabled = function(state)
             end
         end, cycleId)
 	else
+        setBaitEnabled(false)
 		toggle.Text = "FISH OFF  [" .. CONFIG.ToggleKey.Name .. "]"
 		toggle.BackgroundColor3 = COLORS.off
 		if not (harvestEnabled or woodEnabled or mineEnabled) and stats.onSince then

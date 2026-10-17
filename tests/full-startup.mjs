@@ -36,10 +36,17 @@ assert(string.find(buildController.Status.Text,"spawn",1,true))
 assert(buildController.Preset=="Farm plots")
 assert(not RemoteCatalog.Recorder,'recorder must be off on actual full startup')
 assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled and not baitEnabled)
+local baitApplications=0
+applyBait=function() baitApplications+=1;return true end
 for _,button in ipairs({toggle,harvestToggle,woodToggle,mineToggle,baitToggle}) do
  button.Activated:Fire()
+ if button==toggle then
+  assert(baitEnabled and baitApplications==1,'Fishing must apply bait immediately')
+  setEnabled(true);assert(baitApplications==1,'repeated Start must not duplicate bait')
+ end
  assert(string.find(button.Text,'ON',1,true),'actual switch/worker failed to stay ON: '..button.Text..' status='..status.Text)
  button.Activated:Fire()
+ if button==toggle then assert(not baitEnabled,'Stopping Fishing must stop bait refreshes') end
  assert(string.find(button.Text,'OFF',1,true),'actual switch failed to turn OFF')
  stepWorkers()
 end
