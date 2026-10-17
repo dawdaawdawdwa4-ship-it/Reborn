@@ -179,16 +179,25 @@ function AutoBuild.new(ctx)
     end
     label("Build farm beds and paths, platforms, walls or solid stairs.",4,36)
     local presets={"Farm plots","Platform","Wall","Stairs"}
-    button("Preset","Blueprint: Farm plots",0,48,1,function()
-        if self.Running then return end
-        local index=table.find(presets,self.Preset) or 1
-        self.Preset=presets[index%#presets+1];buttons.Preset.Text="Blueprint: "..self.Preset;invalidate()
+    local presetMenu=Instance.new("Frame")
+    presetMenu.Name="BlueprintOptions";presetMenu.Size=UDim2.new(1,-12,0,144);presetMenu.Position=UDim2.fromOffset(6,84)
+    presetMenu.BackgroundColor3=Color3.fromRGB(29,39,48);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
+    button("Preset","Blueprint: Farm plots  ▼",0,48,1,function()
+        if not self.Running then presetMenu.Visible=not presetMenu.Visible end
     end)
+    for index,preset in ipairs(presets) do
+        local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(index-1)*36)})
+        option.ZIndex=36
+        ctx.Track(option.Activated:Connect(function()
+            if self.Running then return end
+            self.Preset=preset;buttons.Preset.Text="Blueprint: "..preset.."  ▼";presetMenu.Visible=false;invalidate()
+        end))
+    end
     local function input(key,title,value,y,numeric)
         label(title,y)
         local field=Instance.new("TextBox");field.Name=key;field.Text=tostring(value);field.PlaceholderText=title
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240)
-        field.BackgroundColor3=Color3.fromRGB(34,43,66);field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
+        field.BackgroundColor3=Color3.fromRGB(29,39,48);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
         inputs[key]=field
         ctx.Track(field.FocusLost:Connect(function()
             if numeric then

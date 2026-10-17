@@ -237,3 +237,13 @@ Fishing now offers 12/24/36-stud cast aim presets in its Fishing tab. For nearby
 Starting Fishing now enables Auto Bait and attempts application immediately. Successful applications refresh after 60 seconds; unavailable bait/context retries after 5 seconds. Stopping Fishing cancels the bait countdown. Auto Bait can still be toggled separately. When a live bait call is unavailable, Auto Bait now tries equipping and activating the bait tool, then restores the previous rod. The status calls this an activation attempt; server-side bait consumption is not confirmed by that attempt alone.
 
 Bait tool fallback waits for rod input to finish and pauses fishing input while changing tools. Stop before activation prevents use; activation errors release the busy flag and attempt to restore the rod. The corner overlay labels failed attempts as “Retry in …” rather than showing the retry timer as an active bait duration. Native activation still needs validation in the live game; a learned current remote remains preferred.
+
+### Resource interactions and Movement
+
+Crop harvest now falls back to the visible game interaction: aim at an owned crop and press/release F when no native or learned request is available. Normal resource input requires a visible, unobstructed target in tool reach, with no text field focused and no UI blocking the target. Stop releases the key. Successful input still requires actual removal/readiness changes to count as a harvest. Pause Fishing when using these shared mouse controls.
+
+Public resource discovery includes nested rock groups alongside trees. Model positions use rendered bounding boxes before falling back to pivots, avoiding far-away pivots in otherwise nearby resources. No automatic player movement is performed for targets outside normal reach.
+
+The Movement tab provides optional walk-speed and jump-strength dropdowns, independent enable buttons, Reset, and window positioning/size controls. Jump settings respect Humanoid.UseJumpPower; original values are saved per character. Enabled options follow respawns, while Reset, Stop All and hub cleanup restore the current character's original values. Server rules can override local movement settings.
+
+Auto Build now uses a blueprint dropdown and matching material input colors. For the new placement envelope, start capture and place a block manually once in the live session before running a blueprint when the native module is unavailable. Tests cover argument preservation/rejection, F-key release and focused-field protection, nested rock ordering, and movement reset across respawns. Live Roblox execution is still required to verify game interaction behavior.

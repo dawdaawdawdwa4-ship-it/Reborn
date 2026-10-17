@@ -106,6 +106,20 @@ assert(capture:Harvest(nextCrop),'new harvest payload not replayed')
 assert(updatedArgs.iXwUW9mXJ8AVnK=='current-crop-session' and updatedArgs.a1tIHk1Kl9GiE5.model==nextCrop,'new envelope fields or crop target lost')
 assert(updatedArgs.a1tIHk1Kl9GiE5.player=='current-player' and updatedPacket.a1tIHk1Kl9GiE5.model==crop,'player context changed or original packet mutated')
 assert(updatedArgs.TrNhTTgExIb1Bg==nil,'new request must not be rewritten to old field names')
+local placementRemote=remote('u71Y03otNIwj9g')
+local placementArgs
+placementRemote.InvokeServer=function(_,...) placementArgs=table.pack(...);return true end
+local cf={_type='CFrame',GetComponents=function() return 1,2,3,1,0,0,0,1,0,0,0,1 end}
+local newCf={_type='CFrame'}
+local placementPacket={E6N43ldyV5t9lg='live-placement-id',wGquKmyB3mV2Cf={cframe=cf,blockType='grass',extra=12}}
+installedHook(placementRemote,placementPacket,nil,'tail')
+assert(capture.PlacementBinding and capture:Place({cframe=newCf,blockType='stone'}),'updated placement binding missing')
+assert(placementArgs.n==3 and placementArgs[3]=='tail','placement argument positions changed')
+assert(placementArgs[1].E6N43ldyV5t9lg=='live-placement-id' and placementArgs[1].wGquKmyB3mV2Cf.cframe==newCf,'placement session or CFrame lost')
+assert(placementArgs[1].wGquKmyB3mV2Cf.blockType=='stone' and placementArgs[1].wGquKmyB3mV2Cf.extra==12,'placement body/context lost')
+assert(placementPacket.wGquKmyB3mV2Cf.blockType=='grass','placement source template mutated')
+placementRemote.InvokeServer=function() return false end
+assert(not capture:Place({cframe=newCf,blockType='stone'}),'placement rejection must remain failure')
 local baitTool={_type='Instance',Name='bait',IsA=function(_,cls) return cls=='Tool' end}
 local nextBait={_type='Instance',Name='bait',IsA=function(_,cls) return cls=='Tool' end}
 local baitRemote=remote('XPQExfDjDSUkYv')

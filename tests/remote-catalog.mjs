@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==131)
+assert(#RemoteCatalog.Entries==132)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -132,6 +132,14 @@ local globalBaitCalls=0
 context.RebornCapture={BaitBinding={},Bait=function(_,tool) assert(tool==bait);globalBaitCalls+=1;return true end}
 assert(applyBait() and globalBaitCalls==1,'standalone learned bait binding must survive hub reload')
 context.RebornCapture=previousRecorder
+local oldRecorder=context.RebornCapture
+local learnedRemote={Parent=true}
+local learnedPlacementCalls=0
+context.RebornCapture={PlacementBinding={Remote=learnedRemote},Place=function(_,body) learnedPlacementCalls+=1;assert(body.cframe==cf and body.blockType=='grass');return true end}
+assert(RemoteCatalog.PlacementAvailable() and firePlant(cf,'grass') and learnedPlacementCalls==1,'new placement route must work after standalone capture')
+context.RebornCapture.Place=function() return false,'denied' end
+sent=nil;assert(not firePlant(cf,'grass') and sent==nil,'placement rejection must not retry through legacy')
+context.RebornCapture=oldRecorder
 local requestModule=node('requests','ModuleScript')
 local toolModule=node('tool-meta','ModuleScript')
 local inventoryDataModule=node('inventory-service','ModuleScript')
@@ -187,7 +195,7 @@ assert(RemoteCatalog.CallHarvest(cropTarget)==false and sent==nil,'harvest rejec
 assert(RemoteCatalog.CallMine(actualBlock)==false and sent==nil,'mining rejection must not replay through legacy')
 assert(firePlant(cf,'stone')==false and sent==nil,'game API rejection must not retry through legacy remote')
 
-return '131 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '132 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}

@@ -35,6 +35,22 @@ buildController.Buttons.Preview.Activated:Fire()
 assert(string.find(buildController.Status.Text,"spawn",1,true))
 assert(buildController.Preset=="Farm plots")
 assert(not RemoteCatalog.Recorder,'recorder must be off on actual full startup')
+local hum={WalkSpeed=16,JumpPower=50,JumpHeight=7.2,UseJumpPower=true}
+local character={FindFirstChildOfClass=function() return hum end,GetChildren=function() return {} end,WaitForChild=function() return hum end}
+player.Character=character
+movementController.WalkButton.Activated:Fire();movementController.JumpButton.Activated:Fire()
+assert(hum.WalkSpeed==20 and hum.JumpPower==60,'movement presets must apply')
+movementController.ResetButton.Activated:Fire()
+assert(hum.WalkSpeed==16 and hum.JumpPower==50,'reset must restore movement')
+hum.UseJumpPower=false
+movementController.JumpButton.Activated:Fire();assert(hum.JumpHeight==10,'height-based jump mode missing')
+local secondHum={WalkSpeed=18,JumpPower=55,JumpHeight=8,UseJumpPower=false}
+local secondChar={FindFirstChildOfClass=function() return secondHum end,GetChildren=function() return {} end,WaitForChild=function() return secondHum end}
+player.Character=secondChar;player.CharacterAdded:Fire(secondChar)
+assert(secondHum.JumpHeight==10,'enabled movement must follow respawn')
+movementController:Reset();assert(secondHum.WalkSpeed==18 and secondHum.JumpHeight==8,'respawn reset must use new character defaults')
+player.Character=nil
+
 assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled and not baitEnabled)
 local baitApplications=0
 applyBait=function() baitApplications+=1;return true end

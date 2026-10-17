@@ -39,11 +39,11 @@ const checks=`
 local valid=pcall(function() Instance.new('ScrollingFrame').ScrollBarInset=Enum.ScrollBarInset.ScrollBar end)
 assert(not valid,'mock must reject invalid ScrollBarInset regression')
 flush()
-assert(#RemoteCatalog.Entries==131,'all captured remotes must be incorporated')
+assert(#RemoteCatalog.Entries==132,'all captured remotes must be incorporated')
 RemoteCatalog.RefreshButton.Activated:Fire()
-assert(string.find(RemoteCatalog.Summary.Text,'131',1,true),'remote discovery summary missing')
+assert(string.find(RemoteCatalog.Summary.Text,'132',1,true),'remote discovery summary missing')
 assert(gui.Parent==playerGui,'hub must use PlayerGui')
-assert(#hub.Tabs==8,'eight tabs must exist')
+assert(#hub.Tabs==9,'nine tabs must exist')
 assert(hub.Root.Visible and hub.Body.GroupTransparency==0,'hub intro must finish')
 assert(hub.CurrentTab==airflowTabs.Fishing,'Fishing must be initial tab')
 for name,page in pairs(pages) do
@@ -93,7 +93,7 @@ else
  RemoteCatalog.CaptureToggle.Activated:Fire()
  assert(not RemoteCatalog.Recorder and string.find(RemoteCatalog.CaptureStatus.Text,'unavailable',1,true),'missing hooks must not break UI')
 end
-return 'UI, eight tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
+return 'UI, nine tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
 `;
 for (const supported of [false,true]) {
  const hooks=`

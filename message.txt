@@ -153,6 +153,7 @@ local RemoteCatalog = (function()
         { Path = "RobloxReplicatedStorage.UpdatePlayerProfileSettings", Class = "RemoteEvent" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.mEn0GOcgVLtb4o.COtnYCOPUThadM", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.XPQExfDjDSUkYv", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.u71Y03otNIwj9g", Class = "RemoteFunction" },
     } }
     function catalog.FindPath(path, expectedClass)
         local ok, found = pcall(function()
@@ -221,12 +222,23 @@ local RemoteCatalog = (function()
         catalog.ModuleCache[path] = result
         return result[export]
     end
+    function catalog.LiveRecorder(bindingName)
+        local recorder = catalog.Recorder
+        local binding = recorder and recorder[bindingName]
+        if binding and binding.Remote and binding.Remote.Parent then return recorder end
+        local ok, existing = pcall(function()
+            local environment = type(getgenv) == "function" and getgenv() or _G
+            return environment.RebornCapture
+        end)
+        binding = ok and existing and existing[bindingName]
+        if binding and binding.Remote and binding.Remote.Parent then return existing end
+    end
     function catalog.PlacementClient()
         local requests = catalog.GameModule("ReplicatedStorage.TS.network.requests", "Requests")
         return requests and requests.Client
     end
     function catalog.PlacementAvailable()
-        return catalog.PlacementClient() ~= nil or catalog.RequestId("ohy6O10QKzyGZE") ~= nil
+        return catalog.PlacementClient() ~= nil or catalog.LiveRecorder("PlacementBinding") ~= nil or catalog.RequestId("ohy6O10QKzyGZE") ~= nil
     end
     function catalog.CallPlacement(body)
         local client = catalog.PlacementClient()
@@ -236,6 +248,8 @@ local RemoteCatalog = (function()
             if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
             return true, result
         end
+        local recorder = catalog.LiveRecorder("PlacementBinding")
+        if recorder and recorder.Place then return recorder:Place(body) end
         return catalog.InvokeCaptured("ohy6O10QKzyGZE", body)
     end
     function catalog.GameEndpoint(name)
@@ -255,8 +269,10 @@ local RemoteCatalog = (function()
     function catalog.CallHarvest(target)
         local endpoint = catalog.HarvestEndpoint()
         if endpoint then return catalog.SendEndpoint(endpoint, {model = target, player = player}) end
-        local recorder = catalog.Recorder
-        if recorder and recorder.Harvest then return recorder:Harvest(target) end
+        local recorder = catalog.LiveRecorder("HarvestBinding")
+        local binding = recorder and recorder.HarvestBinding
+        if binding and binding.Remote.Parent and recorder.Harvest then return recorder:Harvest(target) end
+        if catalog.InputHarvest then return catalog.InputHarvest(target) end
         return false, "Harvest API unavailable; harvest one crop manually with capture active"
     end
     function catalog.CallBait(tool)
@@ -376,23 +392,25 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 6 and previous.Resume then
+if previous and previous.Version == 7 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 6, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 7, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
     capture.BaitBinding = previous.BaitBinding
+    capture.PlacementBinding = previous.PlacementBinding
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
     XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
     COtnYCOPUThadM = true, -- Supplied crop-harvest capture (new network group).
 }
@@ -555,6 +573,31 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
 end
+local function learnPlacement(remote, method, args)
+    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
+    if remote.Name ~= "u71Y03otNIwj9g" and remote.Name ~= "ohy6O10QKzyGZE"
+        and not string.find(string.lower(remote.Name), "block_place_request", 1, true) then return false end
+    local packet = args[1]
+    local key = type(packet.wGquKmyB3mV2Cf) == "table" and "wGquKmyB3mV2Cf"
+        or (type(packet.TlSR8Mzd9FLwaZ) == "table" and "TlSR8Mzd9FLwaZ" or nil)
+    local body = key and packet[key] or packet
+    if typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string" then return false end
+    capture.PlacementBinding = {Remote=remote,Method=method,Args=cloneArguments(args),BodyKey=key}
+    return true
+end
+function capture:Place(body)
+    local binding = self.PlacementBinding
+    if not binding or not binding.Remote.Parent then return false, "Place one block manually with capture active" end
+    if typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string" then return false, "Invalid placement body" end
+    local ok, result = pcall(function()
+        local args = cloneArguments(binding.Args)
+        local packet = binding.BodyKey and args[1][binding.BodyKey] or args[1]
+        packet.cframe, packet.blockType = body.cframe, body.blockType
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
+    return true, result
+end
 local function learnBait(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
     if remote.Name ~= "XPQExfDjDSUkYv" and remote.Name ~= "raqRasAwcny1zh"
@@ -617,7 +660,7 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -932,16 +975,25 @@ function AutoBuild.new(ctx)
     end
     label("Build farm beds and paths, platforms, walls or solid stairs.",4,36)
     local presets={"Farm plots","Platform","Wall","Stairs"}
-    button("Preset","Blueprint: Farm plots",0,48,1,function()
-        if self.Running then return end
-        local index=table.find(presets,self.Preset) or 1
-        self.Preset=presets[index%#presets+1];buttons.Preset.Text="Blueprint: "..self.Preset;invalidate()
+    local presetMenu=Instance.new("Frame")
+    presetMenu.Name="BlueprintOptions";presetMenu.Size=UDim2.new(1,-12,0,144);presetMenu.Position=UDim2.fromOffset(6,84)
+    presetMenu.BackgroundColor3=Color3.fromRGB(29,39,48);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
+    button("Preset","Blueprint: Farm plots  ▼",0,48,1,function()
+        if not self.Running then presetMenu.Visible=not presetMenu.Visible end
     end)
+    for index,preset in ipairs(presets) do
+        local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(index-1)*36)})
+        option.ZIndex=36
+        ctx.Track(option.Activated:Connect(function()
+            if self.Running then return end
+            self.Preset=preset;buttons.Preset.Text="Blueprint: "..preset.."  ▼";presetMenu.Visible=false;invalidate()
+        end))
+    end
     local function input(key,title,value,y,numeric)
         label(title,y)
         local field=Instance.new("TextBox");field.Name=key;field.Text=tostring(value);field.PlaceholderText=title
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240)
-        field.BackgroundColor3=Color3.fromRGB(34,43,66);field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
+        field.BackgroundColor3=Color3.fromRGB(29,39,48);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
         inputs[key]=field
         ctx.Track(field.FocusLost:Connect(function()
             if numeric then
@@ -1248,6 +1300,7 @@ local harvestPage = createPage("Harvest")
 local woodPage = createPage("Wood Farm")
 local minePage = createPage("Mining")
 local buildPage = createPage("Auto Build")
+local movementPage = createPage("Movement")
 local statsPage = createPage("Stats")
 local settingsPage = createPage("Settings")
 local remotesPage = createPage("Remotes")
@@ -1831,6 +1884,103 @@ track(resetUI.Activated:Connect(function()
     hub:_clampToScreen()
 end))
 
+-- MOVEMENT UI BEGIN
+local movementController = (function()
+    local self = {WalkEnabled=false,JumpEnabled=false,Speed=20,JumpPower=60,JumpHeight=10}
+    local originals = setmetatable({}, {__mode="k"})
+    local function humanoid()
+        local char = player.Character
+        return char and char:FindFirstChildOfClass("Humanoid")
+    end
+    local function remember(hum)
+        if not originals[hum] then
+            originals[hum] = {WalkSpeed=hum.WalkSpeed,JumpPower=hum.JumpPower,JumpHeight=hum.JumpHeight}
+        end
+        return originals[hum]
+    end
+    local info = label({Parent=movementPage,Text="Adjust walking and jumping. Changes apply only while enabled; Reset restores your character's original values.",
+        TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-12,0,48),Position=UDim2.fromOffset(6,4)})
+    info.TextWrapped=true
+    local walk = button({Parent=movementPage,Text="Custom walk: OFF",Size=UDim2.new(1,-12,0,36),Position=UDim2.fromOffset(6,66)})
+    local speed = button({Parent=movementPage,Text="Walk speed: 20  ▾",Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,110)})
+    local jump = button({Parent=movementPage,Text="Custom jump: OFF",Size=UDim2.new(1,-12,0,36),Position=UDim2.fromOffset(6,162)})
+    local height = button({Parent=movementPage,Text="Jump strength: Medium  ▾",Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,206)})
+    local reset = button({Parent=movementPage,Text="Reset movement",Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,258)})
+    self.Status=label({Parent=movementPage,Text="Movement uses the game's character settings; the server may override changes.",
+        TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-12,0,42),Position=UDim2.fromOffset(6,302)})
+    self.Status.TextWrapped=true
+    function self:Apply()
+        walk.Text=self.WalkEnabled and "Custom walk: ON" or "Custom walk: OFF"
+        jump.Text=self.JumpEnabled and "Custom jump: ON" or "Custom jump: OFF"
+        walk.BackgroundColor3=self.WalkEnabled and COLORS.on or COLORS.off
+        jump.BackgroundColor3=self.JumpEnabled and COLORS.on or COLORS.off
+        local hum=humanoid()
+        if not hum then self.Status.Text="Wait for your character to spawn.";return end
+        local original=remember(hum)
+        hum.WalkSpeed=self.WalkEnabled and self.Speed or original.WalkSpeed
+        if hum.UseJumpPower then hum.JumpPower=self.JumpEnabled and self.JumpPower or original.JumpPower
+        else hum.JumpHeight=self.JumpEnabled and self.JumpHeight or original.JumpHeight end
+        self.Status.Text="Movement updated. Reset restores this character's starting settings."
+    end
+    function self:Reset()
+        self.WalkEnabled,self.JumpEnabled=false,false
+        local hum=humanoid()
+        local original=hum and originals[hum]
+        if original then
+            hum.WalkSpeed=original.WalkSpeed;hum.JumpPower=original.JumpPower;hum.JumpHeight=original.JumpHeight
+        end
+        walk.Text="Custom walk: OFF";jump.Text="Custom jump: OFF"
+        walk.BackgroundColor3=COLORS.off;jump.BackgroundColor3=COLORS.off
+        self.Status.Text="Original movement restored."
+    end
+    track(walk.Activated:Connect(function() self.WalkEnabled=not self.WalkEnabled;self:Apply() end))
+    track(jump.Activated:Connect(function() self.JumpEnabled=not self.JumpEnabled;self:Apply() end))
+    track(reset.Activated:Connect(function() self:Reset() end))
+    local function dropdown(anchor, options, y, select)
+        local menu=Instance.new("Frame");menu.BackgroundColor3=COLORS.panel;menu.BorderSizePixel=0
+        menu.Size=UDim2.new(1,-12,0,#options*36);menu.Position=UDim2.fromOffset(6,y);menu.ZIndex=30;menu.Visible=false;menu.Parent=movementPage;corner(menu,8)
+        table.insert(self.Menus,menu)
+        for i, option in ipairs(options) do
+            local choice=button({Parent=menu,Text=tostring(option),Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(i-1)*36)})
+            choice.ZIndex=31
+            track(choice.Activated:Connect(function() select(i);menu.Visible=false end))
+        end
+        track(anchor.Activated:Connect(function()
+            local open=not menu.Visible
+            for _,other in ipairs(self.Menus) do other.Visible=false end
+            menu.Visible=open
+        end))
+    end
+    self.Menus={}
+    local speeds={16,20,24,32}
+    dropdown(speed,speeds,146,function(i) self.Speed=speeds[i];speed.Text="Walk speed: "..self.Speed.."  ▾";if self.WalkEnabled then self:Apply() end end)
+    local powers={50,60,75};local heights={7.2,10,14};local names={"Normal","Medium","High"}
+    dropdown(height,names,242,function(i)
+        self.JumpPower,self.JumpHeight=powers[i],heights[i];height.Text="Jump strength: "..names[i].."  ▾"
+        if self.JumpEnabled then self:Apply() end
+    end)
+    track(player.CharacterAdded:Connect(function(char)
+        if self.WalkEnabled or self.JumpEnabled then
+            task.spawn(function()
+                local hum=char:WaitForChild("Humanoid",5)
+                if hum and player.Character==char and gui.Parent and (self.WalkEnabled or self.JumpEnabled) then self:Apply() end
+            end)
+        end
+    end))
+    self.WalkButton,self.JumpButton,self.ResetButton=walk,jump,reset
+    return self
+end)()
+-- MOVEMENT UI END
+
+pageHeading(movementPage, "WINDOW", 362)
+local moveWindowHelp = label({Parent=movementPage,Text="Drag the title bar to move the hub. Drag the stats title to move the corner board.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-12,0,40),Position=UDim2.fromOffset(6,386)})
+moveWindowHelp.TextWrapped=true
+local centerWindow=button({Parent=movementPage,Text="Center window",Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,438)})
+local biggerWindow=button({Parent=movementPage,Text="Larger window",Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,438)})
+track(centerWindow.Activated:Connect(function() frame.Position=UDim2.fromScale(.5,.5);hub:_clampToScreen() end))
+track(biggerWindow.Activated:Connect(function() resizeHub(1.1) end))
+
 -- Captured remotes are visible here; this page never sends server requests.
 RemoteCatalog.Summary = label({ Parent = remotesPage, Text = "Remote discovery",
     TextSize = 13, Size = UDim2.new(1, -12, 0, 24), Position = UDim2.fromOffset(6, 4) })
@@ -1865,6 +2015,7 @@ function RemoteCatalog.UpdateCaptureUI()
     end
     if recorder.HarvestBinding then table.insert(learned, "crop harvest") end
     if recorder.BaitBinding then table.insert(learned, "bait (current remote)") end
+    if recorder.PlacementBinding then table.insert(learned, "placement (current remote)") end
     local mining = #learned > 0 and ("Ready: " .. table.concat(learned, ", ")) or "Perform actions manually once to learn their request IDs"
     RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CopyNotice or string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
     RemoteCatalog.CaptureToggle.Text = recorder.Active and "Pause capture (F8)" or "Resume capture (F8)"
@@ -2387,6 +2538,9 @@ local function getPartPosition(obj)
 	if obj:IsA("BasePart") then
 		return obj.Position
 	elseif obj:IsA("Model") then
+        -- Model pivots may be far from their rendered rocks/crops.
+        local boxed, bounds = pcall(function() return obj:GetBoundingBox() end)
+        if boxed and bounds then return bounds.Position end
 		local ok, pivot = pcall(function()
 			return obj:GetPivot().Position
 		end)
@@ -2432,29 +2586,27 @@ local function getMineTargets()
     local function scan(folder, allowCrops)
         if folder then for _, obj in ipairs(folder:GetChildren()) do consider(obj, allowCrops) end end
     end
-    local function scanWood(folder, depth)
+    local function scanResources(folder, depth)
         if not folder or depth < 0 then return end
         for _, obj in ipairs(folder:GetChildren()) do
-            local tree = obj:IsA("BasePart") or obj:IsA("Model")
-            local containsTrees = false
+            local category = targetCategory(obj.Name)
+            local resource = category == "wood" or category == "mine"
+            local containsResources = false
             if obj:IsA("Model") then
                 for _, child in ipairs(obj:GetChildren()) do
-                    if child:IsA("Model") and targetCategory(child.Name) == "wood" then containsTrees = true; break end
+                    local childCategory = targetCategory(child.Name)
+                    if child:IsA("Model") and (childCategory == "wood" or childCategory == "mine") then containsResources = true; break end
                 end
             end
-            if tree and not containsTrees and targetCategory(obj.Name) == "wood" then
+            if resource and not containsResources and (obj:IsA("Model") or obj:IsA("BasePart")) then
                 consider(obj, false)
             elseif not obj:IsA("BasePart") then
-                scanWood(obj, depth - 1)
+                scanResources(obj, depth - 1)
             end
         end
     end
     local prefabs = workspace:FindFirstChild("spawnPrefabs")
-    if woodEnabled then scanWood(prefabs, 3) end
-    local regen = prefabs and prefabs:FindFirstChild("regenBlocks")
-    if regen then
-        for _, area in ipairs(regen:GetChildren()) do scan(area:FindFirstChild("Blocks")) end
-    end
+    if woodEnabled or mineEnabled then scanResources(prefabs, 5) end
     local owned = getPlayerIsland()
     local islands = workspace:FindFirstChild("Islands")
     if islands then
@@ -2475,10 +2627,11 @@ local function resourceInputHit(target)
     local myCycle = harvestCycleId
     local function active()
         return gui.Parent ~= nil and harvestCycleId == myCycle and target.Parent ~= nil
-            and modeAllows(target.Name) and (woodEnabled or mineEnabled) and not enabled
+            and modeAllows(target.Name) and (woodEnabled or mineEnabled or harvestEnabled) and not enabled
     end
+    if enabled then return false, "Pause Fishing before using resource input" end
     if not active() then return false, "Resource action stopped" end
-    if enabled then return false, "Pause Fishing before using tool-input mining/wood" end
+    if enabled then return false, "Pause Fishing before using resource input" end
     local char = player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local tool = char and char:FindFirstChildOfClass("Tool")
@@ -2486,11 +2639,13 @@ local function resourceInputHit(target)
     local toolName = tool and string.lower(tool.Name) or ""
     local pickaxe = string.find(toolName, "pickaxe", 1, true) ~= nil
     local axe = string.find(toolName, "axe", 1, true) ~= nil and not pickaxe
-    if not root or not tool or category == "mine" and not pickaxe or category == "wood" and not axe then
+    if not root or category == "mine" and not pickaxe or category == "wood" and not axe then
         return false, "Wait for the matching axe/pickaxe to equip"
     end
     local position = getPartPosition(target)
     if not position then return false, "Resource has no position" end
+    local focused, textBox = pcall(function() return UserInputService:GetFocusedTextBox() end)
+    if focused and textBox then return false, "Close chat or finish editing before resource input" end
     local reach = RemoteCatalog.GameModule("ReplicatedStorage.Shared.SharedConfig", "CLIENT_REACH")
     if type(reach) ~= "number" then reach = 20 end
     if (position - root.Position).Magnitude > reach then
@@ -2525,15 +2680,20 @@ local function resourceInputHit(target)
     local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
     if not moved then return false, "Tool input unavailable in this environment" end
     task.wait(0.03)
-    if not active() or tool.Parent ~= char then return false, "Resource action stopped or tool changed" end
-    local pressed = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0) end)
-    local held = pcall(function() if pressed then task.wait(0.06) end end)
+    if not active() or category ~= "crop" and tool.Parent ~= char then return false, "Resource action stopped or tool changed" end
+    local function input(down)
+        if category == "crop" then VirtualInputManager:SendKeyEvent(down, Enum.KeyCode.F, false, game)
+        else VirtualInputManager:SendMouseButtonEvent(x, y, 0, down, game, 0) end
+    end
+    local pressed = pcall(input, true)
+    local held = pcall(function() if pressed then task.wait(category == "crop" and 0.1 or 0.06) end end)
     -- Always release even if Stop, UI cleanup or an input error happened during the press.
-    local released = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0) end)
+    local released = pcall(input, false)
     if not pressed or not held or not released then return false, "Tool input unavailable in this environment" end
     return active(), "Normal tool input"
 end
 RemoteCatalog.InputMine = resourceInputHit
+RemoteCatalog.InputHarvest = resourceInputHit
 -- RESOURCE INPUT END
 
 local function fireBlockMine(block)
@@ -2827,6 +2987,7 @@ setHarvestEnabled = function(state) setFarmMode("crop", state) end
 
 track(stopAllButton.Activated:Connect(function()
     buildController:Stop()
+    movementController:Reset()
     cycleId += 1
     harvestCycleId += 1
     setEnabled(false)
@@ -3008,6 +3169,7 @@ end)
 
 gui.Destroying:Connect(function()
     buildController:Destroy()
+    movementController:Reset()
     if RemoteCatalog.Recorder then RemoteCatalog.Recorder:Stop() end
     for _, conn in ipairs(hub._connections) do conn:Disconnect() end
     hub._connections = {}

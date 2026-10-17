@@ -113,7 +113,7 @@ function methods:Destroy()
  self.Parent=nil
 end
 local playerGui=Instance.new('PlayerGui')
-local player={PlayerGui=playerGui}
+local player={PlayerGui=playerGui,CharacterAdded=signal()}
 function player:FindFirstChildOfClass() return nil end
 function player:WaitForChild(name) return assert(self[name]) end
 local services={Players={LocalPlayer=player},UserInputService={TouchEnabled=false,KeyboardEnabled=true,InputBegan=signal(),InputChanged=signal(),InputEnded=signal(),WindowFocusReleased=signal()},RunService={RenderStepped=signal()},GuiService={},ReplicatedStorage={},HttpService={}}

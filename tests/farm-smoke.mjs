@@ -54,6 +54,17 @@ FarmState.Cooldowns[wheat]=nil
 woodEnabled=false;mineEnabled=false
 assert(#getMineTargets()==1 and getMineTargets()[1].instance==wheat,'mode isolation failed')
 assert(targets[5].instance==publicTree,'public resource tree not discovered')
+woodEnabled=false;mineEnabled=true;harvestEnabled=false
+local nearOre=node('rockIron','Model',nil,vec(2,0,0))
+nearOre.GetBoundingBox=function() return {Position=vec(2,0,0)},vec(3,3,3) end
+nearOre.GetPivot=function() return {Position=vec(500,0,0)} end
+local resourceGroup=node('rockCluster','Model',{nearOre},vec(500,0,0))
+local prefabs=workspace:FindFirstChild('spawnPrefabs')
+table.insert(prefabs.children,node('MiningZone','Folder',{resourceGroup}))
+local mines=getMineTargets()
+local nearIndex,stoneIndex
+for i,target in ipairs(mines) do if target.instance==nearOre then nearIndex=i;assert(target.distance==2,'use bounds instead of distant pivot') end;if target.instance==stone then stoneIndex=i end end
+assert(nearIndex and stoneIndex and nearIndex<stoneIndex,'nested near rocks must be found and sorted before farther rocks')
 local before=FarmLogic.Snapshot(wheat)
 assert(not FarmLogic.Confirmed(wheat,before),'successful transport alone must not count')
 wheat.attributes.Mature=false

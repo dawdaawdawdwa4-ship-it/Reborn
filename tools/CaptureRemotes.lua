@@ -8,23 +8,25 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 6 and previous.Resume then
+if previous and previous.Version == 7 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 6, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 7, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
     capture.BaitBinding = previous.BaitBinding
+    capture.PlacementBinding = previous.PlacementBinding
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
     XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
     COtnYCOPUThadM = true, -- Supplied crop-harvest capture (new network group).
 }
@@ -187,6 +189,31 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
 end
+local function learnPlacement(remote, method, args)
+    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
+    if remote.Name ~= "u71Y03otNIwj9g" and remote.Name ~= "ohy6O10QKzyGZE"
+        and not string.find(string.lower(remote.Name), "block_place_request", 1, true) then return false end
+    local packet = args[1]
+    local key = type(packet.wGquKmyB3mV2Cf) == "table" and "wGquKmyB3mV2Cf"
+        or (type(packet.TlSR8Mzd9FLwaZ) == "table" and "TlSR8Mzd9FLwaZ" or nil)
+    local body = key and packet[key] or packet
+    if typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string" then return false end
+    capture.PlacementBinding = {Remote=remote,Method=method,Args=cloneArguments(args),BodyKey=key}
+    return true
+end
+function capture:Place(body)
+    local binding = self.PlacementBinding
+    if not binding or not binding.Remote.Parent then return false, "Place one block manually with capture active" end
+    if typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string" then return false, "Invalid placement body" end
+    local ok, result = pcall(function()
+        local args = cloneArguments(binding.Args)
+        local packet = binding.BodyKey and args[1][binding.BodyKey] or args[1]
+        packet.cframe, packet.blockType = body.cframe, body.blockType
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
+    return true, result
+end
 local function learnBait(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
     if remote.Name ~= "XPQExfDjDSUkYv" and remote.Name ~= "raqRasAwcny1zh"
@@ -249,7 +276,7 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
