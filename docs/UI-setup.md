@@ -52,3 +52,25 @@ remotes; they are not sent to similarly named remotes as guessed substitutes.
 To finish those action bindings, capture a manual action's InvokeServer/FireServer
 call and full argument structure for each requested function. Live game checks
 remain necessary even after an argument capture is available.
+
+## Capture request arguments
+
+`tools/CaptureRemotes.lua` records outgoing mining, harvesting, planting, fishing,
+hotbar, and bait calls. It requires host-provided `hookmetamethod` and
+`getnamecallmethod`; ordinary Roblox Studio LocalScripts cannot intercept calls
+from other scripts. It does not send or replay requests, and preserves the original
+arguments, return values, and errors. Names are filtered to the relevant requests
+and the existing legacy names; unrelated requests are passed through silently.
+
+Run the recorder, then perform one action manually at a time (mine, harvest,
+plant, cast/reel). F8 pauses/resumes, F9 prints and exports, F10 stops. When the
+host provides `writefile` and `isfile`, F9 writes a new, uniquely named
+`Reborn-remotes-<timestamp>-<index>.lua` in that host's file workspace. Otherwise
+copy the call blocks from the console. Send the resulting capture file or console
+text. The export is reference data, not a script to execute.
+
+Capture is capped at 100 calls. Oversized/cyclic/unsupported argument data and
+unparented instances are explicitly marked INCOMPLETE. Stopping disables the
+recorder and disconnects its hotkey listener; its interception wrapper remains
+pass-through so it does not overwrite hooks installed by other tools.
+The mock tests verify interception semantics; live host compatibility is untested.

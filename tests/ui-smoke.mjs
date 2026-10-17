@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const root=new URL('../',import.meta.url);
 const state=await LuauState.createAsync();
-for(const path of ['message.txt','src/AutoFarmUI.lua','src/init.client.lua']) {
+for(const path of ['message.txt','src/AutoFarmUI.lua','src/init.client.lua','tools/CaptureRemotes.lua']) {
  state.loadstring(fs.readFileSync(new URL(path,root),'utf8'),path,true);
  console.log('Compiled '+path);
 }

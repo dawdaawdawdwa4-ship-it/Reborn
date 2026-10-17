@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node ui-smoke.mjs && node remote-catalog.mjs"
+    "test": "node ui-smoke.mjs && node remote-catalog.mjs && node capture-smoke.mjs"
   },
   "devDependencies": {
     "luau-web": "1.4.0"
