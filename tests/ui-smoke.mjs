@@ -41,7 +41,37 @@ largerUI.Activated:Fire();assert(frame.Size.X.Offset>720,'larger UI failed')
 smallerUI.Activated:Fire();resetUI.Activated:Fire()
 assert(frame.Size.X.Offset==720 and frame.Size.Y.Offset==470,'reset failed')
 assert(hub.OpenButton and #hub._connections>0,'reopen and drag connections missing')
-return 'UI startup, seven populated tabs, switching, close/reopen, resize/reset passed'
+if CAPTURE_SUPPORTED then
+ local recorder=assert(RemoteCatalog.Recorder,'embedded recorder not started')
+ assert(recorder.Active,'embedded recorder not recording')
+ RemoteCatalog.CaptureToggle.Activated:Fire();assert(not recorder.Active,'pause button failed')
+ RemoteCatalog.CaptureToggle.Activated:Fire();assert(recorder.Active,'resume button failed')
+ RemoteCatalog.CaptureStop.Activated:Fire();assert(recorder.Stopped,'stop button failed')
+ RemoteCatalog.CaptureToggle.Activated:Fire();assert(not recorder.Stopped,'restart button failed')
+ local exports=0
+ recorder.Export=function() exports+=1 end
+ RemoteCatalog.CaptureExport.Activated:Fire();assert(exports==1,'export button not connected')
+ RemoteCatalog.EnableCapture();assert(hookCount==1,'restarting setup stacked hooks')
+else
+ assert(not RemoteCatalog.Recorder,'unsupported host must not have recorder')
+ RemoteCatalog.CaptureToggle.Activated:Fire()
+ assert(not RemoteCatalog.Recorder and string.find(RemoteCatalog.CaptureStatus.Text,'unavailable',1,true),'missing hooks must not break UI')
+end
+return 'UI, seven tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
 `;
-try { console.log(await state.loadstring(setup+'\nlocal function runUI()\n'+prefix+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); } catch(error) {console.error(String(error));process.exitCode=1;}
+for (const supported of [false,true]) {
+ const hooks=`
+local CAPTURE_SUPPORTED=${supported}
+local hookCount=0
+local captureEnvironment={}
+local function getgenv() return captureEnvironment end
+local hookmetamethod,getnamecallmethod
+if CAPTURE_SUPPORTED then
+ hookmetamethod=function(_,_,fn) hookCount+=1;return function(...) return ... end end
+ getnamecallmethod=function() return 'InvokeServer' end
+end
+`;
+ try { console.log(await state.loadstring(setup+'\n'+hooks+'\nlocal function runUI()\n'+prefix+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); }
+ catch(error) {console.error(String(error));process.exitCode=1;}
+}
 state.destroy();

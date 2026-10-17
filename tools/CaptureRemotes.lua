@@ -11,7 +11,7 @@ local previous = environment.RebornCapture
 if previous and previous.Version == 2 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
-    return
+    return previous
 end
 if previous and previous.Stop then previous:Stop() end
 local capture = { Version = 2, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
@@ -206,3 +206,5 @@ capture.Connection = game:GetService("UserInputService").InputBegan:Connect(func
     end
 end)
 print("[Reborn capture] Ready. Do ONE action manually. F8 pause, F9 export, F10 stop.")
+
+return capture

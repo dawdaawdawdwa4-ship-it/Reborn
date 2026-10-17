@@ -22,7 +22,7 @@ npm ci --prefix tests
 npm --prefix tests test
 ```
 
-The test compiles all three scripts and constructs the full Farming Hub UI using
+The test compiles the hub, both src scripts, and the recorder and constructs the full Farming Hub UI using
 Roblox mocks. It checks that all seven tabs have content, switches tabs, closes and
 reopens the hub, and exercises resize/reset. The reduced Roblox API name fixture
 comes from MaximumADHD/Roblox-Client-Tracker's `roblox/API-Dump.json`, retrieved
@@ -55,14 +55,20 @@ remain necessary even after an argument capture is available.
 
 ## Capture request arguments
 
-`tools/CaptureRemotes.lua` records outgoing mining, harvesting, planting, fishing,
+`message.txt` embeds and automatically starts the recorder. No second script is
+needed. The Remotes tab provides pause/resume, export and stop controls, plus
+recording status and the observed mining-ID status. Removing the hub stops its
+recorder. Without working hook APIs the UI remains usable and explains that
+capture is unavailable.
+
+`tools/CaptureRemotes.lua` is the recorder source and records outgoing mining, harvesting, planting, fishing,
 hotbar, and bait calls. It requires host-provided `hookmetamethod` and
 `getnamecallmethod`; ordinary Roblox Studio LocalScripts cannot intercept calls
 from other scripts. It does not send or replay requests, and preserves the original
 arguments, return values, and errors. Names are filtered to the relevant requests
 and the existing legacy names; unrelated requests are passed through silently.
 
-Run the recorder, then perform one action manually at a time (mine, harvest,
+Run Farming Hub, then perform one action manually at a time (mine, harvest,
 plant, cast/reel). F8 pauses/resumes, F9 prints and exports, F10 stops. When the
 host provides `writefile` and `isfile`, F9 writes a new, uniquely named
 `Reborn-remotes-<timestamp>-<index>.lua` in that host's file workspace. Otherwise
@@ -83,7 +89,8 @@ text must not be executed. Actual game calls retain their original Instance.
 
 The recorded mining request confirms that its ID differs from the old fixed value.
 Mining now reads the ID observed for OEzzgCCBzocxJw by the recorder in the current
-session. Start recorder v2, mine one block manually, then enable Mining in the hub.
+session. Start Farming Hub (its embedded recorder starts automatically), mine one block
+manually, then enable Mining in the hub.
 No observed mining ID means no automatic mining request is sent. IDs are held only
 in memory, per remote; other action payloads still need their own manual captures.
 This transport wiring is mock-tested; live mining is not verified here.
@@ -92,3 +99,8 @@ If an external loader reports HTTP 404, load this repository's `message.txt` fro
 branch `claude/gifted-fermi-4c277x`. The raw URLs for `message.txt` and
 `tools/CaptureRemotes.lua` returned HTTP 200 during the update. The external loader
 and its failing URL are not in this repository, so its original URL was not fixed.
+
+
+When editing the recorder source, run `node scripts/embed-capture.mjs` to update
+its embedded copy in `message.txt`. The test command checks that the two copies
+match and exercises the integrated UI both with and without hook support.
