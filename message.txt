@@ -1047,19 +1047,19 @@ end
 -- Colors / sizes
 --------------------------------------------------------------------
 local COLORS = {
-	bg = Color3.fromRGB(13, 17, 28),
-	panel = Color3.fromRGB(21, 27, 44),
-	stroke = Color3.fromRGB(32, 41, 63),
+	bg = Color3.fromRGB(17, 23, 29),
+	panel = Color3.fromRGB(29, 39, 48),
+	stroke = Color3.fromRGB(56, 73, 83),
 	text = Color3.fromRGB(226, 232, 240),
-	muted = Color3.fromRGB(128, 141, 166),
+	muted = Color3.fromRGB(170, 186, 194),
 	on = Color3.fromRGB(70, 190, 145),
-	off = Color3.fromRGB(52, 62, 84),
+	off = Color3.fromRGB(42, 55, 65),
 	gold = Color3.fromRGB(255, 200, 60),
 	good = Color3.fromRGB(80, 230, 130),
 	bad = Color3.fromRGB(240, 80, 80),
 	warn = Color3.fromRGB(255, 170, 50),
 	harvest = Color3.fromRGB(122, 162, 247),
-	accent = Color3.fromRGB(122, 162, 247),
+	accent = Color3.fromRGB(91, 204, 177),
 }
 
 
@@ -1086,7 +1086,7 @@ local function label(props)
 	local l = Instance.new("TextLabel")
 	l.BackgroundTransparency = 1
 	l.Font = props.Font or Enum.Font.Gotham
-	l.TextSize = props.TextSize or 12
+	l.TextSize = math.max(props.TextSize or 13, 12)
 	l.TextColor3 = props.Color or COLORS.text
 	l.TextXAlignment = props.Align or Enum.TextXAlignment.Left
 	l.Text = props.Text or ""
@@ -1105,11 +1105,25 @@ local function button(props)
 	b.TextColor3 = props.Color or COLORS.text
 	b.Text = props.Text
 	b.Font = Enum.Font.GothamBold
-	b.TextSize = props.TextSize or 13
+	b.TextSize = math.max(props.TextSize or 13, 13)
 	b.BorderSizePixel = 0
 	b.AutoButtonColor = true
 	b.Parent = props.Parent
-	corner(b, props.Radius or 6)
+	corner(b, props.Radius or 8)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = COLORS.stroke
+    stroke.Thickness = 1
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = b
+    track(b.MouseEnter:Connect(function() stroke.Color = COLORS.accent end))
+    track(b.MouseLeave:Connect(function() stroke.Color = COLORS.stroke end))
+    if string.find(props.Text or "", "▼", 1, true) then
+        b.TextXAlignment = Enum.TextXAlignment.Left
+        local padding = Instance.new("UIPadding")
+        padding.PaddingLeft = UDim.new(0, 12)
+        padding.PaddingRight = UDim.new(0, 12)
+        padding.Parent = b
+    end
 	return b
 end
 
@@ -1143,7 +1157,7 @@ local R=game:GetService"TweenService"local p=game:GetService"UserInputService"lo
 -- NAVY. Upstream ships a plum palette; these are the same roles in blue. AccentDark is
 -- the text that sits ON the accent (primary buttons, the toggle knob), so it stays the
 -- darkest colour here -- swapping it for a blue would leave that text unreadable.
-g.Theme={Background=Color3.fromRGB(13,17,28),Surface=Color3.fromRGB(17,22,36),Surface2=Color3.fromRGB(21,27,44),Surface3=Color3.fromRGB(34,43,66),Stroke=Color3.fromRGB(32,41,63),StrokeHover=Color3.fromRGB(66,88,130),Accent=Color3.fromRGB(122,162,247),AccentDark=Color3.fromRGB(10,14,24),Text=Color3.fromRGB(226,232,240),Muted=Color3.fromRGB(128,141,166),Warning=Color3.fromRGB(240,176,108),Success=Color3.fromRGB(150,220,170),Error=Color3.fromRGB(240,120,120)}
+g.Theme={Background=Color3.fromRGB(17,23,29),Surface=Color3.fromRGB(22,30,37),Surface2=Color3.fromRGB(29,39,48),Surface3=Color3.fromRGB(42,55,65),Stroke=Color3.fromRGB(56,73,83),StrokeHover=Color3.fromRGB(91,204,177),Accent=Color3.fromRGB(91,204,177),AccentDark=Color3.fromRGB(10,14,24),Text=Color3.fromRGB(226,232,240),Muted=Color3.fromRGB(170,186,194),Warning=Color3.fromRGB(240,176,108),Success=Color3.fromRGB(150,220,170),Error=Color3.fromRGB(240,120,120)}
 g.Assets={Shadow="rbxassetid://6014261993",Glow="rbxassetid://8992230677",Logo="rbxassetid://6031090998"}
 -- ICONS COME FROM THE SCRIPT, NOT FROM THE INTERNET. Upstream resolved lucide names by
 -- downloading a table from a third-party GitHub repo and running it -- a dependency that
@@ -1187,6 +1201,7 @@ local activeTab = "Fishing"
 
 local function createPage(name)
     local tab = hub:Tab({ Name = name })
+    tab._label.TextSize = 14
     airflowTabs[name] = tab
     -- Keep the existing farming controls and their callbacks in the Airflow page.
     -- Its stock list/empty state are replaced by our scrollable content.
@@ -1274,7 +1289,7 @@ local toggle = button({
 })
 local fishInfo = label({
     Parent = fishingPage,
-    Text = "Responsive fishing: checks for a tug quickly, then reels in.",
+    Text = "Cast, wait for a bite, and reel automatically. Bait starts with fishing.",
     Color = COLORS.muted, TextSize = 11,
     Size = UDim2.new(1, -16, 0, 34),
     Position = UDim2.fromOffset(8, 50),
@@ -1535,19 +1550,19 @@ cropList.Parent = cropDropdown
 local cropButtons = {}
 for i, cropName in ipairs(cropOptions) do
     local option = button({ Parent = cropDropdown, Text = cropName, TextSize = 11,
-        Size = UDim2.new(1, -6, 0, 26), Position = UDim2.new(), Bg = COLORS.panel })
+        Size = UDim2.new(1, -6, 0, 34), Position = UDim2.new(), Bg = i == cropIndex and COLORS.off or COLORS.panel })
     option.LayoutOrder = i
     option.ZIndex = 21
     cropButtons[i] = option
 end
-cropDropdown.Size = UDim2.new(1, -12, 0, math.min(#cropOptions * 28, 220))
+cropDropdown.Size = UDim2.new(1, -12, 0, math.min(#cropOptions * 36, 220))
 local cropScroll = Instance.new("ScrollingFrame")
 -- Keep the existing menu/options intact while allowing every option to be reached on small screens.
 cropScroll.Name = "CropOptionsScroll"
 cropScroll.BackgroundTransparency = 1
 cropScroll.BorderSizePixel = 0
 cropScroll.Size = UDim2.new(1, 0, 1, 0)
-cropScroll.CanvasSize = UDim2.new(0, 0, 0, #cropOptions * 28)
+cropScroll.CanvasSize = UDim2.new(0, 0, 0, #cropOptions * 36)
 cropScroll.ScrollBarThickness = 4
 cropScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 cropScroll.ZIndex = 20
@@ -1557,7 +1572,7 @@ for _, option in ipairs(cropButtons) do option.Parent = cropScroll end
 cropDropdownOpen = false
 local replantToggle = button({ Parent = harvestPage, Text = "AUTO-REPLANT: ON", TextSize = 12,
     Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 160), Bg = COLORS.on })
-local cropHint = label({ Parent = harvestPage, Text = "Crop filter is name-based; exact names depend on the game's current island objects.",
+local cropHint = label({ Parent = harvestPage, Text = "Choose your crop above. Auto-replant replaces crops after a confirmed harvest.",
     Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 36), Position = UDim2.fromOffset(8, 198) })
 cropHint.TextWrapped = true
 
@@ -2747,6 +2762,7 @@ end))
 for i, option in ipairs(cropButtons) do
     track(option.Activated:Connect(function()
         cropIndex = i
+        for index, item in ipairs(cropButtons) do item.BackgroundColor3 = index == i and COLORS.off or COLORS.panel end
         CONFIG.HarvestCrop = cropOptions[i]
         CONFIG.PlantType = CONFIG.HarvestCrop
         savePreferences()
@@ -2772,7 +2788,7 @@ end))
 local function makeToolDropdown(page, anchor, options, kind, yPosition, onChoose)
     local menu = Instance.new("Frame")
     menu.Name = kind .. "Dropdown"
-    menu.Size = UDim2.new(1, -12, 0, #options * 27)
+    menu.Size = UDim2.new(1, -12, 0, #options * 36)
     menu.Position = UDim2.fromOffset(6, yPosition)
     menu.BackgroundColor3 = COLORS.panel
     menu.BorderSizePixel = 0
@@ -2782,12 +2798,12 @@ local function makeToolDropdown(page, anchor, options, kind, yPosition, onChoose
     menu.Parent = page
     corner(menu, 6)
     local list = Instance.new("UIListLayout")
-    list.Padding = UDim.new(0, 1)
+    list.Padding = UDim.new(0, 2)
     list.SortOrder = Enum.SortOrder.LayoutOrder
     list.Parent = menu
     for i, optionName in ipairs(options) do
         local opt = button({Parent = menu, Text = optionName, TextSize = 11,
-            Size = UDim2.new(1, -4, 0, 26), Position = UDim2.new(), Bg = COLORS.panel})
+            Size = UDim2.new(1, -4, 0, 34), Position = UDim2.new(), Bg = COLORS.panel})
         opt.LayoutOrder = i
         opt.ZIndex = 26
         track(opt.Activated:Connect(function()
