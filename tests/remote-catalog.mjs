@@ -84,6 +84,7 @@ local bait={Name='bait'}
 player={Character={FindFirstChild=function(_,name) if name=='bait' then return bait end end,FindFirstChildOfClass=function() return nil end},FindFirstChildOfClass=function() return nil end}
 ${plantFunction}
 ${layoutFunction}
+RemoteCatalog.WithBaitTool=function(tool,callback) return callback() end
 local baitInfo={}
 local COLORS={warn=1,good=2}
 local status
@@ -181,7 +182,7 @@ require=function(module)
  end}}}
 end
 assert(RemoteCatalog.EquipTool(tool) and inventory.selectedHotbarIndex==0 and selected==1,'hotbar slot zero must be selectable')
-assert(RemoteCatalog.EquipTool(tool) and selected==1 and equipped==1,'selected slot must not be toggled off')
+assert(RemoteCatalog.EquipTool(tool) and selected==1 and equipped==0,'an already equipped tool must not be reselected')
 locked=true;assert(RemoteCatalog.EquipTool(tool)==false,'tools lock ignored');locked=false
 local owned=RemoteCatalog.OwnedTools()
 assert(#owned==2 and owned[1]==hiddenAxe,'inventory-only tools must be found and deduplicated')
@@ -206,6 +207,14 @@ assert(RemoteCatalog.CallHarvest(cropTarget)==false and sent==nil,'harvest rejec
 assert(RemoteCatalog.CallMine(actualBlock)==false and sent==nil,'mining rejection must not replay through legacy')
 assert(firePlant(cf,'stone')==false and sent==nil,'game API rejection must not retry through legacy remote')
 
+local gameRequire=require
+require=function() error('host require cannot load game ModuleScripts') end
+getrenv=function() return {require=gameRequire} end
+RemoteCatalog.ModuleCache['ReplicatedStorage.TS.network.requests']=nil
+response=true
+assert(RemoteCatalog.CallHarvest(cropTarget) and requestedName=='CLIENT_HARVEST_CROP_REQUEST','native game require fallback must restore harvest endpoint')
+assert(RemoteCatalog.CallMine(actualBlock) and requestedName=='BLOCK_HIT_REQUEST','native game require fallback must restore wood/mining endpoint')
+require=gameRequire;getrenv=nil
 return '135 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();

@@ -40,6 +40,7 @@ local status
 local function setStatus(text) status=text end
 local COLORS={warn=1}
 local folder
+local RemoteCatalog={}
 local workspace={CurrentCamera={ViewportSize={X=1920,Y=1080},WorldToScreenPoint=function() return {X=1200,Y=600},true end},FindFirstChild=function() return folder end}
 ${helpers}
 assert(clickOnce('cast',1) and not down)

@@ -106,6 +106,13 @@ assert(capture:Harvest(nextCrop),'new harvest payload not replayed')
 assert(updatedArgs.iXwUW9mXJ8AVnK=='current-crop-session' and updatedArgs.a1tIHk1Kl9GiE5.model==nextCrop,'new envelope fields or crop target lost')
 assert(updatedArgs.a1tIHk1Kl9GiE5.player=='current-player' and updatedPacket.a1tIHk1Kl9GiE5.model==crop,'player context changed or original packet mutated')
 assert(updatedArgs.TrNhTTgExIb1Bg==nil,'new request must not be rewritten to old field names')
+local rotatedCrop={E6N43ldyV5t9lg='rotated-crop-context',wGquKmyB3mV2Cf={model=crop,player='current-player'}}
+installedHook(updatedRemote,rotatedCrop)
+assert(capture:Harvest(nextCrop) and updatedArgs.wGquKmyB3mV2Cf.model==nextCrop,'known crop endpoint must support rotated body envelope')
+assert(updatedArgs.E6N43ldyV5t9lg=='rotated-crop-context','crop context must be preserved')
+updatedRemote.InvokeServer=function() return {success=false} end
+assert(not capture:Harvest(nextCrop),'structured crop rejection must remain failure')
+updatedRemote.InvokeServer=function(_,packet) updatedArgs=packet;return true end
 local fruitRemote=remote('Y6oBjV1u9qIAAS')
 local fruitPlayer={_type='Instance',Name='Player',Parent=game}
 local fruitTree={_type='Instance',Name='treeOrange',Parent=game}

@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 10 and previous.Resume then
+if previous and previous.Version == 11 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 10, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 11, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -314,7 +314,8 @@ end
 local function learnHarvest(remote, method, args)
     if args.n < 1 or type(args[1]) ~= "table" then return false end
     local packet = args[1]
-    local body = type(packet.a1tIHk1Kl9GiE5) == "table" and packet.a1tIHk1Kl9GiE5
+    local body = type(packet.wGquKmyB3mV2Cf) == "table" and packet.wGquKmyB3mV2Cf
+        or type(packet.a1tIHk1Kl9GiE5) == "table" and packet.a1tIHk1Kl9GiE5
         or (type(packet.TlSR8Mzd9FLwaZ) == "table" and packet.TlSR8Mzd9FLwaZ or packet)
     local target = body.model
     if typeof(target) ~= "Instance" or not (target:IsA("Model") or target:IsA("BasePart")) then return false end
@@ -336,7 +337,7 @@ function capture:Harvest(target)
         local args = cloneArguments(binding.Args, binding.Target, target)
         return binding.Remote[binding.Method](binding.Remote, table.unpack(args, 1, args.n))
     end)
-    if not ok or result == false then return false, result end
+    if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
     return true, result
 end
 local original
