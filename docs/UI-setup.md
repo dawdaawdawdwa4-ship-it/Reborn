@@ -289,3 +289,5 @@ Tree input fallback checks child meshes and invisible or non-queryable hitboxes,
 Wood Farm starts a temporary no-log learning mode when neither a live wood binding nor the native block-hit API is available. Chop one tree manually; learning stops automatically and subsequent targets use that request. Switching Wood Farm off cancels pending automatic learning. Startup and bait remain OFF. Rejoining may require a new chop; captured session values are never hardcoded.
 
 Wood scan range selects candidates; it does not extend axe reach. All wood transports now check the closest tree geometry against the game reach value (20-stud fallback) before equipping or sending a request. Unreachable targets show Move closer and do not increase action counts. Request submission does not confirm damage or guarantee a swing animation.
+
+Persistent berry bushes use a 150 ms confirmation window instead of 800 ms, then proceed to the next candidate with an 80 ms maximum delay. Successful submissions retain a one-second per-bush cooldown. Unconfirmed berry submissions do not increase collection counts or trigger replanting. Server response time still limits throughput.

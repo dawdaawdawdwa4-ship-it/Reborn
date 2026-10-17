@@ -36,6 +36,7 @@ local function runScenario(scenario)
  function player.Character:FindFirstChildOfClass() return selectedTool end
  if scenario=='wood-equip' or scenario=='blocked-wood' then harvestEnabled=false;woodEnabled=true end
  if scenario=='multi-carrot' then target.Name='carrot';CONFIG.HarvestCrops={wheat=true,carrot=true} end
+ if scenario=='berry-persistent' then target.Name='berryBush' end
  local fruitTree={Parent=true}
  function target:IsDescendantOf(model) return model==fruitTree end
  if scenario=='fruit' or scenario=='fruit-cancel' then CONFIG.FruitEnabled=true end
@@ -79,6 +80,7 @@ local function runScenario(scenario)
  end
  ${loop}
  harvestLoop(1)
+ if scenario=='berry-persistent' then assert(counted==0 and planted==0 and time<.5 and FarmState.Cooldowns[target]>time,'persistent berry must advance quickly without false counts, replanting or immediate repeat') end
  if scenario=='unchanged' then assert(counted==0 and planted==0,'acknowledged request must not count as harvested') end
  if scenario=='learned-prompt' then assert(counted==1 and planted==1 and not released,'learned crop request must take precedence over prompt') end
  if scenario=='blocked-wood' then assert(string.find(lastStatus,'Obstacle blocks trunk',1,true) and string.find(woodStatus.Text,'Obstacle blocks trunk',1,true),'cooldown scan must preserve the actual blocker') end
@@ -92,7 +94,7 @@ local function runScenario(scenario)
  if scenario=='cancel' then assert(counted==0 and planted==0,'cancelled cycle must not count/replant') end
  if scenario=='prompt-cancel' then assert(released and not held and counted==0 and planted==0,'Stop must release prompt and cancel post-processing') end
 end
-for _,scenario in ipairs({'unchanged','removed','regrow','cancel','prompt-cancel','learned-prompt','server-replant','fruit','fruit-cancel','wood-equip','blocked-wood','multi-carrot'}) do runScenario(scenario) end
+for _,scenario in ipairs({'berry-persistent','unchanged','removed','regrow','cancel','prompt-cancel','learned-prompt','server-replant','fruit','fruit-cancel','wood-equip','blocked-wood','multi-carrot'}) do runScenario(scenario) end
 return 'Harvest loop passed: no false counts, confirmed removal/replant, regrow in place, Stop/cycle cancellation and prompt release'
 `;
 const state=await LuauState.createAsync();

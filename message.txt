@@ -3227,9 +3227,10 @@ local function harvestLoop(myCycle)
             if target.category=="wood" and woodStatus then
                 woodStatus.Text=ok and ("Request sent to "..target.name.."; damage not yet confirmed.") or ("Wood waiting: "..tostring(failure))
             end
+            local persistentBerry=target.category=="crop" and target.kind~="fruit" and string.find(string.lower(target.name),"berry",1,true)~=nil
             local confirmed = false
             if ok then
-                local deadline = os.clock() + 0.8
+                local deadline = os.clock() + (persistentBerry and 0.15 or 0.8)
                 repeat
                     if not active() then break end
                     confirmed = FarmLogic.Confirmed(obj, before, prompt)
@@ -3238,7 +3239,7 @@ local function harvestLoop(myCycle)
                 until os.clock() >= deadline
             end
             if not active() then break end
-            if ok and not confirmed then setStatus("No target change confirmed; retrying " .. target.name, COLORS.muted) end
+            if ok and not confirmed then setStatus(persistentBerry and "Berry request sent; checking the next bush (collection unconfirmed)" or ("No target change confirmed; retrying " .. target.name), COLORS.muted) end
             if confirmed then
                 registerHarvest(target.name, target.category)
                 setStatus("Confirmed: " .. target.name .. " ×" .. stats.harvests, COLORS.good)
@@ -3251,8 +3252,8 @@ local function harvestLoop(myCycle)
                     end
                 end
             end
-            local quickCrop=target.category=="crop" and confirmed
-            FarmState.Cooldowns[obj] = os.clock() + (quickCrop and 0.08 or ok and 0.25 or 2)
+            local quickCrop=target.category=="crop" and (confirmed or persistentBerry and ok)
+            FarmState.Cooldowns[obj] = os.clock() + (persistentBerry and ok and 1 or quickCrop and 0.08 or ok and 0.25 or 2)
             task.wait(quickCrop and math.min(CONFIG.MineDelay,0.08) or CONFIG.MineDelay)
         end
         -- All candidates may be out of prompt range; always yield before rescanning.
