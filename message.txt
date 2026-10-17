@@ -1673,7 +1673,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-latest-8",
+    Subtitle = "rod-return-9",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3088,6 +3088,24 @@ local function hasRodEquipped()
     return tool ~= nil and (string.find(string.lower(tool.Name), "fishing", 1, true) ~= nil
         or string.find(string.lower(tool.Name), "rod", 1, true) ~= nil)
 end
+RemoteCatalog.EquipFishingRod=function(myCycle)
+    if baitBusy or fishingInputBusy or not running(myCycle) then return false,"Waiting for bait/input to finish" end
+    local character=player.Character
+    if not character then return false,"Waiting for your character" end
+    if hasRodEquipped() then return true end
+    for _,owned in ipairs(RemoteCatalog.OwnedTools()) do
+        local name=string.lower(owned.Name)
+        if string.find(name,"fishing",1,true) or string.find(name,"rod",1,true) then
+            if not running(myCycle) or player.Character~=character then return false,"Fishing stopped" end
+            local ok,equipped=pcall(RemoteCatalog.EquipTool,owned)
+            if not ok or not equipped then return false,"Could not equip your fishing rod" end
+            task.wait(.1)
+            if not running(myCycle) or player.Character~=character then return false,"Fishing stopped" end
+            return hasRodEquipped(),"Fishing rod selected; waiting for equip confirmation"
+        end
+    end
+    return false,"No fishing rod found in your inventory"
+end
 local lastFishingAim
 local function clickOnce(action, myCycle)
     local camera = workspace.CurrentCamera
@@ -3852,9 +3870,11 @@ local function run(myCycle)
 		elseif baitEnabled and RemoteCatalog.BaitPending then
             setStatus("Applying queued bait before the next cast...",COLORS.muted)
             task.wait(.05)
-		elseif not hasRodEquipped() then
-			setStatus("Equip your fishing rod", COLORS.warn)
-			task.wait(0.5)
+        elseif not hasRodEquipped() then
+            local equipped,reason=RemoteCatalog.EquipFishingRod(myCycle)
+            if not running(myCycle) then break end
+            setStatus(equipped and "Fishing rod ready" or reason,equipped and COLORS.good or COLORS.warn)
+            task.wait(equipped and .05 or .5)
 		else
 			if os.clock() - lastAction >= CONFIG.ActionCooldown then
 				lastAction = os.clock()

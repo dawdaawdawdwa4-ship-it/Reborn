@@ -5,7 +5,7 @@ const controls=main.slice(main.indexOf('local function setBaitEnabled(state)'),m
 const apply=main.slice(main.indexOf("local function applyBait()"),main.indexOf("local function setBaitEnabled(state)"));
 const run=main.slice(main.indexOf('local function run(myCycle)'),main.indexOf('-- Controls\n'));
 const code=`
-local RemoteCatalog={}
+local RemoteCatalog={EquipFishingRod=function() return false,"No rod" end}
 local baitEnabled,baitBusy,baitCycleId=false,false,0
 local gui={Parent=true}
 local baitToggle,baitInfo={},{}

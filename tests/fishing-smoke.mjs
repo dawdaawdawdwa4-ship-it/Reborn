@@ -58,6 +58,22 @@ failDown=false;failMove=true;events={}
 assert(not clickOnce('cast',1) and #events==0,'blocked mouse move must not send press')
 failMove=false;tool.Name='stonePickaxe';assert(not hasRodEquipped() and not clickOnce('cast',1),'pickaxe must not count as rod')
 tool.Name='fishingRod'
+local savedRod=tool
+local baitTool={Name='bait'}
+local equips=0
+RemoteCatalog.OwnedTools=function() return {baitTool,savedRod} end
+RemoteCatalog.EquipTool=function(selected) equips+=1;tool=selected;return true end
+tool=baitTool
+assert(RemoteCatalog.EquipFishingRod(1) and tool==savedRod and equips==1,'Fishing must select owned rod after bait even when the previous tool was bait')
+assert(RemoteCatalog.EquipFishingRod(1) and equips==1,'an already equipped rod must not be toggled off')
+tool=baitTool;enabled=false
+assert(not RemoteCatalog.EquipFishingRod(1) and equips==1,'Fishing OFF must not select tools')
+enabled=true;baitBusy=true
+assert(not RemoteCatalog.EquipFishingRod(1) and equips==1,'bait application must keep exclusive tool control')
+baitBusy=false
+RemoteCatalog.EquipTool=function() return true end
+assert(not RemoteCatalog.EquipFishingRod(1),'an API success without actual rod selection must not count as equipped')
+tool=savedRod
 local own={IsA=function(_,c) return c=='Model' end,GetAttribute=function(_,name) if name=='OwnerUserId' then return 7 end end}
 local other={IsA=own.IsA,GetAttribute=function() return 8 end}
 folder={FindFirstChild=function() return nil end,GetChildren=function() return {other,own} end}
