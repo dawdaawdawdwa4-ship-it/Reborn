@@ -79,6 +79,22 @@ local exported=0
 capture.Export=function() exported+=1 end
 setclipboard=function() error('clipboard unavailable') end
 assert(capture:CopyAll()==true and exported==1,'clipboard failure must export instead')
+local crop={_type='Instance',Name='wheat',ClassName='Model',Parent=game,IsA=function(_,cls) return cls=='Model' end}
+local nextCrop={_type='Instance',Name='wheat',ClassName='Model',Parent=game,IsA=function(_,cls) return cls=='Model' end}
+local harvestRemote=remote('CLIENT_HARVEST_CROP_REQUEST')
+local harvestArgs
+harvestRemote.InvokeServer=function(_,...) harvestArgs=table.pack(...);return true end
+local observed={TrNhTTgExIb1Bg='live-harvest-id',TlSR8Mzd9FLwaZ={model=crop,player='current-player',extra=17}}
+installedHook(harvestRemote,observed,nil,'preserve-tail')
+assert(capture.HarvestBinding and capture.HarvestBinding.Target==crop,'manual harvest binding not learned')
+assert(capture:Harvest(nextCrop),'learned crop request did not execute')
+assert(harvestArgs.n==3 and harvestArgs[2]==nil and harvestArgs[3]=='preserve-tail','learned argument positions changed')
+assert(harvestArgs[1].TlSR8Mzd9FLwaZ.model==nextCrop and observed.TlSR8Mzd9FLwaZ.model==crop,'template mutation or wrong target')
+assert(harvestArgs[1].TrNhTTgExIb1Bg=='live-harvest-id' and harvestArgs[1].TlSR8Mzd9FLwaZ.extra==17,'observed context lost')
+harvestRemote.InvokeServer=function() return false end
+assert(capture:Harvest(nextCrop)==false,'harvest rejection must remain failure')
+harvestRemote.Parent=nil
+assert(capture:Harvest(nextCrop)==false,'removed remote must not be used')
 capture.MaxCalls=#capture.Records+1
 installedHook(target,{})
 assert(not capture.Active,'record limit failed')

@@ -23,6 +23,7 @@ local function node(name,cls,children)
  end
  return n
 end
+local player
 local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
@@ -75,10 +76,10 @@ local ok,result=fireBlockMine(actualBlock)
 assert(ok,'mining call not forwarded')
 assert(sent.TrNhTTgExIb1Bg=='test-current-session' and sent.TlSR8Mzd9FLwaZ.block==actualBlock,'mining must use current ID and actual block Instance')
 local CONFIG={PlantType='wheat'}
+local bait={Name='bait'}
+player={Character={FindFirstChild=function(_,name) if name=='bait' then return bait end end,FindFirstChildOfClass=function() return nil end},FindFirstChildOfClass=function() return nil end}
 ${plantFunction}
 ${layoutFunction}
-local bait={Name='bait'}
-local player={Character={FindFirstChild=function(_,name) if name=='bait' then return bait end end}}
 local status
 local function setStatus(message) status=message end
 ${baitFunction}
@@ -104,6 +105,41 @@ assert(firePlant(cf,'sapling')==false and sent==nil,'placement must not reuse mi
 assert(applyBait()==false and sent==nil,'bait must not use stale ID')
 assert(setHotbarLayout(layout)==false and sent==nil,'hotbar must not use stale ID')
 assert(fireBlockMine(actualBlock)==false and sent==nil,'missing ID must not send stale request')
+local requestModule=node('requests','ModuleScript')
+local toolModule=node('tool-meta','ModuleScript')
+table.insert(roots.ReplicatedStorage.children,node('TS','Folder',{node('network','Folder',{requestModule}),node('tool','Folder',{toolModule})}))
+local inventoryModule=node('client-inventory-service','ModuleScript')
+roots.Players=node('Players','Players',{node('TestPlayer','Player',{node('PlayerScripts','Folder',{node('TS','Folder',{node('inventory','Folder',{inventoryModule})})})})})
+local locked=false
+player.Name='TestPlayer'
+function player:GetAttribute(name) return name=='ToolsLocked' and locked end
+function player:FindFirstChild() return nil end
+local tool={Parent=nil}
+local selected,equipped=0,0
+local inventory={hotbar={[0]=tool},selectedHotbarIndex=-1}
+function inventory:setSelectedHotbarIndex(index) self.selectedHotbarIndex=index;selected+=1;tool.Parent=player.Character end
+function inventory:equipTool(value) equipped+=1;value.Parent=player.Character end
+local requestedName, gameBody, response
+require=function(module)
+ if module==inventoryModule then return {ClientInventoryService=inventory} end
+ if module==toolModule then return {ToolMeta={blueFlowerSeeds={cropSeed={cropName='blueFlowers'}}}} end
+ return {Requests={Client={Get=function(_,name)
+  requestedName=name
+  return {CallServer=function(_,body) gameBody=body;return response end}
+ end}}}
+end
+assert(RemoteCatalog.EquipTool(tool) and inventory.selectedHotbarIndex==0 and selected==1,'hotbar slot zero must be selectable')
+assert(RemoteCatalog.EquipTool(tool) and selected==1 and equipped==1,'selected slot must not be toggled off')
+locked=true;assert(RemoteCatalog.EquipTool(tool)==false,'tools lock ignored');locked=false
+assert(RemoteCatalog.PlacementAvailable(),'game request module should permit placement without recorder ID')
+assert(firePlant(cf,'blueFlowers'))
+assert(requestedName=='BLOCK_PLACE_REQUEST' and gameBody.cframe==cf and gameBody.blockType=='blueFlowers','game placement API used incorrectly')
+assert(table.find(RemoteCatalog.SeedNames('blueFlowers'),'blueFlowerSeeds'),'metadata seed mapping missing')
+assert(setHotbarLayout('stonePickaxe,,,,,,,'))
+assert(requestedName=='CLIENT_HOTBAR_LAYOUT_UPDATE' and gameBody.layout=='stonePickaxe,,,,,,,','game hotbar API not used')
+response=false;sent=nil
+assert(firePlant(cf,'stone')==false and sent==nil,'game API rejection must not retry through legacy remote')
+
 return '129 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();

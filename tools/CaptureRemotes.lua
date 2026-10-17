@@ -8,16 +8,17 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 3 and previous.Resume then
+if previous and previous.Version == 4 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 3, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 4, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
+    capture.HarvestBinding = previous.HarvestBinding
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
@@ -170,6 +171,46 @@ function capture:Resume()
     self.Stopped = false
     self.Active = #self.Records < self.MaxCalls
 end
+-- Learn only a concrete model-target request observed during manual harvesting.
+local function cloneArguments(value, oldTarget, newTarget, seen, budget)
+    if oldTarget and value == oldTarget then return newTarget end
+    if typeof(value) ~= "table" then return value end
+    seen, budget = seen or {}, budget or { count = 0 }
+    if seen[value] then return seen[value] end
+    budget.count += 1
+    assert(budget.count <= 500, "request snapshot too large")
+    local copy = {}
+    seen[value] = copy
+    for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
+    return copy
+end
+local function learnHarvest(remote, method, args)
+    if args.n < 1 or type(args[1]) ~= "table" then return false end
+    local packet = args[1]
+    local body = type(packet.TlSR8Mzd9FLwaZ) == "table" and packet.TlSR8Mzd9FLwaZ or packet
+    local target = body.model
+    if typeof(target) ~= "Instance" or not (target:IsA("Model") or target:IsA("BasePart")) then return false end
+    local name = string.lower(target.Name)
+    local crop = false
+    for _, word in ipairs({"wheat", "berry", "carrot", "potato", "corn", "tomato", "pumpkin", "melon", "cabbage", "lettuce", "flower"}) do
+        if string.find(name, word, 1, true) then crop = true; break end
+    end
+    if not crop then return false end
+    if not string.find(string.lower(remote.Name), "harvest", 1, true) and remote.Name ~= "hFuV0Z1w601mXP" then return false end
+    capture.HarvestBinding = { Remote = remote, Method = method, Args = cloneArguments(args), Target = target }
+    return true
+end
+function capture:Harvest(target)
+    local binding = self.HarvestBinding
+    if not binding or not binding.Remote.Parent then return false, "Harvest a crop manually once first" end
+    if binding.Target:IsA("Model") ~= target:IsA("Model") then return false, "Crop target type differs from the learned request" end
+    local ok, result = pcall(function()
+        local args = cloneArguments(binding.Args, binding.Target, target)
+        return binding.Remote[binding.Method](binding.Remote, table.unpack(args, 1, args.n))
+    end)
+    if not ok or result == false then return false, result end
+    return true, result
+end
 local original
 local function intercept(remote, ...)
     local method = getnamecallmethod()
@@ -177,7 +218,11 @@ local function intercept(remote, ...)
         local args = table.pack(...)
         -- Recorder failures must never cancel or replace the original game call.
         pcall(function()
-            if not wanted(remote) then return end
+            local learned = false
+            if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
+                learned = learnHarvest(remote, method, args)
+            end
+            if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
             -- Never substitute IDs between different remote names.
             if exactNames[remote.Name] and type(args[1]) == "table"

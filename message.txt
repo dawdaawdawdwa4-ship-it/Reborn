@@ -209,6 +209,73 @@ local RemoteCatalog = (function()
         if not ok or result == false then return false, result end
         return true, result
     end
+    catalog.ModuleCache = {}
+    function catalog.GameModule(path, export)
+        if catalog.ModuleCache[path] then return catalog.ModuleCache[path][export] end
+        local module = catalog.FindPath(path, "ModuleScript")
+        if not module then return nil end
+        local ok, result = pcall(require, module)
+        if not ok or type(result) ~= "table" then return nil end
+        catalog.ModuleCache[path] = result
+        return result[export]
+    end
+    function catalog.PlacementClient()
+        local requests = catalog.GameModule("ReplicatedStorage.TS.network.requests", "Requests")
+        return requests and requests.Client
+    end
+    function catalog.PlacementAvailable()
+        return catalog.PlacementClient() ~= nil or catalog.RequestId("ohy6O10QKzyGZE") ~= nil
+    end
+    function catalog.CallPlacement(body)
+        local client = catalog.PlacementClient()
+        if client then
+            -- Use the game's documented request wrapper; it supplies its own session context.
+            local ok, result = pcall(function() return client:Get("BLOCK_PLACE_REQUEST"):CallServer(body) end)
+            if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
+            return true, result
+        end
+        return catalog.InvokeCaptured("ohy6O10QKzyGZE", body)
+    end
+    function catalog.CallHotbar(layout)
+        local client = catalog.PlacementClient()
+        if client then
+            local ok, result = pcall(function() return client:Get("CLIENT_HOTBAR_LAYOUT_UPDATE"):CallServer({layout = layout}) end)
+            if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
+            return true, result
+        end
+        return catalog.InvokeCaptured("RZQQNNDRUvfj1N", {layout = layout})
+    end
+    function catalog.EquipTool(tool)
+        local character = player.Character
+        if not character or player:GetAttribute("ToolsLocked") == true then return false end
+        local loading = player:FindFirstChild("SessionLoading")
+        if loading and loading.Value then return false end
+        local service = catalog.GameModule("Players." .. player.Name .. ".PlayerScripts.TS.inventory.client-inventory-service", "ClientInventoryService")
+        if service then
+            local ok = pcall(function()
+                local slot
+                for index, item in pairs(service.hotbar or {}) do if item == tool then slot = index; break end end
+                -- Slot zero is valid. Selecting an already selected slot would unequip it.
+                if slot ~= nil and service.selectedHotbarIndex ~= slot then service:setSelectedHotbarIndex(slot)
+                else service:equipTool(tool) end
+            end)
+            return ok and tool.Parent == character
+        end
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        return humanoid ~= nil and pcall(function() humanoid:EquipTool(tool) end)
+    end
+    function catalog.SeedNames(cropName)
+        local meta = catalog.GameModule("ReplicatedStorage.TS.tool.tool-meta", "ToolMeta")
+        local names = { cropName }
+        if meta then
+            for name, info in pairs(meta) do
+                if type(info) == "table" and type(info.cropSeed) == "table" and info.cropSeed.cropName == cropName then
+                    table.insert(names, type(info.name) == "string" and info.name or name)
+                end
+            end
+        end
+        return names
+    end
     function catalog.Refresh()
         local found = 0
         for _, entry in ipairs(catalog.Entries) do
@@ -238,16 +305,17 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 3 and previous.Resume then
+if previous and previous.Version == 4 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 3, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 4, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
+    capture.HarvestBinding = previous.HarvestBinding
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
@@ -400,6 +468,46 @@ function capture:Resume()
     self.Stopped = false
     self.Active = #self.Records < self.MaxCalls
 end
+-- Learn only a concrete model-target request observed during manual harvesting.
+local function cloneArguments(value, oldTarget, newTarget, seen, budget)
+    if oldTarget and value == oldTarget then return newTarget end
+    if typeof(value) ~= "table" then return value end
+    seen, budget = seen or {}, budget or { count = 0 }
+    if seen[value] then return seen[value] end
+    budget.count += 1
+    assert(budget.count <= 500, "request snapshot too large")
+    local copy = {}
+    seen[value] = copy
+    for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
+    return copy
+end
+local function learnHarvest(remote, method, args)
+    if args.n < 1 or type(args[1]) ~= "table" then return false end
+    local packet = args[1]
+    local body = type(packet.TlSR8Mzd9FLwaZ) == "table" and packet.TlSR8Mzd9FLwaZ or packet
+    local target = body.model
+    if typeof(target) ~= "Instance" or not (target:IsA("Model") or target:IsA("BasePart")) then return false end
+    local name = string.lower(target.Name)
+    local crop = false
+    for _, word in ipairs({"wheat", "berry", "carrot", "potato", "corn", "tomato", "pumpkin", "melon", "cabbage", "lettuce", "flower"}) do
+        if string.find(name, word, 1, true) then crop = true; break end
+    end
+    if not crop then return false end
+    if not string.find(string.lower(remote.Name), "harvest", 1, true) and remote.Name ~= "hFuV0Z1w601mXP" then return false end
+    capture.HarvestBinding = { Remote = remote, Method = method, Args = cloneArguments(args), Target = target }
+    return true
+end
+function capture:Harvest(target)
+    local binding = self.HarvestBinding
+    if not binding or not binding.Remote.Parent then return false, "Harvest a crop manually once first" end
+    if binding.Target:IsA("Model") ~= target:IsA("Model") then return false, "Crop target type differs from the learned request" end
+    local ok, result = pcall(function()
+        local args = cloneArguments(binding.Args, binding.Target, target)
+        return binding.Remote[binding.Method](binding.Remote, table.unpack(args, 1, args.n))
+    end)
+    if not ok or result == false then return false, result end
+    return true, result
+end
 local original
 local function intercept(remote, ...)
     local method = getnamecallmethod()
@@ -407,7 +515,11 @@ local function intercept(remote, ...)
         local args = table.pack(...)
         -- Recorder failures must never cancel or replace the original game call.
         pcall(function()
-            if not wanted(remote) then return end
+            local learned = false
+            if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
+                learned = learnHarvest(remote, method, args)
+            end
+            if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
             -- Never substitute IDs between different remote names.
             if exactNames[remote.Name] and type(args[1]) == "table"
@@ -460,6 +572,80 @@ return capture
 end
 -- EMBEDDED CAPTURE END
 
+-- EMBEDDED FARM LOGIC BEGIN
+-- Generated by scripts/embed-farm.mjs.
+local FarmLogic = (function()
+-- Shared targeting and confirmation rules; no server calls or input injection.
+local FarmLogic = {}
+local cropNames = {"wheat", "berry", "carrot", "potato", "corn", "tomato", "pumpkin", "melon", "cabbage", "lettuce", "flower", "crop", "bush"}
+local woodNames = {"tree", "wood", "log", "oak", "pine", "birch", "palm"}
+local mineNames = {"rock", "stone", "ore", "iron", "coal", "gold", "copper", "tin", "silver", "crystal", "gem", "mineral"}
+local readiness = {"Mature", "IsMature", "FullyGrown", "Harvestable", "ReadyToHarvest"}
+local function contains(name, patterns)
+    for _, pattern in ipairs(patterns) do
+        if string.find(name, pattern, 1, true) then return true end
+    end
+    return false
+end
+function FarmLogic.Category(name)
+    name = string.lower(name)
+    if contains(name, {"sapling", "seedling", "seed", "harvested"}) then return nil end
+    if contains(name, cropNames) then return "crop" end
+    if contains(name, woodNames) then return "wood" end
+    if contains(name, mineNames) then return "mine" end
+    return nil
+end
+function FarmLogic.CropMatches(name, selected)
+    local wanted = string.lower(selected)
+    if wanted == "berrybush" then wanted = "berry" end
+    return FarmLogic.Category(name) == "crop" and string.find(string.lower(name), wanted, 1, true) ~= nil
+end
+function FarmLogic.Range(category, config)
+    if category == "wood" then return config.WoodRange end
+    if category == "crop" then return config.CropRange end
+    return config.MineRange
+end
+function FarmLogic.Snapshot(target)
+    local values = {}
+    for _, name in ipairs(readiness) do values[name] = target:GetAttribute(name) end
+    return values
+end
+function FarmLogic.IsReady(target)
+    for _, name in ipairs(readiness) do
+        if target:GetAttribute(name) == false then return false end
+    end
+    return true -- Unknown growth schema: do not invent a numeric maturity threshold.
+end
+function FarmLogic.Confirmed(target, before, prompt)
+    if not target.Parent then return true end
+    for _, name in ipairs(readiness) do
+        if before[name] == true and target:GetAttribute(name) == false then return true end
+    end
+    return prompt ~= nil and (not prompt.Parent or not prompt.Enabled)
+end
+function FarmLogic.HarvestPrompt(target)
+    for _, child in ipairs(target:GetDescendants()) do
+        if child:IsA("ProximityPrompt") and child.Enabled then
+            local text = string.lower(child.Name .. " " .. child.ActionText)
+            if contains(text, {"harvest", "høst", "collect", "pick"}) then return child end
+        end
+    end
+    return nil
+end
+function FarmLogic.HoldPrompt(prompt, active, waitFor, now)
+    local began = pcall(function() prompt:InputHoldBegin() end)
+    if not began then pcall(function() prompt:InputHoldEnd() end); return false end
+    local held = pcall(function()
+        local deadline = now() + prompt.HoldDuration
+        while active() and now() < deadline do waitFor(0.05) end
+    end)
+    local released = pcall(function() prompt:InputHoldEnd() end)
+    return held and released and active()
+end
+return FarmLogic
+end)()
+-- EMBEDDED FARM LOGIC END
+
 --------------------------------------------------------------------
 -- Config
 --------------------------------------------------------------------
@@ -486,6 +672,7 @@ local CONFIG = {
 	PlantType = "wheat",                  -- selected crop to plant
 	HarvestCrop = "wheat",                 -- crop type to harvest
 	WoodRange = 90,
+    CropRange = 60,
 	AutoReplant = true,
 	PlantDelay = 0.15,                    -- delay between plant attempts
 	PlantRadius = 12,                     -- how far around player to plant
@@ -504,7 +691,7 @@ local function savePreferences()
     local data = {
         HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
         AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
-        WoodRange = CONFIG.WoodRange, MineDelay = CONFIG.MineDelay,
+        WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
     }
@@ -522,6 +709,7 @@ local function loadPreferences()
     if type(data.PlantType) == "string" then CONFIG.PlantType = data.PlantType end
     if type(data.AutoReplant) == "boolean" then CONFIG.AutoReplant = data.AutoReplant end
     if type(data.MineRange) == "number" then CONFIG.MineRange = math.clamp(data.MineRange, 15, 150) end
+    if type(data.CropRange) == "number" then CONFIG.CropRange = math.clamp(data.CropRange, 10, 120) end
     if type(data.WoodRange) == "number" then CONFIG.WoodRange = math.clamp(data.WoodRange, 15, 150) end
     if type(data.MineDelay) == "number" then CONFIG.MineDelay = math.clamp(data.MineDelay, 0.08, 1) end
     if type(data.MineScanInterval) == "number" then CONFIG.MineScanInterval = math.clamp(data.MineScanInterval, 0.15, 2) end
@@ -970,7 +1158,7 @@ local harvestToggle = button({
 })
 local harvestInfo = label({
     Parent = harvestPage,
-    Text = "Harvest only the crop selected below. Auto-replant can replace harvested crops with your selected type.",
+    Text = "Harvest the selected ready crop on your island using its harvest prompt. Replant only after the plant is removed.",
     Color = COLORS.muted, TextSize = 11,
     Size = UDim2.new(1, -16, 0, 42), Position = UDim2.fromOffset(8, 50),
 })
@@ -1026,6 +1214,14 @@ local replantToggle = button({ Parent = harvestPage, Text = "AUTO-REPLANT: ON", 
 local cropHint = label({ Parent = harvestPage, Text = "Crop filter is name-based; exact names depend on the game's current island objects.",
     Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 36), Position = UDim2.fromOffset(8, 198) })
 cropHint.TextWrapped = true
+
+RemoteCatalog.CropRangeButton = button({ Parent = harvestPage, Text = "Harvest range: " .. CONFIG.CropRange .. " studs",
+    TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 244) })
+track(RemoteCatalog.CropRangeButton.Activated:Connect(function()
+    CONFIG.CropRange = CONFIG.CropRange >= 120 and 15 or CONFIG.CropRange + 15
+    RemoteCatalog.CropRangeButton.Text = "Harvest range: " .. CONFIG.CropRange .. " studs"
+    savePreferences()
+end))
 
 local woodToggle = button({ Parent = woodPage, Text = "WOOD FARM OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
@@ -1221,6 +1417,7 @@ function RemoteCatalog.UpdateCaptureUI()
     for _, name in ipairs({"OEzzgCCBzocxJw", "ohy6O10QKzyGZE", "raqRasAwcny1zh", "RZQQNNDRUvfj1N"}) do
         if RemoteCatalog.RequestId(name) then table.insert(learned, RemoteCatalog.VerifiedRequests[name]) end
     end
+    if recorder.HarvestBinding then table.insert(learned, "crop harvest") end
     local mining = #learned > 0 and ("Ready: " .. table.concat(learned, ", ")) or "Perform actions manually once to learn their request IDs"
     RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CopyNotice or string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
     RemoteCatalog.CaptureToggle.Text = recorder.Active and "Pause capture (F8)" or "Resume capture (F8)"
@@ -1594,23 +1791,30 @@ end
 -- These paths come from the Cobalt snippets you provided.
 -- They can break after game updates; re-spy if needed.
 
-local blockRemote = nil
-local modelRemote = nil
-
-local function resolveRemotes()
-    blockRemote = RemoteCatalog.FindLegacy("OEzzgCCBzocxJw")
-    modelRemote = RemoteCatalog.FindLegacy("hFuV0Z1w601mXP")
-	return blockRemote ~= nil or modelRemote ~= nil
-end
-
 -- Plant a crop at a CFrame (from Cobalt plant capture)
 local function firePlant(cf, blockType)
-    return RemoteCatalog.InvokeCaptured("ohy6O10QKzyGZE", { cframe = cf, blockType = blockType or CONFIG.PlantType })
+    local character = player.Character
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        local names = RemoteCatalog.SeedNames(blockType or CONFIG.PlantType)
+        for _, container in ipairs({character, backpack}) do
+            if container then
+                for _, tool in ipairs(container:GetChildren()) do
+                    if tool:IsA("Tool") and table.find(names, tool.Name) then
+                        RemoteCatalog.EquipTool(tool)
+                        break
+                    end
+                end
+            end
+        end
+    end
+    return RemoteCatalog.CallPlacement({ cframe = cf, blockType = blockType or CONFIG.PlantType })
 end
 
 -- Plant a grid of crops around the player
 local function plantAroundPlayer(blockType)
-    if not RemoteCatalog.RequestId("ohy6O10QKzyGZE") then
+    if not RemoteCatalog.PlacementAvailable() then
         setStatus("Place one block manually with capture active first.", COLORS.warn)
         return 0
     end
@@ -1642,27 +1846,11 @@ end
 -- Hotbar layout remote (from Cobalt)
 -- Example: "woodPickaxe,,sapling,hoe,berryHarvested,ironOre,saplingOrange,yellowFlowerSeeds"
 local function setHotbarLayout(layoutString)
-    return RemoteCatalog.InvokeCaptured("RZQQNNDRUvfj1N", { layout = layoutString })
+    return RemoteCatalog.CallHotbar(layoutString)
 end
 
 -- Shared tool support from the Auto Wood Farmer.
 -- Prefer an axe when available; otherwise fall back to a pickaxe.
-local function ensurePickaxeLayout()
-	local layouts = {
-		"woodAxe,,,,,,,",
-		"stoneAxe,,,,,,,",
-		"ironAxe,,,,,,,",
-		"ironPickaxe,,,,,,,",
-		"stonePickaxe,,,,,,,",
-		"woodPickaxe,,,,,,,",
-	}
-	for _, layout in ipairs(layouts) do
-		if setHotbarLayout(layout) then
-			break
-		end
-	end
-end
-
 local function equipBestResourceTool(category)
     local character = player.Character
     local backpack = player:FindFirstChildOfClass("Backpack")
@@ -1704,7 +1892,8 @@ local function equipBestResourceTool(category)
         end
     end
     if best and bestScore > -math.huge then
-        local ok, err = pcall(function() humanoid:EquipTool(best) end)
+        local ok = RemoteCatalog.EquipTool(best)
+        local err = "inventory tool selection unavailable"
         if not ok then
             if setStatus then setStatus("Tool equip failed: " .. tostring(err), COLORS.bad) end
             return false
@@ -1721,93 +1910,15 @@ local function equipPickaxe()
     return equipBestResourceTool(woodEnabled and "wood" or "mine")
 end
 
--- Mining / resource name patterns (stone, iron, coal, ores, rocks, trees...)
--- This replaces the separate Auto Wood Farmer target scanner/loop: tree targets
--- are included here and use the same GUI, F7 toggle, stats, and cleanup.
--- All of these use the BLOCK remote (OEzzgCCBzocxJw)
-local MINE_PATTERNS = {
-	-- ores & rocks (hub + island)
-	"rock", "Rock", "stone", "Stone", "ore", "Ore",
-	"iron", "Iron", "coal", "Coal", "gold", "Gold",
-	"copper", "Copper", "tin", "Tin", "silver", "Silver",
-	"crystal", "Crystal", "gem", "Gem", "mineral", "Mineral",
-	"rockStone", "rockIron", "rockCoal", "rockGold",
-	-- trees / wood
-	"tree", "Tree", "wood", "Wood", "log", "Log",
-	"oak", "Oak", "pine", "Pine", "birch", "Birch",
-	"treeOrange", "treeApple", "treePalm",
-}
-
--- Crop / bush models use the MODEL remote (hFuV0Z1w601mXP)
-local MODEL_PATTERNS = {
-	"berry", "Berry", "berryBush", "bush", "Bush",
-	"wheat", "Wheat",
-	"crop", "Crop",
-	"flower", "Flower",
-	"carrot", "potato", "corn", "tomato",
-	"pumpkin", "melon", "cabbage", "lettuce",
-	"berryHarvested",
-}
-
--- Never harvest/mine these
-local SKIP_PATTERNS = {
-	"sapling", "Sapling", "seedling", "Seedling",
-}
-
-local function matchesAny(name, patterns)
-	local lower = string.lower(name)
-	for _, p in ipairs(patterns) do
-		if string.find(lower, string.lower(p), 1, true) then
-			return true
-		end
-	end
-	return false
-end
-
 local function getPlayerIsland()
-	local islands = workspace:FindFirstChild("Islands")
-	if not islands then
-		return nil
-	end
-	-- Prefer the island closest to the player
-	local char = player.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if hrp then
-		local best, bestDist = nil, math.huge
-		for _, island in ipairs(islands:GetChildren()) do
-			if island:IsA("Model") or island:IsA("Folder") then
-				local blocks = island:FindFirstChild("Blocks")
-				if blocks then
-					for _, child in ipairs(blocks:GetChildren()) do
-						local pos
-						if child:IsA("BasePart") then
-							pos = child.Position
-						elseif child:IsA("Model") then
-							pos = child:GetPivot().Position
-						end
-						if pos then
-							local d = (pos - hrp.Position).Magnitude
-							if d < bestDist and d < 250 then
-								bestDist = d
-								best = island
-							end
-						end
-					end
-				end
-			end
-		end
-		if best then
-			return best
-		end
-	end
-	-- fallback
-	for _, island in ipairs(islands:GetChildren()) do
-		if string.find(island.Name, tostring(player.UserId), 1, true)
-			or string.find(string.lower(island.Name), "island", 1, true) then
-			return island
-		end
-	end
-	return islands:GetChildren()[1]
+    local islands = workspace:FindFirstChild("Islands")
+    if not islands then return nil end
+    local owned = islands:FindFirstChild(tostring(player.UserId) .. "-island")
+    if owned then return owned end
+    for _, island in ipairs(islands:GetChildren()) do
+        if island:GetAttribute("OwnerUserId") == player.UserId then return island end
+    end
+    return nil
 end
 
 local function getPartPosition(obj)
@@ -1828,134 +1939,46 @@ local function getPartPosition(obj)
 	return nil
 end
 
-local function targetCategory(name)
-    if matchesAny(name, MODEL_PATTERNS) then return "crop" end
-    local lower = string.lower(name)
-    if string.find(lower, "tree", 1, true) or string.find(lower, "wood", 1, true)
-        or string.find(lower, "log", 1, true) or string.find(lower, "oak", 1, true)
-        or string.find(lower, "pine", 1, true) or string.find(lower, "birch", 1, true)
-        or string.find(lower, "palm", 1, true) then return "wood" end
-    return "mine"
-end
-
+local function targetCategory(name) return FarmLogic.Category(name) end
 local function modeAllows(name)
     local category = targetCategory(name)
-    if category == "crop" then
-        local n, wanted = string.lower(name), string.lower(CONFIG.HarvestCrop)
-        return harvestEnabled and (wanted == "berrybush" and string.find(n, "berry", 1, true) ~= nil or string.find(n, wanted, 1, true) ~= nil)
-    elseif category == "wood" then
-        return woodEnabled
-    end
-    return mineEnabled
+    if category == "crop" then return harvestEnabled and FarmLogic.CropMatches(name, CONFIG.HarvestCrop) end
+    if category == "wood" then return woodEnabled end
+    return category == "mine" and mineEnabled
 end
-
+local FarmState = { Cooldowns = setmetatable({}, { __mode = "k" }) }
 local function getMineTargets()
-	local targets = {}
-	local seenTargets = {}
-	local char = player.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then
-		return targets
-	end
-	local myPos = hrp.Position
-	local range = CONFIG.MineRange
-
-	-- 1) PRIMARY: exact path from Cobalt
-	--    workspace.spawnPrefabs.regenBlocks.hubRocks.Blocks.rockStone
-	local function scanHubBlocks(blocksFolder)
-		if not blocksFolder then
-			return
-		end
-		for _, obj in ipairs(blocksFolder:GetChildren()) do
-			-- Mine EVERY child in hub rocks (rockStone, rockIron, rockCoal, etc.)
-			local pos = getPartPosition(obj)
-			if pos and (pos - myPos).Magnitude <= range and not seenTargets[obj] and modeAllows(obj.Name) then
-				seenTargets[obj] = true
-				table.insert(targets, { kind = "block", instance = obj, name = obj.Name })
-			end
-		end
-	end
-
-	local ok, hubBlocks = pcall(function()
-		return workspace.spawnPrefabs.regenBlocks.hubRocks.Blocks
-	end)
-	if ok and hubBlocks then
-		scanHubBlocks(hubBlocks)
-	end
-
-	-- Also scan any other areas under regenBlocks
-	local ok2, regen = pcall(function()
-		return workspace.spawnPrefabs.regenBlocks
-	end)
-	if ok2 and regen then
-		for _, area in ipairs(regen:GetChildren()) do
-			if area.Name ~= "hubRocks" then
-				local blocks = area:FindFirstChild("Blocks")
-				if blocks then
-					scanHubBlocks(blocks)
-				end
-			end
-		end
-	end
-
-	-- 2) ALL island Blocks + Prefabs (stone, trees, berryBush, wheat, crops)
-	local islands = workspace:FindFirstChild("Islands")
-	if islands then
-		for _, island in ipairs(islands:GetChildren()) do
-			local foldersToScan = {}
-			local blocksFolder = island:FindFirstChild("Blocks")
-			if blocksFolder then
-				table.insert(foldersToScan, blocksFolder)
-			end
-			local prefabs = island:FindFirstChild("Prefabs")
-			if prefabs then
-				table.insert(foldersToScan, prefabs)
-			end
-
-			for _, folder in ipairs(foldersToScan) do
-				for _, obj in ipairs(folder:GetChildren()) do
-					local name = obj.Name
-					-- Never touch saplings / seedlings
-					if matchesAny(name, SKIP_PATTERNS) then
-						continue
-					end
-					local pos = getPartPosition(obj)
-					-- crops get a slightly larger range
-					local maxDist = matchesAny(name, MODEL_PATTERNS) and (range + 40) or range
-					if pos and (pos - myPos).Magnitude <= maxDist and modeAllows(name) then
-						if matchesAny(name, MODEL_PATTERNS) then
-							-- berryBush, wheat, crops → MODEL remote
-							table.insert(targets, { kind = "model", instance = obj, name = name })
-						elseif matchesAny(name, MINE_PATTERNS) then
-							-- stone, trees, ores → BLOCK remote
-							table.insert(targets, { kind = "block", instance = obj, name = name })
-						end
-					end
-				end
-			end
-		end
-	end
-
-	-- Process the nearest resource/tree first (from Auto Wood Farmer).
-	local hrpNow = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	if hrpNow then
-		table.sort(targets, function(a, b)
-			local pa = getPartPosition(a.instance)
-			local pb = getPartPosition(b.instance)
-			if not pa then return false end
-			if not pb then return true end
-			return (pa - hrpNow.Position).Magnitude < (pb - hrpNow.Position).Magnitude
-		end)
-	end
-	-- Nearby-first ordering improves throughput without sending parallel requests.
-	table.sort(targets, function(a, b)
-		local pa = getPartPosition(a.instance)
-		local pb = getPartPosition(b.instance)
-		if not pa then return false end
-		if not pb then return true end
-		return (pa - myPos).Magnitude < (pb - myPos).Magnitude
-	end)
-	return targets
+    local targets, seen = {}, {}
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return targets end
+    local function scan(folder)
+        if not folder then return end
+        for _, obj in ipairs(folder:GetChildren()) do
+            if seen[obj] then continue end
+            seen[obj] = true
+            local category = targetCategory(obj.Name)
+            if not category or not modeAllows(obj.Name) then continue end
+            if category == "crop" and not FarmLogic.IsReady(obj) then continue end
+            if (FarmState.Cooldowns[obj] or 0) > os.clock() then continue end
+            local position = getPartPosition(obj)
+            if not position then continue end
+            local distance = (position - hrp.Position).Magnitude
+            if distance > FarmLogic.Range(category, CONFIG) then continue end
+            table.insert(targets, { kind = category == "crop" and "model" or "block",
+                instance = obj, name = obj.Name, distance = distance, category = category })
+        end
+    end
+    local prefabs = workspace:FindFirstChild("spawnPrefabs")
+    local regen = prefabs and prefabs:FindFirstChild("regenBlocks")
+    if regen then
+        for _, area in ipairs(regen:GetChildren()) do scan(area:FindFirstChild("Blocks")) end
+    end
+    -- Island farming is scoped to the current player's island.
+    local island = getPlayerIsland()
+    if island then scan(island:FindFirstChild("Blocks")); scan(island:FindFirstChild("Prefabs")) end
+    table.sort(targets, function(a, b) return a.distance < b.distance end)
+    return targets
 end
 
 local function fireBlockMine(block)
@@ -1963,107 +1986,84 @@ local function fireBlockMine(block)
 end
 
 local function fireModelHarvest(model)
-	local requestId = RemoteCatalog.RequestId("hFuV0Z1w601mXP")
-	if not modelRemote or not requestId then
-		return false
-	end
-	return pcall(function()
-		modelRemote:InvokeServer({
-			TrNhTTgExIb1Bg = requestId,
-			TlSR8Mzd9FLwaZ = {
-				model = model,
-				player = player,
-			},
-		})
-	end)
+    local recorder = RemoteCatalog.Recorder
+    if recorder and recorder.Harvest then return recorder:Harvest(model) end
+    return false, "Harvest a crop manually once with capture active first"
 end
 
 local function harvestLoop(myCycle)
-	if not resolveRemotes() then
-		setStatus("Mining request unavailable; see Remotes. Named requests need captured arguments.", COLORS.bad)
-		return
-	end
-
-    if mineEnabled and not RemoteCatalog.RequestId("OEzzgCCBzocxJw") then
-        setStatus("Mine once manually, then toggle Mining again. Capture is built in.", COLORS.warn)
-        return
+    local function active()
+        return harvestCycleId == myCycle and (harvestEnabled or woodEnabled or mineEnabled) and gui.Parent ~= nil
     end
-
-	while harvestCycleId == myCycle and (harvestEnabled or woodEnabled or mineEnabled) and gui.Parent ~= nil do
-		local targets = getMineTargets()
-		if #targets == 0 then
-			-- Debug: check if path exists
-			local pathOk = pcall(function()
-				return workspace.spawnPrefabs.regenBlocks.hubRocks.Blocks
-			end)
-			if pathOk then
-				setStatus("Mine: hub found, no rocks in range", COLORS.warn)
-			else
-				setStatus("Mine: hub path missing – stand near rocks", COLORS.warn)
-			end
-			task.wait(CONFIG.MineScanInterval)
-		else
-			-- Sequential mining – one rock at a time so the server grants items
-			for _, t in ipairs(targets) do
-				if harvestCycleId ~= myCycle or not (harvestEnabled or woodEnabled or mineEnabled) then
-					break
-				end
-
-				-- Skip if already destroyed
-				if not t.instance or not t.instance.Parent then
-					continue
-				end
-
-				-- Equip the matching tool for this target before interacting.
-                local category = targetCategory(t.name)
-                if category == "wood" then
-                    equipBestResourceTool("wood")
-                elseif category == "mine" then
-                    equipBestResourceTool("mine")
+    while active() do
+        local targets = getMineTargets()
+        if #targets == 0 then
+            setStatus("No matching ready targets nearby on your island or resource areas.", COLORS.muted)
+            task.wait(CONFIG.MineScanInterval)
+            continue
+        end
+        for _, target in ipairs(targets) do
+            if not active() then break end
+            local obj = target.instance
+            if not obj.Parent or not modeAllows(obj.Name) then continue end
+            local char = player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local position = getPartPosition(obj)
+            if not hrp or not position or (position - hrp.Position).Magnitude > FarmLogic.Range(target.category, CONFIG) then continue end
+            if target.category == "wood" or target.category == "mine" then
+                if not equipBestResourceTool(target.category) then FarmState.Cooldowns[obj] = os.clock() + 2; continue end
+            end
+            if not active() then break end
+            position = getPartPosition(obj)
+            if not position or (position - hrp.Position).Magnitude > FarmLogic.Range(target.category, CONFIG) then continue end
+            local before = FarmLogic.Snapshot(obj)
+            if target.category == "crop" and not FarmLogic.IsReady(obj) then continue end
+            local prompt = target.category == "crop" and FarmLogic.HarvestPrompt(obj) or nil
+            local plantedFrame
+            if obj:IsA("BasePart") then plantedFrame = obj.CFrame
+            elseif obj:IsA("Model") then plantedFrame = obj:GetPivot() end
+            local ok
+            if prompt then
+                local promptPosition = getPartPosition(prompt.Parent) or position
+                if (promptPosition - hrp.Position).Magnitude > prompt.MaxActivationDistance then continue end
+                ok = FarmLogic.HoldPrompt(prompt, active, task.wait, os.clock)
+                if not active() then break end
+            elseif target.kind == "model" then
+                ok = fireModelHarvest(obj)
+                if not ok then setStatus("No harvest prompt or learned crop remote. Harvest a crop manually first.", COLORS.warn) end
+            else
+                ok = fireBlockMine(obj)
+                if not ok then setStatus("Mine a block manually once with capture active first.", COLORS.warn) end
+            end
+            local confirmed = false
+            if ok then
+                local deadline = os.clock() + 0.8
+                repeat
+                    if not active() then break end
+                    confirmed = FarmLogic.Confirmed(obj, before, prompt)
+                    if confirmed then break end
+                    task.wait(0.05)
+                until os.clock() >= deadline
+            end
+            if not active() then break end
+            if confirmed then
+                registerHarvest(target.name)
+                setStatus("Confirmed: " .. target.name .. " ×" .. stats.harvests, COLORS.good)
+                -- A plant that regrows in place must never be planted over.
+                if target.category == "crop" and not obj.Parent and plantedFrame and CONFIG.PlantEnabled and CONFIG.AutoReplant then
+                    if RemoteCatalog.PlacementAvailable() then
+                        if active() then firePlant(plantedFrame, CONFIG.PlantType) end
+                    else
+                        setStatus("Harvest confirmed. Place one crop manually to enable replanting.", COLORS.warn)
+                    end
                 end
-
-				-- Remember position before harvest (for replant)
-				local harvestPos = getPartPosition(t.instance)
-
-				local ok
-				if t.kind == "block" then
-					ok = fireBlockMine(t.instance)
-				else
-					ok = fireModelHarvest(t.instance)
-				end
-
-				if ok then
-					-- Wait briefly and check if the target was removed
-					task.wait(0.08)
-					local destroyed = not t.instance.Parent
-					registerHarvest(t.name)
-					if t.kind == "model" then
-						setStatus("🌾 " .. t.name .. "  ×" .. stats.harvests, COLORS.good)
-						-- Replant at the same spot after harvesting crops
-						if CONFIG.PlantEnabled and CONFIG.AutoReplant and harvestPos and targetCategory(t.name) == "crop" then
-							local plantType = CONFIG.PlantType
-							local cf = CFrame.new(harvestPos)
-							if firePlant(cf, plantType) then
-								setStatus("🌱 planted " .. plantType, COLORS.good)
-							end
-						end
-					elseif destroyed then
-						setStatus("⛏ " .. t.name .. "  ×" .. stats.harvests, COLORS.harvest)
-					else
-						setStatus("⛏ hitting " .. t.name, COLORS.muted)
-					end
-				end
-
-				task.wait(CONFIG.MineDelay)
-			end
-		end
-	end
-
-	if harvestCycleId == myCycle and not (harvestEnabled or woodEnabled or mineEnabled) then
-		if not enabled then
-			setStatus("Idle")
-		end
-	end
+            end
+            FarmState.Cooldowns[obj] = os.clock() + (ok and 0.25 or 2)
+            task.wait(CONFIG.MineDelay)
+        end
+        -- All candidates may be out of prompt range; always yield before rescanning.
+        task.wait(CONFIG.MineScanInterval)
+    end
 end
 
 --------------------------------------------------------------------
@@ -2212,14 +2212,16 @@ local function setFarmMode(mode, state)
         return
     end
     if current == state then return end
+    if state and mode ~= "crop" and not RemoteCatalog.RequestId("OEzzgCCBzocxJw") then
+        setStatus("Mine a block manually with capture active before enabling this mode.", COLORS.warn)
+        return
+    end
     if mode == "crop" then harvestEnabled = state
     elseif mode == "wood" then woodEnabled = state
     else mineEnabled = state end
     harvestCycleId += 1
     if harvestEnabled or woodEnabled or mineEnabled then
         if not stats.onSince then stats.onSince = os.clock() end
-        ensurePickaxeLayout()
-        equipPickaxe()
         setStatus(mode == "crop" and "Crop farming started" or mode == "wood" and "Wood farming started" or "Mining started", COLORS.good)
         task.spawn(harvestLoop, harvestCycleId)
     else

@@ -112,3 +112,50 @@ changing the clipboard. If clipboard access is absent or fails, it exports the
 same complete dump to the existing file/console route. Calls not yet performed
 cannot be included. Upgrading the recorder preserves earlier records and observed
 request IDs from the same session.
+
+
+## Harvest improvements and supplied client examples
+
+The supplied block-placement behavior documents the game's `Requests.Client` API.
+Placement now prefers `BLOCK_PLACE_REQUEST:CallServer({cframe, blockType})`; hotbar
+layout uses `CLIENT_HOTBAR_LAYOUT_UPDATE:CallServer({layout})`, as shown by the
+client-inventory-service example. A failed request is not retried through another
+transport. Missing modules fall back to the recorded legacy route and per-remote
+session IDs. Optional game modules are looked up without WaitForChild chains.
+
+ToolMeta maps crop block names to seed Tools (for example blueFlowers to its seed
+item). Existing inventory-service selection is used when available, including
+zero-based hotbar slot 0. Already selected slots are not toggled off. Locked tools
+and session-loading state are respected. There is no automatic hotbar rewrite
+when enabling a farm. Vending and chest examples were inspected for relevance;
+this change does not add trading or chest transfers.
+
+Crop targeting is limited to the selected crop on the player's own island.
+Saplings/seedlings and explicitly immature plants are skipped. Each mode uses its
+own range. The nearest eligible target is processed first, with retries backed off
+and cancellation checked between actions. Targets outside prompt reach are not
+forced; all scan passes yield even when every candidate is out of reach.
+
+The crop's enabled harvest ProximityPrompt is used where present. The prompt is
+held for its configured duration and released even when Stop or an input error
+interrupts it. If no suitable prompt exists, the recorder can learn a manually
+observed harvest-named (or known legacy crop) request containing an actual crop
+Instance in its model field. The argument snapshot preserves session context and
+other fields, replacing only the target on future calls. Unsupported payload
+shapes are not guessed.
+
+Counters increase only after target removal, an explicit mature-to-unready
+transition, or disappearance/disablement of the activated harvest prompt.
+Unchanged targets after a successful transport do not increment the count.
+Replanting happens only when the harvested plant was removed, uses its original
+CFrame including rotation, and requires the cycle to still be active. Plants
+regrowing in place are not planted over. Module placement support can eliminate
+the manual placement-ID step. There is still no direct fishing-request capture.
+
+`tools/FarmLogic.lua` is embedded into the single-script hub by
+`node scripts/embed-farm.mjs`. Tests cover targeting, readiness, ranges, prompt
+release, cancelled cycles, harvest confirmation, replanting, learned request
+snapshots, game-module requests, seed mapping and inventory slot selection.
+Mocks verify logic and API wiring; actual Roblox rendering/input/server behavior
+remains unverified. Explicit readiness flags are used when available; unknown
+numeric growth stages are not treated as proof of maturity.
