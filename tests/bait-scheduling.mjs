@@ -59,6 +59,26 @@ getBobber=function() return nil end
 hasRodEquipped=function() rodChecks+=1;return false end
 enabled=true;run(1)
 assert(rodChecks==1,'Fishing must proceed past the bait queue when inventory is empty')
+do
+ local quantity=16
+ local bait={Name='bait'}
+ local char={FindFirstChild=function() return bait end}
+ local player={Character=char}
+ local recorder={BaitBinding={Target=bait}}
+ RemoteCatalog.BaitCount=function() return quantity end
+ RemoteCatalog.AcceptFreshBaitBinding=function() return recorder end
+ RemoteCatalog.LiveRecorder=function() return recorder end
+ RemoteCatalog.PrepareBaitLearning=function() end
+ local attempts=0
+ RemoteCatalog.WithBaitTool=function() attempts+=1;return false,'Bait use unconfirmed' end
+ ${apply}
+ assert(not applyBait() and attempts==1,'first unconfirmed attempt must establish a count sample')
+ quantity=15;recorder.BaitBinding={Target=bait}
+ local confirmed,detail=applyBait()
+ assert(confirmed and detail=='bait consumption confirmed' and attempts==1,'fresh captured use plus decreased quantity between retries must confirm without consuming more bait')
+ player.Character={FindFirstChild=function() return bait end};quantity=14;recorder.BaitBinding={Target=bait}
+ assert(not applyBait() and attempts==2,'a different character must not inherit consumption confirmation')
+end
 return 'Bait scheduling: queued priority, long-cast retry, success/OFF release, next-cast blocking and existing-cast completion passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'bait-scheduling',true)());}finally{state.destroy();}

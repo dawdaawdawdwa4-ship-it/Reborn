@@ -126,7 +126,7 @@ responses.OEzzgCCBzocxJw=false
 assert(not RemoteCatalog.CallMine(actualBlock) and inputCalls==2,'rejected request must not click again')
 responses.OEzzgCCBzocxJw=nil
 RemoteCatalog.InputMine=nil
-RemoteCatalog.Recorder={BaitBinding={},Bait=function(_,tool) assert(tool==bait);return true end}
+RemoteCatalog.Recorder={BaitBinding={Remote={Parent=true,Name='old-bait'}},Bait=function(_,tool) assert(tool==bait);return true end}
 assert(applyBait(),'learned bait request must work without old endpoint')
 RemoteCatalog.Recorder.Bait=function() return false,'denied' end
 sent=nil
@@ -136,6 +136,11 @@ local oldActivation=RemoteCatalog.ActivateBait
 local refreshAttempts=0
 RemoteCatalog.ActivateBait=function(tool) assert(tool==bait);refreshAttempts+=1;return true end
 assert(RemoteCatalog.CallBait(bait) and refreshAttempts==1,'an explicitly requested refresh must try normal input on the next call instead of replaying stale binding')
+local freshCalls=0
+RemoteCatalog.Recorder.BaitBinding={Remote={Parent=true,Name='fresh-bait'}}
+RemoteCatalog.Recorder.Bait=function(_,tool) assert(tool==bait);freshCalls+=1;return true end
+assert(RemoteCatalog.CallBait(bait) and freshCalls==1 and refreshAttempts==1 and not RemoteCatalog.BaitNeedsRefresh,'fresh captured binding must clear refresh mode and be used instead of more mouse clicks')
+
 RemoteCatalog.ActivateBait=oldActivation
 RemoteCatalog.BaitNeedsRefresh=false
 RemoteCatalog.Recorder=nil

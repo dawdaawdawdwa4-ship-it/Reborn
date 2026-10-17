@@ -319,3 +319,11 @@ Build bait-click-5 uses a normal mouse press/release for bait when client input 
 Build afk-6 adds Anti AFK under Settings, directly below Stop All. It starts OFF, connects one Player.Idled listener only while enabled, and uses VirtualUser CaptureController/ClickButton2 when supported. Unsupported input disables it with a visible status. Stop All and GUI destruction disconnect the listener; no background input loop is created.
 
 The Airflow library now falls back to task.spawn when task.defer is unavailable, without modifying the host task table. Window construction has statement-level lines for useful startup error locations. Tests exercise UI construction with defer absent. This addresses a possible missing scheduling function; the original minified Window stack trace does not establish which call was nil.
+
+Build bait-refresh-7 remembers the exact binding that failed confirmation. A newer live bait binding clears refresh mode and is used on the next attempt. Previously the refresh flag could keep choosing mouse clicks after a fresh request had been captured. An unchanged failed binding still uses normal-input relearning; requests rejected by account/character/server validation remain ineligible. Tests cover failure, normal input and replacement with a new learned binding.
+
+Auto Bait also retains a quantity sample between retries. If the same character/tool has a lower quantity and a newly captured bait binding targets that tool, consumption is confirmed without sending another request. This covers a successful manual bait use or delayed confirmation while auto learning is active, and can satisfy the one-time Fishing start. A character change invalidates this comparison.
+
+Between-attempt quantity confirmation is limited to a 15-second observation window. Successful attempts reset the sample to the post-consumption quantity so the same decrease cannot be counted again on the next refresh.
+
+Wood Farm now has its own Mode dropdown: Normal (default), Walk, Tween and Teleport. Normal does not approach targets; it cuts only within actual axe reach and reports when the player must move closer. Wood mode is saved separately from Harvest travel, so selecting Normal for trees does not alter crop movement. Navigation also rejects distant Normal targets before starting any path or tween.

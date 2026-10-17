@@ -51,10 +51,10 @@ applyFishingMode('Safe')
 assert(activeFishingMode=='Fast' and CONFIG.CastDistance==12 and not modeButtons.Safe and not modeButtons.Balanced,'other profiles must not override fixed settings')
 
 for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Tween' then option.Activated:Fire() end end
-assert(CONFIG.FarmTravelMode=='Tween' and string.find(RemoteCatalog.TravelSelectors[1].Text,'Tween',1,true),'tree travel selection must update both dropdown labels')
+assert(CONFIG.WoodTravelMode=='Tween' and CONFIG.FarmTravelMode=='Walk' and string.find(RemoteCatalog.TravelSelectors[1].Text,'Walk',1,true),'wood mode selection must not change Harvest travel')
 assert(not enabled and not woodEnabled and not harvestEnabled,'choosing a travel mode must not start automation')
-for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Walk' then option.Activated:Fire() end end
-assert(CONFIG.FarmTravelMode=='Walk','walk travel must remain available')
+for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Normal' then option.Activated:Fire() end end
+assert(CONFIG.WoodTravelMode=='Normal' and CONFIG.FarmTravelMode=='Walk','Normal must be selectable for wood without changing crop travel')
 
 assert(SETTINGS_FILE=='IslandsFarmingHub_7_settings.json','preferences must be isolated by account')
 local hum={WalkSpeed=16,JumpPower=50,JumpHeight=7.2,UseJumpPower=true}

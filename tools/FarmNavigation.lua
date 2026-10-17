@@ -22,6 +22,7 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode)
     end
     if not valid() then return false,"Travel stopped" end
     if near() then return true end
+    if mode=="Normal" then return false,"Normal mode: move closer to the target" end
     Navigation.Humanoid=humanoid
     local ok,result=pcall(function()
         local destination=positionOf(target)

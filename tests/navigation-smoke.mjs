@@ -42,6 +42,8 @@ end}
 Navigation=(function() ${source} end)()
 assert(Navigation.Approach(player,target,8,active,positionOf) and moves==2 and stops==1,'walk must reach collection range and release movement')
 local function reset() root.Position=v(0,3);humanoid.Jump=false;moving=true;failPath=false;jump=false;stuck=false;cancel=false;moves=0 end
+reset();assert(not Navigation.Approach(player,target,8,active,positionOf,'Normal') and moves==0,'Normal must not move toward distant targets')
+reset();root.Position=v(15);assert(Navigation.Approach(player,target,8,active,positionOf,'Normal') and moves==0,'Normal must allow in-range actions without movement')
 reset();failPath=true;assert(not Navigation.Approach(player,target,8,active,positionOf) and moves==0,'failed path must not walk directly across void')
 reset();jump=true;assert(Navigation.Approach(player,target,8,active,positionOf) and humanoid.Jump,'path jump must use ordinary Humanoid jump controls')
 reset();stuck=true;local before=time;assert(not Navigation.Approach(player,target,8,active,positionOf) and time-before<2,'stuck walking must time out')

@@ -295,7 +295,17 @@ local RemoteCatalog = (function()
         if catalog.InputHarvest then return catalog.InputHarvest(target) end
         return false, "Harvest API unavailable; harvest one crop manually with capture active"
     end
+    function catalog.AcceptFreshBaitBinding()
+        local recorder=catalog.LiveRecorder("BaitBinding")
+        local binding=recorder and recorder.BaitBinding
+        if catalog.BaitNeedsRefresh and binding and binding~=catalog.BaitFailedBinding then
+            catalog.BaitNeedsRefresh=false
+            catalog.BaitFailedBinding=nil
+        end
+        return recorder
+    end
     function catalog.CallBait(tool, prepared)
+        catalog.AcceptFreshBaitBinding()
         if catalog.BaitNeedsRefresh and catalog.ActivateBait then
             catalog.BaitTransport="normal input (refreshing request)"
             return catalog.ActivateBait(tool,prepared)
@@ -1363,6 +1373,7 @@ local CONFIG = {
     CropRange = 60,
     HarvestWalk = true,
     FarmTravelMode = "Walk",
+    WoodTravelMode = "Normal",
 	AutoReplant = true,
     FruitEnabled = false,
 	PlantDelay = 0.15,                    -- delay between plant attempts
@@ -1380,7 +1391,7 @@ local mineToolPreference = "Auto best pickaxe"
 local function savePreferences()
     if type(writefile) ~= "function" then return false end
     local data = {
-        FarmTravelMode = CONFIG.FarmTravelMode, HarvestWalk = CONFIG.HarvestWalk, HarvestCrops = CONFIG.HarvestCrops, HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
+        WoodTravelMode = CONFIG.WoodTravelMode, FarmTravelMode = CONFIG.FarmTravelMode, HarvestWalk = CONFIG.HarvestWalk, HarvestCrops = CONFIG.HarvestCrops, HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
         FruitEnabled = CONFIG.FruitEnabled, AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
         WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
@@ -1397,6 +1408,7 @@ local function loadPreferences()
     end)
     if not ok or type(data) ~= "table" then return false end
     if type(data.HarvestCrop) == "string" then CONFIG.HarvestCrop = data.HarvestCrop end
+    if data.WoodTravelMode=="Normal" or data.WoodTravelMode=="Walk" or data.WoodTravelMode=="Tween" or data.WoodTravelMode=="Teleport" then CONFIG.WoodTravelMode=data.WoodTravelMode end
     if data.FarmTravelMode=="Walk" or data.FarmTravelMode=="Tween" or data.FarmTravelMode=="Teleport" then CONFIG.FarmTravelMode=data.FarmTravelMode end
     if type(data.HarvestWalk)=="boolean" then CONFIG.HarvestWalk=data.HarvestWalk end
     if type(data.HarvestCrops) == "table" then CONFIG.HarvestCrops = data.HarvestCrops end
@@ -1654,7 +1666,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "Hub · afk-6",
+    Subtitle = "bait-refresh-7",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2123,7 +2135,22 @@ local function applyBait()
         return false, "bait tool not found"
     end
     RemoteCatalog.BaitOutOfStock=false
-    if RemoteCatalog.BaitCount(baitTool)==0 then
+    local count=RemoteCatalog.BaitCount(baitTool)
+    local recorder=RemoteCatalog.AcceptFreshBaitBinding()
+    local binding=recorder and recorder.BaitBinding
+    local sample=RemoteCatalog.BaitSample
+    if sample and type(sample.At)=="number" and os.clock()-sample.At<=15 and sample.Character==character and sample.Tool==baitTool and type(sample.Count)=="number" and type(count)=="number"
+        and count<sample.Count and binding and binding~=sample.Binding and binding.Target==baitTool then
+        RemoteCatalog.BaitNeedsRefresh=false
+        RemoteCatalog.BaitFailedBinding=nil
+        RemoteCatalog.BaitPending=false
+        RemoteCatalog.BaitSample={Character=character,Tool=baitTool,Count=count,Binding=binding,At=os.clock()}
+        baitInfo.Text="Bait consumption confirmed between attempts."
+        baitInfo.TextColor3=COLORS.good
+        return true,"bait consumption confirmed"
+    end
+    RemoteCatalog.BaitSample={Character=character,Tool=baitTool,Count=count,Binding=binding,At=os.clock()}
+    if count==0 then
         RemoteCatalog.BaitOutOfStock=true;RemoteCatalog.BaitPending=false
         baitInfo.Text="No bait remaining. Fishing continues; checking again in 5s."
         return false,"bait tool not found"
@@ -2131,7 +2158,11 @@ local function applyBait()
     if RemoteCatalog.PrepareBaitLearning then RemoteCatalog.PrepareBaitLearning() end
     local ok, result = RemoteCatalog.WithBaitTool(baitTool, function() return RemoteCatalog.CallBait(baitTool, true) end)
     if not ok then
-        if result~="Waiting for current rod input" and result~="Waiting for the current cast to finish" and result~="Auto Bait stopped" then RemoteCatalog.BaitNeedsRefresh=true end
+        if result~="Waiting for current rod input" and result~="Waiting for the current cast to finish" and result~="Auto Bait stopped" then
+            local recorder=RemoteCatalog.LiveRecorder("BaitBinding")
+            RemoteCatalog.BaitFailedBinding=recorder and recorder.BaitBinding
+            RemoteCatalog.BaitNeedsRefresh=true
+        end
         baitInfo.Text = "Bait waiting: " .. tostring(result) .. (enabled and " Fishing continues." or " Fishing is OFF.") .. " ["..tostring(RemoteCatalog.BaitTransport or "no request").."]"
         baitInfo.TextColor3 = COLORS.warn
         if result~="Waiting for current rod input" and result~="Waiting for the current cast to finish" then
@@ -2139,6 +2170,9 @@ local function applyBait()
         end
     else
         RemoteCatalog.BaitNeedsRefresh=false
+        RemoteCatalog.BaitFailedBinding=nil
+        local learned=RemoteCatalog.LiveRecorder("BaitBinding")
+        RemoteCatalog.BaitSample={Character=character,Tool=baitTool,Count=RemoteCatalog.BaitCount(baitTool),Binding=learned and learned.BaitBinding,At=os.clock()}
         baitInfo.Text = "Bait consumption confirmed. Refreshes after 60 seconds."
         baitInfo.TextColor3 = COLORS.good
     end
@@ -2287,18 +2321,25 @@ track(RemoteCatalog.HarvestWalkButton.Activated:Connect(function()
 end))
 
 RemoteCatalog.TravelSelectors={}
+RemoteCatalog.TravelKeys={}
 function RemoteCatalog.TravelSelector(page,y)
-    local selector=button({Parent=page,Text="Travel: "..CONFIG.FarmTravelMode.."  ▾",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,y)})
+    local key=page==woodPage and "WoodTravelMode" or "FarmTravelMode"
+    local title=page==woodPage and "Mode: " or "Travel: "
+    local modes=page==woodPage and {"Normal","Walk","Tween","Teleport"} or {"Walk","Tween","Teleport"}
+    local selector=button({Parent=page,Text=title..CONFIG[key].."  ▾",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,y)})
     table.insert(RemoteCatalog.TravelSelectors,selector)
+    RemoteCatalog.TravelKeys[selector]=key
     local options={}
-    for i,mode in ipairs({"Walk","Tween","Teleport"}) do
+    for i,mode in ipairs(modes) do
         local option=button({Parent=page,Text=mode,TextSize=12,Size=UDim2.new(1,-12,0,30),Position=UDim2.fromOffset(6,y+34+(i-1)*31)})
         option.Visible=false;option.ZIndex=20
         table.insert(options,option)
         track(option.Activated:Connect(function()
-            CONFIG.FarmTravelMode=mode
+            CONFIG[key]=mode
             RemoteCatalog.Navigation.Stop()
-            for _,item in ipairs(RemoteCatalog.TravelSelectors) do item.Text="Travel: "..mode.."  ▾" end
+            for _,item in ipairs(RemoteCatalog.TravelSelectors) do
+                if RemoteCatalog.TravelKeys[item]==key then item.Text=title..mode.."  ▾" end
+            end
             for _,item in ipairs(options) do item.Visible=false end
             savePreferences()
         end))
@@ -2310,7 +2351,7 @@ RemoteCatalog.TravelSelector(woodPage,280)
 
 local woodToggle = button({ Parent = woodPage, Text = "WOOD FARM OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
-local woodInfo = label({ Parent = woodPage, Text = "Dedicated tree and wood farming. Skips saplings/seedlings and prioritizes nearby targets.",
+local woodInfo = label({ Parent = woodPage, Text = "Normal cuts nearby trees without moving. Walk, Tween and Teleport are optional movement modes.",
     Color = COLORS.muted, TextSize = 11, Size = UDim2.new(1, -16, 0, 44), Position = UDim2.fromOffset(8, 50) })
 woodInfo.TextWrapped = true
 pageHeading(woodPage, "WOOD FARM CONTROLS", 100)
@@ -2676,6 +2717,7 @@ function RemoteCatalog.EnableCapture()
     RemoteCatalog.UpdateCaptureUI()
 end
 function RemoteCatalog.PrepareBaitLearning()
+    RemoteCatalog.AcceptFreshBaitBinding()
     if not RemoteCatalog.BaitNeedsRefresh and RemoteCatalog.LiveRecorder("BaitBinding") then return end
     local recorder=RemoteCatalog.Recorder
     if recorder and not recorder.Stopped and (recorder.Active or recorder.LearnBaitOnly) then return end
@@ -3437,6 +3479,7 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode)
     end
     if not valid() then return false,"Travel stopped" end
     if near() then return true end
+    if mode=="Normal" then return false,"Normal mode: move closer to the target" end
     Navigation.Humanoid=humanoid
     local ok,result=pcall(function()
         local destination=positionOf(target)
@@ -3651,9 +3694,9 @@ local function harvestLoop(myCycle)
             end
             if target.category=="wood" then
                 local reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position)
-                if not reachable then
-                    setStatus((CONFIG.FarmTravelMode or "Walk").." to "..target.name,COLORS.muted)
-                    reachable,reason=RemoteCatalog.Navigation.Approach(player,obj,8,function() return active() and woodEnabled and not enabled end,RemoteCatalog.ResourcePosition,CONFIG.FarmTravelMode)
+                if not reachable and CONFIG.WoodTravelMode~="Normal" then
+                    setStatus((CONFIG.WoodTravelMode or "Normal").." to "..target.name,COLORS.muted)
+                    reachable,reason=RemoteCatalog.Navigation.Approach(player,obj,8,function() return active() and woodEnabled and not enabled end,RemoteCatalog.ResourcePosition,CONFIG.WoodTravelMode)
                     if not active() then break end
                     if reachable then reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position) end
                 end
