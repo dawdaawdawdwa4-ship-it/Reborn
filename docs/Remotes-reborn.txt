@@ -1,0 +1,999 @@
+01.06.38[RemoteEvent] RequestDeviceCameraOrientationCapability  |  Path: RobloxReplicatedStorage.RequestDeviceCameraOrientationCapability
+
+01.06.38[RemoteEvent] ReferredPlayerJoin  |  Path: RobloxReplicatedStorage.ReferredPlayerJoin
+
+01.06.38[RemoteEvent] PlatformLeaderboardPush  |  Path: RobloxReplicatedStorage.PlatformLeaderboardPush
+
+01.06.38[RemoteEvent] PlatformLeaderboardTabOpened  |  Path: RobloxReplicatedStorage.PlatformLeaderboardTabOpened
+
+01.06.38[RemoteEvent] PlatformLeaderboardTabClosed  |  Path: RobloxReplicatedStorage.PlatformLeaderboardTabClosed
+
+01.06.38[RemoteEvent] CmdrEvent  |  Path: ReplicatedStorage.CmdrEvent
+
+01.06.38[RemoteEvent] COOP_INVITE_RECEIVED  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE_RECEIVED
+
+01.06.38[RemoteEvent] DEVELOPER_WARNING  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.DEVELOPER_WARNING
+
+01.06.38[RemoteEvent] VIP_REWARDS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VIP_REWARDS
+
+01.06.38[RemoteEvent] BLOCK_BREAK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_BREAK
+
+01.06.38[RemoteEvent] FISH_REWARD_ANIMATION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FISH_REWARD_ANIMATION
+
+01.06.38[RemoteEvent] ENTITY_DAMAGE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_DAMAGE
+
+01.06.38[RemoteEvent] INVENTORY_FILL_HOTBAR  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_FILL_HOTBAR
+
+01.06.38[RemoteEvent] PLOW_BLOCK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLOW_BLOCK
+
+01.06.38[RemoteEvent] INVENTORY_UPDATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_UPDATE
+
+01.06.38[RemoteEvent] BLOCK_PLACE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE
+
+01.06.38[RemoteEvent] BLOCK_HIT  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT
+
+01.06.38[RemoteEvent] COOP_STATE_CHANGED  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_STATE_CHANGED
+
+01.06.38[RemoteEvent] FINAL_WARNING  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FINAL_WARNING
+
+01.06.38[RemoteEvent] ENTITY_MOVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_MOVE
+
+01.06.38[RemoteEvent] SEND_TEXT_DROP  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_TEXT_DROP
+
+01.06.38[RemoteEvent] CROP_HARVEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CROP_HARVEST
+
+01.06.38[RemoteEvent] GRANTED_ISLAND_ACCESS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.GRANTED_ISLAND_ACCESS
+
+01.06.38[RemoteEvent] SEND_CHAT_MESSAGE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_CHAT_MESSAGE
+
+01.06.38[RemoteEvent] PLAY_SOUND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAY_SOUND
+
+01.06.38[RemoteEvent] PORTAL_ENTER  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PORTAL_ENTER
+
+01.06.38[RemoteEvent] SEND_NOTIFICATION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_NOTIFICATION
+
+01.06.38[RemoteFunction] BLOCK_HIT_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT_REQUEST
+
+01.06.38[RemoteFunction] CLIENT_SET_TUTORIAL_PROGRESS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_TUTORIAL_PROGRESS
+
+01.06.38[RemoteFunction] CLIENT_LAUNCH_ROCKET  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_LAUNCH_ROCKET
+
+01.06.38[RemoteFunction] CLIENT_VISIT_ISLAND_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VISIT_ISLAND_REQUEST
+
+01.06.38[RemoteFunction] JUKEBOX_CONTROL_STATUS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_CONTROL_STATUS
+
+01.06.38[RemoteFunction] CLIENT_DROP_TOOL_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_DROP_TOOL_REQUEST
+
+01.06.38[RemoteFunction] CLIENT_EDIT_VENDING_MACHINE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EDIT_VENDING_MACHINE
+
+01.06.38[RemoteFunction] CLIENT_CHEST_SET_DIRECTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_SET_DIRECTION
+
+01.06.38[RemoteFunction] CLIENT_MERCHANT_ORDER_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_MERCHANT_ORDER_REQUEST
+
+01.06.38[RemoteFunction] VISIT_RANDOM_ONLINE_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_RANDOM_ONLINE_ISLAND
+
+01.06.38[RemoteFunction] CLIENT_BLOCK_WORKER_DEPOSIT_TOOL_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_BLOCK_WORKER_DEPOSIT_TOOL_REQUEST
+
+01.06.38[RemoteFunction] CLIENT_WATER_STORAGE_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_STORAGE_TRANSACTION
+
+01.06.38[RemoteFunction] CLIENT_ISLAND_RESET_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_ISLAND_RESET_REQUEST
+
+01.06.38[RemoteFunction] FETCH_ONLINE_ISLANDS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FETCH_ONLINE_ISLANDS
+
+01.06.38[RemoteFunction] CLIENT_FERTILIZE_BLOCK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_FERTILIZE_BLOCK
+
+01.06.38[RemoteFunction] PLAYER_LOGIN  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAYER_LOGIN
+
+01.06.38[RemoteFunction] CLIENT_SET_PROCESSOR_RECIPE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_PROCESSOR_RECIPE
+
+01.06.38[RemoteFunction] COOP_ACCEPT  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_ACCEPT
+
+01.06.38[RemoteFunction] CLIENT_CAST_FISHING_ROD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CAST_FISHING_ROD
+
+01.06.38[RemoteFunction] CLIENT_READ_BLUEPRINT_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_READ_BLUEPRINT_REQUEST
+
+01.06.38[RemoteFunction] CLIENT_PULL_FISHING_ROD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PULL_FISHING_ROD
+
+01.06.38[RemoteFunction] CLIENT_VENDING_MACHINE_WITHDRAW_COINS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_WITHDRAW_COINS
+
+01.06.38[RemoteFunction] CLIENT_EAT_FOOD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EAT_FOOD
+
+01.06.38[RemoteFunction] COOP_CAN_JOIN_PRIVATE_SERVER  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CAN_JOIN_PRIVATE_SERVER
+
+01.06.38[RemoteFunction] CLIENT_VENDING_MACHINE_EDIT_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_EDIT_TRANSACTION
+
+01.06.38[RemoteFunction] CLIENT_VENDING_MACHINE_CUSTOMER_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_CUSTOMER_TRANSACTION
+
+01.06.38[RemoteFunction] CLIENT_HOTBAR_LAYOUT_UPDATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HOTBAR_LAYOUT_UPDATE
+
+01.06.38[RemoteFunction] JUKEBOX_INSERT_DISK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_INSERT_DISK
+
+01.06.38[RemoteFunction] CLIENT_GET_GAME_UPDATES  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GET_GAME_UPDATES
+
+01.06.38[RemoteFunction] COOP_LEAVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_LEAVE
+
+01.06.38[RemoteFunction] COOP_REMOVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_REMOVE
+
+01.06.38[RemoteFunction] CLIENT_PLOW_BLOCK_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PLOW_BLOCK_REQUEST
+
+01.06.38[RemoteFunction] CLIENT_WATER_BLOCK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_BLOCK
+
+01.06.38[RemoteFunction] CLIENT_REPORT_METRICS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_REPORT_METRICS
+
+01.06.38[RemoteFunction] JUKEBOX_EJECT_DISK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_EJECT_DISK
+
+01.06.38[RemoteFunction] CLIENT_CRAFT_TOOL_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CRAFT_TOOL_REQUEST
+
+01.06.38[RemoteFunction] MY_PUBLISHED_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.MY_PUBLISHED_ISLAND
+
+01.06.38[RemoteFunction] COOP_DECLINE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_DECLINE
+
+01.06.38[RemoteFunction] CLIENT_CHEST_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_TRANSACTION
+
+01.06.38[RemoteFunction] COOP_INVITE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE
+
+01.06.38[RemoteFunction] COOP_GET_STATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_GET_STATE
+
+01.06.38[RemoteFunction] CLIENT_SHOOT_SPELL  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SHOOT_SPELL
+
+01.06.38[RemoteFunction] COOP_CREATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CREATE
+
+01.06.38[RemoteFunction] CLIENT_UNLOCKED_RECIPES_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_UNLOCKED_RECIPES_REQUEST
+
+01.06.38[RemoteFunction] VISIT_ONLINE_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_ONLINE_ISLAND
+
+01.06.38[RemoteFunction] CLIENT_CHANGE_ISLAND_ACCESS_LEVEL  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHANGE_ISLAND_ACCESS_LEVEL
+
+01.06.38[RemoteFunction] CLIENT_TOGGLE_DOOR_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOGGLE_DOOR_REQUEST
+
+01.06.38[RemoteFunction] PUBLISH_ONLINE_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PUBLISH_ONLINE_ISLAND
+
+01.06.38[RemoteFunction] CLIENT_TRIM_TREE_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TRIM_TREE_REQUEST
+
+01.06.38[RemoteFunction] CLIENT_HARVEST_CROP_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HARVEST_CROP_REQUEST
+
+01.06.38[RemoteFunction] CLIENT_VENDING_MACHINE_DEPOSIT_COINS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_DEPOSIT_COINS
+
+01.06.38[RemoteFunction] CLIENT_SWING_SWORD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SWING_SWORD
+
+01.06.38[RemoteFunction] CLIENT_TOOL_PICKUP_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOOL_PICKUP_REQUEST
+
+01.06.38[RemoteFunction] BLOCK_PLACE_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE_REQUEST
+
+01.06.38[RemoteFunction] JUKEBOX_PLAYLIST_REMOVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_REMOVE
+
+01.06.38[RemoteFunction] JUKEBOX_PLAYLIST_ADD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_ADD
+
+01.06.38[RemoteFunction] CLIENT_RESET_CHARACTER  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_RESET_CHARACTER
+
+01.06.38[RemoteFunction] CLIENT_GO_HOME  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GO_HOME
+
+01.06.38[RemoteFunction] UNLIST_PUBLISHED_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.UNLIST_PUBLISHED_ISLAND
+
+01.06.38[RemoteFunction] CmdrFunction  |  Path: ReplicatedStorage.CmdrFunction
+
+01.06.38[RemoteFunction] WorkerCollect  |  Path: ReplicatedStorage.Remotes.WorkerCollect
+
+01.06.38[RemoteFunction] WorkerWithdraw  |  Path: ReplicatedStorage.Remotes.WorkerWithdraw
+
+01.06.38[RemoteEvent] InventoryUpdate  |  Path: ReplicatedStorage.Remotes.InventoryUpdate
+
+01.06.38[RemoteEvent] BlockPlaced  |  Path: ReplicatedStorage.Remotes.BlockPlaced
+
+01.06.38[RemoteEvent] BlockBroken  |  Path: ReplicatedStorage.Remotes.BlockBroken
+
+01.06.38[RemoteEvent] BlockHit  |  Path: ReplicatedStorage.Remotes.BlockHit
+
+01.06.38[RemoteEvent] Notify  |  Path: ReplicatedStorage.Remotes.Notify
+
+01.06.38[RemoteEvent] OpenUI  |  Path: ReplicatedStorage.Remotes.OpenUI
+
+01.06.38[RemoteEvent] remote.sbr  |  Path: ReplicatedStorage.remote.sbr
+
+01.06.38[RemoteEvent] SpellFx  |  Path: ReplicatedStorage.SpellFx
+
+01.06.38[RemoteEvent] FireworkFx  |  Path: ReplicatedStorage.FireworkFx
+
+01.06.38[RemoteEvent] AutoReplantSetting  |  Path: ReplicatedStorage.AutoReplantSetting
+
+01.06.38[RemoteFunction] SessionHandshake  |  Path: ReplicatedStorage.SessionHandshake
+
+01.06.38[RemoteFunction] BlockRemoverRequest  |  Path: ReplicatedStorage.BlockRemoverRequest
+
+01.06.38[RemoteFunction] CmdrIsAdmin  |  Path: ReplicatedStorage.CmdrIsAdmin
+
+01.06.38[RemoteEvent] StaffInventoryView  |  Path: ReplicatedStorage.StaffInventoryView
+
+01.06.38========== TOTAL: 129 remotes ==========
+
+01.06.38Remote dumper loaded. Check the console (F9).
+
+01.06.57========== REMOTES DUMP ==========
+
+01.06.57[RemoteEvent] IntegrityCheckProcessorKey2_LocalizationTableAnalyticsSender_LocalizationService  |  Path: RobloxReplicatedStorage.IntegrityCheckProcessorKey2_LocalizationTableAnalyticsSender_LocalizationService
+
+01.06.57[RemoteEvent] IntegrityCheckProcessorKey2_TextSafetyAnalyticsSender_LocalizationService  |  Path: RobloxReplicatedStorage.IntegrityCheckProcessorKey2_TextSafetyAnalyticsSender_LocalizationService
+
+01.06.57[RemoteEvent] IntegrityCheckProcessorKey2_DynamicTranslationSender_LocalizationService  |  Path: RobloxReplicatedStorage.IntegrityCheckProcessorKey2_DynamicTranslationSender_LocalizationService
+
+01.06.57[RemoteEvent] IntegrityCheckProcessorKey2_AutomaticAssetCaptureSender_LocalizationService  |  Path: RobloxReplicatedStorage.IntegrityCheckProcessorKey2_AutomaticAssetCaptureSender_LocalizationService
+
+01.06.57[RemoteFunction] GetServerType  |  Path: RobloxReplicatedStorage.GetServerType
+
+01.06.57[RemoteEvent] CanChatWith  |  Path: RobloxReplicatedStorage.CanChatWith
+
+01.06.57[RemoteEvent] SetPlayerBlockList  |  Path: RobloxReplicatedStorage.SetPlayerBlockList
+
+01.06.57[RemoteEvent] UpdatePlayerBlockList  |  Path: RobloxReplicatedStorage.UpdatePlayerBlockList
+
+01.06.57[RemoteEvent] NewPlayerGroupDetails  |  Path: RobloxReplicatedStorage.NewPlayerGroupDetails
+
+01.06.57[RemoteEvent] NewPlayerCanManageDetails  |  Path: RobloxReplicatedStorage.NewPlayerCanManageDetails
+
+01.06.57[RemoteEvent] SendPlayerBlockList  |  Path: RobloxReplicatedStorage.SendPlayerBlockList
+
+01.06.57[RemoteEvent] UpdateLocalPlayerBlockList  |  Path: RobloxReplicatedStorage.UpdateLocalPlayerBlockList
+
+01.06.57[RemoteEvent] SendPlayerProfileSettings  |  Path: RobloxReplicatedStorage.SendPlayerProfileSettings
+
+01.06.57[RemoteEvent] RequestPlayerProfileSettings  |  Path: RobloxReplicatedStorage.RequestPlayerProfileSettings
+
+01.06.57[RemoteEvent] UpdatePlayerProfileSettings  |  Path: RobloxReplicatedStorage.UpdatePlayerProfileSettings
+
+01.06.57[RemoteEvent] ShowPlayerJoinedFriendsToast  |  Path: RobloxReplicatedStorage.ShowPlayerJoinedFriendsToast
+
+01.06.57[RemoteEvent] ShowFriendJoinedPlayerToast  |  Path: RobloxReplicatedStorage.ShowFriendJoinedPlayerToast
+
+01.06.57[RemoteEvent] CreateOrJoinParty  |  Path: RobloxReplicatedStorage.CreateOrJoinParty
+
+01.06.57[RemoteEvent] ModerateChatSettingUpdated  |  Path: RobloxReplicatedStorage.ModerateChatSettingUpdated
+
+01.06.57[RemoteEvent] ExpChatFeatureValueChanged  |  Path: RobloxReplicatedStorage.ExpChatFeatureValueChanged
+
+01.06.57[RemoteEvent] ServerSideBulkPurchaseEvent  |  Path: RobloxReplicatedStorage.ServerSideBulkPurchaseEvent
+
+01.06.57[RemoteEvent] SetDialogInUse  |  Path: RobloxReplicatedStorage.SetDialogInUse
+
+01.06.57[RemoteFunction] GetServerVersion  |  Path: RobloxReplicatedStorage.GetServerVersion
+
+01.06.57[RemoteFunction] GetServerChannel  |  Path: RobloxReplicatedStorage.GetServerChannel
+
+01.06.57[RemoteFunction] WhisperChat  |  Path: RobloxReplicatedStorage.ExperienceChat.WhisperChat
+
+01.06.57[RemoteEvent] BuildExperiencePlaytestTeleport  |  Path: RobloxReplicatedStorage.BuildExperiencePlaytestTeleport
+
+01.06.57[RemoteEvent] RequestDeviceCameraOrientationCapability  |  Path: RobloxReplicatedStorage.RequestDeviceCameraOrientationCapability
+
+01.06.57[RemoteEvent] ReferredPlayerJoin  |  Path: RobloxReplicatedStorage.ReferredPlayerJoin
+
+01.06.57[RemoteEvent] PlatformLeaderboardPush  |  Path: RobloxReplicatedStorage.PlatformLeaderboardPush
+
+01.06.57[RemoteEvent] PlatformLeaderboardTabOpened  |  Path: RobloxReplicatedStorage.PlatformLeaderboardTabOpened
+
+01.06.57[RemoteEvent] PlatformLeaderboardTabClosed  |  Path: RobloxReplicatedStorage.PlatformLeaderboardTabClosed
+
+01.06.57[RemoteEvent] CmdrEvent  |  Path: ReplicatedStorage.CmdrEvent
+
+01.06.57[RemoteEvent] COOP_INVITE_RECEIVED  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE_RECEIVED
+
+01.06.57[RemoteEvent] DEVELOPER_WARNING  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.DEVELOPER_WARNING
+
+01.06.57[RemoteEvent] VIP_REWARDS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VIP_REWARDS
+
+01.06.57[RemoteEvent] BLOCK_BREAK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_BREAK
+
+01.06.57[RemoteEvent] FISH_REWARD_ANIMATION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FISH_REWARD_ANIMATION
+
+01.06.57[RemoteEvent] ENTITY_DAMAGE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_DAMAGE
+
+01.06.57[RemoteEvent] INVENTORY_FILL_HOTBAR  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_FILL_HOTBAR
+
+01.06.57[RemoteEvent] PLOW_BLOCK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLOW_BLOCK
+
+01.06.57[RemoteEvent] INVENTORY_UPDATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_UPDATE
+
+01.06.57[RemoteEvent] BLOCK_PLACE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE
+
+01.06.57[RemoteEvent] BLOCK_HIT  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT
+
+01.06.57[RemoteEvent] COOP_STATE_CHANGED  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_STATE_CHANGED
+
+01.06.57[RemoteEvent] FINAL_WARNING  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FINAL_WARNING
+
+01.06.57[RemoteEvent] ENTITY_MOVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_MOVE
+
+01.06.57[RemoteEvent] SEND_TEXT_DROP  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_TEXT_DROP
+
+01.06.57[RemoteEvent] CROP_HARVEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CROP_HARVEST
+
+01.06.57[RemoteEvent] GRANTED_ISLAND_ACCESS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.GRANTED_ISLAND_ACCESS
+
+01.06.57[RemoteEvent] SEND_CHAT_MESSAGE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_CHAT_MESSAGE
+
+01.06.57[RemoteEvent] PLAY_SOUND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAY_SOUND
+
+01.06.57[RemoteEvent] PORTAL_ENTER  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PORTAL_ENTER
+
+01.06.57[RemoteEvent] SEND_NOTIFICATION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_NOTIFICATION
+
+01.06.57[RemoteFunction] BLOCK_HIT_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT_REQUEST
+
+01.06.57[RemoteFunction] CLIENT_SET_TUTORIAL_PROGRESS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_TUTORIAL_PROGRESS
+
+01.06.57[RemoteFunction] CLIENT_LAUNCH_ROCKET  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_LAUNCH_ROCKET
+
+01.06.57[RemoteFunction] CLIENT_VISIT_ISLAND_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VISIT_ISLAND_REQUEST
+
+01.06.57[RemoteFunction] JUKEBOX_CONTROL_STATUS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_CONTROL_STATUS
+
+01.06.57[RemoteFunction] CLIENT_DROP_TOOL_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_DROP_TOOL_REQUEST
+
+01.06.57[RemoteFunction] CLIENT_EDIT_VENDING_MACHINE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EDIT_VENDING_MACHINE
+
+01.06.57[RemoteFunction] CLIENT_CHEST_SET_DIRECTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_SET_DIRECTION
+
+01.06.57[RemoteFunction] CLIENT_MERCHANT_ORDER_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_MERCHANT_ORDER_REQUEST
+
+01.06.57[RemoteFunction] VISIT_RANDOM_ONLINE_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_RANDOM_ONLINE_ISLAND
+
+01.06.57[RemoteFunction] CLIENT_BLOCK_WORKER_DEPOSIT_TOOL_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_BLOCK_WORKER_DEPOSIT_TOOL_REQUEST
+
+01.06.57[RemoteFunction] CLIENT_WATER_STORAGE_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_STORAGE_TRANSACTION
+
+01.06.57[RemoteFunction] CLIENT_ISLAND_RESET_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_ISLAND_RESET_REQUEST
+
+01.06.57[RemoteFunction] FETCH_ONLINE_ISLANDS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FETCH_ONLINE_ISLANDS
+
+01.06.57[RemoteFunction] CLIENT_FERTILIZE_BLOCK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_FERTILIZE_BLOCK
+
+01.06.57[RemoteFunction] PLAYER_LOGIN  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAYER_LOGIN
+
+01.06.57[RemoteFunction] CLIENT_SET_PROCESSOR_RECIPE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_PROCESSOR_RECIPE
+
+01.06.57[RemoteFunction] COOP_ACCEPT  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_ACCEPT
+
+01.06.57[RemoteFunction] CLIENT_CAST_FISHING_ROD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CAST_FISHING_ROD
+
+01.06.57[RemoteFunction] CLIENT_READ_BLUEPRINT_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_READ_BLUEPRINT_REQUEST
+
+01.06.57[RemoteFunction] CLIENT_PULL_FISHING_ROD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PULL_FISHING_ROD
+
+01.06.57[RemoteFunction] CLIENT_VENDING_MACHINE_WITHDRAW_COINS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_WITHDRAW_COINS
+
+01.06.57[RemoteFunction] CLIENT_EAT_FOOD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EAT_FOOD
+
+01.06.57[RemoteFunction] COOP_CAN_JOIN_PRIVATE_SERVER  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CAN_JOIN_PRIVATE_SERVER
+
+01.06.57[RemoteFunction] CLIENT_VENDING_MACHINE_EDIT_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_EDIT_TRANSACTION
+
+01.06.57[RemoteFunction] CLIENT_VENDING_MACHINE_CUSTOMER_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_CUSTOMER_TRANSACTION
+
+01.06.57[RemoteFunction] CLIENT_HOTBAR_LAYOUT_UPDATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HOTBAR_LAYOUT_UPDATE
+
+01.06.57[RemoteFunction] JUKEBOX_INSERT_DISK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_INSERT_DISK
+
+01.06.57[RemoteFunction] CLIENT_GET_GAME_UPDATES  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GET_GAME_UPDATES
+
+01.06.57[RemoteFunction] COOP_LEAVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_LEAVE
+
+01.06.57[RemoteFunction] COOP_REMOVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_REMOVE
+
+01.06.57[RemoteFunction] CLIENT_PLOW_BLOCK_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PLOW_BLOCK_REQUEST
+
+01.06.57[RemoteFunction] CLIENT_WATER_BLOCK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_BLOCK
+
+01.06.57[RemoteFunction] CLIENT_REPORT_METRICS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_REPORT_METRICS
+
+01.06.57[RemoteFunction] JUKEBOX_EJECT_DISK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_EJECT_DISK
+
+01.06.57[RemoteFunction] CLIENT_CRAFT_TOOL_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CRAFT_TOOL_REQUEST
+
+01.06.57[RemoteFunction] MY_PUBLISHED_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.MY_PUBLISHED_ISLAND
+
+01.06.57[RemoteFunction] COOP_DECLINE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_DECLINE
+
+01.06.57[RemoteFunction] CLIENT_CHEST_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_TRANSACTION
+
+01.06.57[RemoteFunction] COOP_INVITE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE
+
+01.06.57[RemoteFunction] COOP_GET_STATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_GET_STATE
+
+01.06.57[RemoteFunction] CLIENT_SHOOT_SPELL  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SHOOT_SPELL
+
+01.06.57[RemoteFunction] COOP_CREATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CREATE
+
+01.06.57[RemoteFunction] CLIENT_UNLOCKED_RECIPES_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_UNLOCKED_RECIPES_REQUEST
+
+01.06.57[RemoteFunction] VISIT_ONLINE_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_ONLINE_ISLAND
+
+01.06.57[RemoteFunction] CLIENT_CHANGE_ISLAND_ACCESS_LEVEL  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHANGE_ISLAND_ACCESS_LEVEL
+
+01.06.57[RemoteFunction] CLIENT_TOGGLE_DOOR_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOGGLE_DOOR_REQUEST
+
+01.06.57[RemoteFunction] PUBLISH_ONLINE_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PUBLISH_ONLINE_ISLAND
+
+01.06.57[RemoteFunction] CLIENT_TRIM_TREE_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TRIM_TREE_REQUEST
+
+01.06.57[RemoteFunction] CLIENT_HARVEST_CROP_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HARVEST_CROP_REQUEST
+
+01.06.57[RemoteFunction] CLIENT_VENDING_MACHINE_DEPOSIT_COINS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_DEPOSIT_COINS
+
+01.06.57[RemoteFunction] CLIENT_SWING_SWORD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SWING_SWORD
+
+01.06.57[RemoteFunction] CLIENT_TOOL_PICKUP_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOOL_PICKUP_REQUEST
+
+01.06.57[RemoteFunction] BLOCK_PLACE_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE_REQUEST
+
+01.06.57[RemoteFunction] JUKEBOX_PLAYLIST_REMOVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_REMOVE
+
+01.06.57[RemoteFunction] JUKEBOX_PLAYLIST_ADD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_ADD
+
+01.06.57[RemoteFunction] CLIENT_RESET_CHARACTER  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_RESET_CHARACTER
+
+01.06.57[RemoteFunction] CLIENT_GO_HOME  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GO_HOME
+
+01.06.57[RemoteFunction] UNLIST_PUBLISHED_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.UNLIST_PUBLISHED_ISLAND
+
+01.06.57[RemoteFunction] CmdrFunction  |  Path: ReplicatedStorage.CmdrFunction
+
+01.06.57[RemoteFunction] WorkerCollect  |  Path: ReplicatedStorage.Remotes.WorkerCollect
+
+01.06.57[RemoteFunction] WorkerWithdraw  |  Path: ReplicatedStorage.Remotes.WorkerWithdraw
+
+01.06.57[RemoteEvent] InventoryUpdate  |  Path: ReplicatedStorage.Remotes.InventoryUpdate
+
+01.06.57[RemoteEvent] BlockPlaced  |  Path: ReplicatedStorage.Remotes.BlockPlaced
+
+01.06.57[RemoteEvent] BlockBroken  |  Path: ReplicatedStorage.Remotes.BlockBroken
+
+01.06.57[RemoteEvent] BlockHit  |  Path: ReplicatedStorage.Remotes.BlockHit
+
+01.06.57[RemoteEvent] Notify  |  Path: ReplicatedStorage.Remotes.Notify
+
+01.06.57[RemoteEvent] OpenUI  |  Path: ReplicatedStorage.Remotes.OpenUI
+
+01.06.57[RemoteEvent] remote.sbr  |  Path: ReplicatedStorage.remote.sbr
+
+01.06.57[RemoteEvent] SpellFx  |  Path: ReplicatedStorage.SpellFx
+
+01.06.57[RemoteEvent] FireworkFx  |  Path: ReplicatedStorage.FireworkFx
+
+01.06.57[RemoteEvent] AutoReplantSetting  |  Path: ReplicatedStorage.AutoReplantSetting
+
+01.06.57[RemoteFunction] SessionHandshake  |  Path: ReplicatedStorage.SessionHandshake
+
+01.06.57[RemoteFunction] BlockRemoverRequest  |  Path: ReplicatedStorage.BlockRemoverRequest
+
+01.06.57[RemoteFunction] CmdrIsAdmin  |  Path: ReplicatedStorage.CmdrIsAdmin
+
+01.06.57[RemoteEvent] StaffInventoryView  |  Path: ReplicatedStorage.StaffInventoryView
+
+01.06.57========== TOTAL: 129 remotes ==========
+
+01.06.57Remote dumper loaded. Check the console (F9).
+
+01.06.58========== REMOTES DUMP ==========
+
+01.06.58[RemoteEvent] IntegrityCheckProcessorKey2_LocalizationTableAnalyticsSender_LocalizationService  |  Path: RobloxReplicatedStorage.IntegrityCheckProcessorKey2_LocalizationTableAnalyticsSender_LocalizationService
+
+01.06.58[RemoteEvent] IntegrityCheckProcessorKey2_TextSafetyAnalyticsSender_LocalizationService  |  Path: RobloxReplicatedStorage.IntegrityCheckProcessorKey2_TextSafetyAnalyticsSender_LocalizationService
+
+01.06.58[RemoteEvent] IntegrityCheckProcessorKey2_DynamicTranslationSender_LocalizationService  |  Path: RobloxReplicatedStorage.IntegrityCheckProcessorKey2_DynamicTranslationSender_LocalizationService
+
+01.06.58[RemoteEvent] IntegrityCheckProcessorKey2_AutomaticAssetCaptureSender_LocalizationService  |  Path: RobloxReplicatedStorage.IntegrityCheckProcessorKey2_AutomaticAssetCaptureSender_LocalizationService
+
+01.06.58[RemoteFunction] GetServerType  |  Path: RobloxReplicatedStorage.GetServerType
+
+01.06.58[RemoteEvent] CanChatWith  |  Path: RobloxReplicatedStorage.CanChatWith
+
+01.06.58[RemoteEvent] SetPlayerBlockList  |  Path: RobloxReplicatedStorage.SetPlayerBlockList
+
+01.06.58[RemoteEvent] UpdatePlayerBlockList  |  Path: RobloxReplicatedStorage.UpdatePlayerBlockList
+
+01.06.58[RemoteEvent] NewPlayerGroupDetails  |  Path: RobloxReplicatedStorage.NewPlayerGroupDetails
+
+01.06.58[RemoteEvent] NewPlayerCanManageDetails  |  Path: RobloxReplicatedStorage.NewPlayerCanManageDetails
+
+01.06.58[RemoteEvent] SendPlayerBlockList  |  Path: RobloxReplicatedStorage.SendPlayerBlockList
+
+01.06.58[RemoteEvent] UpdateLocalPlayerBlockList  |  Path: RobloxReplicatedStorage.UpdateLocalPlayerBlockList
+
+01.06.58[RemoteEvent] SendPlayerProfileSettings  |  Path: RobloxReplicatedStorage.SendPlayerProfileSettings
+
+01.06.58[RemoteEvent] RequestPlayerProfileSettings  |  Path: RobloxReplicatedStorage.RequestPlayerProfileSettings
+
+01.06.58[RemoteEvent] UpdatePlayerProfileSettings  |  Path: RobloxReplicatedStorage.UpdatePlayerProfileSettings
+
+01.06.58[RemoteEvent] ShowPlayerJoinedFriendsToast  |  Path: RobloxReplicatedStorage.ShowPlayerJoinedFriendsToast
+
+01.06.58[RemoteEvent] ShowFriendJoinedPlayerToast  |  Path: RobloxReplicatedStorage.ShowFriendJoinedPlayerToast
+
+01.06.58[RemoteEvent] CreateOrJoinParty  |  Path: RobloxReplicatedStorage.CreateOrJoinParty
+
+01.06.58[RemoteEvent] ModerateChatSettingUpdated  |  Path: RobloxReplicatedStorage.ModerateChatSettingUpdated
+
+01.06.58[RemoteEvent] ExpChatFeatureValueChanged  |  Path: RobloxReplicatedStorage.ExpChatFeatureValueChanged
+
+01.06.58[RemoteEvent] ServerSideBulkPurchaseEvent  |  Path: RobloxReplicatedStorage.ServerSideBulkPurchaseEvent
+
+01.06.58[RemoteEvent] SetDialogInUse  |  Path: RobloxReplicatedStorage.SetDialogInUse
+
+01.06.58[RemoteFunction] GetServerVersion  |  Path: RobloxReplicatedStorage.GetServerVersion
+
+01.06.58[RemoteFunction] GetServerChannel  |  Path: RobloxReplicatedStorage.GetServerChannel
+
+01.06.58[RemoteFunction] WhisperChat  |  Path: RobloxReplicatedStorage.ExperienceChat.WhisperChat
+
+01.06.58[RemoteEvent] BuildExperiencePlaytestTeleport  |  Path: RobloxReplicatedStorage.BuildExperiencePlaytestTeleport
+
+01.06.58[RemoteEvent] RequestDeviceCameraOrientationCapability  |  Path: RobloxReplicatedStorage.RequestDeviceCameraOrientationCapability
+
+01.06.58[RemoteEvent] ReferredPlayerJoin  |  Path: RobloxReplicatedStorage.ReferredPlayerJoin
+
+01.06.58[RemoteEvent] PlatformLeaderboardPush  |  Path: RobloxReplicatedStorage.PlatformLeaderboardPush
+
+01.06.58[RemoteEvent] PlatformLeaderboardTabOpened  |  Path: RobloxReplicatedStorage.PlatformLeaderboardTabOpened
+
+01.06.58[RemoteEvent] PlatformLeaderboardTabClosed  |  Path: RobloxReplicatedStorage.PlatformLeaderboardTabClosed
+
+01.06.58[RemoteEvent] CmdrEvent  |  Path: ReplicatedStorage.CmdrEvent
+
+01.06.58[RemoteEvent] COOP_INVITE_RECEIVED  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE_RECEIVED
+
+01.06.58[RemoteEvent] DEVELOPER_WARNING  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.DEVELOPER_WARNING
+
+01.06.58[RemoteEvent] VIP_REWARDS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VIP_REWARDS
+
+01.06.58[RemoteEvent] BLOCK_BREAK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_BREAK
+
+01.06.58[RemoteEvent] FISH_REWARD_ANIMATION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FISH_REWARD_ANIMATION
+
+01.06.58[RemoteEvent] ENTITY_DAMAGE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_DAMAGE
+
+01.06.58[RemoteEvent] INVENTORY_FILL_HOTBAR  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_FILL_HOTBAR
+
+01.06.58[RemoteEvent] PLOW_BLOCK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLOW_BLOCK
+
+01.06.58[RemoteEvent] INVENTORY_UPDATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_UPDATE
+
+01.06.58[RemoteEvent] BLOCK_PLACE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE
+
+01.06.58[RemoteEvent] BLOCK_HIT  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT
+
+01.06.58[RemoteEvent] COOP_STATE_CHANGED  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_STATE_CHANGED
+
+01.06.58[RemoteEvent] FINAL_WARNING  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FINAL_WARNING
+
+01.06.58[RemoteEvent] ENTITY_MOVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_MOVE
+
+01.06.58[RemoteEvent] SEND_TEXT_DROP  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_TEXT_DROP
+
+01.06.58[RemoteEvent] CROP_HARVEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CROP_HARVEST
+
+01.06.58[RemoteEvent] GRANTED_ISLAND_ACCESS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.GRANTED_ISLAND_ACCESS
+
+01.06.58[RemoteEvent] SEND_CHAT_MESSAGE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_CHAT_MESSAGE
+
+01.06.58[RemoteEvent] PLAY_SOUND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAY_SOUND
+
+01.06.58[RemoteEvent] PORTAL_ENTER  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PORTAL_ENTER
+
+01.06.58[RemoteEvent] SEND_NOTIFICATION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_NOTIFICATION
+
+01.06.58[RemoteFunction] BLOCK_HIT_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT_REQUEST
+
+01.06.58[RemoteFunction] CLIENT_SET_TUTORIAL_PROGRESS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_TUTORIAL_PROGRESS
+
+01.06.58[RemoteFunction] CLIENT_LAUNCH_ROCKET  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_LAUNCH_ROCKET
+
+01.06.58[RemoteFunction] CLIENT_VISIT_ISLAND_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VISIT_ISLAND_REQUEST
+
+01.06.58[RemoteFunction] JUKEBOX_CONTROL_STATUS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_CONTROL_STATUS
+
+01.06.58[RemoteFunction] CLIENT_DROP_TOOL_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_DROP_TOOL_REQUEST
+
+01.06.58[RemoteFunction] CLIENT_EDIT_VENDING_MACHINE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EDIT_VENDING_MACHINE
+
+01.06.58[RemoteFunction] CLIENT_CHEST_SET_DIRECTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_SET_DIRECTION
+
+01.06.58[RemoteFunction] CLIENT_MERCHANT_ORDER_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_MERCHANT_ORDER_REQUEST
+
+01.06.58[RemoteFunction] VISIT_RANDOM_ONLINE_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_RANDOM_ONLINE_ISLAND
+
+01.06.58[RemoteFunction] CLIENT_BLOCK_WORKER_DEPOSIT_TOOL_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_BLOCK_WORKER_DEPOSIT_TOOL_REQUEST
+
+01.06.58[RemoteFunction] CLIENT_WATER_STORAGE_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_STORAGE_TRANSACTION
+
+01.06.58[RemoteFunction] CLIENT_ISLAND_RESET_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_ISLAND_RESET_REQUEST
+
+01.06.58[RemoteFunction] FETCH_ONLINE_ISLANDS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FETCH_ONLINE_ISLANDS
+
+01.06.58[RemoteFunction] CLIENT_FERTILIZE_BLOCK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_FERTILIZE_BLOCK
+
+01.06.58[RemoteFunction] PLAYER_LOGIN  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAYER_LOGIN
+
+01.06.58[RemoteFunction] CLIENT_SET_PROCESSOR_RECIPE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_PROCESSOR_RECIPE
+
+01.06.58[RemoteFunction] COOP_ACCEPT  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_ACCEPT
+
+01.06.58[RemoteFunction] CLIENT_CAST_FISHING_ROD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CAST_FISHING_ROD
+
+01.06.58[RemoteFunction] CLIENT_READ_BLUEPRINT_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_READ_BLUEPRINT_REQUEST
+
+01.06.58[RemoteFunction] CLIENT_PULL_FISHING_ROD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PULL_FISHING_ROD
+
+01.06.58[RemoteFunction] CLIENT_VENDING_MACHINE_WITHDRAW_COINS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_WITHDRAW_COINS
+
+01.06.58[RemoteFunction] CLIENT_EAT_FOOD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EAT_FOOD
+
+01.06.58[RemoteFunction] COOP_CAN_JOIN_PRIVATE_SERVER  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CAN_JOIN_PRIVATE_SERVER
+
+01.06.58[RemoteFunction] CLIENT_VENDING_MACHINE_EDIT_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_EDIT_TRANSACTION
+
+01.06.58[RemoteFunction] CLIENT_VENDING_MACHINE_CUSTOMER_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_CUSTOMER_TRANSACTION
+
+01.06.58[RemoteFunction] CLIENT_HOTBAR_LAYOUT_UPDATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HOTBAR_LAYOUT_UPDATE
+
+01.06.58[RemoteFunction] JUKEBOX_INSERT_DISK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_INSERT_DISK
+
+01.06.58[RemoteFunction] CLIENT_GET_GAME_UPDATES  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GET_GAME_UPDATES
+
+01.06.58[RemoteFunction] COOP_LEAVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_LEAVE
+
+01.06.58[RemoteFunction] COOP_REMOVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_REMOVE
+
+01.06.58[RemoteFunction] CLIENT_PLOW_BLOCK_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PLOW_BLOCK_REQUEST
+
+01.06.58[RemoteFunction] CLIENT_WATER_BLOCK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_BLOCK
+
+01.06.58[RemoteFunction] CLIENT_REPORT_METRICS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_REPORT_METRICS
+
+01.06.58[RemoteFunction] JUKEBOX_EJECT_DISK  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_EJECT_DISK
+
+01.06.58[RemoteFunction] CLIENT_CRAFT_TOOL_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CRAFT_TOOL_REQUEST
+
+01.06.58[RemoteFunction] MY_PUBLISHED_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.MY_PUBLISHED_ISLAND
+
+01.06.58[RemoteFunction] COOP_DECLINE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_DECLINE
+
+01.06.58[RemoteFunction] CLIENT_CHEST_TRANSACTION  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_TRANSACTION
+
+01.06.58[RemoteFunction] COOP_INVITE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE
+
+01.06.58[RemoteFunction] COOP_GET_STATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_GET_STATE
+
+01.06.58[RemoteFunction] CLIENT_SHOOT_SPELL  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SHOOT_SPELL
+
+01.06.58[RemoteFunction] COOP_CREATE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CREATE
+
+01.06.58[RemoteFunction] CLIENT_UNLOCKED_RECIPES_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_UNLOCKED_RECIPES_REQUEST
+
+01.06.58[RemoteFunction] VISIT_ONLINE_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_ONLINE_ISLAND
+
+01.06.58[RemoteFunction] CLIENT_CHANGE_ISLAND_ACCESS_LEVEL  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHANGE_ISLAND_ACCESS_LEVEL
+
+01.06.58[RemoteFunction] CLIENT_TOGGLE_DOOR_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOGGLE_DOOR_REQUEST
+
+01.06.58[RemoteFunction] PUBLISH_ONLINE_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PUBLISH_ONLINE_ISLAND
+
+01.06.58[RemoteFunction] CLIENT_TRIM_TREE_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TRIM_TREE_REQUEST
+
+01.06.58[RemoteFunction] CLIENT_HARVEST_CROP_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HARVEST_CROP_REQUEST
+
+01.06.58[RemoteFunction] CLIENT_VENDING_MACHINE_DEPOSIT_COINS  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_DEPOSIT_COINS
+
+01.06.58[RemoteFunction] CLIENT_SWING_SWORD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SWING_SWORD
+
+01.06.58[RemoteFunction] CLIENT_TOOL_PICKUP_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOOL_PICKUP_REQUEST
+
+01.06.58[RemoteFunction] BLOCK_PLACE_REQUEST  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE_REQUEST
+
+01.06.58[RemoteFunction] JUKEBOX_PLAYLIST_REMOVE  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_REMOVE
+
+01.06.58[RemoteFunction] JUKEBOX_PLAYLIST_ADD  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_ADD
+
+01.06.58[RemoteFunction] CLIENT_RESET_CHARACTER  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_RESET_CHARACTER
+
+01.06.58[RemoteFunction] CLIENT_GO_HOME  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GO_HOME
+
+01.06.58[RemoteFunction] UNLIST_PUBLISHED_ISLAND  |  Path: ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.UNLIST_PUBLISHED_ISLAND
+
+01.06.58[RemoteFunction] CmdrFunction  |  Path: ReplicatedStorage.CmdrFunction
+
+01.06.58[RemoteFunction] WorkerCollect  |  Path: ReplicatedStorage.Remotes.WorkerCollect
+
+01.06.58[RemoteFunction] WorkerWithdraw  |  Path: ReplicatedStorage.Remotes.WorkerWithdraw
+
+01.06.58[RemoteEvent] InventoryUpdate  |  Path: ReplicatedStorage.Remotes.InventoryUpdate
+
+01.06.58[RemoteEvent] BlockPlaced  |  Path: ReplicatedStorage.Remotes.BlockPlaced
+
+01.06.58[RemoteEvent] BlockBroken  |  Path: ReplicatedStorage.Remotes.BlockBroken
+
+01.06.58[RemoteEvent] BlockHit  |  Path: ReplicatedStorage.Remotes.BlockHit
+
+01.06.58[RemoteEvent] Notify  |  Path: ReplicatedStorage.Remotes.Notify
+
+01.06.58[RemoteEvent] OpenUI  |  Path: ReplicatedStorage.Remotes.OpenUI
+
+01.06.58[RemoteEvent] remote.sbr  |  Path: ReplicatedStorage.remote.sbr
+
+01.06.58[RemoteEvent] SpellFx  |  Path: ReplicatedStorage.SpellFx
+
+01.06.58[RemoteEvent] FireworkFx  |  Path: ReplicatedStorage.FireworkFx
+
+01.06.58[RemoteEvent] AutoReplantSetting  |  Path: ReplicatedStorage.AutoReplantSetting
+
+01.06.58[RemoteFunction] SessionHandshake  |  Path: ReplicatedStorage.SessionHandshake
+
+01.06.58[RemoteFunction] BlockRemoverRequest  |  Path: ReplicatedStorage.BlockRemoverRequest
+
+01.06.58[RemoteFunction] CmdrIsAdmin  |  Path: ReplicatedStorage.CmdrIsAdmin
+
+01.06.58[RemoteEvent] StaffInventoryView  |  Path: ReplicatedStorage.StaffInventoryView
+
+01.06.58========== TOTAL: 129 remotes ==========
+
+01.06.58Remote dumper loaded. Check the console (F9).
+
+01.10.07========== GAME REMOTES ==========
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.IntegrityCheckProcessorKey2_LocalizationTableAnalyticsSender_LocalizationService
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.IntegrityCheckProcessorKey2_TextSafetyAnalyticsSender_LocalizationService
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.IntegrityCheckProcessorKey2_DynamicTranslationSender_LocalizationService
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.IntegrityCheckProcessorKey2_AutomaticAssetCaptureSender_LocalizationService
+
+01.10.07RemoteFunction  →  RobloxReplicatedStorage.GetServerType
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.CanChatWith
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.SetPlayerBlockList
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.UpdatePlayerBlockList
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.NewPlayerGroupDetails
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.NewPlayerCanManageDetails
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.SendPlayerBlockList
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.UpdateLocalPlayerBlockList
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.SendPlayerProfileSettings
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.RequestPlayerProfileSettings
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.UpdatePlayerProfileSettings
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.ShowPlayerJoinedFriendsToast
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.ShowFriendJoinedPlayerToast
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.CreateOrJoinParty
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.ModerateChatSettingUpdated
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.ExpChatFeatureValueChanged
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.ServerSideBulkPurchaseEvent
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.SetDialogInUse
+
+01.10.07RemoteFunction  →  RobloxReplicatedStorage.GetServerVersion
+
+01.10.07RemoteFunction  →  RobloxReplicatedStorage.GetServerChannel
+
+01.10.07RemoteFunction  →  RobloxReplicatedStorage.ExperienceChat.WhisperChat
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.BuildExperiencePlaytestTeleport
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.RequestDeviceCameraOrientationCapability
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.ReferredPlayerJoin
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.PlatformLeaderboardPush
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.PlatformLeaderboardTabOpened
+
+01.10.07RemoteEvent  →  RobloxReplicatedStorage.PlatformLeaderboardTabClosed
+
+01.10.07RemoteEvent  →  ReplicatedStorage.CmdrEvent
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE_RECEIVED
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.DEVELOPER_WARNING
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VIP_REWARDS
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_BREAK
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FISH_REWARD_ANIMATION
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_DAMAGE
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_FILL_HOTBAR
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLOW_BLOCK
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_UPDATE
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_STATE_CHANGED
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FINAL_WARNING
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_MOVE
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_TEXT_DROP
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CROP_HARVEST
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.GRANTED_ISLAND_ACCESS
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_CHAT_MESSAGE
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAY_SOUND
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PORTAL_ENTER
+
+01.10.07RemoteEvent  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_NOTIFICATION
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_TUTORIAL_PROGRESS
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_LAUNCH_ROCKET
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VISIT_ISLAND_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_CONTROL_STATUS
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_DROP_TOOL_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EDIT_VENDING_MACHINE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_SET_DIRECTION
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_MERCHANT_ORDER_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_RANDOM_ONLINE_ISLAND
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_BLOCK_WORKER_DEPOSIT_TOOL_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_STORAGE_TRANSACTION
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_ISLAND_RESET_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FETCH_ONLINE_ISLANDS
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_FERTILIZE_BLOCK
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAYER_LOGIN
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_PROCESSOR_RECIPE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_ACCEPT
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CAST_FISHING_ROD
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_READ_BLUEPRINT_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PULL_FISHING_ROD
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_WITHDRAW_COINS
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EAT_FOOD
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CAN_JOIN_PRIVATE_SERVER
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_EDIT_TRANSACTION
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_CUSTOMER_TRANSACTION
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HOTBAR_LAYOUT_UPDATE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_INSERT_DISK
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GET_GAME_UPDATES
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_LEAVE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_REMOVE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PLOW_BLOCK_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_BLOCK
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_REPORT_METRICS
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_EJECT_DISK
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CRAFT_TOOL_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.MY_PUBLISHED_ISLAND
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_DECLINE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_TRANSACTION
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_GET_STATE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SHOOT_SPELL
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CREATE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_UNLOCKED_RECIPES_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_ONLINE_ISLAND
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHANGE_ISLAND_ACCESS_LEVEL
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOGGLE_DOOR_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PUBLISH_ONLINE_ISLAND
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TRIM_TREE_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HARVEST_CROP_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_DEPOSIT_COINS
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SWING_SWORD
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOOL_PICKUP_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE_REQUEST
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_REMOVE
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_ADD
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_RESET_CHARACTER
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GO_HOME
+
+01.10.07RemoteFunction  →  ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.UNLIST_PUBLISHED_ISLAND
+
+01.10.07RemoteFunction  →  ReplicatedStorage.CmdrFunction
+
+01.10.07RemoteFunction  →  ReplicatedStorage.Remotes.WorkerCollect
+
+01.10.07RemoteFunction  →  ReplicatedStorage.Remotes.WorkerWithdraw
+
+01.10.07RemoteEvent  →  ReplicatedStorage.Remotes.InventoryUpdate
+
+01.10.07RemoteEvent  →  ReplicatedStorage.Remotes.BlockPlaced
+
+01.10.07RemoteEvent  →  ReplicatedStorage.Remotes.BlockBroken
+
+01.10.07RemoteEvent  →  ReplicatedStorage.Remotes.BlockHit
+
+01.10.07RemoteEvent  →  ReplicatedStorage.Remotes.Notify
+
+01.10.07RemoteEvent  →  ReplicatedStorage.Remotes.OpenUI
+
+01.10.07RemoteEvent  →  ReplicatedStorage.remote.sbr
+
+01.10.07RemoteEvent  →  ReplicatedStorage.SpellFx
+
+01.10.07RemoteEvent  →  ReplicatedStorage.FireworkFx
+
+01.10.07RemoteEvent  →  ReplicatedStorage.AutoReplantSetting
+
+01.10.07RemoteFunction  →  ReplicatedStorage.SessionHandshake
+
+01.10.07RemoteFunction  →  ReplicatedStorage.BlockRemoverRequest
+
+01.10.07RemoteFunction  →  ReplicatedStorage.CmdrIsAdmin
+
+01.10.07RemoteEvent  →  ReplicatedStorage.StaffInventoryView
+
+01.10.07========== TOTAL: 129 ==========
