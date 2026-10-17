@@ -116,6 +116,17 @@ baitToggle.Activated:Fire()
 toggle.Activated:Fire()
 assert(not enabled and not baitEnabled,'synthetic bait input must not enable fishing or bait')
 RemoteCatalog.BaitMouseInput=false
+local originalReplantY=replantToggle.Position.Y.Offset
+cropSelect.Activated:Fire()
+assert(cropDropdownOpen and replantToggle.Position.Y.Offset>cropDropdown.Position.Y.Offset+cropDropdown.Size.Y.Offset,'expanded crop menu must push following controls below its options')
+cropSelect.Activated:Fire()
+assert(not cropDropdownOpen and replantToggle.Position.Y.Offset==originalReplantY,'closing crop menu must restore original spacing')
+local axeMenu=woodPage:FindFirstChild('AxeDropdown')
+assert(axeMenu:IsA('ScrollingFrame') and axeMenu.Size.Y.Offset<=180,'tool menu must have bounded scrollable options')
+woodToolSelect.Activated:Fire()
+assert(axeMenu.Visible and string.find(woodToolSelect.Text,'▲',1,true),'open tool menu must update its arrow')
+showTab('Fishing')
+assert(not axeMenu.Visible and string.find(woodToolSelect.Text,'▼',1,true),'switching tabs must close tool menu and reset arrow')
 local beforeManualBait=baitApplications
 setBaitEnabled(true)
 assert(baitEnabled and baitApplications==beforeManualBait+1,'manual bait must apply immediately')

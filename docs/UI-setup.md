@@ -335,3 +335,5 @@ Anti AFK now starts ON automatically at launch. Settings can turn it off; Stop A
 Build bait-click-10 ignores Auto Bait toggle activations during its own synthetic mouse press/release, preventing accidental self-cancellation when host coordinates hit the hub.
 
 Build fishing-recovery-11 keeps fishing enabled through bite/cast timeouts, guards both fishing and bait toggles during synthetic bait input, and counts at most one miss per bobber while retrying reels.
+
+Build layout-12 bounds axe/mining dropdowns to a scrollable 180-pixel list with selected checks and synchronized arrows. Expanding the multi-crop menu moves following harvest controls down; closing it restores their positions.

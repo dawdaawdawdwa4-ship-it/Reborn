@@ -1673,7 +1673,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "fishing-recovery-11",
+    Subtitle = "layout-12",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -1736,14 +1736,15 @@ local buildController = AutoBuild.new({
 
 local function showTab(name)
     activeTab = name
-    cropDropdownOpen = false
-    if cropDropdown then cropDropdown.Visible = false end
+    if RemoteCatalog.SetCropDropdown then RemoteCatalog.SetCropDropdown(false)
+    else cropDropdownOpen=false;if cropDropdown then cropDropdown.Visible=false end end
     for _, child in ipairs(woodPage:GetChildren()) do
         if child.Name == "AxeDropdown" then child.Visible = false end
     end
     for _, child in ipairs(minePage:GetChildren()) do
         if child.Name == "PickaxeDropdown" or child.Name == "ToolDropdown" then child.Visible = false end
     end
+    for _,refresh in pairs(RemoteCatalog.ToolMenuRefresh or {}) do refresh() end
     hub:SelectTab(airflowTabs[name])
 end
 
@@ -4075,10 +4076,25 @@ end))
 track(harvestToggle.Activated:Connect(function() setHarvestEnabled(not harvestEnabled) end))
 track(woodToggle.Activated:Connect(function() setFarmMode("wood", not woodEnabled) end))
 track(mineToggle.Activated:Connect(function() setFarmMode("mine", not mineEnabled) end))
-track(cropSelect.Activated:Connect(function()
-    cropDropdownOpen = not cropDropdownOpen
-    cropDropdown.Visible = cropDropdownOpen
+RemoteCatalog.CropControlPositions={}
+function RemoteCatalog.SetCropDropdown(open)
+    cropDropdownOpen=open
+    cropDropdown.Visible=open
+    local offset=open and cropDropdown.Size.Y.Offset+8 or 0
+    for _,child in ipairs(harvestPage:GetChildren()) do
+        if child:IsA("GuiObject") and child~=cropDropdown then
+            local base=RemoteCatalog.CropControlPositions[child]
+            if not base and child.Position.Y.Offset>=160 then
+                base=child.Position
+                RemoteCatalog.CropControlPositions[child]=base
+            end
+            if base then child.Position=UDim2.new(base.X.Scale,base.X.Offset,base.Y.Scale,base.Y.Offset+offset) end
+        end
+    end
     refreshCropSelectionUI()
+end
+track(cropSelect.Activated:Connect(function()
+    RemoteCatalog.SetCropDropdown(not cropDropdownOpen)
 end))
 for i, option in ipairs(cropButtons) do
     track(option.Activated:Connect(function()
@@ -4130,9 +4146,13 @@ track(woodRangeBtn.Activated:Connect(function()
 end))
 -- Real expanding dropdowns matching the crop selector's visual style.
 local function makeToolDropdown(page, anchor, options, kind, yPosition, onChoose)
-    local menu = Instance.new("Frame")
+    local menu = Instance.new("ScrollingFrame")
     menu.Name = kind .. "Dropdown"
-    menu.Size = UDim2.new(1, -12, 0, #options * 36)
+    menu.Size = UDim2.new(1, -12, 0, math.min(#options * 36, 180))
+    menu.CanvasSize = UDim2.fromOffset(0,#options * 36)
+    menu.ScrollBarThickness = 4
+    menu.ScrollBarImageColor3 = COLORS.accent
+    menu.ScrollingDirection = Enum.ScrollingDirection.Y
     menu.Position = UDim2.fromOffset(6, yPosition)
     menu.BackgroundColor3 = COLORS.panel
     menu.BorderSizePixel = 0
@@ -4145,20 +4165,37 @@ local function makeToolDropdown(page, anchor, options, kind, yPosition, onChoose
     list.Padding = UDim.new(0, 2)
     list.SortOrder = Enum.SortOrder.LayoutOrder
     list.Parent = menu
+    local buttons={}
+    local function refresh()
+        local selected=kind=="Axe" and woodToolPreference or mineToolPreference
+        anchor.Text=kind..": "..selected..(menu.Visible and "  ▲" or "  ▼")
+        for i,opt in ipairs(buttons) do
+            local chosen=options[i]==selected
+            opt.Text=(chosen and "✓  " or "    ")..options[i]
+            opt.BackgroundColor3=chosen and COLORS.off or COLORS.panel
+            opt.TextColor3=chosen and COLORS.accent or COLORS.text
+        end
+    end
     for i, optionName in ipairs(options) do
-        local opt = button({Parent = menu, Text = optionName, TextSize = 11,
-            Size = UDim2.new(1, -4, 0, 34), Position = UDim2.new(), Bg = COLORS.panel})
+        local opt = button({Parent = menu, Text = optionName, TextSize = 12,
+            Size = UDim2.new(1, -8, 0, 34), Position = UDim2.new(), Bg = COLORS.panel})
         opt.LayoutOrder = i
         opt.ZIndex = 26
+        buttons[i]=opt
         track(opt.Activated:Connect(function()
             onChoose(i)
-            anchor.Text = kind .. ": " .. optionName .. "  ▼"
             menu.Visible = false
+            refresh()
         end))
     end
     track(anchor.Activated:Connect(function()
         menu.Visible = not menu.Visible
+        refresh()
     end))
+    RemoteCatalog.ToolMenuRefresh=RemoteCatalog.ToolMenuRefresh or {}
+    RemoteCatalog.ToolMenuRefresh[menu]=refresh
+    track(menu:GetPropertyChangedSignal("Visible"):Connect(refresh))
+    refresh()
 end
 
 makeToolDropdown(woodPage, woodToolSelect, woodToolOptions, "Axe", 266, function(i)
