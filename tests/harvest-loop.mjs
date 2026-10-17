@@ -44,13 +44,14 @@ local function runScenario(scenario)
   if dt==CONFIG.MineDelay or dt==CONFIG.MineScanInterval or scenario=='prompt-cancel' then harvestCycleId+=1 end
  end}
  local function fireModelHarvest(obj)
-  if scenario=='removed' or scenario=='learned-prompt' then obj.Parent=nil end
+  if scenario=='removed' or scenario=='learned-prompt' or scenario=='server-replant' then obj.Parent=nil end
   if scenario=='regrow' then obj.attributes.Mature=false end
   if scenario=='cancel' then obj.Parent=nil;harvestCycleId+=1 end
   return true
  end
  local function fireBlockMine() return true end
  local RemoteCatalog={RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end,HarvestEndpoint=function() return nil end}
+ if scenario=='server-replant' then RemoteCatalog.ServerAutoReplant=true end
  if scenario=='learned-prompt' then RemoteCatalog.Recorder={HarvestBinding={Remote={Parent=true},Target=target}} end
  local function firePlant(cf,kind)
   assert(cf==originalFrame and kind=='wheat','replant must preserve frame and crop')
@@ -61,12 +62,13 @@ local function runScenario(scenario)
  harvestLoop(1)
  if scenario=='unchanged' then assert(counted==0 and planted==0,'acknowledged request must not count as harvested') end
  if scenario=='learned-prompt' then assert(counted==1 and planted==1 and not released,'learned crop request must take precedence over prompt') end
+ if scenario=='server-replant' then assert(counted==1 and planted==0,'game AutoReplant must suppress duplicate local planting') end
  if scenario=='removed' then assert(counted==1 and planted==1,'removed crop must count once and replant') end
  if scenario=='regrow' then assert(counted==1 and planted==0,'crop regrowing in place must not be planted over') end
  if scenario=='cancel' then assert(counted==0 and planted==0,'cancelled cycle must not count/replant') end
  if scenario=='prompt-cancel' then assert(released and not held and counted==0 and planted==0,'Stop must release prompt and cancel post-processing') end
 end
-for _,scenario in ipairs({'unchanged','removed','regrow','cancel','prompt-cancel','learned-prompt'}) do runScenario(scenario) end
+for _,scenario in ipairs({'unchanged','removed','regrow','cancel','prompt-cancel','learned-prompt','server-replant'}) do runScenario(scenario) end
 return 'Harvest loop passed: no false counts, confirmed removal/replant, regrow in place, Stop/cycle cancellation and prompt release'
 `;
 const state=await LuauState.createAsync();

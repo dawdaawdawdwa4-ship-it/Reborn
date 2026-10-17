@@ -51,6 +51,13 @@ assert(secondHum.JumpHeight==10,'enabled movement must follow respawn')
 movementController:Reset();assert(secondHum.WalkSpeed==18 and secondHum.JumpHeight==8,'respawn reset must use new character defaults')
 player.Character=nil
 
+registerHarvest('treeOrange','wood');registerHarvest('coal','mine');registerHarvest('wheat','crop')
+for _,entry in ipairs({{'Wood Farm','WOOD STATS'},{'Mining','MINING STATS'},{'Harvest','CROP STATS'}}) do
+ showTab(entry[1]);updateBoard()
+ assert(statsOverlayTitle.Text==entry[2] and overlayValues.catches.Text=='1','resource overlay must show independent category totals')
+end
+showTab('Fishing');updateBoard()
+assert(statsOverlayTitle.Text=='FISHING STATS' and overlayValues.catches.Text=='0','resource totals must not change fishing counters')
 assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled and not baitEnabled)
 local baitApplications=0
 applyBait=function() baitApplications+=1;return true end

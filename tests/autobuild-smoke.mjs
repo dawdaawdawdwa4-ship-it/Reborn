@@ -22,6 +22,19 @@ local function control() return {Activated=signal(),FocusLost=signal()} end
 local Instance={new=function() return control() end}
 local UDim2={new=function() return {} end,fromOffset=function() return {} end}
 local Color3={fromRGB=function() return {} end}
+local fm={}
+local function frame(x,y,z,yaw)
+ return setmetatable({Position={X=x,Y=y,Z=z},yaw=yaw or 0},fm)
+end
+function fm.__mul(a,b)
+ local p,q=a.Position,b.Position;local c,s=math.cos(a.yaw),math.sin(a.yaw)
+ return frame(p.X+q.X*c+q.Z*s,p.Y+q.Y,p.Z-q.X*s+q.Z*c,a.yaw+b.yaw)
+end
+fm.__index={Inverse=function(a)
+ local p=a.Position;local c,s=math.cos(a.yaw),math.sin(a.yaw)
+ return frame(-p.X*c+p.Z*s,-p.Y,-p.X*s-p.Z*c,-a.yaw)
+end}
+local CFrame={new=frame}
 -- Re-evaluate with the injected UI globals.
 local A=(function() ${source} end)()
 local ticks,worker,requests=0,nil,0
@@ -49,6 +62,19 @@ assert(not string.find(b.Status.Text,'confirmed',1,true),'accepted request alone
 root.Position=setmetatable({},{__sub=function() return {Magnitude=100} end})
 b.Cells=cells(2);before=requests;b:Start();assert(requests==before,'out of reach must pause requests')
 b:Stop();step();assert(requests==before,'stop must cancel a paused build')
+local moved=A.new(ctx)
+moved.Anchor=frame(10,0,10,math.pi/2);moved.BlockSize=3
+local original=moved.Anchor*frame(0,0,-3)
+local ghost={}
+moved.Cells={{CFrame=original,Material='grass',Preview=ghost}}
+assert(moved:Move(1,1,1))
+local p=moved.Cells[1].CFrame.Position
+assert(math.abs(p.X-4)<.001 and math.abs(p.Y-3)<.001 and math.abs(p.Z-7)<.001,'blueprint shifts must follow its rotated axes')
+assert(ghost.CFrame==moved.Cells[1].CFrame,'ghost must follow actual placement coordinates')
+moved.Running=true;assert(not moved:Move(1,0,0),'cannot shift active queue');moved.Running=false
+assert(moved:Move(-moved.OffsetX,-moved.OffsetY,-moved.OffsetZ))
+local restored=moved.Cells[1].CFrame.Position
+assert(math.abs(restored.X-original.Position.X)<.001 and math.abs(restored.Z-original.Position.Z)<.001,'reset offset must restore preview')
 return 'Auto Build blueprints, paths, placement confirmation, occupied skip, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

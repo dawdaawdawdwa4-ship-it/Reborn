@@ -106,6 +106,27 @@ assert(capture:Harvest(nextCrop),'new harvest payload not replayed')
 assert(updatedArgs.iXwUW9mXJ8AVnK=='current-crop-session' and updatedArgs.a1tIHk1Kl9GiE5.model==nextCrop,'new envelope fields or crop target lost')
 assert(updatedArgs.a1tIHk1Kl9GiE5.player=='current-player' and updatedPacket.a1tIHk1Kl9GiE5.model==crop,'player context changed or original packet mutated')
 assert(updatedArgs.TrNhTTgExIb1Bg==nil,'new request must not be rewritten to old field names')
+local axeRemote=remote('qn1PInnZJmfDd1')
+local tree={_type='Instance',Name='treeOrange',IsA=function(_,c) return c=='Model' end}
+local nextTree={_type='Instance',Name='treeOak',IsA=tree.IsA}
+local hitArgs
+axeRemote.InvokeServer=function(_,packet) hitArgs=packet;return true end
+local hitPacket={E6N43ldyV5t9lg='live-axe-context',wGquKmyB3mV2Cf={block=tree}}
+installedHook(axeRemote,hitPacket)
+assert(capture.WoodHitBinding and capture:Hit(nextTree,'wood'),'axe binding not learned')
+assert(hitArgs.E6N43ldyV5t9lg=='live-axe-context' and hitArgs.wGquKmyB3mV2Cf.block==nextTree,'axe context/target lost')
+assert(hitPacket.wGquKmyB3mV2Cf.block==tree,'axe template mutated')
+assert(not capture:Hit(nextTree,'mine'),'must not reuse wood binding for mining')
+axeRemote.InvokeServer=function() return false end;assert(not capture:Hit(nextTree,'wood'),'axe rejection must remain failure')
+local settingRemote=remote('nrGQVrxpfb3dKr')
+local settingArgs
+settingRemote.InvokeServer=function(_,packet) settingArgs=packet;return true end
+local settingPacket={E6N43ldyV5t9lg='live-settings-context',wGquKmyB3mV2Cf={name='AutoReplant',value=true}}
+installedHook(settingRemote,settingPacket)
+assert(capture.AutoReplantBinding and capture:SetAutoReplant(false),'AutoReplant setting not learned')
+assert(settingArgs.E6N43ldyV5t9lg=='live-settings-context' and settingArgs.wGquKmyB3mV2Cf.name=='AutoReplant' and settingArgs.wGquKmyB3mV2Cf.value==false,'setting context/value lost')
+assert(settingPacket.wGquKmyB3mV2Cf.value==true,'setting template mutated')
+settingRemote.InvokeServer=function() return false end;assert(not capture:SetAutoReplant(true),'setting rejection must remain failure')
 local placementRemote=remote('u71Y03otNIwj9g')
 local placementArgs
 placementRemote.InvokeServer=function(_,...) placementArgs=table.pack(...);return true end

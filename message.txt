@@ -154,6 +154,8 @@ local RemoteCatalog = (function()
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.mEn0GOcgVLtb4o.COtnYCOPUThadM", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.XPQExfDjDSUkYv", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.u71Y03otNIwj9g", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.qn1PInnZJmfDd1", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.xC1fgcQXCzOPJ7.nrGQVrxpfb3dKr", Class = "RemoteFunction" },
     } }
     function catalog.FindPath(path, expectedClass)
         local ok, found = pcall(function()
@@ -293,7 +295,20 @@ local RemoteCatalog = (function()
         if state == "unavailable" and catalog.ActivateBait then return catalog.ActivateBait(tool) end
         return ok, reason
     end
-    function catalog.CallMine(target)
+    function catalog.ServerReplantEnabled()
+        local recorder=catalog.LiveRecorder("AutoReplantBinding")
+        return catalog.ServerAutoReplant == true or recorder and recorder.AutoReplantState == true
+    end
+    function catalog.SetAutoReplant(value)
+        local recorder=catalog.LiveRecorder("AutoReplantBinding")
+        if not recorder or not recorder.SetAutoReplant then return false,"Change AutoReplant manually with capture active","unavailable" end
+        local ok,result=recorder:SetAutoReplant(value)
+        if ok then catalog.ServerAutoReplant=value end
+        return ok,result
+    end
+    function catalog.CallMine(target, category)
+        local recorder=catalog.LiveRecorder(category == "wood" and "WoodHitBinding" or "MineHitBinding")
+        if recorder and recorder.Hit then return recorder:Hit(target,category) end
         local endpoint = catalog.GameEndpoint("BLOCK_HIT_REQUEST")
         if endpoint then return catalog.SendEndpoint(endpoint, {block = target}) end
         local ok, reason, state = catalog.InvokeCaptured("OEzzgCCBzocxJw", {block = target})
@@ -392,24 +407,30 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 7 and previous.Resume then
+if previous and previous.Version == 9 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 7, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 9, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
     capture.BaitBinding = previous.BaitBinding
     capture.PlacementBinding = previous.PlacementBinding
+    capture.WoodHitBinding = previous.WoodHitBinding
+    capture.MineHitBinding = previous.MineHitBinding
+    capture.AutoReplantBinding = previous.AutoReplantBinding
+    capture.AutoReplantState = previous.AutoReplantState
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
+    qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
     XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
     COtnYCOPUThadM = true, -- Supplied crop-harvest capture (new network group).
@@ -573,6 +594,53 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
 end
+local function learnAutoReplant(remote, method, args)
+    if remote.Name~="nrGQVrxpfb3dKr" or method~="InvokeServer" or type(args[1])~="table" then return false end
+    local body=args[1].wGquKmyB3mV2Cf
+    if type(body)~="table" or body.name~="AutoReplant" or type(body.value)~="boolean" then return false end
+    capture.AutoReplantBinding={Remote=remote,Method=method,Args=cloneArguments(args)}
+    return true
+end
+function capture:SetAutoReplant(value)
+    local binding=self.AutoReplantBinding
+    if type(value)~="boolean" or not binding or not binding.Remote.Parent then return false,"Change AutoReplant manually once with capture active" end
+    local ok,result=pcall(function()
+        local args=cloneArguments(binding.Args)
+        args[1].wGquKmyB3mV2Cf.value=value
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    self.AutoReplantState=value
+    return true,result
+end
+local function learnBlockHit(remote, method, args)
+    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
+    if remote.Name ~= "qn1PInnZJmfDd1" and remote.Name ~= "OEzzgCCBzocxJw"
+        and not string.find(string.lower(remote.Name), "block_hit_request", 1, true) then return false end
+    local packet=args[1]
+    local body=type(packet.wGquKmyB3mV2Cf)=="table" and packet.wGquKmyB3mV2Cf
+        or (type(packet.TlSR8Mzd9FLwaZ)=="table" and packet.TlSR8Mzd9FLwaZ or packet)
+    local block=body.block
+    if typeof(block)~="Instance" or not (block:IsA("Model") or block:IsA("BasePart")) then return false end
+    local name=string.lower(block.Name)
+    local wood=false
+    for _,word in ipairs({"tree","wood","log","oak","pine","birch","palm"}) do
+        if string.find(name,word,1,true) then wood=true;break end
+    end
+    local key=wood and "WoodHitBinding" or "MineHitBinding"
+    capture[key]={Remote=remote,Method=method,Args=cloneArguments(args),Target=block}
+    return true
+end
+function capture:Hit(block, category)
+    local binding=self[category=="wood" and "WoodHitBinding" or "MineHitBinding"]
+    if not binding or not binding.Remote.Parent then return false,"Hit a matching resource manually with capture active" end
+    local ok,result=pcall(function()
+        local args=cloneArguments(binding.Args,binding.Target,block)
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    return true,result
+end
 local function learnPlacement(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
     if remote.Name ~= "u71Y03otNIwj9g" and remote.Name ~= "ohy6O10QKzyGZE"
@@ -660,7 +728,7 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -825,7 +893,7 @@ function AutoBuild.Plan(preset, width, length, height)
     return cells
 end
 function AutoBuild.new(ctx)
-    local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil}
+    local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0}
     local inputs,buttons={},{}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
@@ -885,6 +953,8 @@ function AutoBuild.new(ctx)
         local look=root.CFrame.LookVector
         local yaw=math.round(math.atan2(-look.X,-look.Z)/(math.pi/2))*(math.pi/2)+math.rad(self.Rotation)
         local anchor=CFrame.new(math.round(root.Position.X/size)*size,math.round((ground.Position.Y-size/2)/size)*size,math.round(root.Position.Z/size)*size)*CFrame.Angles(0,yaw,0)
+        anchor=anchor*CFrame.new(self.OffsetX*size,self.OffsetY*size,-self.OffsetZ*size)
+        self.Anchor=anchor
         local definitions=game:GetService("ReplicatedStorage"):FindFirstChild("Blocks")
         if definitions then
             if not definitions:FindFirstChild(material) then status("Unknown build block: "..material);return false end
@@ -907,12 +977,28 @@ function AutoBuild.new(ctx)
         status(string.format("Preview: %s, %d blocks. Blue = build/beds; gold = paths.",self.Preset,#self.Cells))
         return true
     end
+    function self:Move(dx,dy,dz)
+        if self.Running then status("Stop the build before moving its blueprint.");return false end
+        if not self.Cells and not self:Preview() then return false end
+        local anchor=self.Anchor*CFrame.new(dx*self.BlockSize,dy*self.BlockSize,-dz*self.BlockSize)
+        local delta=anchor*self.Anchor:Inverse()
+        for _,cell in ipairs(self.Cells) do
+            cell.CFrame=delta*cell.CFrame
+            if cell.Preview then cell.Preview.CFrame=cell.CFrame end
+        end
+        self.Anchor=anchor
+        self.OffsetX+=dx;self.OffsetY+=dy;self.OffsetZ+=dz
+        self.MoveLabel.Text=string.format("Offset: right %d / up %d / forward %d blocks",self.OffsetX,self.OffsetY,self.OffsetZ)
+        status("Blueprint moved. Start builds the visible preview positions.")
+        return true
+    end
     function self:Start()
         if self.Running then return end
         if not self.Cells and not self:Preview() then return end
         self.Token+=1
         local token=self.Token
         self.Running=true;buttons.Start.Text="Building…"
+        if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
         scheduler.spawn(function()
             local placed,skipped,failed,streak=0,0,0,0
@@ -979,12 +1065,32 @@ function AutoBuild.new(ctx)
     presetMenu.Name="BlueprintOptions";presetMenu.Size=UDim2.new(1,-12,0,144);presetMenu.Position=UDim2.fromOffset(6,84)
     presetMenu.BackgroundColor3=Color3.fromRGB(29,39,48);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
     button("Preset","Farm plots  ▼",0,48,.5,function()
-        if not self.Running then presetMenu.Visible=not presetMenu.Visible end
+        if not self.Running then presetMenu.Visible=not presetMenu.Visible;if self.MoveMenu then self.MoveMenu.Visible=false end end
     end)
-    button("Movement","Movement controls",.5,48,.5,function()
+    local moveMenu=Instance.new("Frame")
+    moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,184);moveMenu.Position=UDim2.fromOffset(6,84)
+    moveMenu.BackgroundColor3=Color3.fromRGB(29,39,48);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
+    button("Movement","Move blueprint  ▼",.5,48,.5,function()
         presetMenu.Visible=false
-        if self.OpenMovement then self.OpenMovement() end
+        moveMenu.Visible=not moveMenu.Visible
     end)
+    local function moveButton(key,text,x,y,dx,dy,dz)
+        local item=ctx.Button({Parent=moveMenu,Text=text,Size=UDim2.new(.5,-6,0,32),Position=UDim2.new(x,3,0,y)})
+        item.ZIndex=36;buttons[key]=item
+        ctx.Track(item.Activated:Connect(function() self:Move(dx,dy,dz) end))
+    end
+    moveButton("MoveLeft","← Left",0,4,-1,0,0)
+    moveButton("MoveRight","Right →",.5,4,1,0,0)
+    moveButton("MoveForward","↑ Forward",0,40,0,0,1)
+    moveButton("MoveBack","Back ↓",.5,40,0,0,-1)
+    moveButton("MoveUp","Up +1",0,76,0,1,0)
+    moveButton("MoveDown","Down −1",.5,76,0,-1,0)
+    local resetOffset=ctx.Button({Parent=moveMenu,Text="Reset blueprint offset",Size=UDim2.new(1,-6,0,32),Position=UDim2.fromOffset(3,112)})
+    resetOffset.ZIndex=36;buttons.ResetOffset=resetOffset
+    ctx.Track(resetOffset.Activated:Connect(function() self:Move(-self.OffsetX,-self.OffsetY,-self.OffsetZ) end))
+    self.MoveLabel=ctx.Label({Parent=moveMenu,Text="Moves 1 block per click, relative to preview.",TextSize=12,Size=UDim2.new(1,-12,0,30),Position=UDim2.fromOffset(6,148)})
+    self.MoveLabel.ZIndex=36;self.MoveLabel.TextWrapped=true
+    self.MoveMenu=moveMenu
     for index,preset in ipairs(presets) do
         local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(index-1)*36)})
         option.ZIndex=36
@@ -1328,8 +1434,6 @@ local function showTab(name)
     hub:SelectTab(airflowTabs[name])
 end
 
-buildController.OpenMovement = function() showTab("Movement") end
-
 local status = label({
     Parent = hub.Content,
     Text = "Idle",
@@ -1481,7 +1585,7 @@ statsOverlayText.BackgroundTransparency = 1
 statsOverlayText.Size = UDim2.new(1, -24, 0, 194)
 statsOverlayText.Position = UDim2.fromOffset(12, 34)
 statsOverlayText.Parent = statsOverlay
-local overlayValues = {}
+local overlayValues, overlayTitles, overlayLabels = {}, {}, {}
 local function overlayCard(key, title, x)
     local card = Instance.new("Frame")
     card.Name = key
@@ -1491,7 +1595,7 @@ local function overlayCard(key, title, x)
     card.BorderSizePixel = 0
     card.Parent = statsOverlayText
     corner(card, 8)
-    label({Parent=card,Text=title,TextSize=12,Color=COLORS.muted,
+    overlayTitles[key] = label({Parent=card,Text=title,TextSize=12,Color=COLORS.muted,
         Size=UDim2.new(1,-20,0,18),Position=UDim2.fromOffset(10,6)})
     overlayValues[key] = label({Parent=card,Text=key == "catches" and "0" or "–",TextSize=26,
         Font=Enum.Font.GothamBold,Color=COLORS.accent,
@@ -1500,7 +1604,7 @@ end
 overlayCard("catches", "FISH CAUGHT", 0)
 overlayCard("hourly", "FISH / HOUR", .5)
 local function overlayRow(key, title, y)
-    label({Parent=statsOverlayText,Text=title,TextSize=12,Color=COLORS.muted,
+    overlayLabels[key] = label({Parent=statsOverlayText,Text=title,TextSize=12,Color=COLORS.muted,
         Size=UDim2.new(.42,0,0,22),Position=UDim2.fromOffset(0,y)})
     overlayValues[key] = label({Parent=statsOverlayText,Text="–",TextSize=13,
         Align=Enum.TextXAlignment.Right,Size=UDim2.new(.58,0,0,22),Position=UDim2.new(.42,0,0,y)})
@@ -2022,6 +2126,9 @@ function RemoteCatalog.UpdateCaptureUI()
     if recorder.HarvestBinding then table.insert(learned, "crop harvest") end
     if recorder.BaitBinding then table.insert(learned, "bait (current remote)") end
     if recorder.PlacementBinding then table.insert(learned, "placement (current remote)") end
+    if recorder.WoodHitBinding then table.insert(learned, "axe / wood hit") end
+    if recorder.MineHitBinding then table.insert(learned, "mining hit") end
+    if recorder.AutoReplantBinding then table.insert(learned, "game AutoReplant") end
     local mining = #learned > 0 and ("Ready: " .. table.concat(learned, ", ")) or "Perform actions manually once to learn their request IDs"
     RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CopyNotice or string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
     RemoteCatalog.CaptureToggle.Text = recorder.Active and "Pause capture (F8)" or "Resume capture (F8)"
@@ -2100,6 +2207,9 @@ local function newStats()
 		streak = 0,
 		bestStreak = 0,
 		harvests = 0,
+        resourceCounts = {wood=0,mine=0,crop=0},
+        resourceAttempts = {wood=0,mine=0,crop=0},
+        resourceLast = {},
 		lastMineName = "–",
 		activeTime = 0,
 		onSince = nil,
@@ -2181,6 +2291,34 @@ local function updateBoard()
     overlayValues.bait.Text = baitState
     overlayValues.bait.TextColor3 = not baitEnabled and COLORS.muted
         or (string.find(baitToggle.Text, "RETRY", 1, true) and COLORS.warn or COLORS.good)
+    local selected=hub.CurrentTab and hub.CurrentTab.Name
+    local category=selected=="Wood Farm" and "wood" or selected=="Mining" and "mine" or selected=="Harvest" and "crop"
+    if not category and selected~="Fishing" then category=woodEnabled and "wood" or mineEnabled and "mine" or harvestEnabled and "crop" end
+    if category then
+        local title=category=="wood" and "WOOD" or category=="mine" and "MINING" or "CROP"
+        local count=stats.resourceCounts[category]
+        local on=category=="wood" and woodEnabled or category=="mine" and mineEnabled or category=="crop" and harvestEnabled
+        statsOverlayTitle.Text=title.." STATS"
+        overlayTitles.catches.Text=category=="wood" and "WOOD HARVESTS" or category=="mine" and "BLOCKS MINED" or "CROPS PICKED"
+        overlayTitles.hourly.Text="PER HOUR"
+        overlayValues.catches.Text=tostring(count)
+        overlayValues.hourly.Text=t>=30 and string.format("%.0f",count/(t/3600)) or "–"
+        overlayLabels.attempts.Text="Actions / collected"
+        overlayValues.attempts.Text=stats.resourceAttempts[category].." / "..count
+        overlayLabels.success.Text="Range / state"
+        overlayValues.success.Text=FarmLogic.Range(category,CONFIG).." studs / "..(on and "ON" or "OFF")
+        overlayValues.session.Text=formatTime(t).." / "..title
+        overlayLabels.harvests.Text="Last collected"
+        overlayValues.harvests.Text=stats.resourceLast[category] or "–"
+        overlayLabels.bait.Text=category=="crop" and "Crop" or "Tool"
+        overlayValues.bait.Text=category=="wood" and woodToolPreference or category=="mine" and mineToolPreference or CONFIG.HarvestCrop
+        overlayValues.bait.TextColor3=COLORS.text
+    else
+        statsOverlayTitle.Text="FISHING STATS"
+        overlayTitles.catches.Text="FISH CAUGHT";overlayTitles.hourly.Text="FISH / HOUR"
+        overlayLabels.attempts.Text="Casts / bites";overlayLabels.success.Text="Catch rate / misses"
+        overlayLabels.harvests.Text="Harvests";overlayLabels.bait.Text="Bait"
+    end
 	rows.streak.Text = stats.streak .. " / " .. stats.bestStreak
 	rows.perHour.Text = t >= 30
 		and string.format("%.0f", stats.catches / (t / 3600))
@@ -2241,7 +2379,11 @@ local function registerMiss()
 	updateBoard()
 end
 
-local function registerHarvest(name)
+local function registerHarvest(name, category)
+    category=category or FarmLogic.Category(name or "")
+    if category and stats.resourceCounts[category]~=nil then
+        stats.resourceCounts[category]+=1;stats.resourceLast[category]=name
+    end
 	stats.harvests += 1
 	if name then
 		stats.lastMineName = name
@@ -2627,6 +2769,23 @@ local function getMineTargets()
     return targets
 end
 
+-- RESOURCE AIM BEGIN
+local function getInteractionPoint(target, origin)
+    local best, distance
+    local function consider(part)
+        if not part:IsA("BasePart") or part.CanQuery == false or part.Transparency == 1 then return end
+        local point=part.Position
+        local ok,closest=pcall(function() return part:GetClosestPointOnSurface(origin) end)
+        if ok and closest then point=closest end
+        local magnitude=(point-origin).Magnitude
+        if not distance or magnitude<distance then best,distance=point,magnitude end
+    end
+    if target:IsA("BasePart") then consider(target)
+    else for _,part in ipairs(target:GetDescendants()) do consider(part) end end
+    return best or getPartPosition(target)
+end
+-- RESOURCE AIM END
+
 -- RESOURCE INPUT BEGIN
 -- The equipped tool supplies live request names and session data through its own client code.
 local function resourceInputHit(target)
@@ -2648,7 +2807,7 @@ local function resourceInputHit(target)
     if not root or category == "mine" and not pickaxe or category == "wood" and not axe then
         return false, "Wait for the matching axe/pickaxe to equip"
     end
-    local position = getPartPosition(target)
+    local position = getInteractionPoint(target, root.Position)
     if not position then return false, "Resource has no position" end
     local focused, textBox = pcall(function() return UserInputService:GetFocusedTextBox() end)
     if focused and textBox then return false, "Close chat or finish editing before resource input" end
@@ -2703,7 +2862,7 @@ RemoteCatalog.InputHarvest = resourceInputHit
 -- RESOURCE INPUT END
 
 local function fireBlockMine(block)
-    return RemoteCatalog.CallMine(block)
+    return RemoteCatalog.CallMine(block, targetCategory(block.Name))
 end
 
 local function fireModelHarvest(model)
@@ -2749,12 +2908,15 @@ local function harvestLoop(myCycle)
             if prompt then
                 local promptPosition = getPartPosition(prompt.Parent) or position
                 if (promptPosition - hrp.Position).Magnitude > prompt.MaxActivationDistance then continue end
+                if stats.resourceAttempts then stats.resourceAttempts[target.category]+=1 end
                 ok = FarmLogic.HoldPrompt(prompt, active, task.wait, os.clock)
                 if not active() then break end
             elseif target.kind == "model" then
+                if stats.resourceAttempts then stats.resourceAttempts[target.category]+=1 end
                 ok, failure = fireModelHarvest(obj)
                 if not ok then setStatus("Harvest waiting: " .. tostring(failure), COLORS.warn) end
             else
+                if stats.resourceAttempts then stats.resourceAttempts[target.category]+=1 end
                 ok, failure = fireBlockMine(obj)
                 if not ok then setStatus("Mining waiting: " .. tostring(failure), COLORS.warn) end
             end
@@ -2771,10 +2933,10 @@ local function harvestLoop(myCycle)
             if not active() then break end
             if ok and not confirmed then setStatus("No target change confirmed; retrying " .. target.name, COLORS.muted) end
             if confirmed then
-                registerHarvest(target.name)
+                registerHarvest(target.name, target.category)
                 setStatus("Confirmed: " .. target.name .. " ×" .. stats.harvests, COLORS.good)
                 -- A plant that regrows in place must never be planted over.
-                if target.category == "crop" and not obj.Parent and plantedFrame and CONFIG.PlantEnabled and CONFIG.AutoReplant then
+                if target.category == "crop" and not obj.Parent and plantedFrame and CONFIG.PlantEnabled and CONFIG.AutoReplant and not (RemoteCatalog.ServerAutoReplant or RemoteCatalog.ServerReplantEnabled and RemoteCatalog.ServerReplantEnabled()) then
                     if RemoteCatalog.PlacementAvailable() then
                         if active() then firePlant(plantedFrame, CONFIG.PlantType) end
                     else
@@ -3037,12 +3199,26 @@ for i, option in ipairs(cropButtons) do
         settingsText.Text = string.format("Fish toggle: %s\nHarvest toggle: %s\nMine range: %d studs\nPlant type: %s\nHarvest crop: %s\nPlant radius: %d studs", CONFIG.ToggleKey.Name, CONFIG.HarvestKey.Name, CONFIG.MineRange, CONFIG.PlantType, CONFIG.HarvestCrop, CONFIG.PlantRadius)
     end))
 end
-track(replantToggle.Activated:Connect(function()
-    CONFIG.AutoReplant = not CONFIG.AutoReplant
-    replantToggle.Text = CONFIG.AutoReplant and "AUTO-REPLANT: ON" or "AUTO-REPLANT: OFF"
-    replantToggle.BackgroundColor3 = CONFIG.AutoReplant and COLORS.on or COLORS.off
-    savePreferences()
-end))
+do
+    local busy=false
+    track(replantToggle.Activated:Connect(function()
+        if busy then return end
+        busy=true
+        local desired=not CONFIG.AutoReplant
+        task.spawn(function()
+            local ok,reason,state=RemoteCatalog.SetAutoReplant(desired)
+            if not gui.Parent then return end
+            if ok or state=="unavailable" and not (RemoteCatalog.ServerAutoReplant or RemoteCatalog.ServerReplantEnabled and RemoteCatalog.ServerReplantEnabled()) then
+                CONFIG.AutoReplant=desired
+                savePreferences()
+                setStatus(ok and "Game AutoReplant updated" or "Local auto-replant updated; capture a game setting change to sync it",COLORS.good)
+            else setStatus("Auto-replant unchanged: "..tostring(reason),COLORS.warn) end
+            replantToggle.Text=CONFIG.AutoReplant and "AUTO-REPLANT: ON" or "AUTO-REPLANT: OFF"
+            replantToggle.BackgroundColor3=CONFIG.AutoReplant and COLORS.on or COLORS.off
+            busy=false
+        end)
+    end))
+end
 track(woodRangeBtn.Activated:Connect(function()
     CONFIG.WoodRange = CONFIG.WoodRange >= 120 and 30 or CONFIG.WoodRange + 15
     woodRangeBtn.Text = "Wood range: " .. CONFIG.WoodRange .. " studs  (+ / −)"

@@ -29,7 +29,7 @@ function AutoBuild.Plan(preset, width, length, height)
     return cells
 end
 function AutoBuild.new(ctx)
-    local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil}
+    local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0}
     local inputs,buttons={},{}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
@@ -89,6 +89,8 @@ function AutoBuild.new(ctx)
         local look=root.CFrame.LookVector
         local yaw=math.round(math.atan2(-look.X,-look.Z)/(math.pi/2))*(math.pi/2)+math.rad(self.Rotation)
         local anchor=CFrame.new(math.round(root.Position.X/size)*size,math.round((ground.Position.Y-size/2)/size)*size,math.round(root.Position.Z/size)*size)*CFrame.Angles(0,yaw,0)
+        anchor=anchor*CFrame.new(self.OffsetX*size,self.OffsetY*size,-self.OffsetZ*size)
+        self.Anchor=anchor
         local definitions=game:GetService("ReplicatedStorage"):FindFirstChild("Blocks")
         if definitions then
             if not definitions:FindFirstChild(material) then status("Unknown build block: "..material);return false end
@@ -111,12 +113,28 @@ function AutoBuild.new(ctx)
         status(string.format("Preview: %s, %d blocks. Blue = build/beds; gold = paths.",self.Preset,#self.Cells))
         return true
     end
+    function self:Move(dx,dy,dz)
+        if self.Running then status("Stop the build before moving its blueprint.");return false end
+        if not self.Cells and not self:Preview() then return false end
+        local anchor=self.Anchor*CFrame.new(dx*self.BlockSize,dy*self.BlockSize,-dz*self.BlockSize)
+        local delta=anchor*self.Anchor:Inverse()
+        for _,cell in ipairs(self.Cells) do
+            cell.CFrame=delta*cell.CFrame
+            if cell.Preview then cell.Preview.CFrame=cell.CFrame end
+        end
+        self.Anchor=anchor
+        self.OffsetX+=dx;self.OffsetY+=dy;self.OffsetZ+=dz
+        self.MoveLabel.Text=string.format("Offset: right %d / up %d / forward %d blocks",self.OffsetX,self.OffsetY,self.OffsetZ)
+        status("Blueprint moved. Start builds the visible preview positions.")
+        return true
+    end
     function self:Start()
         if self.Running then return end
         if not self.Cells and not self:Preview() then return end
         self.Token+=1
         local token=self.Token
         self.Running=true;buttons.Start.Text="Building…"
+        if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
         scheduler.spawn(function()
             local placed,skipped,failed,streak=0,0,0,0
@@ -183,12 +201,32 @@ function AutoBuild.new(ctx)
     presetMenu.Name="BlueprintOptions";presetMenu.Size=UDim2.new(1,-12,0,144);presetMenu.Position=UDim2.fromOffset(6,84)
     presetMenu.BackgroundColor3=Color3.fromRGB(29,39,48);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
     button("Preset","Farm plots  ▼",0,48,.5,function()
-        if not self.Running then presetMenu.Visible=not presetMenu.Visible end
+        if not self.Running then presetMenu.Visible=not presetMenu.Visible;if self.MoveMenu then self.MoveMenu.Visible=false end end
     end)
-    button("Movement","Movement controls",.5,48,.5,function()
+    local moveMenu=Instance.new("Frame")
+    moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,184);moveMenu.Position=UDim2.fromOffset(6,84)
+    moveMenu.BackgroundColor3=Color3.fromRGB(29,39,48);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
+    button("Movement","Move blueprint  ▼",.5,48,.5,function()
         presetMenu.Visible=false
-        if self.OpenMovement then self.OpenMovement() end
+        moveMenu.Visible=not moveMenu.Visible
     end)
+    local function moveButton(key,text,x,y,dx,dy,dz)
+        local item=ctx.Button({Parent=moveMenu,Text=text,Size=UDim2.new(.5,-6,0,32),Position=UDim2.new(x,3,0,y)})
+        item.ZIndex=36;buttons[key]=item
+        ctx.Track(item.Activated:Connect(function() self:Move(dx,dy,dz) end))
+    end
+    moveButton("MoveLeft","← Left",0,4,-1,0,0)
+    moveButton("MoveRight","Right →",.5,4,1,0,0)
+    moveButton("MoveForward","↑ Forward",0,40,0,0,1)
+    moveButton("MoveBack","Back ↓",.5,40,0,0,-1)
+    moveButton("MoveUp","Up +1",0,76,0,1,0)
+    moveButton("MoveDown","Down −1",.5,76,0,-1,0)
+    local resetOffset=ctx.Button({Parent=moveMenu,Text="Reset blueprint offset",Size=UDim2.new(1,-6,0,32),Position=UDim2.fromOffset(3,112)})
+    resetOffset.ZIndex=36;buttons.ResetOffset=resetOffset
+    ctx.Track(resetOffset.Activated:Connect(function() self:Move(-self.OffsetX,-self.OffsetY,-self.OffsetZ) end))
+    self.MoveLabel=ctx.Label({Parent=moveMenu,Text="Moves 1 block per click, relative to preview.",TextSize=12,Size=UDim2.new(1,-12,0,30),Position=UDim2.fromOffset(6,148)})
+    self.MoveLabel.ZIndex=36;self.MoveLabel.TextWrapped=true
+    self.MoveMenu=moveMenu
     for index,preset in ipairs(presets) do
         local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(index-1)*36)})
         option.ZIndex=36

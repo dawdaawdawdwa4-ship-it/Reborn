@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==132)
+assert(#RemoteCatalog.Entries==134)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -73,6 +73,7 @@ for _,name in ipairs(names) do
  end
  table.insert(group.children,remote)
 end
+local function targetCategory() return 'mine' end
 ${mineFunction}
 local actualBlock={Name='test-block'}
 local ok,result=fireBlockMine(actualBlock)
@@ -140,6 +141,16 @@ assert(RemoteCatalog.PlacementAvailable() and firePlant(cf,'grass') and learnedP
 context.RebornCapture.Place=function() return false,'denied' end
 sent=nil;assert(not firePlant(cf,'grass') and sent==nil,'placement rejection must not retry through legacy')
 context.RebornCapture=oldRecorder
+local savedContext=context.RebornCapture
+local observedTree={Name='treeOrange'}
+context.RebornCapture={WoodHitBinding={Remote={Parent=true}},Hit=function(_,tree,category) assert(tree==observedTree and category=='wood');return true end}
+assert(RemoteCatalog.CallMine(observedTree,'wood'),'learned axe endpoint must route wood')
+context.RebornCapture.Hit=function() return false,'denied' end
+sent=nil;assert(not RemoteCatalog.CallMine(observedTree,'wood') and sent==nil,'axe rejection must not replay')
+context.RebornCapture={AutoReplantBinding={Remote={Parent=true}},SetAutoReplant=function(_,state) return state end}
+assert(RemoteCatalog.SetAutoReplant(true) and RemoteCatalog.ServerAutoReplant==true,'game setting must mark server replant only on acceptance')
+assert(not RemoteCatalog.SetAutoReplant(false) and RemoteCatalog.ServerAutoReplant==true,'rejected setting must preserve previous server state')
+RemoteCatalog.ServerAutoReplant=nil;context.RebornCapture=savedContext
 local requestModule=node('requests','ModuleScript')
 local toolModule=node('tool-meta','ModuleScript')
 local inventoryDataModule=node('inventory-service','ModuleScript')
@@ -195,7 +206,7 @@ assert(RemoteCatalog.CallHarvest(cropTarget)==false and sent==nil,'harvest rejec
 assert(RemoteCatalog.CallMine(actualBlock)==false and sent==nil,'mining rejection must not replay through legacy')
 assert(firePlant(cf,'stone')==false and sent==nil,'game API rejection must not retry through legacy remote')
 
-return '132 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '134 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}

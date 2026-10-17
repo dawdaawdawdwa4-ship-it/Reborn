@@ -8,24 +8,30 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 7 and previous.Resume then
+if previous and previous.Version == 9 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 7, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 9, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
     capture.BaitBinding = previous.BaitBinding
     capture.PlacementBinding = previous.PlacementBinding
+    capture.WoodHitBinding = previous.WoodHitBinding
+    capture.MineHitBinding = previous.MineHitBinding
+    capture.AutoReplantBinding = previous.AutoReplantBinding
+    capture.AutoReplantState = previous.AutoReplantState
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
+    qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
     XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
     COtnYCOPUThadM = true, -- Supplied crop-harvest capture (new network group).
@@ -189,6 +195,53 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
 end
+local function learnAutoReplant(remote, method, args)
+    if remote.Name~="nrGQVrxpfb3dKr" or method~="InvokeServer" or type(args[1])~="table" then return false end
+    local body=args[1].wGquKmyB3mV2Cf
+    if type(body)~="table" or body.name~="AutoReplant" or type(body.value)~="boolean" then return false end
+    capture.AutoReplantBinding={Remote=remote,Method=method,Args=cloneArguments(args)}
+    return true
+end
+function capture:SetAutoReplant(value)
+    local binding=self.AutoReplantBinding
+    if type(value)~="boolean" or not binding or not binding.Remote.Parent then return false,"Change AutoReplant manually once with capture active" end
+    local ok,result=pcall(function()
+        local args=cloneArguments(binding.Args)
+        args[1].wGquKmyB3mV2Cf.value=value
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    self.AutoReplantState=value
+    return true,result
+end
+local function learnBlockHit(remote, method, args)
+    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
+    if remote.Name ~= "qn1PInnZJmfDd1" and remote.Name ~= "OEzzgCCBzocxJw"
+        and not string.find(string.lower(remote.Name), "block_hit_request", 1, true) then return false end
+    local packet=args[1]
+    local body=type(packet.wGquKmyB3mV2Cf)=="table" and packet.wGquKmyB3mV2Cf
+        or (type(packet.TlSR8Mzd9FLwaZ)=="table" and packet.TlSR8Mzd9FLwaZ or packet)
+    local block=body.block
+    if typeof(block)~="Instance" or not (block:IsA("Model") or block:IsA("BasePart")) then return false end
+    local name=string.lower(block.Name)
+    local wood=false
+    for _,word in ipairs({"tree","wood","log","oak","pine","birch","palm"}) do
+        if string.find(name,word,1,true) then wood=true;break end
+    end
+    local key=wood and "WoodHitBinding" or "MineHitBinding"
+    capture[key]={Remote=remote,Method=method,Args=cloneArguments(args),Target=block}
+    return true
+end
+function capture:Hit(block, category)
+    local binding=self[category=="wood" and "WoodHitBinding" or "MineHitBinding"]
+    if not binding or not binding.Remote.Parent then return false,"Hit a matching resource manually with capture active" end
+    local ok,result=pcall(function()
+        local args=cloneArguments(binding.Args,binding.Target,block)
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    return true,result
+end
 local function learnPlacement(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
     if remote.Name ~= "u71Y03otNIwj9g" and remote.Name ~= "ohy6O10QKzyGZE"
@@ -276,7 +329,7 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
