@@ -179,6 +179,14 @@ local RemoteCatalog = (function()
     function catalog.FindLegacy(name)
         return catalog.FindPath("ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.ULrMeokpcNr7uD." .. name, "RemoteFunction")
     end
+    function catalog.RequestId(remoteName)
+        local ok, id = pcall(function()
+            local environment = type(getgenv) == "function" and getgenv() or _G
+            local recorder = environment.RebornCapture
+            return recorder and recorder.RequestIds and recorder.RequestIds[remoteName]
+        end)
+        return ok and type(id) == "string" and id ~= "" and id or nil
+    end
     function catalog.Refresh()
         local found = 0
         for _, entry in ipairs(catalog.Entries) do
@@ -1684,12 +1692,13 @@ local function getMineTargets()
 end
 
 local function fireBlockMine(block)
-	if not blockRemote then
+	local requestId = RemoteCatalog.RequestId("OEzzgCCBzocxJw")
+	if not blockRemote or not requestId then
 		return false
 	end
 	return pcall(function()
 		blockRemote:InvokeServer({
-			TrNhTTgExIb1Bg = HARVEST_UUID,
+			TrNhTTgExIb1Bg = requestId,
 			TlSR8Mzd9FLwaZ = {
 				block = block,
 			},
@@ -1717,6 +1726,11 @@ local function harvestLoop(myCycle)
 		setStatus("Mining request unavailable; see Remotes. Named requests need captured arguments.", COLORS.bad)
 		return
 	end
+
+    if mineEnabled and not RemoteCatalog.RequestId("OEzzgCCBzocxJw") then
+        setStatus("Start capture, mine once manually, then toggle Mining again.", COLORS.warn)
+        return
+    end
 
 	while harvestCycleId == myCycle and (harvestEnabled or woodEnabled or mineEnabled) and gui.Parent ~= nil do
 		local targets = getMineTargets()

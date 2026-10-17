@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const source=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const block=source.slice(source.indexOf('-- REMOTE CATALOG BEGIN'),source.indexOf('-- REMOTE CATALOG END'));
+const mineFunction=source.slice(source.indexOf('local function fireBlockMine(block)'),source.indexOf('local function fireModelHarvest'));
 const mock=`
 local function node(name,cls,children)
  local n={Name=name,ClassName=cls,children=children or {}}
@@ -46,6 +47,20 @@ assert(RemoteCatalog.FindLegacy('OEzzgCCBzocxJw')==nil,'legacy class check')
 out.children={}
 assert(RemoteCatalog.Refresh()==0,'removed remotes must clear stale references')
 for _,e in ipairs(RemoteCatalog.Entries) do assert(e.Instance==nil) end
+assert(RemoteCatalog.RequestId('OEzzgCCBzocxJw')==nil,'missing recorder ID must not fall back to old static value')
+local context={RebornCapture={RequestIds={OEzzgCCBzocxJw='test-current-session'}}}
+getgenv=function() return context end
+assert(RemoteCatalog.RequestId('OEzzgCCBzocxJw')=='test-current-session','current per-remote ID not read')
+assert(RemoteCatalog.RequestId('different')==nil,'must not reuse IDs across remotes')
+local sent
+local blockRemote={InvokeServer=function(_,payload) sent=payload;return 'server-result' end}
+${mineFunction}
+local actualBlock={Name='test-block'}
+local ok,result=fireBlockMine(actualBlock)
+assert(ok,'mining call not forwarded')
+assert(sent.TrNhTTgExIb1Bg=='test-current-session' and sent.TlSR8Mzd9FLwaZ.block==actualBlock,'mining must use current ID and actual block Instance')
+context.RebornCapture.RequestIds={};sent=nil
+assert(fireBlockMine(actualBlock)==false and sent==nil,'missing ID must not send stale request')
 return '129 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal passed'
 `;
 const state=await LuauState.createAsync();

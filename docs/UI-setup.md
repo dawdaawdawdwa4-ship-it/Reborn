@@ -70,7 +70,25 @@ copy the call blocks from the console. Send the resulting capture file or consol
 text. The export is reference data, not a script to execute.
 
 Capture is capped at 100 calls. Oversized/cyclic/unsupported argument data and
-unparented instances are explicitly marked INCOMPLETE. Stopping disables the
-recorder and disconnects its hotkey listener; its interception wrapper remains
-pass-through so it does not overwrite hooks installed by other tools.
+unparented instances are explicitly marked INCOMPLETE. Stopping disables capture and makes the hook pass-through. Rerunning version 2
+resumes the existing recorder, preserving records without adding hooks or listeners.
+Its one hotkey listener ignores input while stopped.
 The mock tests verify interception semantics; live host compatibility is untested.
+
+
+Recorder v2 includes name, class, optional debug ID and position for detached
+Instances in a `DetachedInstance({...})` diagnostic marker. These remain marked
+INCOMPLETE: metadata is not a replacement for the real Instance and the exported
+text must not be executed. Actual game calls retain their original Instance.
+
+The recorded mining request confirms that its ID differs from the old fixed value.
+Mining now reads the ID observed for OEzzgCCBzocxJw by the recorder in the current
+session. Start recorder v2, mine one block manually, then enable Mining in the hub.
+No observed mining ID means no automatic mining request is sent. IDs are held only
+in memory, per remote; other action payloads still need their own manual captures.
+This transport wiring is mock-tested; live mining is not verified here.
+
+If an external loader reports HTTP 404, load this repository's `message.txt` from
+branch `claude/gifted-fermi-4c277x`. The raw URLs for `message.txt` and
+`tools/CaptureRemotes.lua` returned HTTP 200 during the update. The external loader
+and its failing URL are not in this repository, so its original URL was not fixed.

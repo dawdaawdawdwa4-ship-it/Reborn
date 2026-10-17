@@ -7,10 +7,14 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
     return
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
-if environment.RebornCapture and environment.RebornCapture.Stop then
-    environment.RebornCapture:Stop()
+local previous = environment.RebornCapture
+if previous and previous.Version == 2 and previous.Resume then
+    previous:Resume()
+    print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
+    return
 end
-local capture = { Active = true, Stopped = false, Records = {}, MaxCalls = 100 }
+if previous and previous.Stop then previous:Stop() end
+local capture = { Version = 2, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
@@ -32,7 +36,23 @@ local function instancePath(instance)
         table.insert(path, 1, cursor.Name)
         cursor = cursor.Parent
     end
-    if cursor ~= game then return "nil --[[instance not parented to game]]", false end
+    if cursor ~= game then
+        -- Metadata is evidence, not a guessed replacement for the actual Instance.
+        local fields = {
+            "Name = " .. string.format("%q", instance.Name),
+            "ClassName = " .. string.format("%q", instance.ClassName),
+        }
+        local ok, debugId = pcall(function() return instance:GetDebugId(0) end)
+        if ok then table.insert(fields, "DebugId = " .. string.format("%q", debugId)) end
+        local positioned, position = pcall(function()
+            if instance:IsA("BasePart") then return instance.Position end
+            if instance:IsA("Model") then return instance:GetPivot().Position end
+        end)
+        if positioned and position then
+            table.insert(fields, string.format("Position = Vector3.new(%.17g, %.17g, %.17g)", position.X, position.Y, position.Z))
+        end
+        return "DetachedInstance({" .. table.concat(fields, ", ") .. "})", false
+    end
     local expression = "game"
     for _, name in ipairs(path) do
         expression ..= ":FindFirstChild(" .. string.format("%q", name) .. ")"
@@ -123,8 +143,13 @@ function capture:Export()
 end
 function capture:Stop()
     self.Active, self.Stopped = false, true
-    if self.Connection then self.Connection:Disconnect(); self.Connection = nil end
+    -- Retain the single hotkey connection so this same recorder can be resumed.
+    -- It ignores input while stopped; no extra hooks or listeners are installed.
     -- Leave our hook in pass-through mode; restoring it could overwrite another hook.
+end
+function capture:Resume()
+    self.Stopped = false
+    self.Active = #self.Records < self.MaxCalls
 end
 local original
 local function intercept(remote, ...)
@@ -134,6 +159,12 @@ local function intercept(remote, ...)
         -- Recorder failures must never cancel or replace the original game call.
         pcall(function()
             if not wanted(remote) then return end
+            -- Keep the observed per-remote request ID in memory for this session.
+            -- Never substitute IDs between different remote names.
+            if exactNames[remote.Name] and type(args[1]) == "table"
+                and type(args[1].TrNhTTgExIb1Bg) == "string" then
+                capture.RequestIds[remote.Name] = args[1].TrNhTTgExIb1Bg
+            end
             local budget = { count = 0, complete = true }
             local path, validPath = instancePath(remote)
             if not validPath then budget.complete = false end
@@ -163,7 +194,7 @@ end
 original = result
 environment.RebornCapture = capture
 capture.Connection = game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
-    if processed then return end
+    if processed or capture.Stopped then return end
     if input.KeyCode == Enum.KeyCode.F8 then
         if #capture.Records < capture.MaxCalls then capture.Active = not capture.Active end
         print("[Reborn capture] Recording: " .. tostring(capture.Active))
@@ -171,7 +202,7 @@ capture.Connection = game:GetService("UserInputService").InputBegan:Connect(func
         capture:Export()
     elseif input.KeyCode == Enum.KeyCode.F10 then
         capture:Stop()
-        print("[Reborn capture] Stopped. Run RebornCapture:Export() to export later.")
+        print("[Reborn capture] Stopped. Run RebornCapture:Export() to export, or rerun the recorder to resume.")
     end
 end)
 print("[Reborn capture] Ready. Do ONE action manually. F8 pause, F9 export, F10 stop.")
