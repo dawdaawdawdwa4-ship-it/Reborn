@@ -1254,7 +1254,7 @@ local function loadPreferences()
     if type(data.MineDelay) == "number" then CONFIG.MineDelay = math.clamp(data.MineDelay, 0.08, 1) end
     if type(data.MineScanInterval) == "number" then CONFIG.MineScanInterval = math.clamp(data.MineScanInterval, 0.15, 2) end
     if type(data.PlantDelay) == "number" then CONFIG.PlantDelay = math.clamp(data.PlantDelay, 0.08, 1) end
-    if type(data.WoodToolPreference) == "string" then woodToolPreference = data.WoodToolPreference end
+    if type(data.WoodToolPreference) == "string" then woodToolPreference = data.WoodToolPreference == "Wood axe" and "Wooden axe" or data.WoodToolPreference end
     if type(data.MineToolPreference) == "string" then mineToolPreference = data.MineToolPreference end
     return true
 end
@@ -1909,7 +1909,7 @@ local woodStatus = label({ Parent = woodPage, Text = "Target types: trees, oak, 
     TextSize = 11, Size = UDim2.new(1, -16, 0, 42), Position = UDim2.fromOffset(8, 164) })
 woodStatus.TextWrapped = true
 pageHeading(woodPage, "TOOL PREFERENCE", 210)
-local woodToolOptions = {"Auto best axe", "Iron axe", "Stone axe", "Wood axe"}
+local woodToolOptions = {"Auto best axe", "Iron axe", "Stone axe", "Wooden axe"}
 local woodToolIndex = table.find(woodToolOptions, woodToolPreference) or 1
 local woodToolSelect = button({ Parent = woodPage, Text = "Axe: " .. woodToolPreference .. "  ▼", TextSize = 12,
     Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 232) })
@@ -2714,7 +2714,7 @@ local function equipBestResourceTool(category)
             elseif string.find(name, "wood", 1, true) then score = 20 end
             if score > fallbackScore then fallback, fallbackScore = tool, score end
             if not string.find(string.lower(preference), "auto best", 1, true) then
-                local wanted = string.lower(preference):gsub(" axe", ""):gsub(" pickaxe", "")
+                local wanted = string.lower(preference):gsub(" axe", ""):gsub(" pickaxe", ""):gsub("^wooden$", "wood")
                 if not string.find(name, wanted, 1, true) then
                     score = -math.huge -- Prefer the requested material; recover to an owned tool if absent.
                 else

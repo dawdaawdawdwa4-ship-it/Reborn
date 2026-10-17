@@ -197,6 +197,12 @@ assert(equipBestResourceTool('wood') and woodToolPreference=='Iron axe','owned p
 local allOwned=RemoteCatalog.OwnedTools
 RemoteCatalog.OwnedTools=function() return {{Name='woodPickaxe'}} end
 assert(not equipBestResourceTool('wood'),'axe recovery must never substitute a pickaxe')
+for _,name in ipairs({'woodAxe','woodenAxe'}) do
+ local starterAxe={Name=name,Parent=player.Character}
+ RemoteCatalog.OwnedTools=function() return {starterAxe} end
+ woodToolPreference='Wooden axe'
+ assert(equipBestResourceTool('wood') and woodToolPreference=='Wooden axe','Wooden axe selection must match both starter naming variants')
+end
 RemoteCatalog.OwnedTools=allOwned
 assert(RemoteCatalog.PlacementAvailable(),'game request module should permit placement without recorder ID')
 assert(firePlant(cf,'blueFlowers'))
