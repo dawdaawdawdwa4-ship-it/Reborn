@@ -1221,7 +1221,7 @@ local CONFIG = {
 -- Optional persistence: supported only where the host exposes file APIs.
 -- Failures are intentionally non-fatal so the UI still works in standard Roblox.
 local HttpService = game:GetService("HttpService")
-local SETTINGS_FILE = "IslandsFarmingHub_settings.json"
+local SETTINGS_FILE = "IslandsFarmingHub_" .. tostring(player.UserId) .. "_settings.json"
 -- Declare these before persistence helpers so the helpers capture the intended locals.
 local woodToolPreference = "Auto best axe"
 local mineToolPreference = "Auto best pickaxe"
@@ -2698,6 +2698,7 @@ local function equipBestResourceTool(category)
     local preference = category == "wood" and woodToolPreference or mineToolPreference
     local wantAxe = category == "wood"
     local best, bestScore = nil, -math.huge
+    local fallback, fallbackScore = nil, -math.huge
     for _, tool in ipairs(RemoteCatalog.OwnedTools()) do
         local name = string.lower(tool.Name)
         local isPick = string.find(name, "pickaxe", 1, true) ~= nil
@@ -2711,16 +2712,30 @@ local function equipBestResourceTool(category)
             elseif string.find(name, "iron", 1, true) then score = 60
             elseif string.find(name, "stone", 1, true) then score = 40
             elseif string.find(name, "wood", 1, true) then score = 20 end
+            if score > fallbackScore then fallback, fallbackScore = tool, score end
             if not string.find(string.lower(preference), "auto best", 1, true) then
                 local wanted = string.lower(preference):gsub(" axe", ""):gsub(" pickaxe", "")
                 if not string.find(name, wanted, 1, true) then
-                    score = -math.huge -- manual preference means exact material only
+                    score = -math.huge -- Prefer the requested material; recover to an owned tool if absent.
                 else
                     score = score + 1000
                 end
             end
             if score > bestScore then best, bestScore = tool, score end
         end
+    end
+    if not best and fallback then
+        best=fallback;bestScore=fallbackScore
+        if category == "wood" then
+            woodToolPreference="Auto best axe";woodToolIndex=1
+            if woodToolSelect then woodToolSelect.Text="Axe: Auto best axe  ▼" end
+            if woodStatus then woodStatus.Text=preference.." unavailable. Using "..fallback.Name.."." end
+        else
+            mineToolPreference="Auto best pickaxe";mineToolIndex=1
+            if mineToolSelect then mineToolSelect.Text="Pickaxe: Auto best pickaxe  ▼" end
+            if mineInfo then mineInfo.Text=preference.." unavailable. Using "..fallback.Name.."." end
+        end
+        if type(savePreferences)=="function" then savePreferences() end
     end
     if best and bestScore > -math.huge then
         local ok = RemoteCatalog.EquipTool(best)
@@ -2732,7 +2747,7 @@ local function equipBestResourceTool(category)
         return true
     end
     if setStatus then
-        setStatus((category == "wood" and "No matching axe: " or "No matching pickaxe: ") .. tostring(preference), COLORS.warn)
+        setStatus(category == "wood" and "No axe found. Put an axe in your inventory." or "No pickaxe found. Put a pickaxe in your inventory.", COLORS.warn)
     end
     return false
 end

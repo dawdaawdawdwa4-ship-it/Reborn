@@ -190,6 +190,14 @@ local woodToolPreference,mineToolPreference='Auto best axe','Auto best pickaxe'
 local COLORS={bad=1,warn=2}
 ${equipFunction}
 assert(equipBestResourceTool('wood') and hiddenAxe.Parent==player.Character,'auto wood must equip axe from InventoryService, not just Backpack')
+woodToolPreference='Stone axe'
+assert(equipBestResourceTool('wood') and woodToolPreference=='Auto best axe' and hiddenAxe.Parent==player.Character,'missing saved axe must recover to an available axe')
+woodToolPreference='Iron axe'
+assert(equipBestResourceTool('wood') and woodToolPreference=='Iron axe','owned preferred axe should remain selected')
+local allOwned=RemoteCatalog.OwnedTools
+RemoteCatalog.OwnedTools=function() return {{Name='woodPickaxe'}} end
+assert(not equipBestResourceTool('wood'),'axe recovery must never substitute a pickaxe')
+RemoteCatalog.OwnedTools=allOwned
 assert(RemoteCatalog.PlacementAvailable(),'game request module should permit placement without recorder ID')
 assert(firePlant(cf,'blueFlowers'))
 assert(requestedName=='BLOCK_PLACE_REQUEST' and gameBody.cframe==cf and gameBody.blockType=='blueFlowers','game placement API used incorrectly')

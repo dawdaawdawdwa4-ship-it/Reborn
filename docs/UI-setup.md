@@ -269,3 +269,7 @@ Bait application now wraps both learned requests and normal activation in the sa
 Already equipped tools are no longer reselected for every action. Wood/mining waits briefly after changing tools before its first hit; the shared farm worker waits while bait is changing tools. Crop key input allows the game's interaction focus to update before pressing F. When ordinary host require cannot load a game module, module discovery tries the game's own require if the host exposes it through getrenv. Module absence still uses existing input/captured fallbacks.
 
 Recorder version 11 supports the newer envelope on the already confirmed crop endpoint and handles structured crop rejections consistently. Tests verify bait request execution while equipped, rod restoration on rejection/errors, no interference with an existing bobber, native module loading fallback, changed-axe timing and rotated crop context. Live Roblox validation is still necessary.
+
+### Missing saved tools
+
+If a selected axe/pickaxe material is absent, farming now falls back to the best owned tool of the matching type, updates the selector to Auto best, and saves that preference. An available selected material remains preferred; axes are never substituted with pickaxes. If no matching tool exists, the status asks for the missing tool. Settings files are now account-specific (`IslandsFarmingHub_<UserId>_settings.json`) to prevent another account's material choices from blocking starter equipment. Existing shared settings are left untouched and are not automatically imported.
