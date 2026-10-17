@@ -1673,7 +1673,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "layout-12",
+    Subtitle = "harvest-range-13",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2449,6 +2449,22 @@ for i = 1, CONFIG.RecentCount do
         }),
     }
 end
+
+-- Corner overlay controls remain available even when the overlay is hidden.
+RemoteCatalog.StatsVisibilityButton=button({Parent=statsPage,Text="CORNER STATS: ON",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,CONFIG.RecentCount*18+364)})
+RemoteCatalog.StatsResetButton=button({Parent=statsPage,Text="Reset corner stats position",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,CONFIG.RecentCount*18+404)})
+track(RemoteCatalog.StatsVisibilityButton.Activated:Connect(function()
+    statsOverlayGui.Enabled=not statsOverlayGui.Enabled
+    RemoteCatalog.StatsVisibilityButton.Text=statsOverlayGui.Enabled and "CORNER STATS: ON" or "CORNER STATS: OFF"
+end))
+track(RemoteCatalog.StatsResetButton.Activated:Connect(function()
+    draggingOverlay=false
+    statsOverlay.Position=UDim2.new(1,-14,0,14)
+    statsOverlayGui.Enabled=true
+    RemoteCatalog.StatsVisibilityButton.Text="CORNER STATS: ON"
+end))
 
 -- ANTI AFK BEGIN
 RemoteCatalog.AntiAFKClass=(function()
@@ -3695,6 +3711,7 @@ local function harvestLoop(myCycle)
             if not active() then break end
             local obj = target.instance
             if not obj.Parent then continue end
+            if target.category=="crop" and not FarmLogic.IsReady(obj) then continue end
             if target.kind=="fruit" then
                 if not harvestEnabled or not CONFIG.FruitEnabled or not target.model.Parent or not obj:IsDescendantOf(target.model) then continue end
             elseif not modeAllows(obj.Name) then continue end
@@ -3720,6 +3737,13 @@ local function harvestLoop(myCycle)
                     end
                     hrp=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
                     if not hrp then break end
+                    position=getPartPosition(obj)
+                    if not obj.Parent or not position then continue end
+                    if (position-hrp.Position).Magnitude>reach then
+                        FarmState.Cooldowns[obj]=os.clock()+3
+                        FarmState.LastFailure.crop="Still outside crop interaction reach; trying another target"
+                        continue
+                    end
                 end
             end
             if target.category=="wood" then

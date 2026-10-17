@@ -116,6 +116,12 @@ baitToggle.Activated:Fire()
 toggle.Activated:Fire()
 assert(not enabled and not baitEnabled,'synthetic bait input must not enable fishing or bait')
 RemoteCatalog.BaitMouseInput=false
+statsOverlayGui.Enabled=true
+RemoteCatalog.StatsVisibilityButton.Activated:Fire()
+assert(not statsOverlayGui.Enabled,'stats control must hide the corner display')
+statsOverlay.Position=UDim2.fromOffset(-1000,-1000)
+RemoteCatalog.StatsResetButton.Activated:Fire()
+assert(statsOverlayGui.Enabled and statsOverlay.Position.X.Scale==1 and statsOverlay.Position.X.Offset==-14,'reset must recover a hidden or lost corner display')
 local originalReplantY=replantToggle.Position.Y.Offset
 cropSelect.Activated:Fire()
 assert(cropDropdownOpen and replantToggle.Position.Y.Offset>cropDropdown.Position.Y.Offset+cropDropdown.Size.Y.Offset,'expanded crop menu must push following controls below its options')
