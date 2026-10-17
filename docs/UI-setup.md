@@ -1,5 +1,8 @@
 # Farming Hub UI
 
+The uploaded Insane script is a reference for the UI layout only. Farming Hub
+remains the application; do not add the full reference script or its gameplay code.
+
 `message.txt` is the standalone Roblox LocalScript. It embeds only the Airflow UI
 library section from the user-provided `Insane_version_clean (1).lua`; the uploaded
 trading, bootstrap, automation, and remote-execution code is not imported.
@@ -37,19 +40,3 @@ and Settings > Reset view restores its original size and centered position.
 `Remotes-reborn.txt` preserves the user's additional capture as reference.
 Remote names and paths alone do not specify argument formats or prove that calls
 work. This UI migration does not replace or add remote calls from that list.
-
-## Supplied full script
-
-`Insane_version_clean.lua` is the full user-uploaded script with a focused fix for
-`_NetManaged is not a valid member of ModuleScript ...net.out`. Use this file when
-running that full setup; `message.txt` remains the separate Farming Hub script.
-The remote adapter uses child lookups rather than indexing `_NetManaged`, prefers
-that group when present, and otherwise finds exact remote names beneath `out`.
-It does not require the `out` module or guess obfuscated remote names. Missing
-remotes are recorded, and initial lookups share a five-second wait budget.
-
-`npm --prefix tests test` also tests this adapter with missing paths/groups,
-renamed grouping folders, literal slash names, remote types, delayed replication,
-and the shared startup timeout. The full 2.6 MB supplied script exceeds the local
-WASM compiler's memory limit; only the changed resolver block was compiled and
-executed. Existing script behavior and live server calls remain unverified.
