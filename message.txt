@@ -1910,7 +1910,9 @@ local function applyBait()
     if not ok then
         baitInfo.Text = "Bait waiting: " .. tostring(result)
         baitInfo.TextColor3 = COLORS.warn
-        setStatus("Auto Bait failed: " .. tostring(result))
+        if result~="Waiting for current rod input" and result~="Waiting for the current cast to finish" then
+            setStatus("Auto Bait failed: " .. tostring(result))
+        end
     else
         baitInfo.Text = result == "tool activation attempted" and "Bait tool activated. Next attempt in 60s; check the game's bait effect."
             or "Bait request accepted. Refreshes every 60 seconds."
@@ -1921,6 +1923,7 @@ end
 
 local function setBaitEnabled(state)
     if baitEnabled == state then return end
+    RemoteCatalog.BaitPending=state
     baitEnabled = state
     baitCycleId += 1
     local myCycle = baitCycleId
@@ -1932,8 +1935,17 @@ local function setBaitEnabled(state)
     end
     task.spawn(function()
         while baitEnabled and baitCycleId == myCycle and gui.Parent do
+            RemoteCatalog.BaitPending=true
             local applied, detail = applyBait()
             if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
+            local waiting=not applied and (detail=="Waiting for current rod input" or detail=="Waiting for the current cast to finish")
+            RemoteCatalog.BaitPending=waiting
+            if waiting then
+                baitInfo.Text="Bait queued: finishing the current cast first."
+                baitToggle.Text="AUTO BAIT ON · QUEUED"
+                task.wait(.1)
+                continue
+            end
             if applied then setStatus(detail == "tool activation attempted" and "Bait tool activated; next attempt in 60s" or "Auto Bait applied; refresh in 60s", COLORS.good) end
             baitToggle.BackgroundColor3 = applied and COLORS.on or COLORS.off
             local delay = applied and 60 or 5
@@ -3479,6 +3491,9 @@ local function run(myCycle)
 					task.wait(0.05)
 				end
 			end
+		elseif baitEnabled and RemoteCatalog.BaitPending then
+            setStatus("Applying queued bait before the next cast...",COLORS.muted)
+            task.wait(.05)
 		elseif not hasRodEquipped() then
 			setStatus("Equip your fishing rod", COLORS.warn)
 			task.wait(0.5)
