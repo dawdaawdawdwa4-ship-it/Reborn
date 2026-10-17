@@ -83,6 +83,8 @@ local bait={Name='bait'}
 player={Character={FindFirstChild=function(_,name) if name=='bait' then return bait end end,FindFirstChildOfClass=function() return nil end},FindFirstChildOfClass=function() return nil end}
 ${plantFunction}
 ${layoutFunction}
+local baitInfo={}
+local COLORS={warn=1,good=2}
 local status
 local function setStatus(message) status=message end
 ${baitFunction}

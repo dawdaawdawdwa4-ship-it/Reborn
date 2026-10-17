@@ -268,7 +268,11 @@ local RemoteCatalog = (function()
             end)
             if ok and existing and existing.BaitBinding and existing.Bait then recorder = existing end
         end
-        if recorder and recorder.BaitBinding and recorder.Bait then return recorder:Bait(tool) end
+        if recorder and recorder.BaitBinding and recorder.Bait then
+            local remote = recorder.BaitBinding.Remote
+            if not remote or remote.Parent then return recorder:Bait(tool) end
+            -- A removed captured remote sends nothing; normal tool activation is still safe.
+        end
         local ok, reason, state = catalog.InvokeCaptured("raqRasAwcny1zh", {tool = tool})
         if state == "unavailable" and catalog.ActivateBait then return catalog.ActivateBait(tool) end
         return ok, reason
@@ -1361,7 +1365,7 @@ local statsOverlay = Instance.new("Frame")
 statsOverlay.Name = "CornerStats"
 statsOverlay.AnchorPoint = Vector2.new(1, 0)
 statsOverlay.Position = UDim2.new(1, -14, 0, 14)
-statsOverlay.Size = UDim2.fromOffset(300, 174)
+statsOverlay.Size = UDim2.fromOffset(300, 238)
 statsOverlay.BackgroundColor3 = COLORS.bg
 statsOverlay.BackgroundTransparency = 0.08
 statsOverlay.BorderSizePixel = 0
@@ -1412,14 +1416,41 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
-local statsOverlayText = label({
-    Parent = statsOverlay, Text = "Catches 0  |  Misses 0\nCasts 0  |  Bites 0\nCatch rate –  |  BALANCED\nFish/hour –  |  00:00:00\nHarvests 0\nBait OFF",
-    Font = Enum.Font.Gotham, TextSize = 14, Color = COLORS.text,
-    Size = UDim2.new(1, -24, 0, 132), Position = UDim2.fromOffset(12, 34),
-})
-statsOverlayText.TextTruncate = Enum.TextTruncate.None
-statsOverlayText.TextYAlignment = Enum.TextYAlignment.Top
-statsOverlayText.TextWrapped = true
+local statsOverlayText = Instance.new("Frame")
+statsOverlayText.Name = "StatsContent"
+statsOverlayText.BackgroundTransparency = 1
+statsOverlayText.Size = UDim2.new(1, -24, 0, 194)
+statsOverlayText.Position = UDim2.fromOffset(12, 34)
+statsOverlayText.Parent = statsOverlay
+local overlayValues = {}
+local function overlayCard(key, title, x)
+    local card = Instance.new("Frame")
+    card.Name = key
+    card.Size = UDim2.new(.5, -4, 0, 62)
+    card.Position = UDim2.new(x, x == 0 and 0 or 4, 0, 0)
+    card.BackgroundColor3 = COLORS.panel
+    card.BorderSizePixel = 0
+    card.Parent = statsOverlayText
+    corner(card, 8)
+    label({Parent=card,Text=title,TextSize=12,Color=COLORS.muted,
+        Size=UDim2.new(1,-20,0,18),Position=UDim2.fromOffset(10,6)})
+    overlayValues[key] = label({Parent=card,Text=key == "catches" and "0" or "–",TextSize=26,
+        Font=Enum.Font.GothamBold,Color=COLORS.accent,
+        Size=UDim2.new(1,-20,0,32),Position=UDim2.fromOffset(10,25)})
+end
+overlayCard("catches", "FISH CAUGHT", 0)
+overlayCard("hourly", "FISH / HOUR", .5)
+local function overlayRow(key, title, y)
+    label({Parent=statsOverlayText,Text=title,TextSize=12,Color=COLORS.muted,
+        Size=UDim2.new(.42,0,0,22),Position=UDim2.fromOffset(0,y)})
+    overlayValues[key] = label({Parent=statsOverlayText,Text="–",TextSize=13,
+        Align=Enum.TextXAlignment.Right,Size=UDim2.new(.58,0,0,22),Position=UDim2.new(.42,0,0,y)})
+end
+overlayRow("attempts", "Casts / bites", 70)
+overlayRow("success", "Catch rate / misses", 94)
+overlayRow("session", "Active / mode", 118)
+overlayRow("harvests", "Harvests", 142)
+overlayRow("bait", "Bait", 166)
 
 local overlayToggle = Instance.new("TextButton")
 overlayToggle.Name = "HideStats"
@@ -1435,7 +1466,7 @@ local overlayExpanded = true
 overlayToggle.Activated:Connect(function()
     overlayExpanded = not overlayExpanded
     statsOverlayText.Visible = overlayExpanded
-    statsOverlay.Size = overlayExpanded and UDim2.fromOffset(300, 174) or UDim2.fromOffset(300, 32)
+    statsOverlay.Size = overlayExpanded and UDim2.fromOffset(300, 238) or UDim2.fromOffset(300, 32)
     overlayToggle.Text = overlayExpanded and "−" or "+"
 end)
 
@@ -1520,11 +1551,21 @@ local function applyBait()
         baitTool = backpack and backpack:FindFirstChild("bait")
     end
     if not baitTool then
+        baitInfo.Text = "No bait found. Keep bait in your inventory; retrying every 5s."
+        baitInfo.TextColor3 = COLORS.warn
         setStatus("Auto Bait: bait tool not found")
-        return false
+        return false, "bait tool not found"
     end
     local ok, result = RemoteCatalog.CallBait(baitTool)
-    if not ok then setStatus("Auto Bait failed: " .. tostring(result)) end
+    if not ok then
+        baitInfo.Text = "Bait waiting: " .. tostring(result)
+        baitInfo.TextColor3 = COLORS.warn
+        setStatus("Auto Bait failed: " .. tostring(result))
+    else
+        baitInfo.Text = result == "tool activation attempted" and "Bait tool activated. Next attempt in 60s; check the game's bait effect."
+            or "Bait request accepted. Refreshes every 60 seconds."
+        baitInfo.TextColor3 = COLORS.good
+    end
     return ok, result
 end
 
@@ -1544,6 +1585,7 @@ local function setBaitEnabled(state)
             local applied, detail = applyBait()
             if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
             if applied then setStatus(detail == "tool activation attempted" and "Bait tool activated; next attempt in 60s" or "Auto Bait applied; refresh in 60s", COLORS.good) end
+            baitToggle.BackgroundColor3 = applied and COLORS.on or COLORS.off
             local delay = applied and 60 or 5
             for remaining = delay, 1, -1 do
                 if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
@@ -1973,7 +2015,15 @@ local function updateBoard()
         local countdown = baitToggle.Text:match("%[(.-)%]") or "ON"
         baitState = string.find(baitToggle.Text, "RETRY", 1, true) and ("Retry in " .. countdown) or countdown
     end
-    statsOverlayText.Text = string.format("Catches %d  |  Misses %d\nCasts %d  |  Bites %d\nCatch rate %s  |  %s\nFish/hour %s  |  %s\nHarvests %d\nBait %s", stats.catches, stats.missed, stats.casts, stats.bites, rateText, string.upper(activeFishingMode), hourly, formatTime(t), stats.harvests, baitState)
+    overlayValues.catches.Text = tostring(stats.catches)
+    overlayValues.hourly.Text = hourly
+    overlayValues.attempts.Text = stats.casts .. " / " .. stats.bites
+    overlayValues.success.Text = rateText .. " / " .. stats.missed
+    overlayValues.session.Text = formatTime(t) .. " / " .. string.upper(activeFishingMode)
+    overlayValues.harvests.Text = tostring(stats.harvests)
+    overlayValues.bait.Text = baitState
+    overlayValues.bait.TextColor3 = not baitEnabled and COLORS.muted
+        or (string.find(baitToggle.Text, "RETRY", 1, true) and COLORS.warn or COLORS.good)
 	rows.streak.Text = stats.streak .. " / " .. stats.bestStreak
 	rows.perHour.Text = t >= 30
 		and string.format("%.0f", stats.catches / (t / 3600))
