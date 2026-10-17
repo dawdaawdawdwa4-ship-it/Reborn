@@ -99,6 +99,7 @@ return 'UI, nine tabs, resize/reset and embedded recorder controls passed; hooks
 for (const supported of [false,true]) {
  const hooks=`
 local CAPTURE_SUPPORTED=${supported}
+if not CAPTURE_SUPPORTED then task.defer=nil end
 local hookCount=0
 local captureEnvironment={}
 local function getgenv() return captureEnvironment end

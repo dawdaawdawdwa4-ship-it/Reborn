@@ -35,6 +35,17 @@ buildController.Buttons.Preview.Activated:Fire()
 assert(string.find(buildController.Status.Text,"spawn",1,true))
 assert(buildController.Preset=="Farm plots")
 assert(not RemoteCatalog.Recorder,'recorder must be off on actual full startup')
+assert(not RemoteCatalog.AntiAFK.Enabled and not RemoteCatalog.AntiAFK.Connection,'Anti AFK must start OFF without an idle listener')
+player.Idled=signal()
+local idleClicks=0
+services.VirtualUser={CaptureController=function() end,ClickButton2=function() idleClicks+=1 end}
+RemoteCatalog.AntiAFKButton.Activated:Fire()
+player.Idled:Fire()
+assert(RemoteCatalog.AntiAFK.Enabled and idleClicks==1,'Settings toggle must wire the idle response')
+stopAllButton.Activated:Fire()
+player.Idled:Fire()
+assert(not RemoteCatalog.AntiAFK.Enabled and idleClicks==1,'Stop All must disable Anti AFK')
+
 assert(CONFIG.CastDistance==12 and activeFishingMode=='Fast' and CONFIG.FishingPollInterval==.005,'startup must use fixed Fast mode and 12-stud aim')
 applyFishingMode('Safe')
 assert(activeFishingMode=='Fast' and CONFIG.CastDistance==12 and not modeButtons.Safe and not modeButtons.Balanced,'other profiles must not override fixed settings')
