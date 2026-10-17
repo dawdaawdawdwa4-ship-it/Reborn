@@ -978,15 +978,19 @@ function AutoBuild.new(ctx)
     local presetMenu=Instance.new("Frame")
     presetMenu.Name="BlueprintOptions";presetMenu.Size=UDim2.new(1,-12,0,144);presetMenu.Position=UDim2.fromOffset(6,84)
     presetMenu.BackgroundColor3=Color3.fromRGB(29,39,48);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
-    button("Preset","Blueprint: Farm plots  ▼",0,48,1,function()
+    button("Preset","Farm plots  ▼",0,48,.5,function()
         if not self.Running then presetMenu.Visible=not presetMenu.Visible end
+    end)
+    button("Movement","Movement controls",.5,48,.5,function()
+        presetMenu.Visible=false
+        if self.OpenMovement then self.OpenMovement() end
     end)
     for index,preset in ipairs(presets) do
         local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(index-1)*36)})
         option.ZIndex=36
         ctx.Track(option.Activated:Connect(function()
             if self.Running then return end
-            self.Preset=preset;buttons.Preset.Text="Blueprint: "..preset.."  ▼";presetMenu.Visible=false;invalidate()
+            self.Preset=preset;buttons.Preset.Text=preset.."  ▼";presetMenu.Visible=false;invalidate()
         end))
     end
     local function input(key,title,value,y,numeric)
@@ -1323,6 +1327,8 @@ local function showTab(name)
     end
     hub:SelectTab(airflowTabs[name])
 end
+
+buildController.OpenMovement = function() showTab("Movement") end
 
 local status = label({
     Parent = hub.Content,
