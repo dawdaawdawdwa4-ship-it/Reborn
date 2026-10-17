@@ -90,6 +90,21 @@ time=0
 local function cancelWait(dt) time+=dt;cancelled=true end
 assert(not FarmLogic.HoldPrompt(prompt,function() return not cancelled end,cancelWait,now) and not holding and releases==2,'cancelled prompt must release and not report success')
 assert(not FarmLogic.HoldPrompt(prompt,function() return true end,function() error('input failure') end,now) and not holding and releases==3,'failed hold must release')
+local orangeFruit=node('Fruit','Model',nil,vec(3,0,0));orangeFruit.attributes.Mature=true
+local unripeFruit=node('Fruit','Model',nil,vec(2,0,0));unripeFruit.attributes.Harvestable=false
+local orangeTree=node('treeOrange','Model',{node('stage-1','Model',{orangeFruit}),node('stage-2','Model',{unripeFruit})},vec(5,0,0))
+table.insert(blocks.children,orangeTree)
+local foreignFruit=node('Fruit','Model',nil,vec(1,0,0))
+table.insert(other:FindFirstChild('Blocks').children,node('treeOrange','Model',{node('stage-1','Model',{foreignFruit})},vec(1,0,0)))
+CONFIG.FruitEnabled=true;harvestEnabled=true;woodEnabled=true;mineEnabled=false
+local fruitCount=0
+for _,item in ipairs(getMineTargets()) do
+ if item.kind=='fruit' then fruitCount+=1;assert(item.instance==orangeFruit and item.model==orangeTree,'fruit must come from the owned tree') end
+ assert(item.instance~=orangeTree,'fruit-picking tree must not become an axe target')
+end
+assert(fruitCount==1,'skip foreign and unripe fruit')
+orangeTree.children={}
+for _,item in ipairs(getMineTargets()) do assert(item.instance~=orangeTree,'fruit tree must remain protected after fruit removal') end
 return 'Farm rules passed: owned island, mode/crop filtering, maturity, independent ranges, backoff, sorting, prompt selection and confirmation'
 `;
 const state=await LuauState.createAsync();

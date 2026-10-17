@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 9 and previous.Resume then
+if previous and previous.Version == 10 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 9, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 10, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -24,12 +24,14 @@ if previous then
     capture.WoodHitBinding = previous.WoodHitBinding
     capture.MineHitBinding = previous.MineHitBinding
     capture.AutoReplantBinding = previous.AutoReplantBinding
+    capture.FruitBinding = previous.FruitBinding
     capture.AutoReplantState = previous.AutoReplantState
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    Y6oBjV1u9qIAAS = true, -- Fruit-picking capture.
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
     qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
@@ -195,6 +197,25 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
 end
+local function learnFruit(remote, method, args)
+    if remote.Name~="Y6oBjV1u9qIAAS" or method~="InvokeServer" or type(args[1])~="table" then return false end
+    local body=args[1].wGquKmyB3mV2Cf
+    if type(body)~="table" or typeof(body.model)~="Instance" or typeof(body.fruit)~="Instance" or typeof(body.player)~="Instance" then return false end
+    capture.FruitBinding={Remote=remote,Method=method,Args=cloneArguments(args),Model=body.model,Fruit=body.fruit}
+    return true
+end
+function capture:Fruit(model,fruit)
+    local binding=self.FruitBinding
+    if not binding or not binding.Remote.Parent then return false,"Pick fruit manually once with capture active" end
+    if typeof(model)~="Instance" or typeof(fruit)~="Instance" or not fruit:IsDescendantOf(model) then return false,"Fruit no longer belongs to this tree" end
+    local ok,result=pcall(function()
+        local args=cloneArguments(binding.Args,binding.Model,model)
+        args=cloneArguments(args,binding.Fruit,fruit)
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    return true,result
+end
 local function learnAutoReplant(remote, method, args)
     if remote.Name~="nrGQVrxpfb3dKr" or method~="InvokeServer" or type(args[1])~="table" then return false end
     local body=args[1].wGquKmyB3mV2Cf
@@ -329,7 +350,7 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learnFruit(remote, method, args) or learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.

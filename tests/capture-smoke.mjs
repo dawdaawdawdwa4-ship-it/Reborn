@@ -106,6 +106,21 @@ assert(capture:Harvest(nextCrop),'new harvest payload not replayed')
 assert(updatedArgs.iXwUW9mXJ8AVnK=='current-crop-session' and updatedArgs.a1tIHk1Kl9GiE5.model==nextCrop,'new envelope fields or crop target lost')
 assert(updatedArgs.a1tIHk1Kl9GiE5.player=='current-player' and updatedPacket.a1tIHk1Kl9GiE5.model==crop,'player context changed or original packet mutated')
 assert(updatedArgs.TrNhTTgExIb1Bg==nil,'new request must not be rewritten to old field names')
+local fruitRemote=remote('Y6oBjV1u9qIAAS')
+local fruitPlayer={_type='Instance',Name='Player',Parent=game}
+local fruitTree={_type='Instance',Name='treeOrange',Parent=game}
+local fruit={_type='Instance',Name='Fruit',Parent=fruitTree,IsDescendantOf=function(self,m) return self.Parent==m end}
+local nextFruitTree={_type='Instance',Name='treeOrange',Parent=game}
+local nextFruit={_type='Instance',Name='Fruit',Parent=nextFruitTree,IsDescendantOf=fruit.IsDescendantOf}
+local fruitArgs
+fruitRemote.InvokeServer=function(_,packet) fruitArgs=packet;return true end
+local fruitPacket={E6N43ldyV5t9lg='live-fruit-context',wGquKmyB3mV2Cf={model=fruitTree,fruit=fruit,player=fruitPlayer}}
+installedHook(fruitRemote,fruitPacket)
+assert(capture.FruitBinding and capture:Fruit(nextFruitTree,nextFruit),'fruit request must be learned')
+assert(fruitArgs.E6N43ldyV5t9lg=='live-fruit-context' and fruitArgs.wGquKmyB3mV2Cf.model==nextFruitTree and fruitArgs.wGquKmyB3mV2Cf.fruit==nextFruit,'fruit/tree/context replacement failed')
+assert(fruitArgs.wGquKmyB3mV2Cf.player==fruitPlayer and fruitPacket.wGquKmyB3mV2Cf.fruit==fruit,'player context or source fruit mutated')
+assert(not capture:Fruit(fruitTree,nextFruit),'fruit from another tree must not be sent')
+fruitRemote.InvokeServer=function() return false end;assert(not capture:Fruit(nextFruitTree,nextFruit),'fruit rejection must remain failure')
 local axeRemote=remote('qn1PInnZJmfDd1')
 local tree={_type='Instance',Name='treeOrange',IsA=function(_,c) return c=='Model' end}
 local nextTree={_type='Instance',Name='treeOak',IsA=tree.IsA}

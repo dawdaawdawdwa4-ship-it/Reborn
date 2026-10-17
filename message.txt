@@ -156,6 +156,7 @@ local RemoteCatalog = (function()
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.u71Y03otNIwj9g", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.qn1PInnZJmfDd1", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.xC1fgcQXCzOPJ7.nrGQVrxpfb3dKr", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.Y6oBjV1u9qIAAS", Class = "RemoteFunction" },
     } }
     function catalog.FindPath(path, expectedClass)
         local ok, found = pcall(function()
@@ -299,6 +300,11 @@ local RemoteCatalog = (function()
         local recorder=catalog.LiveRecorder("AutoReplantBinding")
         return catalog.ServerAutoReplant == true or recorder and recorder.AutoReplantState == true
     end
+    function catalog.CallFruit(model,fruit)
+        local recorder=catalog.LiveRecorder("FruitBinding")
+        if recorder and recorder.Fruit then return recorder:Fruit(model,fruit) end
+        return false,"Pick one fruit manually with capture active to learn its current call"
+    end
     function catalog.SetAutoReplant(value)
         local recorder=catalog.LiveRecorder("AutoReplantBinding")
         if not recorder or not recorder.SetAutoReplant then return false,"Change AutoReplant manually with capture active","unavailable" end
@@ -407,13 +413,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 9 and previous.Resume then
+if previous and previous.Version == 10 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 9, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 10, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -423,12 +429,14 @@ if previous then
     capture.WoodHitBinding = previous.WoodHitBinding
     capture.MineHitBinding = previous.MineHitBinding
     capture.AutoReplantBinding = previous.AutoReplantBinding
+    capture.FruitBinding = previous.FruitBinding
     capture.AutoReplantState = previous.AutoReplantState
     capture.Active = #capture.Records < capture.MaxCalls
 end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    Y6oBjV1u9qIAAS = true, -- Fruit-picking capture.
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
     qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
@@ -594,6 +602,25 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
 end
+local function learnFruit(remote, method, args)
+    if remote.Name~="Y6oBjV1u9qIAAS" or method~="InvokeServer" or type(args[1])~="table" then return false end
+    local body=args[1].wGquKmyB3mV2Cf
+    if type(body)~="table" or typeof(body.model)~="Instance" or typeof(body.fruit)~="Instance" or typeof(body.player)~="Instance" then return false end
+    capture.FruitBinding={Remote=remote,Method=method,Args=cloneArguments(args),Model=body.model,Fruit=body.fruit}
+    return true
+end
+function capture:Fruit(model,fruit)
+    local binding=self.FruitBinding
+    if not binding or not binding.Remote.Parent then return false,"Pick fruit manually once with capture active" end
+    if typeof(model)~="Instance" or typeof(fruit)~="Instance" or not fruit:IsDescendantOf(model) then return false,"Fruit no longer belongs to this tree" end
+    local ok,result=pcall(function()
+        local args=cloneArguments(binding.Args,binding.Model,model)
+        args=cloneArguments(args,binding.Fruit,fruit)
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    return true,result
+end
 local function learnAutoReplant(remote, method, args)
     if remote.Name~="nrGQVrxpfb3dKr" or method~="InvokeServer" or type(args[1])~="table" then return false end
     local body=args[1].wGquKmyB3mV2Cf
@@ -728,7 +755,7 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learnFruit(remote, method, args) or learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -807,6 +834,17 @@ function FarmLogic.Category(name)
     if contains(name, woodNames) then return "wood" end
     if contains(name, mineNames) then return "mine" end
     return nil
+end
+function FarmLogic.Fruits(model)
+    local fruits={}
+    if FarmLogic.Category(model.Name)~="wood" then return fruits end
+    for _,stage in ipairs(model:GetChildren()) do
+        if string.match(stage.Name,"^stage%-%d+$") then
+            local fruit=stage:FindFirstChild("Fruit")
+            if fruit and FarmLogic.IsReady(fruit) then table.insert(fruits,fruit) end
+        end
+    end
+    return fruits
 end
 function FarmLogic.CropMatches(name, selected)
     local wanted = string.lower(selected)
@@ -1166,6 +1204,7 @@ local CONFIG = {
 	WoodRange = 90,
     CropRange = 60,
 	AutoReplant = true,
+    FruitEnabled = false,
 	PlantDelay = 0.15,                    -- delay between plant attempts
 	PlantRadius = 12,                     -- how far around player to plant
 	PlantSpacing = 3,                     -- grid spacing between plants
@@ -1182,7 +1221,7 @@ local function savePreferences()
     if type(writefile) ~= "function" then return false end
     local data = {
         HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
-        AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
+        FruitEnabled = CONFIG.FruitEnabled, AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
         WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
@@ -1200,6 +1239,7 @@ local function loadPreferences()
     if type(data.HarvestCrop) == "string" then CONFIG.HarvestCrop = data.HarvestCrop end
     if type(data.PlantType) == "string" then CONFIG.PlantType = data.PlantType end
     if type(data.AutoReplant) == "boolean" then CONFIG.AutoReplant = data.AutoReplant end
+    if type(data.FruitEnabled) == "boolean" then CONFIG.FruitEnabled = data.FruitEnabled end
     if type(data.MineRange) == "number" then CONFIG.MineRange = math.clamp(data.MineRange, 15, 150) end
     if type(data.CropRange) == "number" then CONFIG.CropRange = math.clamp(data.CropRange, 10, 120) end
     if type(data.WoodRange) == "number" then CONFIG.WoodRange = math.clamp(data.WoodRange, 15, 150) end
@@ -1830,6 +1870,12 @@ track(RemoteCatalog.CropRangeButton.Activated:Connect(function()
     savePreferences()
 end))
 
+local fruitToggle = button({Parent=harvestPage,Text=CONFIG.FruitEnabled and "FRUIT PICKING: ON" or "FRUIT PICKING: OFF",TextSize=12,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,288),Bg=CONFIG.FruitEnabled and COLORS.on or COLORS.off})
+local fruitHint=label({Parent=harvestPage,Text="Pick fruit from your island's trees without chopping them. Capture one manual fruit pick first.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,330)})
+fruitHint.TextWrapped=true
+
 local woodToggle = button({ Parent = woodPage, Text = "WOOD FARM OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
 local woodInfo = label({ Parent = woodPage, Text = "Dedicated tree and wood farming. Skips saplings/seedlings and prioritizes nearby targets.",
@@ -2129,6 +2175,7 @@ function RemoteCatalog.UpdateCaptureUI()
     if recorder.WoodHitBinding then table.insert(learned, "axe / wood hit") end
     if recorder.MineHitBinding then table.insert(learned, "mining hit") end
     if recorder.AutoReplantBinding then table.insert(learned, "game AutoReplant") end
+    if recorder.FruitBinding then table.insert(learned, "fruit picking") end
     local mining = #learned > 0 and ("Ready: " .. table.concat(learned, ", ")) or "Perform actions manually once to learn their request IDs"
     RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CopyNotice or string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
     RemoteCatalog.CaptureToggle.Text = recorder.Active and "Pause capture (F8)" or "Resume capture (F8)"
@@ -2710,7 +2757,7 @@ local function modeAllows(name)
     if category == "wood" then return woodEnabled end
     return category == "mine" and mineEnabled
 end
-local FarmState = { Cooldowns = setmetatable({}, { __mode = "k" }) }
+local FarmState = { Cooldowns = setmetatable({}, { __mode = "k" }), FruitTrees = setmetatable({}, { __mode = "k" }) }
 local function getMineTargets()
     local targets, seen = {}, {}
     local char = player.Character
@@ -2722,6 +2769,11 @@ local function getMineTargets()
         local category = targetCategory(obj.Name)
         if not category or not modeAllows(obj.Name) then return end
         if category == "crop" and not allowCrops then return end
+        if category == "wood" and allowCrops and harvestEnabled and CONFIG.FruitEnabled then
+            if FarmState.FruitTrees[obj] or string.find(string.lower(obj.Name),"treeorange",1,true) or #FarmLogic.Fruits(obj)>0 then
+                FarmState.FruitTrees[obj]=true;return
+            end
+        end
         if category == "crop" and not FarmLogic.IsReady(obj) then return end
         if (FarmState.Cooldowns[obj] or 0) > os.clock() then return end
         local position = getPartPosition(obj)
@@ -2764,6 +2816,21 @@ local function getMineTargets()
                 scan(island:FindFirstChild("Prefabs"), island == owned)
             end
         end
+    end
+    if harvestEnabled and CONFIG.FruitEnabled and owned then
+        local blocks=owned:FindFirstChild("Blocks")
+        if blocks then for _,tree in ipairs(blocks:GetChildren()) do
+            for _,fruit in ipairs(FarmLogic.Fruits(tree)) do
+                local position=getPartPosition(fruit)
+                if position and not seen[fruit] and (FarmState.Cooldowns[fruit] or 0)<=os.clock() then
+                    local distance=(position-hrp.Position).Magnitude
+                    if distance<=CONFIG.CropRange then
+                        seen[fruit]=true;FarmState.FruitTrees[tree]=true
+                        table.insert(targets,{kind="fruit",instance=fruit,model=tree,name=tree.Name.." fruit",distance=distance,category="crop"})
+                    end
+                end
+            end
+        end end
     end
     table.sort(targets, function(a, b) return a.distance < b.distance end)
     return targets
@@ -2883,7 +2950,10 @@ local function harvestLoop(myCycle)
         for _, target in ipairs(targets) do
             if not active() then break end
             local obj = target.instance
-            if not obj.Parent or not modeAllows(obj.Name) then continue end
+            if not obj.Parent then continue end
+            if target.kind=="fruit" then
+                if not harvestEnabled or not CONFIG.FruitEnabled or not target.model.Parent or not obj:IsDescendantOf(target.model) then continue end
+            elseif not modeAllows(obj.Name) then continue end
             local char = player.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local position = getPartPosition(obj)
@@ -2900,7 +2970,7 @@ local function harvestLoop(myCycle)
             local binding = recorder and recorder.HarvestBinding
             local learned = binding and binding.Remote.Parent and (binding.Target:IsA("Model") == obj:IsA("Model"))
             local nativeHarvest = target.category == "crop" and RemoteCatalog.HarvestEndpoint()
-            local prompt = target.category == "crop" and not learned and not nativeHarvest and FarmLogic.HarvestPrompt(obj) or nil
+            local prompt = target.kind ~= "fruit" and target.category == "crop" and not learned and not nativeHarvest and FarmLogic.HarvestPrompt(obj) or nil
             local plantedFrame
             if obj:IsA("BasePart") then plantedFrame = obj.CFrame
             elseif obj:IsA("Model") then plantedFrame = obj:GetPivot() end
@@ -2911,6 +2981,10 @@ local function harvestLoop(myCycle)
                 if stats.resourceAttempts then stats.resourceAttempts[target.category]+=1 end
                 ok = FarmLogic.HoldPrompt(prompt, active, task.wait, os.clock)
                 if not active() then break end
+            elseif target.kind == "fruit" then
+                if stats.resourceAttempts then stats.resourceAttempts.crop+=1 end
+                ok,failure=RemoteCatalog.CallFruit(target.model,obj)
+                if not ok then setStatus("Fruit picking waiting: "..tostring(failure),COLORS.warn) end
             elseif target.kind == "model" then
                 if stats.resourceAttempts then stats.resourceAttempts[target.category]+=1 end
                 ok, failure = fireModelHarvest(obj)
@@ -2936,7 +3010,7 @@ local function harvestLoop(myCycle)
                 registerHarvest(target.name, target.category)
                 setStatus("Confirmed: " .. target.name .. " ×" .. stats.harvests, COLORS.good)
                 -- A plant that regrows in place must never be planted over.
-                if target.category == "crop" and not obj.Parent and plantedFrame and CONFIG.PlantEnabled and CONFIG.AutoReplant and not (RemoteCatalog.ServerAutoReplant or RemoteCatalog.ServerReplantEnabled and RemoteCatalog.ServerReplantEnabled()) then
+                if target.category == "crop" and target.kind ~= "fruit" and not obj.Parent and plantedFrame and CONFIG.PlantEnabled and CONFIG.AutoReplant and not (RemoteCatalog.ServerAutoReplant or RemoteCatalog.ServerReplantEnabled and RemoteCatalog.ServerReplantEnabled()) then
                     if RemoteCatalog.PlacementAvailable() then
                         if active() then firePlant(plantedFrame, CONFIG.PlantType) end
                     else
@@ -3219,6 +3293,13 @@ do
         end)
     end))
 end
+track(fruitToggle.Activated:Connect(function()
+    CONFIG.FruitEnabled=not CONFIG.FruitEnabled
+    fruitToggle.Text=CONFIG.FruitEnabled and "FRUIT PICKING: ON" or "FRUIT PICKING: OFF"
+    fruitToggle.BackgroundColor3=CONFIG.FruitEnabled and COLORS.on or COLORS.off
+    savePreferences()
+    if CONFIG.FruitEnabled then setHarvestEnabled(true) end
+end))
 track(woodRangeBtn.Activated:Connect(function()
     CONFIG.WoodRange = CONFIG.WoodRange >= 120 and 30 or CONFIG.WoodRange + 15
     woodRangeBtn.Text = "Wood range: " .. CONFIG.WoodRange .. " studs  (+ / −)"

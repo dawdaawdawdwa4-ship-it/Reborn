@@ -255,3 +255,9 @@ Auto Build → Move blueprint opens grid-step controls for left/right, forward/b
 The corner board follows Fishing, Wood Farm, Mining or Harvest tabs. Resources keep independent confirmed totals, attempts and last-collected names; rates use overall active session time. Successful transport or an axe swing alone never counts as a collected resource. The board returns to fishing labels on the Fishing tab.
 
 Recorder version 9 also learns axe/block-hit and game AutoReplant requests. Capture a manual tree hit to bind the current axe endpoint, and a manual game AutoReplant change to bind that setting. The hub Auto-replant button prefers the learned game setting; rejected updates preserve its prior state. Once the game setting is confirmed enabled, local planting is suppressed. Without that setting binding, the existing local replant option remains available. Wood-input fallback aims at the closest queryable solid part/surface, avoiding canopy centres outside normal reach.
+
+### Fruit picking
+
+Harvest now has an optional Fruit picking control. It starts the shared harvest worker, finds ready `stage-N.Fruit` instances on trees in your own island's Blocks folder, and uses the learned fruit request. Enable capture and pick one fruit manually to learn the current context before enabling this option. Crop selection still filters normal crops; fruit picking is separate.
+
+Only the fruit is a harvest target: its parent tree is preserved, crop replanting is skipped, and counts require removal/readiness confirmation. While fruit picking and harvesting are active, Wood Farm skips orange trees and other observed fruit trees, including after their fruit has been removed. Turning Fruit picking off restores ordinary wood targeting. Fruits use the existing crop range, cooldown and crop stats. Tests cover ownership, unready fruit, tree protection, context/target replacement, cancellation and no replant after fruit collection.

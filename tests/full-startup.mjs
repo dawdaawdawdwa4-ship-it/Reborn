@@ -59,6 +59,10 @@ end
 showTab('Fishing');updateBoard()
 assert(statsOverlayTitle.Text=='FISHING STATS' and overlayValues.catches.Text=='0','resource totals must not change fishing counters')
 assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled and not baitEnabled)
+fruitToggle.Activated:Fire()
+assert(CONFIG.FruitEnabled and harvestEnabled,'fruit toggle must start the shared harvest worker')
+fruitToggle.Activated:Fire();setHarvestEnabled(false);stepWorkers()
+assert(not CONFIG.FruitEnabled and not harvestEnabled,'fruit picking must be independently disabled')
 local baitApplications=0
 applyBait=function() baitApplications+=1;return true end
 for _,button in ipairs({toggle,harvestToggle,woodToggle,mineToggle,baitToggle}) do

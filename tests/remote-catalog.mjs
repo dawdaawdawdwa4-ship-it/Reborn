@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==134)
+assert(#RemoteCatalog.Entries==135)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -206,7 +206,7 @@ assert(RemoteCatalog.CallHarvest(cropTarget)==false and sent==nil,'harvest rejec
 assert(RemoteCatalog.CallMine(actualBlock)==false and sent==nil,'mining rejection must not replay through legacy')
 assert(firePlant(cf,'stone')==false and sent==nil,'game API rejection must not retry through legacy remote')
 
-return '134 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '135 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}

@@ -18,6 +18,17 @@ function FarmLogic.Category(name)
     if contains(name, mineNames) then return "mine" end
     return nil
 end
+function FarmLogic.Fruits(model)
+    local fruits={}
+    if FarmLogic.Category(model.Name)~="wood" then return fruits end
+    for _,stage in ipairs(model:GetChildren()) do
+        if string.match(stage.Name,"^stage%-%d+$") then
+            local fruit=stage:FindFirstChild("Fruit")
+            if fruit and FarmLogic.IsReady(fruit) then table.insert(fruits,fruit) end
+        end
+    end
+    return fruits
+end
 function FarmLogic.CropMatches(name, selected)
     local wanted = string.lower(selected)
     if wanted == "berrybush" then wanted = "berry" end
