@@ -21,8 +21,11 @@ const checks=`
 local valid=pcall(function() Instance.new('ScrollingFrame').ScrollBarInset=Enum.ScrollBarInset.ScrollBar end)
 assert(not valid,'mock must reject invalid ScrollBarInset regression')
 flush()
+assert(#RemoteCatalog.Entries==129,'all captured remotes must be incorporated')
+RemoteCatalog.RefreshButton.Activated:Fire()
+assert(string.find(RemoteCatalog.Summary.Text,'129',1,true),'remote discovery summary missing')
 assert(gui.Parent==playerGui,'hub must use PlayerGui')
-assert(#hub.Tabs==6,'six tabs must exist')
+assert(#hub.Tabs==7,'seven tabs must exist')
 assert(hub.Root.Visible and hub.Body.GroupTransparency==0,'hub intro must finish')
 assert(hub.CurrentTab==airflowTabs.Fishing,'Fishing must be initial tab')
 for name,page in pairs(pages) do
@@ -38,7 +41,7 @@ largerUI.Activated:Fire();assert(frame.Size.X.Offset>720,'larger UI failed')
 smallerUI.Activated:Fire();resetUI.Activated:Fire()
 assert(frame.Size.X.Offset==720 and frame.Size.Y.Offset==470,'reset failed')
 assert(hub.OpenButton and #hub._connections>0,'reopen and drag connections missing')
-return 'UI startup, six populated tabs, switching, close/reopen, resize/reset passed'
+return 'UI startup, seven populated tabs, switching, close/reopen, resize/reset passed'
 `;
 try { console.log(await state.loadstring(setup+'\nlocal function runUI()\n'+prefix+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); } catch(error) {console.error(String(error));process.exitCode=1;}
 state.destroy();

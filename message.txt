@@ -18,6 +18,183 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- REMOTE CATALOG BEGIN: names/types/paths from the user's Remotes reborn.txt.
+-- Discovery is read-only. Captured names do not define request payloads.
+local RemoteCatalog = (function()
+    local catalog = { Entries = {
+        { Path = "ReplicatedStorage.AutoReplantSetting", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.BlockRemoverRequest", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.CmdrEvent", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.CmdrFunction", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.CmdrIsAdmin", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.FireworkFx", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.Remotes.BlockBroken", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.Remotes.BlockHit", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.Remotes.BlockPlaced", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.Remotes.InventoryUpdate", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.Remotes.Notify", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.Remotes.OpenUI", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.Remotes.WorkerCollect", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.Remotes.WorkerWithdraw", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.SessionHandshake", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.SpellFx", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.StaffInventoryView", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_BREAK", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_HIT_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.BLOCK_PLACE_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_BLOCK_WORKER_DEPOSIT_TOOL_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CAST_FISHING_ROD", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHANGE_ISLAND_ACCESS_LEVEL", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_SET_DIRECTION", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CHEST_TRANSACTION", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_CRAFT_TOOL_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_DROP_TOOL_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EAT_FOOD", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_EDIT_VENDING_MACHINE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_FERTILIZE_BLOCK", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GET_GAME_UPDATES", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_GO_HOME", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HARVEST_CROP_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_HOTBAR_LAYOUT_UPDATE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_ISLAND_RESET_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_LAUNCH_ROCKET", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_MERCHANT_ORDER_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PLOW_BLOCK_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_PULL_FISHING_ROD", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_READ_BLUEPRINT_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_REPORT_METRICS", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_RESET_CHARACTER", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_PROCESSOR_RECIPE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SET_TUTORIAL_PROGRESS", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SHOOT_SPELL", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_SWING_SWORD", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOGGLE_DOOR_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TOOL_PICKUP_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_TRIM_TREE_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_UNLOCKED_RECIPES_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_CUSTOMER_TRANSACTION", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_DEPOSIT_COINS", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_EDIT_TRANSACTION", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VENDING_MACHINE_WITHDRAW_COINS", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_VISIT_ISLAND_REQUEST", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_BLOCK", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CLIENT_WATER_STORAGE_TRANSACTION", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_ACCEPT", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CAN_JOIN_PRIVATE_SERVER", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_CREATE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_DECLINE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_GET_STATE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_INVITE_RECEIVED", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_LEAVE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_REMOVE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.COOP_STATE_CHANGED", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.CROP_HARVEST", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.DEVELOPER_WARNING", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_DAMAGE", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.ENTITY_MOVE", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FETCH_ONLINE_ISLANDS", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FINAL_WARNING", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.FISH_REWARD_ANIMATION", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.GRANTED_ISLAND_ACCESS", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_FILL_HOTBAR", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.INVENTORY_UPDATE", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_CONTROL_STATUS", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_EJECT_DISK", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_INSERT_DISK", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_ADD", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.JUKEBOX_PLAYLIST_REMOVE", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.MY_PUBLISHED_ISLAND", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAYER_LOGIN", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLAY_SOUND", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PLOW_BLOCK", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PORTAL_ENTER", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.PUBLISH_ONLINE_ISLAND", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_CHAT_MESSAGE", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_NOTIFICATION", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.SEND_TEXT_DROP", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.UNLIST_PUBLISHED_ISLAND", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VIP_REWARDS", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_ONLINE_ISLAND", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out._NetManaged.VISIT_RANDOM_ONLINE_ISLAND", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.remote.sbr", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.BuildExperiencePlaytestTeleport", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.CanChatWith", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.CreateOrJoinParty", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.ExpChatFeatureValueChanged", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.ExperienceChat.WhisperChat", Class = "RemoteFunction" },
+        { Path = "RobloxReplicatedStorage.GetServerChannel", Class = "RemoteFunction" },
+        { Path = "RobloxReplicatedStorage.GetServerType", Class = "RemoteFunction" },
+        { Path = "RobloxReplicatedStorage.GetServerVersion", Class = "RemoteFunction" },
+        { Path = "RobloxReplicatedStorage.IntegrityCheckProcessorKey2_AutomaticAssetCaptureSender_LocalizationService", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.IntegrityCheckProcessorKey2_DynamicTranslationSender_LocalizationService", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.IntegrityCheckProcessorKey2_LocalizationTableAnalyticsSender_LocalizationService", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.IntegrityCheckProcessorKey2_TextSafetyAnalyticsSender_LocalizationService", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.ModerateChatSettingUpdated", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.NewPlayerCanManageDetails", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.NewPlayerGroupDetails", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.PlatformLeaderboardPush", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.PlatformLeaderboardTabClosed", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.PlatformLeaderboardTabOpened", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.ReferredPlayerJoin", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.RequestDeviceCameraOrientationCapability", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.RequestPlayerProfileSettings", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.SendPlayerBlockList", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.SendPlayerProfileSettings", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.ServerSideBulkPurchaseEvent", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.SetDialogInUse", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.SetPlayerBlockList", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.ShowFriendJoinedPlayerToast", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.ShowPlayerJoinedFriendsToast", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.UpdateLocalPlayerBlockList", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.UpdatePlayerBlockList", Class = "RemoteEvent" },
+        { Path = "RobloxReplicatedStorage.UpdatePlayerProfileSettings", Class = "RemoteEvent" },
+    } }
+    function catalog.FindPath(path, expectedClass)
+        local ok, found = pcall(function()
+            local parts = string.split(path, ".")
+            local node = game:FindFirstChild(parts[1])
+            for i = 2, #parts do
+                node = node and node:FindFirstChild(parts[i])
+                if not node then return nil end
+            end
+            if expectedClass and node and not node:IsA(expectedClass) then return nil end
+            return node
+        end)
+        return ok and found or nil
+    end
+    function catalog.FindNamed(name, expectedClass)
+        local base = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out"
+        local exact = catalog.FindPath(base .. "._NetManaged." .. name, expectedClass)
+        if exact then return exact end
+        local out = catalog.FindPath(base)
+        if not out then return nil end
+        for _, child in ipairs(out:GetDescendants()) do
+            if child.Name == name and child:IsA(expectedClass) then return child end
+        end
+        return nil
+    end
+    function catalog.FindLegacy(name)
+        return catalog.FindPath("ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.ULrMeokpcNr7uD." .. name, "RemoteFunction")
+    end
+    function catalog.Refresh()
+        local found = 0
+        for _, entry in ipairs(catalog.Entries) do
+            entry.Instance = catalog.FindPath(entry.Path, entry.Class)
+            -- A renamed grouping folder may still contain the exact named remote.
+            if not entry.Instance and string.find(entry.Path, ".out._NetManaged.", 1, true) then
+                entry.Instance = catalog.FindNamed(string.match(entry.Path, "([^.]+)$"), entry.Class)
+            end
+            if entry.Instance then found += 1 end
+        end
+        return found
+    end
+    return catalog
+end)()
+-- REMOTE CATALOG END
+
 --------------------------------------------------------------------
 -- Config
 --------------------------------------------------------------------
@@ -274,6 +451,7 @@ local woodPage = createPage("Wood Farm")
 local minePage = createPage("Mining")
 local statsPage = createPage("Stats")
 local settingsPage = createPage("Settings")
+local remotesPage = createPage("Remotes")
 
 local function showTab(name)
     activeTab = name
@@ -494,13 +672,7 @@ local function applyBait()
         return false
     end
     local ok, result = pcall(function()
-        local net = game:GetService("ReplicatedStorage"):FindFirstChild("rbxts_include")
-        local nodeModules = net and net:FindFirstChild("node_modules")
-        local rbxts = nodeModules and nodeModules:FindFirstChild("@rbxts")
-        local netFolder = rbxts and rbxts:FindFirstChild("net")
-        local outFolder = netFolder and netFolder:FindFirstChild("out")
-        local remoteGroup = outFolder and outFolder:FindFirstChild("ULrMeokpcNr7uD")
-        local remote = remoteGroup and remoteGroup:FindFirstChild("raqRasAwcny1zh")
+        local remote = RemoteCatalog.FindLegacy("raqRasAwcny1zh")
         assert(remote and remote:IsA("RemoteFunction"), "bait remote unavailable")
         return remote:InvokeServer({
             TrNhTTgExIb1Bg = "06105b98-6d2f-40fb-9979-fbd1b925fe6daa81356f-b501-468d-80f0-5871006ce00a",
@@ -760,6 +932,30 @@ track(resetUI.Activated:Connect(function()
     hub:_fitToScreen(true)
     hub:_clampToScreen()
 end))
+
+-- Captured remotes are visible here; this page never sends server requests.
+RemoteCatalog.Summary = label({ Parent = remotesPage, Text = "Remote discovery",
+    TextSize = 13, Size = UDim2.new(1, -12, 0, 24), Position = UDim2.fromOffset(6, 4) })
+RemoteCatalog.RefreshButton = button({ Parent = remotesPage, Text = "Refresh remotes",
+    TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 34) })
+RemoteCatalog.Note = label({ Parent = remotesPage,
+    Text = "Discovery only. Named mining, harvesting, planting and fishing requests need captured arguments before they can be sent.",
+    TextSize = 11, Color = COLORS.muted, Size = UDim2.new(1, -12, 0, 56), Position = UDim2.fromOffset(6, 74) })
+RemoteCatalog.Note.TextWrapped = true
+for i, entry in ipairs(RemoteCatalog.Entries) do
+    entry.Label = label({ Parent = remotesPage, Text = entry.Path,
+        TextSize = 11, Size = UDim2.new(1, -12, 0, 28), Position = UDim2.fromOffset(6, 138 + (i - 1) * 28) })
+end
+function RemoteCatalog.RefreshUI()
+    local found = RemoteCatalog.Refresh()
+    RemoteCatalog.Summary.Text = string.format("Remotes found: %d / %d", found, #RemoteCatalog.Entries)
+    for _, entry in ipairs(RemoteCatalog.Entries) do
+        entry.Label.Text = (entry.Instance and "OK  " or "Missing  ") .. string.match(entry.Path, "([^.]+)$") .. "  [" .. entry.Class .. "]"
+        entry.Label.TextColor3 = entry.Instance and COLORS.good or COLORS.muted
+    end
+end
+track(RemoteCatalog.RefreshButton.Activated:Connect(RemoteCatalog.RefreshUI))
+RemoteCatalog.RefreshUI()
 
 -- Reflect restored preference values in the controls.
 replantToggle.Text = CONFIG.AutoReplant and "AUTO-REPLANT: ON" or "AUTO-REPLANT: OFF"
@@ -1095,33 +1291,16 @@ local function GetNil(Name, DebugId)
 	return nil
 end
 
-local function getNetFolder()
-	local ok, folder = pcall(function()
-		return ReplicatedStorage
-			:WaitForChild("rbxts_include", 5)
-			:WaitForChild("node_modules", 5)
-			:WaitForChild("@rbxts", 5)
-			:WaitForChild("net", 5)
-			:WaitForChild("out", 5)
-			:WaitForChild("ULrMeokpcNr7uD", 5)
-	end)
-	return ok and folder or nil
-end
-
 local blockRemote = nil
 local modelRemote = nil
 local layoutRemote = nil
 local plantRemote = nil
 
 local function resolveRemotes()
-	local folder = getNetFolder()
-	if not folder then
-		return false
-	end
-	blockRemote = folder:FindFirstChild("OEzzgCCBzocxJw")
-	modelRemote = folder:FindFirstChild("hFuV0Z1w601mXP")
-	layoutRemote = folder:FindFirstChild("RZQQNNDRUvfj1N")
-	plantRemote = folder:FindFirstChild("ohy6O10QKzyGZE")
+    blockRemote = RemoteCatalog.FindLegacy("OEzzgCCBzocxJw")
+    modelRemote = RemoteCatalog.FindLegacy("hFuV0Z1w601mXP")
+    layoutRemote = RemoteCatalog.FindLegacy("RZQQNNDRUvfj1N")
+    plantRemote = RemoteCatalog.FindLegacy("ohy6O10QKzyGZE")
 	return blockRemote ~= nil or modelRemote ~= nil
 end
 
@@ -1535,7 +1714,7 @@ end
 
 local function harvestLoop(myCycle)
 	if not resolveRemotes() then
-		setStatus("Mine remotes not found – re-spy with Cobalt", COLORS.bad)
+		setStatus("Mining request unavailable; see Remotes. Named requests need captured arguments.", COLORS.bad)
 		return
 	end
 

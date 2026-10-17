@@ -121,5 +121,5 @@ function services.UserInputService:GetMouseLocation() return vec(300,300) end
 services.TweenService={Create=function(_,object,_,props)
  return {Completed=signal(),Play=function() for k,v in pairs(props) do object[k]=v end end}
 end}
-local game={GetService=function(_,name) return services[name] or {} end}
+local game={FindFirstChild=function(_,name) return services[name] end,GetService=function(_,name) return services[name] or {} end}
 local workspace={CurrentCamera={ViewportSize=vec(1920,1080)}}
