@@ -331,3 +331,5 @@ Wood Farm now has its own Mode dropdown: Normal (default), Walk, Tween and Telep
 Build rod-return-9 automatically selects an owned fishing rod whenever Fishing is ON, no bobber is active and bait is not queued/busy. This covers startup directly from equipped bait and later bait handoffs where no prior rod was saved. It verifies actual selection before casting, does not toggle an equipped rod off, and checks Stop/character changes around equipping. Missing rods or blocked equipping show a status and retry. Fishing OFF does not select tools. Each account still needs its own learned bait request; another account's session context is rejected.
 
 Anti AFK now starts ON automatically at launch. Settings can turn it off; Stop All still disables it and disconnects its idle listener. Farming and fishing remain off at launch.
+
+Build bait-click-10 ignores Auto Bait toggle activations during its own synthetic mouse press/release, preventing accidental self-cancellation when host coordinates hit the hub.

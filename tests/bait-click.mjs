@@ -39,9 +39,10 @@ reset();objects={{IsA=function(_,class) return class=='GuiButton' end}};assert(n
 reset();moveFails=true;assert(RemoteCatalog.ClickBaitTool(tool)==nil and #events==0,'unavailable movement must return before any button press')
 reset();moveFails=true
 mousemoveabs=function(x,y) assert(x==800 and y==300);table.insert(events,'host-move') end
-mouse1press=function() table.insert(events,'host-down') end
-mouse1release=function() table.insert(events,'host-up') end
+mouse1press=function() assert(RemoteCatalog.BaitMouseInput,'synthetic press must guard UI activation');table.insert(events,'host-down') end
+mouse1release=function() assert(RemoteCatalog.BaitMouseInput,'synthetic release must still guard UI activation');table.insert(events,'host-up') end
 assert(RemoteCatalog.ClickBaitTool(tool) and table.concat(events,',')=='host-move,host-down,host-up','host mouse backend must work when virtual input is blocked')
+assert(not RemoteCatalog.BaitMouseInput,'input guard must clear after release')
 return 'Bait click: one backend, UI/chat protection, Stop/error release, unavailable input and host fallback passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'bait-click',true)());}finally{state.destroy();}

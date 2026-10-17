@@ -111,6 +111,10 @@ for _,button in ipairs({toggle,harvestToggle,woodToggle,mineToggle,baitToggle}) 
  assert(string.find(button.Text,'OFF',1,true),'actual switch failed to turn OFF')
  stepWorkers()
 end
+RemoteCatalog.BaitMouseInput=true
+baitToggle.Activated:Fire()
+assert(not baitEnabled,'synthetic bait input must not enable its own toggle')
+RemoteCatalog.BaitMouseInput=false
 local beforeManualBait=baitApplications
 setBaitEnabled(true)
 assert(baitEnabled and baitApplications==beforeManualBait+1,'manual bait must apply immediately')
