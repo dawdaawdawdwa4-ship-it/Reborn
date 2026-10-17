@@ -11,7 +11,7 @@ local function runScenario(scenario)
  local harvestCycleId=1
  local harvestEnabled,woodEnabled,mineEnabled=true,false,false
  local gui={Parent=true}
- local CONFIG={MineScanInterval=.2,MineDelay=.123,CropRange=30,WoodRange=30,MineRange=30,PlantEnabled=true,AutoReplant=true,PlantType='wheat'}
+ local CONFIG={MineScanInterval=.2,MineDelay=.123,HarvestWalk=true,CropRange=30,WoodRange=30,MineRange=30,PlantEnabled=true,AutoReplant=true,PlantType='wheat'}
  local COLORS={muted=1,warn=2,good=3}
  local FarmState={Cooldowns={}}
  local counted,planted=0,0
@@ -21,7 +21,8 @@ local function runScenario(scenario)
  local woodStatus={}
  local function setStatus(message) lastStatus=message end
  local function resolveRemotes() end
- local zero=setmetatable({X=0,Y=0,Z=0},{__sub=function() return {Magnitude=0} end})
+ local walked=false
+ local zero=setmetatable({X=0,Y=0,Z=0},{__sub=function() return {Magnitude=(scenario=="walk-crop" or scenario=="walk-cancel") and not walked and 25 or 0} end})
  local originalFrame={rotation='unchanged'}
  local target={Name='wheat',Parent=true,attributes={Mature=true},Position=zero,children={}}
  function target:IsA(c) return c=='Model' end
@@ -58,13 +59,13 @@ local function runScenario(scenario)
   elseif dt==CONFIG.MineDelay or dt==.08 or dt==CONFIG.MineScanInterval or scenario=='prompt-cancel' then harvestCycleId+=1 end
  end}
  local function fireModelHarvest(obj)
-  if scenario=='removed' or scenario=='learned-prompt' or scenario=='server-replant' or scenario=='multi-carrot' then obj.Parent=nil end
+  if scenario=='walk-crop' or scenario=='removed' or scenario=='learned-prompt' or scenario=='server-replant' or scenario=='multi-carrot' then obj.Parent=nil end
   if scenario=='regrow' then obj.attributes.Mature=false end
   if scenario=='cancel' then obj.Parent=nil;harvestCycleId+=1 end
   return true
  end
  local function fireBlockMine() if scenario=='blocked-wood' then return false,'Obstacle blocks trunk' end;if scenario=='wood-equip' then assert(selectedTool==newTool and time>=.1,'must allow changed axe to equip before hitting');target.Parent=nil end;return true end
- local RemoteCatalog={WoodReach=function() return true end,RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end,HarvestEndpoint=function() return nil end}
+ local RemoteCatalog={Navigation={Approach=function(_,obj,reach,active) assert(obj==target and reach==10 and active());walked=true;if scenario=="walk-cancel" then harvestCycleId+=1;return false,"Walking stopped" end;return true end},GameModule=function() return nil end,WoodReach=function() return true end,RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end,HarvestEndpoint=function() return nil end}
  RemoteCatalog.CallFruit=function(model,obj)
   assert(model==fruitTree and obj==target,'fruit target pair must be preserved')
   obj.Parent=nil
@@ -80,6 +81,8 @@ local function runScenario(scenario)
  end
  ${loop}
  harvestLoop(1)
+ if scenario=='walk-crop' then assert(walked and counted==1 and planted==1,'out-of-range crop must be approached before harvest') end
+ if scenario=='walk-cancel' then assert(walked and counted==0 and planted==0,'Stop during navigation must prevent harvest and replant') end
  if scenario=='berry-persistent' then assert(counted==0 and planted==0 and time<.5 and FarmState.Cooldowns[target]>time,'persistent berry must advance quickly without false counts, replanting or immediate repeat') end
  if scenario=='unchanged' then assert(counted==0 and planted==0,'acknowledged request must not count as harvested') end
  if scenario=='learned-prompt' then assert(counted==1 and planted==1 and not released,'learned crop request must take precedence over prompt') end
@@ -94,7 +97,7 @@ local function runScenario(scenario)
  if scenario=='cancel' then assert(counted==0 and planted==0,'cancelled cycle must not count/replant') end
  if scenario=='prompt-cancel' then assert(released and not held and counted==0 and planted==0,'Stop must release prompt and cancel post-processing') end
 end
-for _,scenario in ipairs({'berry-persistent','unchanged','removed','regrow','cancel','prompt-cancel','learned-prompt','server-replant','fruit','fruit-cancel','wood-equip','blocked-wood','multi-carrot'}) do runScenario(scenario) end
+for _,scenario in ipairs({'walk-crop','walk-cancel','berry-persistent','unchanged','removed','regrow','cancel','prompt-cancel','learned-prompt','server-replant','fruit','fruit-cancel','wood-equip','blocked-wood','multi-carrot'}) do runScenario(scenario) end
 return 'Harvest loop passed: no false counts, confirmed removal/replant, regrow in place, Stop/cycle cancellation and prompt release'
 `;
 const state=await LuauState.createAsync();

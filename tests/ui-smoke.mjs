@@ -21,6 +21,7 @@ const controls=source.slice(source.indexOf('setEnabled = function(state)'),sourc
 const farmBindings=source.slice(source.indexOf('track(harvestToggle.Activated'),source.indexOf('track(cropSelect.Activated'));
 const fishBindings=source.slice(source.indexOf('track(toggle.Activated'),source.indexOf('for modeName, modeButton'));
 const wiring=`
+RemoteCatalog.Navigation={Stop=function() end}
 local cycleId,harvestCycleId=0,0
 local stats={activeTime=0}
 local setEnabled,setHarvestEnabled
