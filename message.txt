@@ -156,6 +156,7 @@ local RemoteCatalog = (function()
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.XPQExfDjDSUkYv", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.wRLHwn9X7tFCOv.wKCeyGAO4SqdMY", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.EJWEYYJBHKFykg.GDbJa5Ix6UZ8mg", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.skLtAq4BgI4AnK.yrIxXd1d5bBQji", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.u71Y03otNIwj9g", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.qn1PInnZJmfDd1", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.xC1fgcQXCzOPJ7.nrGQVrxpfb3dKr", Class = "RemoteFunction" },
@@ -243,15 +244,20 @@ local RemoteCatalog = (function()
         return not recorder.CanUseBaitBinding or recorder:CanUseBaitBinding()
     end
     function catalog.LiveRecorder(bindingName)
-        local recorder = catalog.Recorder
-        local binding = recorder and recorder[bindingName]
-        if binding and binding.Remote and binding.Remote.Parent and (bindingName~="BaitBinding" or catalog.BaitRecorderValid(recorder)) then return recorder end
-        local ok, existing = pcall(function()
-            local environment = type(getgenv) == "function" and getgenv() or _G
+        local recorder=catalog.Recorder
+        local binding=recorder and recorder[bindingName]
+        local localValid=binding and binding.Remote and binding.Remote.Parent
+            and (bindingName~="BaitBinding" or catalog.BaitRecorderValid(recorder))
+        if bindingName~="BaitBinding" and localValid then return recorder end
+        local ok,existing=pcall(function()
+            local environment=type(getgenv)=="function" and getgenv() or _G
             return environment.RebornCapture
         end)
-        binding = ok and existing and existing[bindingName]
-        if binding and binding.Remote and binding.Remote.Parent and (bindingName~="BaitBinding" or catalog.BaitRecorderValid(existing)) then return existing end
+        local other=ok and existing and existing[bindingName]
+        local otherValid=other and other.Remote and other.Remote.Parent
+            and (bindingName~="BaitBinding" or catalog.BaitRecorderValid(existing))
+        if otherValid and (not localValid or bindingName~="BaitBinding" or (other.ObservedAt or 0)>=(binding.ObservedAt or 0)) then return existing end
+        if localValid then return recorder end
     end
     function catalog.PlacementClient()
         local requests = catalog.GameModule("ReplicatedStorage.TS.network.requests", "Requests")
@@ -305,12 +311,12 @@ local RemoteCatalog = (function()
         return recorder
     end
     function catalog.CallBait(tool, prepared)
-        catalog.AcceptFreshBaitBinding()
+        local recorder=catalog.AcceptFreshBaitBinding()
         if catalog.BaitNeedsRefresh and catalog.ActivateBait then
             catalog.BaitTransport="normal input (refreshing request)"
             return catalog.ActivateBait(tool,prepared)
         end
-        local recorder = catalog.Recorder
+        recorder=recorder or catalog.Recorder
         if not catalog.BaitRecorderValid(recorder) then recorder=nil end
         if not (recorder and recorder.BaitBinding and recorder.Bait) then
             local ok, existing = pcall(function()
@@ -463,13 +469,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 19 and previous.Resume then
+if previous and previous.Version == 20 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 19, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 20, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -495,6 +501,7 @@ local exactNames = {
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
     qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
+    yrIxXd1d5bBQji = true,
     GDbJa5Ix6UZ8mg = true,
     wKCeyGAO4SqdMY = true,
     XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
@@ -802,7 +809,7 @@ function capture:Place(body)
 end
 local function learnBait(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
-    local known=remote.Name=="GDbJa5Ix6UZ8mg" or remote.Name=="wKCeyGAO4SqdMY" or remote.Name=="XPQExfDjDSUkYv" or remote.Name=="raqRasAwcny1zh"
+    local known=remote.Name=="yrIxXd1d5bBQji" or remote.Name=="GDbJa5Ix6UZ8mg" or remote.Name=="wKCeyGAO4SqdMY" or remote.Name=="XPQExfDjDSUkYv" or remote.Name=="raqRasAwcny1zh"
         or string.find(string.lower(remote.Name),"bait",1,true)
     local group=remote.Parent
     if not known and (not group or not group.Parent or group.Parent.Name~="out") then return false end
@@ -816,7 +823,7 @@ local function learnBait(remote, method, args)
     local owner=game:GetService("Players").LocalPlayer
     if not owner or not owner.Character then return false end
     capture.BaitBinding = {Remote=remote,Method=method,Args=cloneArguments(args),Target=tool,
-        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId}
+        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
     return true
 end
 function capture:CanUseBaitBinding()
@@ -1666,7 +1673,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-refresh-7",
+    Subtitle = "bait-latest-8",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },

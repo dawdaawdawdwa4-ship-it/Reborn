@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 19 and previous.Resume then
+if previous and previous.Version == 20 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 19, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 20, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -40,6 +40,7 @@ local exactNames = {
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
     qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
+    yrIxXd1d5bBQji = true,
     GDbJa5Ix6UZ8mg = true,
     wKCeyGAO4SqdMY = true,
     XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
@@ -347,7 +348,7 @@ function capture:Place(body)
 end
 local function learnBait(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
-    local known=remote.Name=="GDbJa5Ix6UZ8mg" or remote.Name=="wKCeyGAO4SqdMY" or remote.Name=="XPQExfDjDSUkYv" or remote.Name=="raqRasAwcny1zh"
+    local known=remote.Name=="yrIxXd1d5bBQji" or remote.Name=="GDbJa5Ix6UZ8mg" or remote.Name=="wKCeyGAO4SqdMY" or remote.Name=="XPQExfDjDSUkYv" or remote.Name=="raqRasAwcny1zh"
         or string.find(string.lower(remote.Name),"bait",1,true)
     local group=remote.Parent
     if not known and (not group or not group.Parent or group.Parent.Name~="out") then return false end
@@ -361,7 +362,7 @@ local function learnBait(remote, method, args)
     local owner=game:GetService("Players").LocalPlayer
     if not owner or not owner.Character then return false end
     capture.BaitBinding = {Remote=remote,Method=method,Args=cloneArguments(args),Target=tool,
-        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId}
+        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
     return true
 end
 function capture:CanUseBaitBinding()

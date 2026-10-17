@@ -286,6 +286,14 @@ assert(capture.LearnBaitOnly and not capture.BaitBinding and #capture.Records==q
 installedHook(rotatedBait,{o2PTfAjMDqKi5j='quiet-live-context',YcuvKDybdDE9ik={tool=baitTool}})
 assert(capture.Stopped and not capture.LearnBaitOnly and #capture.Records==quietBaitCount,'automatic bait learner must stop after acquiring one template')
 assert(capture:Bait(nextBait) and rotatedArgs.o2PTfAjMDqKi5j=='quiet-live-context','quiet learned binding must remain usable after capture stops')
+capture:Resume()
+local latestBait=remote('yrIxXd1d5bBQji')
+latestBait.Parent={Name='skLtAq4BgI4AnK',Parent={Name='out',Parent=game}}
+local latestPacket
+latestBait.InvokeServer=function(_,packet) latestPacket=packet;return true end
+installedHook(latestBait,{GzIfeyeyrx62Dp='latest-live-context',KjPN9j5XhwOHKO={tool=baitTool}})
+assert(capture:Bait(nextBait) and latestPacket.GzIfeyeyrx62Dp=='latest-live-context' and latestPacket.KjPN9j5XhwOHKO.tool==nextBait,'latest exact captured envelope must retain context and replace the actual bait tool')
+assert(type(capture.BaitBinding.ObservedAt)=='number','bait learning must timestamp the observed binding')
 local sentBefore=#calls
 local originalCharacter=gamePlayer.Character
 local originalUserId=gamePlayer.UserId

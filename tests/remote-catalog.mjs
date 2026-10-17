@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==141)
+assert(#RemoteCatalog.Entries==142)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -149,6 +149,16 @@ local globalBaitCalls=0
 context.RebornCapture={BaitBinding={},Bait=function(_,tool) assert(tool==bait);globalBaitCalls+=1;return true end}
 assert(applyBait() and globalBaitCalls==1,'standalone learned bait binding must survive hub reload')
 context.RebornCapture=previousRecorder
+local savedLocalRecorder=RemoteCatalog.Recorder
+local savedGlobalRecorder=context.RebornCapture
+local staleBinding={Remote={Parent=true,Name='old-bait'},ObservedAt=1}
+local latestBinding={Remote={Parent=true,Name='yrIxXd1d5bBQji'},ObservedAt=2}
+RemoteCatalog.Recorder={BaitBinding=staleBinding,Bait=function() error('stale recorder must not send') end}
+local latestSends=0
+context.RebornCapture={BaitBinding=latestBinding,Bait=function(_,tool) assert(tool==bait);latestSends+=1;return true end}
+RemoteCatalog.BaitNeedsRefresh=true;RemoteCatalog.BaitFailedBinding=staleBinding
+assert(RemoteCatalog.CallBait(bait) and latestSends==1 and not RemoteCatalog.BaitNeedsRefresh,'newer standalone recorder must override stale hub binding and clear the failed template')
+RemoteCatalog.Recorder=savedLocalRecorder;context.RebornCapture=savedGlobalRecorder
 local oldRecorder=context.RebornCapture
 local learnedRemote={Parent=true}
 local learnedPlacementCalls=0
@@ -256,7 +266,7 @@ response=true
 assert(RemoteCatalog.CallHarvest(cropTarget) and requestedName=='CLIENT_HARVEST_CROP_REQUEST','native game require fallback must restore harvest endpoint')
 assert(RemoteCatalog.CallMine(actualBlock) and requestedName=='BLOCK_HIT_REQUEST','native game require fallback must restore wood/mining endpoint')
 require=gameRequire;getrenv=nil
-return '141 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '142 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}
