@@ -115,7 +115,9 @@ assert(setHotbarLayout(layout)==false and sent==nil,'hotbar must not use stale I
 assert(fireBlockMine(actualBlock)==false and sent==nil,'missing ID must not send stale request')
 local inputCalls=0
 RemoteCatalog.InputMine=function(target) inputCalls+=1;assert(target==actualBlock);return true end
-assert(RemoteCatalog.CallMine(actualBlock) and inputCalls==1,'missing session must use tool input')
+RemoteCatalog.Recorder={LearnWoodOnly=true}
+assert(RemoteCatalog.CallMine(actualBlock,'wood') and inputCalls==1,'automatic wood learning must not block normal axe input')
+RemoteCatalog.Recorder=nil
 local oldChildren=out.children;out.children={}
 assert(RemoteCatalog.CallMine(actualBlock) and inputCalls==2,'changed remote group must use tool input')
 out.children=oldChildren

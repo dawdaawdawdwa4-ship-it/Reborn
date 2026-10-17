@@ -29,6 +29,7 @@ local mineToolPreference="Auto best pickaxe"
 local UserInputService={GetFocusedTextBox=function() return focused end}
 local game={}
 local events={}
+local mousemoveabs,mouse1press,mouse1release
 local failPress,failWait,stopAt,waits=false,false,nil,0
 local VirtualInputManager={SendMouseMoveEvent=function(_,x,y) table.insert(events,'move') end,
  SendMouseButtonEvent=function(_,x,y,button,down)
@@ -91,6 +92,16 @@ assert(not reachable and string.find(reason,'Move closer',1,true),'scan range mu
 target.Position=vec(5);assert(RemoteCatalog.WoodReach(target,root.Position),'nearby tree must remain hittable')
 RemoteCatalog.GameModule=function() return 3 end
 assert(not RemoteCatalog.WoodReach(target,root.Position),'native game reach must override fallback')
+RemoteCatalog.GameModule=function() return nil end
+target.Position=vec(5);hit=target;workspace.Raycast=function() return {Instance=target} end
+VirtualInputManager.SendMouseMoveEvent=function() error('VIM blocked') end
+mousemoveabs=function(x,y) assert(x==200 and y==200);table.insert(events,'host-move') end
+mouse1press=function() table.insert(events,'host-down');if failPress then error('host denied') end end
+mouse1release=function() table.insert(events,'host-up') end
+reset();assert(resourceInputHit(target) and table.concat(events,',')=='host-move,host-down,host-up','host input must work when virtual input is blocked')
+reset();stopAt=2;assert(not resourceInputHit(target) and events[#events]=='host-up','Stop during host press must release it')
+reset();failPress=true;assert(not resourceInputHit(target) and events[#events]=='host-up','host press failure must still release')
+reset();hub.Root.Visible=true;assert(not resourceInputHit(target) and #events==0,'host input must never click through hub');hub.Root.Visible=false
 return 'Resource input: mining/wood, aim, reach, visibility, obstruction, UI protection, matching tools, Stop and error release passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(test,'resource-input',true)());}finally{state.destroy();}

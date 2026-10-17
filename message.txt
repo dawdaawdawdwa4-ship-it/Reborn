@@ -331,9 +331,6 @@ local RemoteCatalog = (function()
         return ok,result
     end
     function catalog.CallMine(target, category)
-        if category=="wood" and catalog.Recorder and catalog.Recorder.LearnWoodOnly then
-            return false,"Chop one tree manually to learn this session; Wood Farm will continue automatically"
-        end
         local recorder=catalog.LiveRecorder(category == "wood" and "WoodHitBinding" or "MineHitBinding")
         if recorder and recorder.Hit then return recorder:Hit(target,category) end
         local endpoint = catalog.GameEndpoint("BLOCK_HIT_REQUEST")
@@ -1557,7 +1554,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "Farming Hub · bait-account-3",
+    Subtitle = "Farming Hub · wood-input-4",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2439,7 +2436,7 @@ function RemoteCatalog.UpdateCaptureUI()
         RemoteCatalog.CaptureToggle.Text = RemoteCatalog.CaptureAttempted and "Retry capture setup" or "Start capture (optional)"
         return
     end
-    local state = recorder.LearnBaitOnly and "Waiting for one bait use (no call log)" or recorder.LearnWoodOnly and "Waiting for one manual chop (no call log)" or (recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused"))
+    local state = recorder.LearnBaitOnly and "Waiting for one bait use (no call log)" or recorder.LearnWoodOnly and "Learning axe request; normal input stays available (no call log)" or (recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused"))
     local learned = {}
     for _, name in ipairs({"OEzzgCCBzocxJw", "ohy6O10QKzyGZE", "raqRasAwcny1zh", "RZQQNNDRUvfj1N"}) do
         if RemoteCatalog.RequestId(name) then table.insert(learned, RemoteCatalog.VerifiedRequests[name]) end
@@ -3349,12 +3346,16 @@ local function resourceInputHit(target)
             end
         end
     end
-    local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
-    if not moved then return false, "Tool input unavailable in this environment" end
+    local hostMouse=category~="crop" and type(mousemoveabs)=="function" and type(mouse1press)=="function" and type(mouse1release)=="function"
+    local moved = pcall(function()
+        if hostMouse then mousemoveabs(x,y) else VirtualInputManager:SendMouseMoveEvent(x,y,game) end
+    end)
+    if not moved then return false, "Tool input unavailable; record one manual hit to learn this session's request" end
     task.wait(category == "crop" and 0.1 or 0.03)
     if not active() or category ~= "crop" and tool.Parent ~= char then return false, "Resource action stopped or tool changed" end
     local function input(down)
         if category == "crop" then VirtualInputManager:SendKeyEvent(down, Enum.KeyCode.F, false, game)
+        elseif hostMouse then if down then mouse1press() else mouse1release() end
         else VirtualInputManager:SendMouseButtonEvent(x, y, 0, down, game, 0) end
     end
     local pressed = pcall(input, true)
@@ -3362,7 +3363,7 @@ local function resourceInputHit(target)
     -- Always release even if Stop, UI cleanup or an input error happened during the press.
     local released = pcall(input, false)
     if not pressed or not held or not released then return false, "Tool input unavailable in this environment" end
-    return active(), "Normal tool input"
+    return active(), hostMouse and "Host mouse tool input" or "Normal tool input"
 end
 RemoteCatalog.InputMine = resourceInputHit
 RemoteCatalog.InputHarvest = resourceInputHit
