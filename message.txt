@@ -1534,7 +1534,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "Farming Hub",
+    Subtitle = "Farming Hub · bait-check-1",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -1846,6 +1846,22 @@ local baitInfo = label({
 baitInfo.TextWrapped = true
 
 -- BAIT TOOL INPUT BEGIN
+RemoteCatalog.BaitCount=function(tool)
+    if not tool then return nil end
+    local keys={amount=true,quantity=true,count=true,stack=true,stacksize=true}
+    local ok,attributes=pcall(function() return tool:GetAttributes() end)
+    if ok then
+        for name,value in pairs(attributes) do
+            if keys[string.lower(name)] and type(value)=="number" and value>=0 then return value end
+        end
+    end
+    local childrenOK,children=pcall(function() return tool:GetChildren() end)
+    if childrenOK then
+        for _,child in ipairs(children) do
+            if keys[string.lower(child.Name)] and (child:IsA("IntValue") or child:IsA("NumberValue")) and child.Value>=0 then return child.Value end
+        end
+    end
+end
 RemoteCatalog.WithBaitTool = function(tool, callback)
     if baitBusy or fishingInputBusy then return false, "Waiting for current rod input" end
     if RemoteCatalog.BobberActive and RemoteCatalog.BobberActive() then return false, "Waiting for the current cast to finish" end
@@ -1862,7 +1878,25 @@ RemoteCatalog.WithBaitTool = function(tool, callback)
         task.wait(0.1)
         if not active() then return end
         if tool.Parent ~= character or character:FindFirstChildOfClass("Tool") ~= tool then error("Bait tool not equipped") end
+        local before=RemoteCatalog.BaitCount(tool)
         sent, detail = callback()
+        if sent then
+            local consumed=false
+            local elapsed=0
+            -- Food activation can complete asynchronously. Keep bait equipped while it finishes.
+            repeat
+                if not active() then sent=false;detail="Auto Bait stopped";return end
+                if character:FindFirstChildOfClass("Tool")~=tool and tool.Parent~=nil then
+                    sent=false;detail="Bait tool changed before consumption";return
+                end
+                local after=RemoteCatalog.BaitCount(tool)
+                consumed=before~=nil and (after~=nil and after<before or before==1 and tool.Parent==nil)
+                if consumed then break end
+                task.wait(.05);elapsed+=.05
+            until elapsed>=2
+            sent=consumed
+            detail=consumed and "bait consumption confirmed" or "Bait use unconfirmed; no quantity decrease detected. Fishing continues."
+        end
     end)
     -- Restore only if bait is still selected; preserve manual selection and respawns.
     if previous and previous ~= tool and player.Character == character then
@@ -1905,6 +1939,11 @@ local function applyBait()
         return false, "bait tool not found"
     end
     RemoteCatalog.BaitOutOfStock=false
+    if RemoteCatalog.BaitCount(baitTool)==0 then
+        RemoteCatalog.BaitOutOfStock=true;RemoteCatalog.BaitPending=false
+        baitInfo.Text="No bait remaining. Fishing continues; checking again in 5s."
+        return false,"bait tool not found"
+    end
     local ok, result = RemoteCatalog.WithBaitTool(baitTool, function() return RemoteCatalog.CallBait(baitTool, true) end)
     if not ok then
         baitInfo.Text = "Bait waiting: " .. tostring(result)
@@ -1913,8 +1952,7 @@ local function applyBait()
             setStatus("Auto Bait failed: " .. tostring(result))
         end
     else
-        baitInfo.Text = result == "tool activation attempted" and "Bait tool activated. Next attempt in 60s; check the game's bait effect."
-            or "Bait request accepted. Refreshes every 60 seconds."
+        baitInfo.Text = "Bait consumption confirmed. Refreshes after 60 seconds."
         baitInfo.TextColor3 = COLORS.good
     end
     return ok, result
@@ -1926,7 +1964,7 @@ local function setBaitEnabled(state)
     baitEnabled = state
     baitCycleId += 1
     local myCycle = baitCycleId
-    baitToggle.Text = baitEnabled and "AUTO BAIT ON  [60s]" or "AUTO BAIT OFF  [60s]"
+    baitToggle.Text = baitEnabled and "AUTO BAIT ON · CHECKING" or "AUTO BAIT OFF  [60s]"
     baitToggle.BackgroundColor3 = baitEnabled and COLORS.on or COLORS.off
     if not baitEnabled then
         setStatus("Auto Bait stopped")

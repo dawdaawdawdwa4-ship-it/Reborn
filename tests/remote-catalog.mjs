@@ -84,6 +84,7 @@ local bait={Name='bait'}
 player={Character={FindFirstChild=function(_,name) if name=='bait' then return bait end end,FindFirstChildOfClass=function() return nil end},FindFirstChildOfClass=function() return nil end}
 ${plantFunction}
 ${layoutFunction}
+RemoteCatalog.BaitCount=function() return nil end
 RemoteCatalog.WithBaitTool=function(tool,callback) return callback() end
 local baitInfo={}
 local COLORS={warn=1,good=2}
