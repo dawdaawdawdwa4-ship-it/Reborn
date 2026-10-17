@@ -227,6 +227,16 @@ assert(baitPacket.wGquKmyB3mV2Cf.tool==baitTool,'bait source packet mutated')
 baitRemote.InvokeServer=function() return {success=false} end
 assert(not capture:Bait(nextBait),'bait rejection must remain failure')
 baitRemote.Parent=nil;assert(not capture:Bait(nextBait),'removed bait remote must not be used')
+local currentBaitRemote=remote('wKCeyGAO4SqdMY')
+local currentBaitArgs
+currentBaitRemote.InvokeServer=function(_,packet) currentBaitArgs=packet;return true end
+local currentBaitPacket={HrGxW0IGeHngmz='current-bait-context',H3ZxjzDRyU5tvI={tool=baitTool,extra=42}}
+installedHook(currentBaitRemote,currentBaitPacket)
+assert(capture:Bait(nextBait),'current bait request must be learned')
+assert(currentBaitArgs.HrGxW0IGeHngmz=='current-bait-context' and currentBaitArgs.H3ZxjzDRyU5tvI.tool==nextBait and currentBaitArgs.H3ZxjzDRyU5tvI.extra==42,'current bait envelope must preserve context and replace actual tool')
+assert(currentBaitPacket.H3ZxjzDRyU5tvI.tool==baitTool,'current bait capture must remain immutable')
+currentBaitRemote.InvokeServer=function() return {success=false} end
+assert(not capture:Bait(nextBait),'current bait rejection must remain a failure')
 capture.MaxCalls=#capture.Records+1
 installedHook(target,{})
 assert(not capture.Active,'record limit failed')

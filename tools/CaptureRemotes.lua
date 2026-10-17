@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 16 and previous.Resume then
+if previous and previous.Version == 17 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 16, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 17, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -40,6 +40,7 @@ local exactNames = {
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
     qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
+    wKCeyGAO4SqdMY = true,
     XPQExfDjDSUkYv = true, -- Supplied bait capture (rotating envelope).
     UctIHHAfsCxxzj = true,
     COtnYCOPUThadM = true, -- Supplied crop-harvest capture (new network group).
@@ -344,11 +345,12 @@ function capture:Place(body)
 end
 local function learnBait(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
-    if remote.Name ~= "XPQExfDjDSUkYv" and remote.Name ~= "raqRasAwcny1zh"
+    if remote.Name ~= "wKCeyGAO4SqdMY" and remote.Name ~= "XPQExfDjDSUkYv" and remote.Name ~= "raqRasAwcny1zh"
         and not string.find(string.lower(remote.Name), "bait", 1, true) then return false end
     local packet = args[1]
     local body = type(packet.wGquKmyB3mV2Cf) == "table" and packet.wGquKmyB3mV2Cf
         or (type(packet.TlSR8Mzd9FLwaZ) == "table" and packet.TlSR8Mzd9FLwaZ or packet)
+    if type(packet.H3ZxjzDRyU5tvI)=="table" then body=packet.H3ZxjzDRyU5tvI end
     local tool = body.tool
     if typeof(tool) ~= "Instance" or not tool:IsA("Tool") or string.lower(tool.Name) ~= "bait" then return false end
     capture.BaitBinding = {Remote=remote,Method=method,Args=cloneArguments(args),Target=tool}
