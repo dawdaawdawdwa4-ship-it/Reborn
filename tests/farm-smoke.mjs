@@ -30,12 +30,13 @@ local stone=node('stone','Part',nil,vec(10,0,0))
 local wheat=node('wheat','Model',nil,vec(8,0,0));wheat.attributes.Mature=true
 local young=node('wheat','Model',nil,vec(3,0,0));young.attributes.Mature=false
 local tree=node('treeOak','Model',nil,vec(20,0,0))
-local farTree=node('treePine','Model',nil,vec(95,0,0))
+local farTree=node('treePine','Model',nil,vec(50,0,0))
 local carrot=node('carrot','Model',nil,vec(4,0,0))
 local blocks=node('Blocks','Folder',{stone,wheat,young,tree,farTree,carrot,node('sapling','Part'),node('grass','Part')})
 local owned=node('7-island','Model',{blocks})
-local other=node('8-island','Model',{node('Blocks','Folder',{node('stone','Part',nil,vec(1,0,0))})})
-local workspace=node('Workspace','Workspace',{node('Islands','Folder',{owned,other})})
+local other=node('8-island','Model',{node('Blocks','Folder',{node('stone','Part',nil,vec(1,0,0)),node('wheat','Model',nil,vec(1,0,0))})})
+local publicTree=node('treePalm','Model',nil,vec(25,0,0))
+local workspace=node('Workspace','Workspace',{node('Islands','Folder',{owned,other}),node('spawnPrefabs','Folder',{node('Forest','Folder',{publicTree})})})
 local player={UserId=7,Character=node('Character','Model',{node('HumanoidRootPart','Part')})}
 local CONFIG={HarvestCrop='wheat',WoodRange=30,MineRange=90,CropRange=15}
 local harvestEnabled,woodEnabled,mineEnabled=true,true,true
@@ -45,13 +46,14 @@ assert(FarmLogic.Category('saplingOrange')==nil and FarmLogic.Category('berryHar
 assert(FarmLogic.Category('grass')==nil and FarmLogic.Category('treeOak')=='wood')
 assert(getPlayerIsland()==owned,'must select owned island')
 local targets=getMineTargets()
-assert(#targets==3,'must skip immature/unselected crops, saplings, unrelated blocks, other islands and trees outside wood range')
-assert(targets[1].instance==wheat and targets[2].instance==stone and targets[3].instance==tree,'targets must be nearest first')
+assert(#targets==5,'must skip immature/unselected crops, saplings, unrelated blocks, foreign crops and trees outside wood range')
+assert(targets[2].instance==wheat and targets[3].instance==stone and targets[4].instance==tree,'targets must be nearest first')
 FarmState.Cooldowns[wheat]=os.clock()+10
-assert(#getMineTargets()==2,'target backoff missing')
+assert(#getMineTargets()==4,'target backoff missing')
 FarmState.Cooldowns[wheat]=nil
 woodEnabled=false;mineEnabled=false
 assert(#getMineTargets()==1 and getMineTargets()[1].instance==wheat,'mode isolation failed')
+assert(targets[5].instance==publicTree,'public resource tree not discovered')
 local before=FarmLogic.Snapshot(wheat)
 assert(not FarmLogic.Confirmed(wheat,before),'successful transport alone must not count')
 wheat.attributes.Mature=false

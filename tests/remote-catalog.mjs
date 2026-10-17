@@ -137,7 +137,15 @@ assert(requestedName=='BLOCK_PLACE_REQUEST' and gameBody.cframe==cf and gameBody
 assert(table.find(RemoteCatalog.SeedNames('blueFlowers'),'blueFlowerSeeds'),'metadata seed mapping missing')
 assert(setHotbarLayout('stonePickaxe,,,,,,,'))
 assert(requestedName=='CLIENT_HOTBAR_LAYOUT_UPDATE' and gameBody.layout=='stonePickaxe,,,,,,,','game hotbar API not used')
+local cropTarget={Name='wheat'}
+RemoteCatalog.Recorder={Harvest=function() error('must not use recorder when native API exists') end}
+assert(RemoteCatalog.CallHarvest(cropTarget))
+assert(requestedName=='CLIENT_HARVEST_CROP_REQUEST' and gameBody.model==cropTarget and gameBody.player==player,'native harvest payload must preserve actual crop/player')
+assert(RemoteCatalog.CallMine(actualBlock))
+assert(requestedName=='BLOCK_HIT_REQUEST' and gameBody.block==actualBlock,'native mining route missing')
 response=false;sent=nil
+assert(RemoteCatalog.CallHarvest(cropTarget)==false and sent==nil,'harvest rejection must not replay through recorder')
+assert(RemoteCatalog.CallMine(actualBlock)==false and sent==nil,'mining rejection must not replay through legacy')
 assert(firePlant(cf,'stone')==false and sent==nil,'game API rejection must not retry through legacy remote')
 
 return '130 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'

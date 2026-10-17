@@ -17,6 +17,24 @@ const classes=Object.fromEntries(schema.Classes.filter(c=>usedClasses.has(c.Name
 const setup='local API_CLASSES='+literal(classes)+'\nlocal Enum='+literal(enums)+'\n'+fs.readFileSync(new URL('roblox-mock.luau',import.meta.url),'utf8');
 const prefix=source.slice(0,source.indexOf('-- Stats\n'));
 if(!prefix.includes('showTab("Fishing")')) throw new Error('UI construction boundary missing');
+const controls=source.slice(source.indexOf('setEnabled = function(state)'),source.indexOf('setHarvestEnabled = function(state)'));
+const farmBindings=source.slice(source.indexOf('track(harvestToggle.Activated'),source.indexOf('track(cropSelect.Activated'));
+const fishBindings=source.slice(source.indexOf('track(toggle.Activated'),source.indexOf('for modeName, modeButton'));
+const wiring=`
+local cycleId,harvestCycleId=0,0
+local stats={activeTime=0}
+local setEnabled,setHarvestEnabled
+local workerFails=false
+local function updateBoard() end
+local function refreshModeStatus() end
+local function run() end
+local function harvestLoop() if workerFails then error('test worker failure') end end
+${controls}
+setHarvestEnabled=function(state) setFarmMode("crop",state) end
+${farmBindings}
+${fishBindings}
+track(baitToggle.Activated:Connect(function() setBaitEnabled(not baitEnabled) end))
+`;
 const checks=`
 local valid=pcall(function() Instance.new('ScrollingFrame').ScrollBarInset=Enum.ScrollBarInset.ScrollBar end)
 assert(not valid,'mock must reject invalid ScrollBarInset regression')
@@ -41,7 +59,24 @@ largerUI.Activated:Fire();assert(frame.Size.X.Offset>720,'larger UI failed')
 smallerUI.Activated:Fire();resetUI.Activated:Fire()
 assert(frame.Size.X.Offset==720 and frame.Size.Y.Offset==470,'reset failed')
 assert(hub.OpenButton and #hub._connections>0,'reopen and drag connections missing')
+assert(not RemoteCatalog.Recorder and hookCount==0,'recording must not start or install hooks by default')
+-- Exercise the actual switch callbacks with no learned remote IDs.
+for _,button in ipairs({harvestToggle,woodToggle,mineToggle,toggle,baitToggle}) do
+ button.Activated:Fire()
+ assert(string.find(button.Text,'ON',1,true),'switch failed to turn ON without recorder/session IDs')
+ button.Activated:Fire()
+ assert(string.find(button.Text,'OFF',1,true),'switch failed to turn OFF')
+end
+flush()
+workerFails=true
+woodToggle.Activated:Fire();assert(woodEnabled,'wood switch failed to enable')
+flush()
+assert(not woodEnabled and string.find(status.Text,'Farm stopped:',1,true),'worker error must reset state and explain failure')
+workerFails=false
+woodToggle.Activated:Fire();assert(woodEnabled,'wood switch not recoverable after error')
+woodToggle.Activated:Fire();flush()
 if CAPTURE_SUPPORTED then
+ RemoteCatalog.CaptureToggle.Activated:Fire()
  local recorder=assert(RemoteCatalog.Recorder,'embedded recorder not started')
  assert(recorder.Active,'embedded recorder not recording')
  RemoteCatalog.CaptureToggle.Activated:Fire();assert(not recorder.Active,'pause button failed')
@@ -72,7 +107,7 @@ if CAPTURE_SUPPORTED then
  getnamecallmethod=function() return 'InvokeServer' end
 end
 `;
- try { console.log(await state.loadstring(setup+'\n'+hooks+'\nlocal function runUI()\n'+prefix+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); }
+ try { console.log(await state.loadstring(setup+'\n'+hooks+'\nlocal function runUI()\n'+prefix+'\n'+wiring+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); }
  catch(error) {console.error(String(error));process.exitCode=1;}
 }
 state.destroy();

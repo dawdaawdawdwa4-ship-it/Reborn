@@ -54,8 +54,8 @@ existing fishing input workflow is separate from direct remote calls.
 
 ## Capture request arguments
 
-`message.txt` embeds and automatically starts the recorder. No second script is
-needed. The Remotes tab provides pause/resume, export and stop controls, plus
+`message.txt` embeds the recorder, OFF by default. No second script is
+needed; Remotes > Start capture enables optional recording. The Remotes tab provides pause/resume, export and stop controls, plus
 recording status and the observed mining-ID status. Removing the hub stops its
 recorder. Without working hook APIs the UI remains usable and explains that
 capture is unavailable.
@@ -88,8 +88,8 @@ text must not be executed. Actual game calls retain their original Instance.
 
 The recorded mining request confirms that its ID differs from the old fixed value.
 Mining now reads the ID observed for OEzzgCCBzocxJw by the recorder in the current
-session. Start Farming Hub (its embedded recorder starts automatically), mine one block
-manually, then enable Mining in the hub.
+session. Start Farming Hub and enable Mining. The game request API is preferred; only
+legacy fallback needs Remotes > Start capture and one manually mined block.
 No observed mining ID means no automatic mining request is sent. IDs are held only
 in memory, per remote. Placement, bait and hotbar also use their own observed IDs;
 the confirmed crop-harvest route is learned from a manual crop action; direct fishing payloads still need a capture.
@@ -166,3 +166,40 @@ The confirmed crop remote is now
 and `a1tIHk1Kl9GiE5` envelope. Reload the hub, harvest one crop manually with
 capture running, then enable Crop Farm. A learned compatible remote takes
 precedence over a prompt. No pasted session ID or child index is hard-coded.
+
+
+## Switch, wood and fishing regressions
+
+Recording is now opt-in and no hooks are installed during normal hub startup.
+Stopping the recorder leaves its wrapper in immediate pass-through mode. All five
+mode switches are tested with no recorder or learned IDs; they update their button
+state before background jobs start. Background job errors reset the relevant
+switches and show the actual error rather than leaving an apparently active mode.
+A status helper previously declared below bait callbacks has been moved above
+them so those callbacks capture the intended local function.
+
+Harvest now prefers the game wrapper's `CLIENT_HARVEST_CROP_REQUEST` using the
+supplied `{model, player}` body. Mining uses `BLOCK_HIT_REQUEST` with `{block}`.
+Unavailable wrappers fall back to the learned/captured route. Server errors or
+rejections do not trigger duplicate calls through another transport. This avoids a
+manual-ID startup requirement when the game's module is available.
+
+Nearby wood/mineral targeting is restored across island Blocks/Prefabs. Crops
+remain scoped to the owned island. Wood detection also checks bounded nested
+public resource folders below spawnPrefabs; container models holding individual
+trees are not treated as a single tree target. Separate wood range remains in use.
+
+The supplied fishing clips showed stop-after-five/no-bobber behavior. Fishing
+input now moves the aim toward the equipped rod user's forward water area before
+sending a charged 0.35-second cast and independent release. It avoids the hub's
+screen rectangle, uses the game as input target, and retains a short reel press.
+Balanced/Test allow two seconds for bobber creation, Fast 1.5, Safe four. Only
+actual rod/fishing Tools pass the equipped-tool check. Bobber discovery supports
+matching owned Models as well as BaseParts. Input errors and Stop always attempt
+release; cancelled cycles do not count failed reels.
+
+Tests exercise these input sequences, errors, cancellation, switch callbacks,
+nearby public trees, module harvest/mining routing and rejection without fallback.
+These are mock checks, not evidence of a successful live cast, harvest or tree cut.
+After switching from an older injected script, restarting the client once gives a
+clean baseline without any old recorder hooks; then load the updated message.txt.

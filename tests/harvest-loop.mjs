@@ -50,7 +50,7 @@ local function runScenario(scenario)
   return true
  end
  local function fireBlockMine() return true end
- local RemoteCatalog={RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end}
+ local RemoteCatalog={RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end,HarvestEndpoint=function() return nil end}
  if scenario=='learned-prompt' then RemoteCatalog.Recorder={HarvestBinding={Remote={Parent=true},Target=target}} end
  local function firePlant(cf,kind)
   assert(cf==originalFrame and kind=='wheat','replant must preserve frame and crop')

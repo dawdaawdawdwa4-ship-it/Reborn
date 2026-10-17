@@ -215,6 +215,7 @@ function capture:Harvest(target)
 end
 local original
 local function intercept(remote, ...)
+    if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
     if not capture.Stopped and (capture.Active or #capture.Records >= capture.MaxCalls)
         and (method == "InvokeServer" or method == "FireServer") then

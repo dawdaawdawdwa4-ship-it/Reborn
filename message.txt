@@ -237,6 +237,32 @@ local RemoteCatalog = (function()
         end
         return catalog.InvokeCaptured("ohy6O10QKzyGZE", body)
     end
+    function catalog.GameEndpoint(name)
+        local client = catalog.PlacementClient()
+        if not client then return nil end
+        local ok, endpoint = pcall(function() return client:Get(name) end)
+        return ok and endpoint or nil
+    end
+    function catalog.SendEndpoint(endpoint, body)
+        local ok, result = pcall(function() return endpoint:CallServer(body) end)
+        if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
+        return true, result
+    end
+    function catalog.HarvestEndpoint()
+        return catalog.GameEndpoint("CLIENT_HARVEST_CROP_REQUEST")
+    end
+    function catalog.CallHarvest(target)
+        local endpoint = catalog.HarvestEndpoint()
+        if endpoint then return catalog.SendEndpoint(endpoint, {model = target, player = player}) end
+        local recorder = catalog.Recorder
+        if recorder and recorder.Harvest then return recorder:Harvest(target) end
+        return false, "Harvest API unavailable; harvest one crop manually with capture active"
+    end
+    function catalog.CallMine(target)
+        local endpoint = catalog.GameEndpoint("BLOCK_HIT_REQUEST")
+        if endpoint then return catalog.SendEndpoint(endpoint, {block = target}) end
+        return catalog.InvokeCaptured("OEzzgCCBzocxJw", {block = target})
+    end
     function catalog.CallHotbar(layout)
         local client = catalog.PlacementClient()
         if client then
@@ -513,6 +539,7 @@ function capture:Harvest(target)
 end
 local original
 local function intercept(remote, ...)
+    if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
     if not capture.Stopped and (capture.Active or #capture.Records >= capture.MaxCalls)
         and (method == "InvokeServer" or method == "FireServer") then
@@ -659,8 +686,9 @@ local CONFIG = {
 	ToggleKey = Enum.KeyCode.F6,          -- fishing ON/OFF
 	HarvestKey = Enum.KeyCode.F7,         -- mine / harvest ON/OFF
 	RequireTool = true,                   -- only cast while a Tool (rod) is equipped
-	CastTimeout = 0.75,                  -- typical bobber response is quick; allow a small network margin
-	ReelTimeout = 1.0,                    -- shorter confirmation window after reeling
+	CastTimeout = 2.0,                  -- typical bobber response is quick; allow a small network margin
+	CastHold = 0.35,
+    ReelTimeout = 1.0,                    -- shorter confirmation window after reeling
 	FishingPollInterval = 0.01,           -- check cast/bobber state more frequently
 	ReelSettleDelay = 0.025,              -- brief time for the server to register a reel
 	ActionCooldown = 0.04,                -- minimal guard against duplicate rapid clicks
@@ -934,6 +962,11 @@ local status = label({
     TextSize = 11,
 })
 
+local function setStatus(text, color)
+    status.Text = tostring(text)
+    status.TextColor3 = color or COLORS.muted
+end
+
 local function pageHeading(parent, text, y)
     return label({
         Parent = parent, Text = text, Font = Enum.Font.GothamBold,
@@ -961,9 +994,9 @@ fishInfo.TextWrapped = true
 -- Fishing profiles are selectable at runtime for controlled in-game comparisons.
 local FISHING_MODES = {
     Safe =     { poll = 0.05, castTimeout = 4.0, reelTimeout = 2.0, settle = 0.10, cooldown = 0.25 },
-    Balanced = { poll = 0.01, castTimeout = 0.75, reelTimeout = 0.9, settle = 0.025, cooldown = 0.04 },
-    Fast =     { poll = 0.005, castTimeout = 0.55, reelTimeout = 0.7, settle = 0.015, cooldown = 0.025 },
-    Test =     { poll = 0.01, castTimeout = 0.75, reelTimeout = 0.9, settle = 0.025, cooldown = 0.04 },
+    Balanced = { poll = 0.01, castTimeout = 2.0, reelTimeout = 0.9, settle = 0.025, cooldown = 0.04 },
+    Fast =     { poll = 0.005, castTimeout = 1.5, reelTimeout = 0.7, settle = 0.015, cooldown = 0.025 },
+    Test =     { poll = 0.01, castTimeout = 2.0, reelTimeout = 0.9, settle = 0.025, cooldown = 0.04 },
 }
 local activeFishingMode = "Balanced"
 local modeHeading = label({
@@ -1164,7 +1197,7 @@ local harvestToggle = button({
 })
 local harvestInfo = label({
     Parent = harvestPage,
-    Text = "Harvest the selected ready crop on your island using its harvest prompt. Replant only after the plant is removed.",
+    Text = "Harvest the selected ready crop using the game API, learned request or harvest prompt. Replant only after removal.",
     Color = COLORS.muted, TextSize = 11,
     Size = UDim2.new(1, -16, 0, 42), Position = UDim2.fromOffset(8, 50),
 })
@@ -1414,8 +1447,10 @@ RemoteCatalog.CaptureStop = button({ Parent = remotesPage, Text = "Stop capture"
 function RemoteCatalog.UpdateCaptureUI()
     local recorder = RemoteCatalog.Recorder
     if not recorder then
-        RemoteCatalog.CaptureStatus.Text = "Capture unavailable: this host does not provide working hook APIs."
-        RemoteCatalog.CaptureToggle.Text = "Retry capture setup"
+        RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CaptureAttempted
+            and "Capture unavailable: this host does not provide working hook APIs."
+            or "Recorder OFF. Farming uses the game API; capture is optional."
+        RemoteCatalog.CaptureToggle.Text = RemoteCatalog.CaptureAttempted and "Retry capture setup" or "Start capture (optional)"
         return
     end
     local state = recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused")
@@ -1429,6 +1464,7 @@ function RemoteCatalog.UpdateCaptureUI()
     RemoteCatalog.CaptureToggle.Text = recorder.Active and "Pause capture (F8)" or "Resume capture (F8)"
 end
 function RemoteCatalog.EnableCapture()
+    RemoteCatalog.CaptureAttempted = true
     local ok, recorder = pcall(RemoteCatalog.StartCapture)
     RemoteCatalog.Recorder = ok and recorder or nil
     RemoteCatalog.UpdateCaptureUI()
@@ -1461,7 +1497,7 @@ track(RemoteCatalog.CaptureStop.Activated:Connect(function()
     if RemoteCatalog.Recorder then RemoteCatalog.Recorder:Stop() end
     RemoteCatalog.UpdateCaptureUI()
 end))
-RemoteCatalog.EnableCapture()
+RemoteCatalog.UpdateCaptureUI()
 for i, entry in ipairs(RemoteCatalog.Entries) do
     entry.Label = label({ Parent = remotesPage, Text = entry.Path,
         TextSize = 11, Size = UDim2.new(1, -12, 0, 28), Position = UDim2.fromOffset(6, 306 + (i - 1) * 28) })
@@ -1639,11 +1675,6 @@ local function registerHarvest(name)
 	updateBoard()
 end
 
-local function setStatus(text, color)
-    status.Text = tostring(text)
-    status.TextColor3 = color or COLORS.muted
-end
-
 local function refreshModeStatus()
     if modeStatus then
         modeStatus.Text = string.format("Fishing: %s  |  Bait: %s  |  Crops: %s  |  Wood: %s  |  Mining: %s",
@@ -1711,49 +1742,58 @@ local function harvestRunning(myCycle)
 end
 
 -- Note: VirtualInputManager is normally blocked in a standard LocalScript.
-local function clickOnce()
-	local camera = workspace.CurrentCamera
-	if not camera then
-		return false
-	end
-
-	local x = camera.ViewportSize.X / 2
-	local y = camera.ViewportSize.Y / 2
-
-	local pressed = pcall(function()
-		VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, nil, 0)
-	end)
-	if not pressed then
-		-- Standard LocalScripts commonly cannot use VirtualInputManager.
-		return false
-	end
-	task.wait(0.01)
-	-- Always attempt release independently so an input error cannot leave the
-	-- simulated mouse button held down.
-	local released = pcall(function()
-		VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, nil, 0)
-	end)
-	return released
-end
-
 local function hasRodEquipped()
-	if not CONFIG.RequireTool then
-		return true
-	end
-	local character = player.Character
-	return character ~= nil and character:FindFirstChildOfClass("Tool") ~= nil
+    local character = player.Character
+    local tool = character and character:FindFirstChildOfClass("Tool")
+    return tool ~= nil and (string.find(string.lower(tool.Name), "fishing", 1, true) ~= nil
+        or string.find(string.lower(tool.Name), "rod", 1, true) ~= nil)
 end
-
+local function clickOnce(action, myCycle)
+    local camera = workspace.CurrentCamera
+    if not camera or not hasRodEquipped() or not running(myCycle) then return false end
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local x, y = camera.ViewportSize.X * 0.7, camera.ViewportSize.Y * 0.6
+    if root then
+        local aim = root.Position + root.CFrame.LookVector * 24 - Vector3.new(0, 4, 0)
+        local point, visible = camera:WorldToScreenPoint(aim)
+        if visible then x, y = point.X, point.Y end
+    end
+    local function overPanel(px, py)
+        if not hub.Root.Visible then return false end
+        local position, size = hub.Root.AbsolutePosition, hub.Root.AbsoluteSize
+        return px >= position.X and px <= position.X + size.X and py >= position.Y and py <= position.Y + size.Y
+    end
+    if overPanel(x, y) then x, y = camera.ViewportSize.X * 0.8, camera.ViewportSize.Y * 0.6 end
+    if overPanel(x, y) then
+        setStatus("Move the hub away from the water aiming area.", COLORS.warn)
+        return false
+    end
+    -- Update the Mouse ray first; button events alone leave the aim over the UI.
+    local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
+    if not moved then return false end
+    task.wait(0.03)
+    if not running(myCycle) then return false end
+    local pressed = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0) end)
+    local held = pcall(function()
+        if not pressed then return end
+        local deadline = os.clock() + (action == "cast" and CONFIG.CastHold or 0.01)
+        while running(myCycle) and os.clock() < deadline do task.wait(0.01) end
+    end)
+    -- Release independently of both input errors and Stop during the charge.
+    local released = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0) end)
+    return pressed and held and released and running(myCycle)
+end
 local function getBobber()
-	local folder = workspace:FindFirstChild("FishingBobbers")
-	if not folder then
-		return nil
-	end
-	local bobber = folder:FindFirstChild(player.Name .. "Bobber")
-	if bobber and bobber:IsA("BasePart") then
-		return bobber
-	end
-	return nil
+    local folder = workspace:FindFirstChild("FishingBobbers")
+    if not folder then return nil end
+    local exact = folder:FindFirstChild(player.Name .. "Bobber")
+    if exact and (exact:IsA("BasePart") or exact:IsA("Model")) then return exact end
+    for _, child in ipairs(folder:GetChildren()) do
+        local owner = child:GetAttribute("OwnerUserId") or child:GetAttribute("PlayerUserId")
+        if owner == player.UserId and (child:IsA("BasePart") or child:IsA("Model")) then return child end
+    end
+    return nil
 end
 
 local function waitForTug(bobber, myCycle)
@@ -1958,43 +1998,67 @@ local function getMineTargets()
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return targets end
-    local function scan(folder)
-        if not folder then return end
+    local function consider(obj, allowCrops)
+        if seen[obj] then return end
+        seen[obj] = true
+        local category = targetCategory(obj.Name)
+        if not category or not modeAllows(obj.Name) then return end
+        if category == "crop" and not allowCrops then return end
+        if category == "crop" and not FarmLogic.IsReady(obj) then return end
+        if (FarmState.Cooldowns[obj] or 0) > os.clock() then return end
+        local position = getPartPosition(obj)
+        if not position then return end
+        local distance = (position - hrp.Position).Magnitude
+        if distance > FarmLogic.Range(category, CONFIG) then return end
+        table.insert(targets, {kind = category == "crop" and "model" or "block",
+            instance = obj, name = obj.Name, distance = distance, category = category})
+    end
+    local function scan(folder, allowCrops)
+        if folder then for _, obj in ipairs(folder:GetChildren()) do consider(obj, allowCrops) end end
+    end
+    local function scanWood(folder, depth)
+        if not folder or depth < 0 then return end
         for _, obj in ipairs(folder:GetChildren()) do
-            if seen[obj] then continue end
-            seen[obj] = true
-            local category = targetCategory(obj.Name)
-            if not category or not modeAllows(obj.Name) then continue end
-            if category == "crop" and not FarmLogic.IsReady(obj) then continue end
-            if (FarmState.Cooldowns[obj] or 0) > os.clock() then continue end
-            local position = getPartPosition(obj)
-            if not position then continue end
-            local distance = (position - hrp.Position).Magnitude
-            if distance > FarmLogic.Range(category, CONFIG) then continue end
-            table.insert(targets, { kind = category == "crop" and "model" or "block",
-                instance = obj, name = obj.Name, distance = distance, category = category })
+            local tree = obj:IsA("BasePart") or obj:IsA("Model")
+            local containsTrees = false
+            if obj:IsA("Model") then
+                for _, child in ipairs(obj:GetChildren()) do
+                    if child:IsA("Model") and targetCategory(child.Name) == "wood" then containsTrees = true; break end
+                end
+            end
+            if tree and not containsTrees and targetCategory(obj.Name) == "wood" then
+                consider(obj, false)
+            elseif not obj:IsA("BasePart") then
+                scanWood(obj, depth - 1)
+            end
         end
     end
     local prefabs = workspace:FindFirstChild("spawnPrefabs")
+    if woodEnabled then scanWood(prefabs, 3) end
     local regen = prefabs and prefabs:FindFirstChild("regenBlocks")
     if regen then
         for _, area in ipairs(regen:GetChildren()) do scan(area:FindFirstChild("Blocks")) end
     end
-    -- Island farming is scoped to the current player's island.
-    local island = getPlayerIsland()
-    if island then scan(island:FindFirstChild("Blocks")); scan(island:FindFirstChild("Prefabs")) end
+    local owned = getPlayerIsland()
+    local islands = workspace:FindFirstChild("Islands")
+    if islands then
+        for _, island in ipairs(islands:GetChildren()) do
+            if island == owned or woodEnabled or mineEnabled then
+                scan(island:FindFirstChild("Blocks"), island == owned)
+                scan(island:FindFirstChild("Prefabs"), island == owned)
+            end
+        end
+    end
     table.sort(targets, function(a, b) return a.distance < b.distance end)
     return targets
 end
 
 local function fireBlockMine(block)
-    return RemoteCatalog.InvokeCaptured("OEzzgCCBzocxJw", { block = block })
+    return RemoteCatalog.CallMine(block)
 end
 
 local function fireModelHarvest(model)
-    local recorder = RemoteCatalog.Recorder
-    if recorder and recorder.Harvest then return recorder:Harvest(model) end
-    return false, "Harvest a crop manually once with capture active first"
+    return RemoteCatalog.CallHarvest(model)
 end
 
 local function harvestLoop(myCycle)
@@ -2004,7 +2068,7 @@ local function harvestLoop(myCycle)
     while active() do
         local targets = getMineTargets()
         if #targets == 0 then
-            setStatus("No matching ready targets nearby on your island or resource areas.", COLORS.muted)
+            setStatus("No matching ready crops on your island, or nearby wood/mining targets.", COLORS.muted)
             task.wait(CONFIG.MineScanInterval)
             continue
         end
@@ -2027,22 +2091,23 @@ local function harvestLoop(myCycle)
             local recorder = RemoteCatalog.Recorder
             local binding = recorder and recorder.HarvestBinding
             local learned = binding and binding.Remote.Parent and (binding.Target:IsA("Model") == obj:IsA("Model"))
-            local prompt = target.category == "crop" and not learned and FarmLogic.HarvestPrompt(obj) or nil
+            local nativeHarvest = target.category == "crop" and RemoteCatalog.HarvestEndpoint()
+            local prompt = target.category == "crop" and not learned and not nativeHarvest and FarmLogic.HarvestPrompt(obj) or nil
             local plantedFrame
             if obj:IsA("BasePart") then plantedFrame = obj.CFrame
             elseif obj:IsA("Model") then plantedFrame = obj:GetPivot() end
-            local ok
+            local ok, failure
             if prompt then
                 local promptPosition = getPartPosition(prompt.Parent) or position
                 if (promptPosition - hrp.Position).Magnitude > prompt.MaxActivationDistance then continue end
                 ok = FarmLogic.HoldPrompt(prompt, active, task.wait, os.clock)
                 if not active() then break end
             elseif target.kind == "model" then
-                ok = fireModelHarvest(obj)
-                if not ok then setStatus("No harvest prompt or learned crop remote. Harvest a crop manually first.", COLORS.warn) end
+                ok, failure = fireModelHarvest(obj)
+                if not ok then setStatus("Harvest waiting: " .. tostring(failure), COLORS.warn) end
             else
-                ok = fireBlockMine(obj)
-                if not ok then setStatus("Mine a block manually once with capture active first.", COLORS.warn) end
+                ok, failure = fireBlockMine(obj)
+                if not ok then setStatus("Mining waiting: " .. tostring(failure), COLORS.warn) end
             end
             local confirmed = false
             if ok then
@@ -2055,6 +2120,7 @@ local function harvestLoop(myCycle)
                 until os.clock() >= deadline
             end
             if not active() then break end
+            if ok and not confirmed then setStatus("No target change confirmed; retrying " .. target.name, COLORS.muted) end
             if confirmed then
                 registerHarvest(target.name)
                 setStatus("Confirmed: " .. target.name .. " ×" .. stats.harvests, COLORS.good)
@@ -2102,8 +2168,14 @@ local function run(myCycle)
 				stats.bites += 1
 				updateBoard()
 				setStatus("Tug! Reeling in...", COLORS.gold)
-				clickOnce()
+                if not clickOnce("reel", myCycle) then
+                    if not running(myCycle) then break end
+                    setStatus("Reel input blocked; retrying.", COLORS.warn)
+                    task.wait(0.25)
+                    continue
+                end
 				task.wait(CONFIG.ReelSettleDelay)
+                if not running(myCycle) then break end
 				setStatus("Waiting for catch...")
 				local gone = waitUntil(myCycle, CONFIG.ReelTimeout, function()
 					return getBobber() == nil
@@ -2128,7 +2200,7 @@ local function run(myCycle)
 			if os.clock() - lastAction >= CONFIG.ActionCooldown then
 				lastAction = os.clock()
 				setStatus("Casting...")
-				if clickOnce() then
+				if clickOnce("cast", myCycle) then
 					stats.casts += 1
 					updateBoard()
 					-- Only wait for a bobber after an actual cast input; this avoids
@@ -2148,6 +2220,7 @@ local function run(myCycle)
 						 task.wait(0.03)
 					end
 				else
+                    if not running(myCycle) then break end
 					setStatus("Input blocked - run in a supported client", COLORS.bad)
 					task.wait(0.25)
 				end
@@ -2182,7 +2255,13 @@ setEnabled = function(state)
 		toggle.Text = "FISH ON  [" .. CONFIG.ToggleKey.Name .. "]"
 		toggle.BackgroundColor3 = COLORS.on
 		setStatus("Fishing started...")
-		task.spawn(run, cycleId)
+        task.spawn(function(token)
+            local ok, failure = pcall(run, token)
+            if not ok and token == cycleId then
+                setEnabled(false)
+                setStatus("Fishing stopped: " .. tostring(failure), COLORS.bad)
+            end
+        end, cycleId)
 	else
 		toggle.Text = "FISH OFF  [" .. CONFIG.ToggleKey.Name .. "]"
 		toggle.BackgroundColor3 = COLORS.off
@@ -2221,18 +2300,25 @@ local function setFarmMode(mode, state)
         return
     end
     if current == state then return end
-    if state and mode ~= "crop" and not RemoteCatalog.RequestId("OEzzgCCBzocxJw") then
-        setStatus("Mine a block manually with capture active before enabling this mode.", COLORS.warn)
-        return
-    end
     if mode == "crop" then harvestEnabled = state
     elseif mode == "wood" then woodEnabled = state
     else mineEnabled = state end
     harvestCycleId += 1
+    refreshFarmButtons()
+    refreshModeStatus()
+    updateBoard()
     if harvestEnabled or woodEnabled or mineEnabled then
         if not stats.onSince then stats.onSince = os.clock() end
         setStatus(mode == "crop" and "Crop farming started" or mode == "wood" and "Wood farming started" or "Mining started", COLORS.good)
-        task.spawn(harvestLoop, harvestCycleId)
+        task.spawn(function(token)
+            local ok, failure = pcall(harvestLoop, token)
+            if not ok and token == harvestCycleId then
+                harvestEnabled, woodEnabled, mineEnabled = false, false, false
+                refreshFarmButtons()
+                refreshModeStatus()
+                setStatus("Farm stopped: " .. tostring(failure), COLORS.bad)
+            end
+        end, harvestCycleId)
     else
         if not enabled and stats.onSince then
             stats.activeTime += os.clock() - stats.onSince
