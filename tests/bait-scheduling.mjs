@@ -79,6 +79,32 @@ do
  player.Character={FindFirstChild=function() return bait end};quantity=14;recorder.BaitBinding={Target=bait}
  assert(not applyBait() and attempts==2,'a different character must not inherit consumption confirmation')
 end
+-- Timeouts must keep Fishing enabled, including after bait runs out.
+do
+ local enabled=true
+ local function running() return enabled end
+ local CONFIG={BiteTimeout=30,ActionCooldown=0,CastTimeout=1,MaxFailedCasts=1}
+ local lastAction=-100
+ local stats={casts=0}
+ local function updateBoard() end
+ local function setEnabled() error('retry must not switch Fishing OFF') end
+ local mode='bite'
+ local function getBobber() if mode=='bite' then return {Parent=true} end end
+ local function waitForTug() return false,true end
+ local function hasRodEquipped() return true end
+ local clicks=0
+ local function clickOnce() clicks+=1;return true end
+ local function waitUntil() return false end
+ local waited
+ local task={wait=function(delay) waited=delay;enabled=false end}
+ baitBusy=false;baitEnabled=true;RemoteCatalog.BaitPending=false;RemoteCatalog.BaitOutOfStock=true
+ ${run.replace('local function run(myCycle)','local function retryRun(myCycle)')}
+ retryRun(1)
+ assert(clicks==1 and waited==1,'bite timeout must reset the cast without disabling Fishing')
+ enabled=true;mode='cast';clicks=0
+ retryRun(1)
+ assert(clicks==1 and waited==2,'failed casts must back off without disabling Fishing')
+end
 return 'Bait scheduling: queued priority, long-cast retry, success/OFF release, next-cast blocking and existing-cast completion passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'bait-scheduling',true)());}finally{state.destroy();}

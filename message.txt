@@ -1363,7 +1363,7 @@ local CONFIG = {
 	FishingPollInterval = 0.01,           -- check cast/bobber state more frequently
 	ReelSettleDelay = 0.025,              -- brief time for the server to register a reel
 	ActionCooldown = 0.04,                -- minimal guard against duplicate rapid clicks
-	MaxFailedCasts = 5,                   -- auto-stop after this many casts with no bobber
+	MaxFailedCasts = 5,                   -- pause and retry after this many casts with no bobber
 	RecentCount = 5,                      -- how many recent catches to show
 
 	-- Auto Mine settings
@@ -3834,9 +3834,10 @@ local function run(myCycle)
 			if not running(myCycle) then break end
 
 			if timedOut then
-                setEnabled(false)
-                setStatus("No bite for " .. CONFIG.BiteTimeout .. "s. Reel manually, check water/bait, then restart.", COLORS.warn)
-                return
+                setStatus("No bite yet — resetting the cast and continuing without requiring bait.", COLORS.warn)
+                clickOnce("reel",myCycle)
+                task.wait(1)
+                continue
             elseif not tugged then
 				setStatus("Bobber disappeared")
 				task.wait(0.1)
@@ -3895,9 +3896,10 @@ local function run(myCycle)
 					if not found then
 						failedCasts += 1
 						if failedCasts >= CONFIG.MaxFailedCasts then
-							setEnabled(false)
-							setStatus("Stopped: no bobber after " .. failedCasts .. " casts", COLORS.bad)
-							return
+                            setStatus("No bobber detected — pausing before retrying. Fishing stays ON.", COLORS.warn)
+                            task.wait(2)
+                            failedCasts=0
+                            continue
 						end
 						setStatus(string.format("No bobber (%d/%d) - retrying", failedCasts, CONFIG.MaxFailedCasts), COLORS.warn)
 						 task.wait(0.03)
