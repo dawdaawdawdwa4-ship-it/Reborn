@@ -159,6 +159,7 @@ local RemoteCatalog = (function()
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.Y6oBjV1u9qIAAS", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.fZy3jBDaMuAsal.Gu0tNi2YAOdeYv", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.fZy3jBDaMuAsal.OAVO4xgiY252ym", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.wRLHwn9X7tFCOv.T5XIZMc0DxnCFt", Class = "RemoteFunction" },
     } }
     function catalog.FindPath(path, expectedClass)
         local ok, found = pcall(function()
@@ -433,13 +434,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 13 and previous.Resume then
+if previous and previous.Version == 14 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 13, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 14, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -458,6 +459,7 @@ end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    T5XIZMc0DxnCFt = true, -- Most recent rotated block-hit endpoint.
     OAVO4xgiY252ym = true, -- Updated axe/block-hit endpoint.
     Gu0tNi2YAOdeYv = true, -- Updated hotbar-layout capture.
     Y6oBjV1u9qIAAS = true, -- Fruit-picking capture.
@@ -691,19 +693,39 @@ function capture:SetAutoReplant(value)
     return true,result
 end
 local function learnBlockHit(remote, method, args)
-    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
-    if remote.Name ~= "OAVO4xgiY252ym" and remote.Name ~= "qn1PInnZJmfDd1" and remote.Name ~= "OEzzgCCBzocxJw"
-        and not string.find(string.lower(remote.Name), "block_hit_request", 1, true) then return false end
+    if method~="InvokeServer" or type(args[1])~="table" then return false end
+    local known=remote.Name=="T5XIZMc0DxnCFt" or remote.Name=="OAVO4xgiY252ym" or remote.Name=="qn1PInnZJmfDd1" or remote.Name=="OEzzgCCBzocxJw"
+        or string.find(string.lower(remote.Name),"block_hit_request",1,true)
     local packet=args[1]
-    local body=type(packet.P1ZFEJgXWM4k62)=="table" and packet.P1ZFEJgXWM4k62
-        or type(packet.wGquKmyB3mV2Cf)=="table" and packet.wGquKmyB3mV2Cf
-        or (type(packet.TlSR8Mzd9FLwaZ)=="table" and packet.TlSR8Mzd9FLwaZ or packet)
+    local body=packet
+    -- Body/context field names rotate independently of the remote's name.
+    for _,value in pairs(packet) do
+        if type(value)=="table" and typeof(value.block)=="Instance" then body=value;break end
+    end
     local block=body.block
     if typeof(block)~="Instance" or not (block:IsA("Model") or block:IsA("BasePart")) then return false end
     local name=string.lower(block.Name)
     local wood=false
     for _,word in ipairs({"tree","wood","log","oak","pine","birch","palm"}) do
         if string.find(name,word,1,true) then wood=true;break end
+    end
+    if not known then
+        local group=remote.Parent
+        if not group or not group.Parent or group.Parent.Name~="out" then return false end
+        if not wood then
+            local mineral=false
+            for _,word in ipairs({"rock","stone","ore","iron","coal","gold","copper","mineral","crystal"}) do
+                if string.find(name,word,1,true) then mineral=true;break end
+            end
+            if not mineral then return false end
+        end
+        local player=game:GetService("Players").LocalPlayer
+        local character=player and player.Character
+        local tool=character and character:FindFirstChildOfClass("Tool")
+        local toolName=tool and string.lower(tool.Name) or ""
+        local pick=string.find(toolName,"pickaxe",1,true)~=nil
+        local axe=not pick and string.find(toolName,"axe",1,true)~=nil
+        if not (wood and axe or not wood and pick) then return false end
     end
     local key=wood and "WoodHitBinding" or "MineHitBinding"
     capture[key]={Remote=remote,Method=method,Args=cloneArguments(args),Target=block}
@@ -1591,7 +1613,7 @@ local toggle = button({
 })
 local fishInfo = label({
     Parent = fishingPage,
-    Text = "Cast, wait for a bite, and reel automatically. Bait starts with fishing.",
+    Text = "Cast, wait for a bite, and reel automatically. Auto Bait is controlled separately.",
     Color = COLORS.muted, TextSize = 11,
     Size = UDim2.new(1, -16, 0, 34),
     Position = UDim2.fromOffset(8, 50),
@@ -1795,7 +1817,7 @@ local baitToggle = button({
     Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 90),
 })
 local baitInfo = label({
-    Parent = fishingPage, Text = "Starts with Fishing and applies bait immediately, then every 60 seconds. Retries if bait is unavailable.",
+    Parent = fishingPage, Text = "Enable manually to apply bait, then refresh every 60 seconds. Retries if bait is unavailable.",
     Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 30),
     Position = UDim2.fromOffset(8, 128),
 })
@@ -2975,7 +2997,7 @@ local function getInteractionPoint(target, origin, visiblePoint, maxDistance)
         if not distance or magnitude<distance then best,distance=point,magnitude end
     end
     local function consider(part)
-        if not part:IsA("BasePart") or part.CanQuery==false or part.Transparency==1 then return end
+        if not part:IsA("BasePart") then return end
         local ok,closest=pcall(function() return part:GetClosestPointOnSurface(origin) end)
         if ok and closest then candidate(closest) end
         candidate(part.Position)
@@ -2984,8 +3006,9 @@ local function getInteractionPoint(target, origin, visiblePoint, maxDistance)
             candidate(part.CFrame:PointToWorldSpace(Vector3.new(0,part.Size.Y*.25,0)))
         end
     end
-    if target:IsA("BasePart") then consider(target)
-    else for _,part in ipairs(target:GetDescendants()) do consider(part) end end
+    if target:IsA("BasePart") then consider(target) end
+    -- Some tree roots are invisible Parts with the rendered mesh beneath them.
+    for _,part in ipairs(target:GetDescendants()) do consider(part) end
     if visiblePoint then return best end
     return best or getPartPosition(target)
 end
@@ -3031,7 +3054,8 @@ local function resourceInputHit(target)
         local screen,visible=camera:WorldToScreenPoint(candidate)
         if not visible or screen.Z<=0 then return false end
         local hit=workspace:Raycast(camera.CFrame.Position,candidate-camera.CFrame.Position,params)
-        return hit and (hit.Instance==target or hit.Instance:IsDescendantOf(target))
+        -- No hit means an unobstructed line, including custom non-queryable tree geometry.
+        return not hit or hit.Instance==target or hit.Instance:IsDescendantOf(target)
     end,reach)
     if not position then return false,"No clear point within reach; face "..target.Name.." or move around the obstacle" end
     local point, visible = camera:WorldToScreenPoint(position)
@@ -3300,7 +3324,6 @@ setEnabled = function(state)
 		toggle.Text = "FISH ON  [" .. CONFIG.ToggleKey.Name .. "]"
 		toggle.BackgroundColor3 = COLORS.on
 		setStatus("Fishing started...")
-        setBaitEnabled(true)
         task.spawn(function(token)
             local ok, failure = pcall(run, token)
             if not ok and token == cycleId then
@@ -3309,7 +3332,6 @@ setEnabled = function(state)
             end
         end, cycleId)
 	else
-        setBaitEnabled(false)
 		toggle.Text = "FISH OFF  [" .. CONFIG.ToggleKey.Name .. "]"
 		toggle.BackgroundColor3 = COLORS.off
 		if not (harvestEnabled or woodEnabled or mineEnabled) and stats.onSince then

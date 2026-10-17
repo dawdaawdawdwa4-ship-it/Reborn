@@ -17,7 +17,9 @@ local hookCount, connectionCount=0,0
 local game={_type='Instance'}
 local keyListener
 local disconnected=false
+local gamePlayer
 function game:GetService(name)
+ if name=="Players" then return {LocalPlayer=gamePlayer} end
  return {InputBegan={Connect=function(_,fn)
   connectionCount+=1
   keyListener=fn
@@ -163,6 +165,30 @@ assert(updatedAxeArgs.fno9F0nWmx8xVf=='new-live-axe-session' and updatedAxeArgs.
 assert(updatedAxeArgs.E6N43ldyV5t9lg==nil and updatedAxePacket.P1ZFEJgXWM4k62.block==detachedTree,'new axe envelope or original packet mutated')
 updatedAxe.InvokeServer=function() return {success=false} end
 assert(not capture:Hit(nextTree,'wood'),'new axe rejection must remain failure')
+local newestAxe=remote('T5XIZMc0DxnCFt')
+local newestArgs
+newestAxe.InvokeServer=function(_,packet) newestArgs=packet;return true end
+installedHook(newestAxe,{HrGxW0IGeHngmz='latest-live-context',H3ZxjzDRyU5tvI={block=detachedTree}})
+assert(capture:Hit(nextTree,'wood') and newestArgs.HrGxW0IGeHngmz=='latest-live-context' and newestArgs.H3ZxjzDRyU5tvI.block==nextTree,'latest independently rotated envelope must retain its keys and replace detached target')
+local futureAxe=remote('futureRandomName')
+futureAxe.Parent={Name='futureGroup',Parent={Name='out',Parent=game}}
+local held={Name='woodAxe'}
+gamePlayer={Character={FindFirstChildOfClass=function() return held end}}
+local futureArgs
+futureAxe.InvokeServer=function(_,packet) futureArgs=packet;return true end
+installedHook(futureAxe,{anotherContext='future-live-context',anotherBody={block=detachedTree}})
+assert(capture.WoodHitBinding.Remote==futureAxe and capture:Hit(nextTree,'wood'),'future remote should be learned from block schema and equipped axe')
+assert(futureArgs.anotherContext=='future-live-context' and futureArgs.anotherBody.block==nextTree,'future schema/context changed')
+held.Name='fishingRod'
+local wrongTool=remote('unrelatedRandomName');wrongTool.Parent=futureAxe.Parent
+installedHook(wrongTool,{anotherContext='not-a-hit',anotherBody={block=detachedTree}})
+assert(capture.WoodHitBinding.Remote==futureAxe,'unrecognized request without matching tool must not replace wood binding')
+held.Name='woodPickaxe'
+local rock={_type='Instance',Name='rockCoal',Parent=game,IsA=tree.IsA}
+local futureMine=remote('futureMiningName');futureMine.Parent=futureAxe.Parent
+installedHook(futureMine,{newContext='mining-context',newBody={block=rock}})
+assert(capture.MineHitBinding.Remote==futureMine and capture.WoodHitBinding.Remote==futureAxe,'mineral/pickaxe learning must stay separate from wood')
+gamePlayer=nil
 local settingRemote=remote('nrGQVrxpfb3dKr')
 local settingArgs
 settingRemote.InvokeServer=function(_,packet) settingArgs=packet;return true end

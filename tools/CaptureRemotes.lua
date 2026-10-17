@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 13 and previous.Resume then
+if previous and previous.Version == 14 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 13, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 14, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -33,6 +33,7 @@ end
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
+    T5XIZMc0DxnCFt = true, -- Most recent rotated block-hit endpoint.
     OAVO4xgiY252ym = true, -- Updated axe/block-hit endpoint.
     Gu0tNi2YAOdeYv = true, -- Updated hotbar-layout capture.
     Y6oBjV1u9qIAAS = true, -- Fruit-picking capture.
@@ -266,19 +267,39 @@ function capture:SetAutoReplant(value)
     return true,result
 end
 local function learnBlockHit(remote, method, args)
-    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
-    if remote.Name ~= "OAVO4xgiY252ym" and remote.Name ~= "qn1PInnZJmfDd1" and remote.Name ~= "OEzzgCCBzocxJw"
-        and not string.find(string.lower(remote.Name), "block_hit_request", 1, true) then return false end
+    if method~="InvokeServer" or type(args[1])~="table" then return false end
+    local known=remote.Name=="T5XIZMc0DxnCFt" or remote.Name=="OAVO4xgiY252ym" or remote.Name=="qn1PInnZJmfDd1" or remote.Name=="OEzzgCCBzocxJw"
+        or string.find(string.lower(remote.Name),"block_hit_request",1,true)
     local packet=args[1]
-    local body=type(packet.P1ZFEJgXWM4k62)=="table" and packet.P1ZFEJgXWM4k62
-        or type(packet.wGquKmyB3mV2Cf)=="table" and packet.wGquKmyB3mV2Cf
-        or (type(packet.TlSR8Mzd9FLwaZ)=="table" and packet.TlSR8Mzd9FLwaZ or packet)
+    local body=packet
+    -- Body/context field names rotate independently of the remote's name.
+    for _,value in pairs(packet) do
+        if type(value)=="table" and typeof(value.block)=="Instance" then body=value;break end
+    end
     local block=body.block
     if typeof(block)~="Instance" or not (block:IsA("Model") or block:IsA("BasePart")) then return false end
     local name=string.lower(block.Name)
     local wood=false
     for _,word in ipairs({"tree","wood","log","oak","pine","birch","palm"}) do
         if string.find(name,word,1,true) then wood=true;break end
+    end
+    if not known then
+        local group=remote.Parent
+        if not group or not group.Parent or group.Parent.Name~="out" then return false end
+        if not wood then
+            local mineral=false
+            for _,word in ipairs({"rock","stone","ore","iron","coal","gold","copper","mineral","crystal"}) do
+                if string.find(name,word,1,true) then mineral=true;break end
+            end
+            if not mineral then return false end
+        end
+        local player=game:GetService("Players").LocalPlayer
+        local character=player and player.Character
+        local tool=character and character:FindFirstChildOfClass("Tool")
+        local toolName=tool and string.lower(tool.Name) or ""
+        local pick=string.find(toolName,"pickaxe",1,true)~=nil
+        local axe=not pick and string.find(toolName,"axe",1,true)~=nil
+        if not (wood and axe or not wood and pick) then return false end
     end
     local key=wood and "WoodHitBinding" or "MineHitBinding"
     capture[key]={Remote=remote,Method=method,Args=cloneArguments(args),Target=block}

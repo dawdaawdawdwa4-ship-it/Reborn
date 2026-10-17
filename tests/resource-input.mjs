@@ -10,7 +10,7 @@ local root={Position=vec(0)}
 local char={FindFirstChild=function() return root end,FindFirstChildOfClass=function() return tool end};tool.Parent=char
 local player={Character=char}
 local playerGui={GetGuiObjectsAtPosition=function() return {} end}
-local target={Name='stone',Parent=true,Position=vec(5),IsA=function(_,c) return c=='BasePart' end}
+local target={Name='stone',Parent=true,Position=vec(5),IsA=function(_,c) return c=='BasePart' end,GetDescendants=function() return {} end}
 local hit=target
 local visible=true
 local workspace={CurrentCamera={CFrame={Position=vec(0)},WorldToScreenPoint=function() return {X=200,Y=200,Z=5},visible end},Raycast=function() return {Instance=hit} end}
@@ -76,6 +76,15 @@ workspace.Raycast=function(_,origin,direction) return {Instance=direction.n<4 an
 reset();assert(resourceInputHit(target) and table.concat(events,',')=='move,down,up','blocked nearest surface must fall back to a visible point on the same tree')
 workspace.Raycast=function() return {Instance=blocker} end
 reset();assert(not resourceInputHit(target) and #events==0,'fully obstructed tree must never be clicked')
+local childMesh={Position=vec(5),CanQuery=false,Transparency=0,IsA=function(_,c) return c=='BasePart' end,IsDescendantOf=function(_,object) return object==target end}
+target={Name='tree',Parent=true,Position=vec(50),CanQuery=false,Transparency=1,IsA=function(_,c) return c=='BasePart' end,GetDescendants=function() return {childMesh} end}
+workspace.Raycast=function() return nil end
+reset();assert(resourceInputHit(target),'non-queryable Part roots must allow nearby child mesh aim on an otherwise clear line')
+target.Position=vec(5);target.GetDescendants=function() return {} end;target.CanQuery=true
+workspace.Raycast=function() return {Instance=target} end
+reset();assert(resourceInputHit(target),'invisible queryable tree hitboxes must not be excluded')
+workspace.Raycast=function() return {Instance=blocker} end
+reset();assert(not resourceInputHit(target) and #events==0,'real intervening obstacles must still prevent clicks')
 return 'Resource input: mining/wood, aim, reach, visibility, obstruction, UI protection, matching tools, Stop and error release passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(test,'resource-input',true)());}finally{state.destroy();}

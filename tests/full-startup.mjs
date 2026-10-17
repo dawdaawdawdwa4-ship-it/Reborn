@@ -79,15 +79,21 @@ applyBait=function() baitApplications+=1;return true end
 for _,button in ipairs({toggle,harvestToggle,woodToggle,mineToggle,baitToggle}) do
  button.Activated:Fire()
  if button==toggle then
-  assert(baitEnabled and baitApplications==1,'Fishing must apply bait immediately')
-  setEnabled(true);assert(baitApplications==1,'repeated Start must not duplicate bait')
+  assert(not baitEnabled and baitApplications==0,'Fishing must leave bait OFF')
+  setEnabled(true);assert(baitApplications==0,'repeated Start must not enable bait')
  end
  assert(string.find(button.Text,'ON',1,true),'actual switch/worker failed to stay ON: '..button.Text..' status='..status.Text)
  button.Activated:Fire()
- if button==toggle then assert(not baitEnabled,'Stopping Fishing must stop bait refreshes') end
+ if button==toggle then assert(not baitEnabled,'Stopping Fishing must leave bait OFF') end
  assert(string.find(button.Text,'OFF',1,true),'actual switch failed to turn OFF')
  stepWorkers()
 end
+local beforeManualBait=baitApplications
+setBaitEnabled(true)
+assert(baitEnabled and baitApplications==beforeManualBait+1,'manual bait must apply immediately')
+setEnabled(true);setEnabled(false)
+assert(baitEnabled and baitApplications==beforeManualBait+1,'Fishing must preserve manually enabled bait')
+setBaitEnabled(false);stepWorkers()
 assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled and not baitEnabled)
 assert(not string.find(status.Text,'stopped:',1,true),'worker error during actual startup/switch test: '..status.Text)
 gui:Destroy();stepWorkers()

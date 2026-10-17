@@ -94,3 +94,7 @@ Endpoint `ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.fZy3jBDaMu
 ### Rotated wood-cutting endpoint
 
 Endpoint `ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.fZy3jBDaMuAsal.OAVO4xgiY252ym` uses `{ P1ZFEJgXWM4k62 = { block = actualTree }, fno9F0nWmx8xVf = liveContext }`. Recorder version 13 recognizes it as a block-hit request. A detached original tree can establish the argument template, but subsequent calls replace that exact Instance with the current resource. The supplied GetNil helper/debug ID is never embedded or executed; its identifier cannot select future trees. Context and payload keys remain unchanged. Catalog: 137 endpoints. Tests cover detached original targets, new target replacement, packet immutability and structured rejection.
+
+### Current wood-cutting envelope
+
+Recorder version 14 recognizes `out.wRLHwn9X7tFCOv.T5XIZMc0DxnCFt` with `HrGxW0IGeHngmz` context and `H3ZxjzDRyU5tvI = { block = actualTree }`. It learns nested block payloads without fixed envelope keys. Future unknown aliases are eligible only under `out` when a matching axe/resource or pickaxe/mineral is observed. Recording remains manually enabled, and live context is preserved; detached capture targets are replaced rather than replayed. Catalog: 138 endpoints.
