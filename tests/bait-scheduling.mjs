@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const main=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const controls=main.slice(main.indexOf('local function setBaitEnabled(state)'),main.indexOf('local harvestToggle ='));
+const apply=main.slice(main.indexOf("local function applyBait()"),main.indexOf("local function setBaitEnabled(state)"));
 const run=main.slice(main.indexOf('local function run(myCycle)'),main.indexOf('-- Controls\n'));
 const code=`
 local RemoteCatalog={}
@@ -44,6 +45,20 @@ local function waitForTug() tugChecks+=1;return false,false end
 ${run.replace('local function run(myCycle)','local function runExisting(myCycle)')}
 runExisting(1)
 assert(tugChecks==1,'pending bait must not block finishing the existing cast')
+-- Missing inventory must release the cast reservation and preserve Fishing.
+do
+ local player={Character={FindFirstChild=function() return nil end},FindFirstChildOfClass=function() return nil end}
+ RemoteCatalog.OwnedTools=function() return {} end
+ enabled=true;RemoteCatalog.BaitPending=true
+ ${apply}
+ local applied,reason=applyBait()
+ assert(not applied and reason=='bait tool not found' and RemoteCatalog.BaitOutOfStock and not RemoteCatalog.BaitPending and enabled,'empty bait inventory must never stop fishing or reserve new casts')
+end
+local rodChecks=0
+getBobber=function() return nil end
+hasRodEquipped=function() rodChecks+=1;return false end
+enabled=true;run(1)
+assert(rodChecks==1,'Fishing must proceed past the bait queue when inventory is empty')
 return 'Bait scheduling: queued priority, long-cast retry, success/OFF release, next-cast blocking and existing-cast completion passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'bait-scheduling',true)());}finally{state.destroy();}

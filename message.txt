@@ -1901,11 +1901,14 @@ local function applyBait()
         end
     end
     if not baitTool then
-        baitInfo.Text = "No bait found. Keep bait in your inventory; retrying every 5s."
+        RemoteCatalog.BaitOutOfStock=true
+        RemoteCatalog.BaitPending=false
+        baitInfo.Text = "No bait in inventory. Fishing continues without bait; checking again every 5s."
         baitInfo.TextColor3 = COLORS.warn
-        setStatus("Auto Bait: bait tool not found")
+        setStatus(enabled and "No bait — fishing continues without it" or "No bait in inventory; Auto Bait will check again in 5s",COLORS.warn)
         return false, "bait tool not found"
     end
+    RemoteCatalog.BaitOutOfStock=false
     local ok, result = RemoteCatalog.WithBaitTool(baitTool, function() return RemoteCatalog.CallBait(baitTool, true) end)
     if not ok then
         baitInfo.Text = "Bait waiting: " .. tostring(result)
@@ -1951,7 +1954,7 @@ local function setBaitEnabled(state)
             local delay = applied and 60 or 5
             for remaining = delay, 1, -1 do
                 if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
-                baitToggle.Text = string.format(applied and "AUTO BAIT ON  [%ds]" or "AUTO BAIT ON · RETRY  [%ds]", remaining)
+                baitToggle.Text = string.format(applied and "AUTO BAIT ON  [%ds]" or RemoteCatalog.BaitOutOfStock and "AUTO BAIT ON · NO BAIT  [%ds]" or "AUTO BAIT ON · RETRY  [%ds]", remaining)
                 task.wait(1)
             end
         end
