@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const source=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const helpers=source.slice(source.indexOf('local function hasRodEquipped()'),source.indexOf('local function waitForTug'));
+const waitHelpers=source.slice(source.indexOf('local function waitForTug'),source.indexOf('-- Auto Mine (Cobalt')) ;
 const code=`
 local function vec(x,y,z)
  return setmetatable({X=x,Y=y,Z=z},{__add=function(a,b) return vec(a.X+b.X,a.Y+b.Y,a.Z+b.Z) end,__sub=function(a,b) return vec(a.X-b.X,a.Y-b.Y,a.Z-b.Z) end,__mul=function(a,b) return vec(a.X*b,a.Y*b,a.Z*b) end})
@@ -45,7 +46,7 @@ assert(clickOnce('cast',1) and not down)
 assert(events[1][1]=='move' and events[2][1]=='down' and events[3][1]=='up','aim/press/release order incorrect')
 assert(events[3][2]-events[2][2]>=.35,'cast charge too short')
 events={};time=0
-assert(clickOnce('reel',1) and events[3][2]-events[2][2]<.05,'reel must not charge like a cast')
+assert(clickOnce('reel',1) and #events==2 and events[1][1]=='down' and events[2][2]-events[1][2]<.05,'reel must reuse aim without moving/charging')
 cancel=true;events={};time=0
 assert(not clickOnce('cast',1) and not down and events[#events][1]=='up','Stop must release cast')
 cancel=false;enabled=true;failWait=true;events={}
@@ -62,6 +63,19 @@ folder={FindFirstChild=function() return nil end,GetChildren=function() return {
 assert(getBobber()==own,'owner/model bobber not detected')
 folder.GetChildren=function() return {other} end
 assert(getBobber()==nil,'must not use another player bobber')
+${waitHelpers}
+enabled=true;time=0;CONFIG.BiteTimeout=.05;CONFIG.FishingPollInterval=.01
+local disconnected=false
+local bobber={Parent=true,GetAttribute=function() return false end,GetAttributeChangedSignal=function() return {Connect=function() return {Disconnect=function() disconnected=true end} end} end}
+task.wait=function(dt) time+=dt end
+local tugged,timedOut=waitForTug(bobber,1)
+assert(not tugged and timedOut and disconnected,'stuck bobber must timeout and disconnect')
+bobber.GetAttribute=function() return true end;disconnected=false
+assert(waitForTug(bobber,1) and disconnected,'existing tug must reel immediately')
+bobber.GetAttribute=function() return false end;time=0;disconnected=false
+task.wait=function(dt) time+=dt;enabled=false end
+local tugged,timedOut=waitForTug(bobber,1)
+assert(not tugged and not timedOut and disconnected,'Stop must exit bite wait without false timeout')
 return 'Fishing input passed: aim first, charged cast, short reel, cancellation/error release, rod validation and owned bobber discovery'
 `;
 const state=await LuauState.createAsync();

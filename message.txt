@@ -969,6 +969,8 @@ local CONFIG = {
 	RequireTool = true,                   -- only cast while a Tool (rod) is equipped
 	CastTimeout = 2.0,                  -- typical bobber response is quick; allow a small network margin
 	CastHold = 0.35,
+    CastDistance = 24,
+    BiteTimeout = 45, -- stop safely if a bobber never tugs
     ReelTimeout = 1.0,                    -- shorter confirmation window after reeling
 	FishingPollInterval = 0.01,           -- check cast/bobber state more frequently
 	ReelSettleDelay = 0.025,              -- brief time for the server to register a reel
@@ -1309,6 +1311,19 @@ local modeInfo = label({
     Position = UDim2.fromOffset(8, 219),
 })
 modeInfo.TextWrapped = true
+
+local castDistances = {12, 24, 36}
+local castDistanceButton = button({Parent = fishingPage, Text = "Cast aim: 24 studs (click to change)", TextSize = 12,
+    Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 267)})
+track(castDistanceButton.Activated:Connect(function()
+    local index = table.find(castDistances, CONFIG.CastDistance) or 2
+    CONFIG.CastDistance = castDistances[index % #castDistances + 1]
+    castDistanceButton.Text = "Cast aim: " .. CONFIG.CastDistance .. " studs (click to change)"
+end))
+local castAimHelp = label({Parent = fishingPage,
+    Text = "12: nearby water • 24: normal • 36: farther out. Aim distance does not change the game's cast limits.",
+    TextSize = 10, Color = COLORS.muted, Size = UDim2.new(1, -16, 0, 40), Position = UDim2.fromOffset(8, 305)})
+castAimHelp.TextWrapped = true
 
 -- Floating stats overlay: independent of the main hub, anchored in the screen corner.
 -- It stays visible even when the hub is on another tab or minimized/closed.
@@ -2037,14 +2052,17 @@ local function hasRodEquipped()
     return tool ~= nil and (string.find(string.lower(tool.Name), "fishing", 1, true) ~= nil
         or string.find(string.lower(tool.Name), "rod", 1, true) ~= nil)
 end
+local lastFishingAim
 local function clickOnce(action, myCycle)
     local camera = workspace.CurrentCamera
     if not camera or not hasRodEquipped() or not running(myCycle) then return false end
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local x, y = camera.ViewportSize.X * 0.7, camera.ViewportSize.Y * 0.6
-    if root then
-        local aim = root.Position + root.CFrame.LookVector * 24 - Vector3.new(0, 4, 0)
+    if action == "reel" and lastFishingAim then
+        x, y = lastFishingAim.X, lastFishingAim.Y
+    elseif root then
+        local aim = root.Position + root.CFrame.LookVector * (CONFIG.CastDistance or 24) - Vector3.new(0, 4, 0)
         local point, visible = camera:WorldToScreenPoint(aim)
         if visible then x, y = point.X, point.Y end
     end
@@ -2053,16 +2071,19 @@ local function clickOnce(action, myCycle)
         local position, size = hub.Root.AbsolutePosition, hub.Root.AbsoluteSize
         return px >= position.X and px <= position.X + size.X and py >= position.Y and py <= position.Y + size.Y
     end
-    if overPanel(x, y) then x, y = camera.ViewportSize.X * 0.8, camera.ViewportSize.Y * 0.6 end
+    if action ~= "reel" and overPanel(x, y) then x, y = camera.ViewportSize.X * 0.8, camera.ViewportSize.Y * 0.6 end
     if overPanel(x, y) then
         setStatus("Move the hub away from the water aiming area.", COLORS.warn)
         return false
     end
     -- Update the Mouse ray first; button events alone leave the aim over the UI.
-    local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
-    if not moved then return false end
-    task.wait(0.03)
-    if not running(myCycle) then return false end
+    if action ~= "reel" or not lastFishingAim then
+        local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
+        if not moved then return false end
+        task.wait(0.03)
+        if not running(myCycle) then return false end
+        lastFishingAim = {X=x,Y=y}
+    end
     local pressed = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0) end)
     local held = pcall(function()
         if not pressed then return end
@@ -2087,6 +2108,7 @@ end
 
 local function waitForTug(bobber, myCycle)
 	local tugged = false
+    local deadline = os.clock() + CONFIG.BiteTimeout
 
 	local function checkTug()
 		local value = bobber:GetAttribute("Tug")
@@ -2098,12 +2120,12 @@ local function waitForTug(bobber, myCycle)
 	checkTug()
 	local conn = bobber:GetAttributeChangedSignal("Tug"):Connect(checkTug)
 
-	while running(myCycle) and bobber.Parent and not tugged do
+	while running(myCycle) and bobber.Parent and not tugged and os.clock() < deadline do
 		task.wait(CONFIG.FishingPollInterval)
 	end
 
 	conn:Disconnect()
-	return tugged and running(myCycle)
+	return tugged and running(myCycle), not tugged and bobber.Parent ~= nil and os.clock() >= deadline
 end
 
 -- Polls until predicate() is true, the cycle stops, or timeout. Returns predicate result.
@@ -2492,6 +2514,7 @@ local setHarvestEnabled
 
 local function run(myCycle)
 	local failedCasts = 0
+    local countedBites = setmetatable({}, {__mode = "k"})
 
 	while running(myCycle) do
 		local bobber = getBobber()
@@ -2499,16 +2522,20 @@ local function run(myCycle)
 		if bobber then
 			failedCasts = 0
 			setStatus("Waiting for fish...")
-			local tugged = waitForTug(bobber, myCycle)
+			local tugged, timedOut = waitForTug(bobber, myCycle)
 			if not running(myCycle) then break end
 
-			if not tugged then
+			if timedOut then
+                setEnabled(false)
+                setStatus("No bite for " .. CONFIG.BiteTimeout .. "s. Reel manually, check water/bait, then restart.", COLORS.warn)
+                return
+            elseif not tugged then
 				setStatus("Bobber disappeared")
 				task.wait(0.1)
 			elseif os.clock() - lastAction >= CONFIG.ActionCooldown then
 				lastAction = os.clock()
 				local reelTime = os.clock()
-				stats.bites += 1
+				if not countedBites[bobber] then stats.bites += 1; countedBites[bobber] = true end
 				updateBoard()
 				setStatus("Tug! Reeling in...", COLORS.gold)
                 if not clickOnce("reel", myCycle) then
