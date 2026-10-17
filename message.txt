@@ -296,6 +296,10 @@ local RemoteCatalog = (function()
         return false, "Harvest API unavailable; harvest one crop manually with capture active"
     end
     function catalog.CallBait(tool, prepared)
+        if catalog.BaitNeedsRefresh and catalog.ActivateBait then
+            catalog.BaitTransport="normal input (refreshing request)"
+            return catalog.ActivateBait(tool,prepared)
+        end
         local recorder = catalog.Recorder
         if not catalog.BaitRecorderValid(recorder) then recorder=nil end
         if not (recorder and recorder.BaitBinding and recorder.Bait) then
@@ -307,11 +311,17 @@ local RemoteCatalog = (function()
         end
         if recorder and recorder.BaitBinding and recorder.Bait then
             local remote = recorder.BaitBinding.Remote
-            if not remote or remote.Parent then return recorder:Bait(tool) end
+            if not remote or remote.Parent then
+                catalog.BaitTransport="learned request "..tostring(remote and remote.Name or "unknown")
+                return recorder:Bait(tool)
+            end
             -- A removed captured remote sends nothing; normal tool activation is still safe.
         end
         local ok, reason, state = catalog.InvokeCaptured("raqRasAwcny1zh", {tool = tool})
-        if state == "unavailable" and catalog.ActivateBait then return catalog.ActivateBait(tool, prepared) end
+        if state == "unavailable" and catalog.ActivateBait then
+            catalog.BaitTransport="normal tool input"
+            return catalog.ActivateBait(tool, prepared)
+        end
         return ok, reason
     end
     function catalog.ServerReplantEnabled()
@@ -1554,7 +1564,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "Farming Hub · wood-input-4",
+    Subtitle = "Farming Hub · bait-click-5",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -1933,8 +1943,66 @@ RemoteCatalog.WithBaitTool = function(tool, callback)
     if not ok then return false, failure end
     return sent and active(), detail
 end
+-- BAIT NORMAL CLICK BEGIN
+RemoteCatalog.ClickBaitTool=function(tool)
+    local character=player.Character
+    local camera=workspace and workspace.CurrentCamera
+    local root
+    pcall(function() root=character and character:FindFirstChild("HumanoidRootPart") end)
+    if not camera or not root then return nil,"World input unavailable" end
+    local focused,text=pcall(function() return UserInputService:GetFocusedTextBox() end)
+    if focused and text then return false,"Close chat before applying bait" end
+    local viewport=camera.ViewportSize
+    local candidates={}
+    local projected,visible=camera:WorldToScreenPoint(root.Position+root.CFrame.LookVector*12)
+    if visible and projected.Z>0 then table.insert(candidates,{X=projected.X,Y=projected.Y}) end
+    for _,fraction in ipairs({.8,.65,.5,.35}) do table.insert(candidates,{X=viewport.X*fraction,Y=viewport.Y*.5}) end
+    local point
+    for _,candidate in ipairs(candidates) do
+        local blocked=false
+        if hub.Root.Visible then
+            local p,size=hub.Root.AbsolutePosition,hub.Root.AbsoluteSize
+            blocked=candidate.X>=p.X and candidate.X<=p.X+size.X and candidate.Y>=p.Y and candidate.Y<=p.Y+size.Y
+        end
+        local checked,objects=pcall(function() return playerGui:GetGuiObjectsAtPosition(candidate.X,candidate.Y) end)
+        if checked then
+            for _,object in ipairs(objects) do if object:IsA("GuiButton") or object:IsA("TextBox") then blocked=true;break end end
+        end
+        if not blocked then point=candidate;break end
+    end
+    if not point then return false,"Move the hub to leave clear game space for bait input" end
+    local token=baitCycleId
+    local function active()
+        return baitEnabled and baitCycleId==token and gui.Parent~=nil and player.Character==character
+            and tool.Parent==character and character:FindFirstChildOfClass("Tool")==tool
+    end
+    if not active() then return false,"Auto Bait stopped or tool changed" end
+    local host=type(mousemoveabs)=="function" and type(mouse1press)=="function" and type(mouse1release)=="function"
+    local moved=pcall(function()
+        if host then mousemoveabs(point.X,point.Y) else VirtualInputManager:SendMouseMoveEvent(point.X,point.Y,game) end
+    end)
+    if not moved then return nil,"Mouse movement unavailable" end
+    task.wait(.03)
+    if not active() then return false,"Auto Bait stopped or tool changed" end
+    local function input(down)
+        if host then if down then mouse1press() else mouse1release() end
+        else VirtualInputManager:SendMouseButtonEvent(point.X,point.Y,0,down,game,0) end
+    end
+    local pressed=pcall(input,true)
+    local held=pcall(function() if pressed then task.wait(.1) end end)
+    local released=pcall(input,false)
+    if not pressed or not held or not released then return false,"Bait mouse input failed" end
+    return active(),host and "host mouse bait click" or "virtual mouse bait click"
+end
+-- BAIT NORMAL CLICK END
 RemoteCatalog.ActivateBait = function(tool, prepared)
     local function activate()
+        local clicked,reason=RemoteCatalog.ClickBaitTool(tool)
+        if clicked~=nil then
+            RemoteCatalog.BaitTransport=reason
+            return clicked,reason
+        end
+        RemoteCatalog.BaitTransport="Tool:Activate fallback"
         tool:Activate()
         task.wait(0.15)
         return true, "tool activation attempted"
@@ -1973,12 +2041,14 @@ local function applyBait()
     if RemoteCatalog.PrepareBaitLearning then RemoteCatalog.PrepareBaitLearning() end
     local ok, result = RemoteCatalog.WithBaitTool(baitTool, function() return RemoteCatalog.CallBait(baitTool, true) end)
     if not ok then
-        baitInfo.Text = "Bait waiting: " .. tostring(result) .. (enabled and " Fishing continues." or " Fishing is OFF.")
+        if result~="Waiting for current rod input" and result~="Waiting for the current cast to finish" and result~="Auto Bait stopped" then RemoteCatalog.BaitNeedsRefresh=true end
+        baitInfo.Text = "Bait waiting: " .. tostring(result) .. (enabled and " Fishing continues." or " Fishing is OFF.") .. " ["..tostring(RemoteCatalog.BaitTransport or "no request").."]"
         baitInfo.TextColor3 = COLORS.warn
         if result~="Waiting for current rod input" and result~="Waiting for the current cast to finish" then
             setStatus("Auto Bait failed: " .. tostring(result))
         end
     else
+        RemoteCatalog.BaitNeedsRefresh=false
         baitInfo.Text = "Bait consumption confirmed. Refreshes after 60 seconds."
         baitInfo.TextColor3 = COLORS.good
     end
@@ -2460,7 +2530,7 @@ function RemoteCatalog.EnableCapture()
     RemoteCatalog.UpdateCaptureUI()
 end
 function RemoteCatalog.PrepareBaitLearning()
-    if RemoteCatalog.LiveRecorder("BaitBinding") then return end
+    if not RemoteCatalog.BaitNeedsRefresh and RemoteCatalog.LiveRecorder("BaitBinding") then return end
     local recorder=RemoteCatalog.Recorder
     if recorder and not recorder.Stopped and (recorder.Active or recorder.LearnBaitOnly) then return end
     local ok,result=pcall(RemoteCatalog.StartCapture)

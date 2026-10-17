@@ -131,6 +131,13 @@ assert(applyBait(),'learned bait request must work without old endpoint')
 RemoteCatalog.Recorder.Bait=function() return false,'denied' end
 sent=nil
 assert(not applyBait() and sent==nil,'learned bait rejection must not fall back to legacy')
+RemoteCatalog.BaitNeedsRefresh=true
+local oldActivation=RemoteCatalog.ActivateBait
+local refreshAttempts=0
+RemoteCatalog.ActivateBait=function(tool) assert(tool==bait);refreshAttempts+=1;return true end
+assert(RemoteCatalog.CallBait(bait) and refreshAttempts==1,'an explicitly requested refresh must try normal input on the next call instead of replaying stale binding')
+RemoteCatalog.ActivateBait=oldActivation
+RemoteCatalog.BaitNeedsRefresh=false
 RemoteCatalog.Recorder=nil
 local previousRecorder=context.RebornCapture
 local globalBaitCalls=0
