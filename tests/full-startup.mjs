@@ -275,7 +275,7 @@ end)()
  ;(function()
  local savedFind,savedLive,savedChar=workspace.FindFirstChild,RemoteCatalog.LiveRecorder,player.Character
  local function position(x) return setmetatable({X=x},{__sub=function(a,b) return {Magnitude=math.abs(a.X-b.X)} end}) end
- local island={Name='7-island'}
+ local island={Name='7-island',FindFirstChild=function() return nil end}
  local foreign={Name='other-island'}
  local chest={Parent=island,Position=position(5),IsA=function(_,kind) return kind=='BasePart' end}
  local root={Position=position(0)}
@@ -354,7 +354,7 @@ end)()
  assert(RemoteCatalog.WithdrawCarrots() and requestedBindings[1]==b,'individual request must dispatch to selected chest')
  RemoteCatalog.ChestSelectButton.Activated:Fire()
  list=RemoteCatalog.ChestSelectMenu:GetChildren()[1]
- for _,option in ipairs(list:GetChildren()) do if option.Text=='All learned chests' then option.Activated:Fire() end end
+ for _,option in ipairs(list:GetChildren()) do if option.Text=='All learned chests' or option.Text=='All matching chests' then option.Activated:Fire() end end
  assert(#RemoteCatalog.SelectedChestTargets()==2,'All must retain both chests')
  RemoteCatalog.UpdateChestSelectionUI()
  assert(RemoteCatalog.ChestStats.CHESTS.Text=='2' and RemoteCatalog.ChestStats.SLOTS.Text=='2','summary must show physical chest and slot counts separately')

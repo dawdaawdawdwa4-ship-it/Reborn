@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 24 and previous.Resume then
+if previous and previous.Version == 25 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 24, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 25, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -427,6 +427,19 @@ function capture:GetChestBindings()
     end
     return result
 end
+-- Input/Output chests in the supplied clip have twelve slots. Include the
+-- boundary index while the capture has not established zero/one-based indexing.
+function capture:MakeChestTarget(binding,chest,slot)
+    if not self:CanUseChestBinding(binding) then return nil end
+    if typeof(chest)~="Instance" or not chest.Parent or not (chest:IsA("Model") or chest:IsA("BasePart")) or chest.Name~=binding.Chest.Name
+        or string.lower(chest.Name)~="chestmediumindustrialio" then return nil end
+    if type(slot)~="number" or slot<0 or slot>12 or slot%1~=0 then return nil end
+    local target={}
+    for key,value in pairs(binding) do target[key]=value end
+    target.Args=cloneArguments(binding.Args,binding.Chest,chest)
+    target.Chest=chest;target.Slot=slot;target.Generated=true
+    return target
+end
 function capture:WithdrawCarrots(amount,binding)
     if not self:CanUseChestBinding(binding) then return false,"Learn a carrot withdrawal on this character first" end
     local b=binding or self.ChestBinding
@@ -441,8 +454,9 @@ function capture:WithdrawCarrots(amount,binding)
         end
     end
     if body.chest~=b.Chest or body.action~="withdraw" or body.item~="carrotHarvested" then return false,"Learn this chest withdrawal again" end
-    -- Change only the requested count; retain the observed slot, chest and session envelope.
+    -- Apply the selected slot and count to the cloned body; retain the learned session envelope.
     body.amount=amount
+    body.slot=b.Slot
     local ok,result=pcall(function() return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n)) end)
     if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     return true,result

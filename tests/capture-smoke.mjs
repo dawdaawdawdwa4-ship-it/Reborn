@@ -416,6 +416,25 @@ end)()
  assert(#capture:GetChestBindings()==2 and not capture:WithdrawCarrots(1,bindingB),'removed chest must be excluded without losing other bindings')
  capture:Stop();assert(not capture.LearnChestOnly and not capture.LearnChestMany,'Stop must end multi learning')
 end)()
+;(function()
+ capture:Resume();capture.Active=false;capture.LearnChestOnly=true;capture.LearnChestMany=true
+ local function chest(name) return {_type='Instance',Name=name,Parent=game,IsA=function(_,kind) return kind=='Model' end} end
+ local a,b=chest('chestMediumIndustrialIO'),chest('chestMediumIndustrialIO')
+ local endpoint=remote('wholeChestEndpoint');endpoint.Parent={Name='rotatedGroup',Parent={Name='out',Parent=game}}
+ local sent
+ endpoint.InvokeServer=function(_,...) sent=table.pack(...);return true end
+ installedHook(endpoint,{liveContext='current-account',body={chest=a,slot=1,action='withdraw',item='carrotHarvested',amount=30}},nil,'tail',nil)
+ local original=capture.ChestBinding
+ local target=capture:MakeChestTarget(original,b,12)
+ assert(target and target.Chest==b and target.Slot==12 and original.Chest==a and original.Slot==1,'target clone must preserve the original capture')
+ assert(capture:WithdrawCarrots(1,target) and sent.n==4 and sent[3]=='tail' and sent[4]==nil,'whole chest replay must retain trailing arguments')
+ assert(sent[1].liveContext=='current-account' and sent[1].body.chest==b and sent[1].body.slot==12 and sent[1].body.item=='carrotHarvested' and sent[1].body.amount==1,'whole chest replay must modify only chest/slot/amount')
+ assert(not capture:MakeChestTarget(original,chest('unrelatedContainer'),1),'unmatched container types must not reuse the template')
+ for _,slot in ipairs({-1,13,.5,0/0,math.huge}) do assert(not capture:MakeChestTarget(original,b,slot),'invalid slot must not produce a request target') end
+ local old=gamePlayer.Character;gamePlayer.Character={}
+ assert(not capture:MakeChestTarget(original,b,1),'another character must not reuse the capture');gamePlayer.Character=old
+ capture:Stop()
+end)()
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
 const state=await LuauState.createAsync();

@@ -108,6 +108,27 @@ assert(RemoteCatalog.SetChestAuto(true))
 for i=1,80 do if coroutine.status(worker)=='suspended' then local ok,err=coroutine.resume(worker);assert(ok,err) end end
 assert(inventory==9 and remaining.A==100 and RemoteCatalog.ChestAutoEnabled,'unreachable chest must not block a reachable one')
 RemoteCatalog.SetChestAuto(false);drain()
+RemoteCatalog.ApproachChest=function() return true end
+local slots={['A:0']=30,['A:5']=17,['A:11']=2,['B:12']=30,['B:3']=4}
+local expanded={}
+for _,chest in ipairs({'A','B'}) do
+ for slot=0,12 do table.insert(expanded,{Recorder=recorder,Binding={Amount=30,Probe=true,Key=chest..':'..slot}}) end
+end
+RemoteCatalog.SelectedChestTargets=function() return expanded end
+inventory=0
+local requests={}
+RemoteCatalog.WithdrawCarrots=function(amount,owner,binding)
+ local key=binding.Key
+ if not requests[key] then assert(amount==1,'unverified slots must start with a one-item request') end
+ requests[key]=(requests[key] or 0)+1
+ local available=slots[key] or 0
+ if available<amount then return false,{reason='empty or insufficient'} end
+ slots[key]=available-amount;inventory+=amount;return true
+end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(inventory==83 and RemoteCatalog.ChestAutoTotal==83,'whole-chest mode must drain every nonempty carrot slot including both index boundaries')
+for _,remaining in pairs(slots) do assert(remaining==0,'a carrot stack was left behind') end
+assert(requests['A:1']==1 and requests['B:0']==1,'empty probe slots must be skipped without repeated retries')
 return 'Chest Auto Max: batches/remainder, inventory confirmation, range wait/resume, one worker, bounded no-progress, Stop/in-flight restart, errors/session/GUI cleanup passed'
 `;
 const state=await LuauState.createAsync();
