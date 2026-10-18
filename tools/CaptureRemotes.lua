@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 23 and previous.Resume then
+if previous and previous.Version == 24 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 23, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 24, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -25,12 +25,14 @@ if previous then
     capture.MineHitBinding = previous.MineHitBinding
     capture.AutoReplantBinding = previous.AutoReplantBinding
     capture.ChestBinding = previous.ChestBinding
+    capture.ChestBindings = previous.ChestBindings or (previous.ChestBinding and {previous.ChestBinding} or {})
     capture.FruitBinding = previous.FruitBinding
     capture.HotbarBinding = previous.HotbarBinding
     capture.HotbarLayout = previous.HotbarLayout
     capture.AutoReplantState = previous.AutoReplantState
     capture.Active = #capture.Records < capture.MaxCalls
 end
+capture.ChestBindings=capture.ChestBindings or {}
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
@@ -189,6 +191,7 @@ function capture:Stop()
     self.LearnWoodOnly = false
     self.LearnBaitOnly = false
     self.LearnChestOnly = false
+    self.LearnChestMany = false
     -- Retain the single hotkey connection so this same recorder can be resumed.
     -- It ignores input while stopped; no extra hooks or listeners are installed.
     -- Leave our hook in pass-through mode; restoring it could overwrite another hook.
@@ -400,20 +403,33 @@ local function learnChest(remote,method,args)
         or type(body.amount)~="number" or body.amount<=0 or body.amount%1~=0 then return false end
     local owner=game:GetService("Players").LocalPlayer
     if not owner or not owner.Character then return false end
-    capture.ChestBinding={Remote=remote,Method=method,Args=cloneArguments(args),Chest=body.chest,
-        Slot=body.slot,Amount=body.amount,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId}
+    local binding={Remote=remote,Method=method,Args=cloneArguments(args),Chest=body.chest,
+        Slot=body.slot,Amount=body.amount,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
+    capture.ChestBinding=binding
+    local replaced=false
+    for i,old in ipairs(capture.ChestBindings) do
+        if old.Chest==binding.Chest and old.Slot==binding.Slot then capture.ChestBindings[i]=binding;replaced=true;break end
+    end
+    if not replaced then table.insert(capture.ChestBindings,binding) end
     return true
 end
-function capture:CanUseChestBinding()
-    local b=self.ChestBinding
+function capture:CanUseChestBinding(binding)
+    local b=binding or self.ChestBinding
     local owner=game:GetService("Players").LocalPlayer
     return b~=nil and b.Remote~=nil and b.Remote.Parent~=nil and b.Chest~=nil and b.Chest.Parent~=nil
         and owner~=nil and owner.Character~=nil and b.OwnerCharacter==owner.Character
         and b.OwnerUserId==owner.UserId and b.JobId==game.JobId
 end
-function capture:WithdrawCarrots(amount)
-    if not self:CanUseChestBinding() then return false,"Learn a carrot withdrawal on this character first" end
-    local b=self.ChestBinding
+function capture:GetChestBindings()
+    local result={}
+    for _,binding in ipairs(self.ChestBindings) do
+        if self:CanUseChestBinding(binding) then table.insert(result,binding) end
+    end
+    return result
+end
+function capture:WithdrawCarrots(amount,binding)
+    if not self:CanUseChestBinding(binding) then return false,"Learn a carrot withdrawal on this character first" end
+    local b=binding or self.ChestBinding
     amount=amount==nil and b.Amount or amount
     if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount" end
     local args=cloneArguments(b.Args)
@@ -477,7 +493,7 @@ local function intercept(remote, ...)
                         if learnedWood and learnedWood~=previousWood and learnedWood.Remote and learnedWood.Remote.Parent then capture.LearnWoodOnly=false end
                     end
                     if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
-                    if capture.LearnChestOnly and learnChest(remote,method,args) then capture.LearnChestOnly=false end
+                    if capture.LearnChestOnly and learnChest(remote,method,args) and not capture.LearnChestMany then capture.LearnChestOnly=false end
                     if not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly then capture:Stop() end
                 end
             end)

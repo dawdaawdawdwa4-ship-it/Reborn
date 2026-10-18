@@ -494,13 +494,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 23 and previous.Resume then
+if previous and previous.Version == 24 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 23, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 24, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -511,12 +511,14 @@ if previous then
     capture.MineHitBinding = previous.MineHitBinding
     capture.AutoReplantBinding = previous.AutoReplantBinding
     capture.ChestBinding = previous.ChestBinding
+    capture.ChestBindings = previous.ChestBindings or (previous.ChestBinding and {previous.ChestBinding} or {})
     capture.FruitBinding = previous.FruitBinding
     capture.HotbarBinding = previous.HotbarBinding
     capture.HotbarLayout = previous.HotbarLayout
     capture.AutoReplantState = previous.AutoReplantState
     capture.Active = #capture.Records < capture.MaxCalls
 end
+capture.ChestBindings=capture.ChestBindings or {}
 local exactNames = {
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
@@ -675,6 +677,7 @@ function capture:Stop()
     self.LearnWoodOnly = false
     self.LearnBaitOnly = false
     self.LearnChestOnly = false
+    self.LearnChestMany = false
     -- Retain the single hotkey connection so this same recorder can be resumed.
     -- It ignores input while stopped; no extra hooks or listeners are installed.
     -- Leave our hook in pass-through mode; restoring it could overwrite another hook.
@@ -886,20 +889,33 @@ local function learnChest(remote,method,args)
         or type(body.amount)~="number" or body.amount<=0 or body.amount%1~=0 then return false end
     local owner=game:GetService("Players").LocalPlayer
     if not owner or not owner.Character then return false end
-    capture.ChestBinding={Remote=remote,Method=method,Args=cloneArguments(args),Chest=body.chest,
-        Slot=body.slot,Amount=body.amount,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId}
+    local binding={Remote=remote,Method=method,Args=cloneArguments(args),Chest=body.chest,
+        Slot=body.slot,Amount=body.amount,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
+    capture.ChestBinding=binding
+    local replaced=false
+    for i,old in ipairs(capture.ChestBindings) do
+        if old.Chest==binding.Chest and old.Slot==binding.Slot then capture.ChestBindings[i]=binding;replaced=true;break end
+    end
+    if not replaced then table.insert(capture.ChestBindings,binding) end
     return true
 end
-function capture:CanUseChestBinding()
-    local b=self.ChestBinding
+function capture:CanUseChestBinding(binding)
+    local b=binding or self.ChestBinding
     local owner=game:GetService("Players").LocalPlayer
     return b~=nil and b.Remote~=nil and b.Remote.Parent~=nil and b.Chest~=nil and b.Chest.Parent~=nil
         and owner~=nil and owner.Character~=nil and b.OwnerCharacter==owner.Character
         and b.OwnerUserId==owner.UserId and b.JobId==game.JobId
 end
-function capture:WithdrawCarrots(amount)
-    if not self:CanUseChestBinding() then return false,"Learn a carrot withdrawal on this character first" end
-    local b=self.ChestBinding
+function capture:GetChestBindings()
+    local result={}
+    for _,binding in ipairs(self.ChestBindings) do
+        if self:CanUseChestBinding(binding) then table.insert(result,binding) end
+    end
+    return result
+end
+function capture:WithdrawCarrots(amount,binding)
+    if not self:CanUseChestBinding(binding) then return false,"Learn a carrot withdrawal on this character first" end
+    local b=binding or self.ChestBinding
     amount=amount==nil and b.Amount or amount
     if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount" end
     local args=cloneArguments(b.Args)
@@ -963,7 +979,7 @@ local function intercept(remote, ...)
                         if learnedWood and learnedWood~=previousWood and learnedWood.Remote and learnedWood.Remote.Parent then capture.LearnWoodOnly=false end
                     end
                     if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
-                    if capture.LearnChestOnly and learnChest(remote,method,args) then capture.LearnChestOnly=false end
+                    if capture.LearnChestOnly and learnChest(remote,method,args) and not capture.LearnChestMany then capture.LearnChestOnly=false end
                     if not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly then capture:Stop() end
                 end
             end)
@@ -1793,7 +1809,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "teleport-labels-34",
+    Subtitle = "multi-chest-35",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -1871,6 +1887,7 @@ local buildController = AutoBuild.new({
 })
 
 local function showTab(name)
+    if RemoteCatalog.ChestSelectMenu then RemoteCatalog.ChestSelectMenu.Visible=false end
     if RemoteCatalog.ChestAmountMenu then RemoteCatalog.ChestAmountMenu.Visible=false end
     activeTab = name
     if RemoteCatalog.SetCropDropdown then RemoteCatalog.SetCropDropdown(false)
@@ -2138,7 +2155,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn teleport-labels-34",
+    return table.concat({"Reborn multi-chest-35",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2666,22 +2683,33 @@ local fruitHint=label({Parent=harvestPage,Text="Pick fruit from your island's tr
     Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,412)})
 fruitHint.TextWrapped=true
 
-RemoteCatalog.ChestLearnButton=button({Parent=harvestPage,Text="Learn carrot chest withdrawal",TextSize=12,
+RemoteCatalog.ChestSelectButton=button({Parent=harvestPage,Text="Chests: All learned (0)  ▾",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,466)})
-RemoteCatalog.ChestWithdrawButton=button({Parent=harvestPage,Text="Withdraw carrots (learn first)",TextSize=12,
+RemoteCatalog.ChestMenuConnections={}
+RemoteCatalog.ChestSelectMenu=Instance.new("Frame")
+RemoteCatalog.ChestSelectMenu.Size=UDim2.new(1,-12,0,32)
+RemoteCatalog.ChestSelectMenu.Position=UDim2.fromOffset(6,500)
+RemoteCatalog.ChestSelectMenu.BackgroundColor3=COLORS.panel
+RemoteCatalog.ChestSelectMenu.BorderSizePixel=0
+RemoteCatalog.ChestSelectMenu.Visible=false
+RemoteCatalog.ChestSelectMenu.ZIndex=40
+RemoteCatalog.ChestSelectMenu.Parent=harvestPage
+RemoteCatalog.ChestLearnButton=button({Parent=harvestPage,Text="Learn chests (withdraw once from each)",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,504)})
-RemoteCatalog.ChestAutoButton=button({Parent=harvestPage,Text="AUTO WITHDRAW MAX: OFF",TextSize=12,
+RemoteCatalog.ChestWithdrawButton=button({Parent=harvestPage,Text="Withdraw carrots (learn first)",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,542)})
+RemoteCatalog.ChestAutoButton=button({Parent=harvestPage,Text="AUTO WITHDRAW MAX: OFF",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,580)})
 RemoteCatalog.ChestScanRange=120
 RemoteCatalog.ChestTravel="Stay"
 RemoteCatalog.ChestRangeButton=button({Parent=harvestPage,Text="Chest approach range: 120 studs",TextSize=12,
-    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,580)})
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,618)})
 track(RemoteCatalog.ChestRangeButton.Activated:Connect(function()
     RemoteCatalog.ChestScanRange=RemoteCatalog.ChestScanRange>=240 and 30 or RemoteCatalog.ChestScanRange*2
     RemoteCatalog.ChestRangeButton.Text="Chest approach range: "..RemoteCatalog.ChestScanRange.." studs"
 end))
 RemoteCatalog.ChestTravelButton=button({Parent=harvestPage,Text="Move to chest: Stay",TextSize=12,
-    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,618)})
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,656)})
 track(RemoteCatalog.ChestTravelButton.Activated:Connect(function()
     RemoteCatalog.ChestTravel=RemoteCatalog.ChestTravel=="Walk" and "Stay" or "Walk"
     RemoteCatalog.ChestTravelButton.Text="Move to chest: "..RemoteCatalog.ChestTravel
@@ -2689,10 +2717,10 @@ track(RemoteCatalog.ChestTravelButton.Activated:Connect(function()
 end))
 RemoteCatalog.ChestAmount=1
 RemoteCatalog.ChestAmountButton=button({Parent=harvestPage,Text="Withdraw amount: 1  ▾",TextSize=12,
-    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,656)})
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,694)})
 RemoteCatalog.ChestAmountMenu=Instance.new("Frame")
 RemoteCatalog.ChestAmountMenu.Size=UDim2.new(1,-12,0,160)
-RemoteCatalog.ChestAmountMenu.Position=UDim2.fromOffset(6,690)
+RemoteCatalog.ChestAmountMenu.Position=UDim2.fromOffset(6,728)
 RemoteCatalog.ChestAmountMenu.BackgroundColor3=COLORS.panel
 RemoteCatalog.ChestAmountMenu.BorderSizePixel=0
 RemoteCatalog.ChestAmountMenu.Parent=harvestPage
@@ -2711,14 +2739,14 @@ end
 track(RemoteCatalog.ChestAmountButton.Activated:Connect(function()
     RemoteCatalog.ChestAmountMenu.Visible=not RemoteCatalog.ChestAmountMenu.Visible
 end))
-RemoteCatalog.ChestHint=label({Parent=harvestPage,Text="Learn chest once. Auto Max collects its carrot slot. Approach range controls Walk only; Stay requires being within 20 studs. Choose Walk explicitly to move closer.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,48),Position=UDim2.fromOffset(8,696)})
+RemoteCatalog.ChestHint=label({Parent=harvestPage,Text="Learn several chests: withdraw carrots once from each, then stop learning. Select All or one chest. Stay never walks; requests need 20-stud reach.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,48),Position=UDim2.fromOffset(8,734)})
 RemoteCatalog.ChestHint.TextWrapped=true
 RemoteCatalog.ChestResultLabel=label({Parent=harvestPage,Text="No chest request sent yet.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,84),Position=UDim2.fromOffset(8,750)})
+    Size=UDim2.new(1,-16,0,84),Position=UDim2.fromOffset(8,788)})
 RemoteCatalog.ChestResultLabel.TextWrapped=true
 RemoteCatalog.ChestCopyButton=button({Parent=harvestPage,Text="Copy chest result",TextSize=12,
-    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,840)})
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,878)})
 
 RemoteCatalog.HarvestWalkButton=button({Parent=harvestPage,Text=CONFIG.HarvestWalk and "AUTO MOVE: ON" or "AUTO MOVE: OFF",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,244),Bg=CONFIG.HarvestWalk and COLORS.on or COLORS.off})
@@ -3208,7 +3236,7 @@ function RemoteCatalog.UpdateCaptureUI()
         RemoteCatalog.CaptureToggle.Text = RemoteCatalog.CaptureAttempted and "Retry capture setup" or "Start capture (optional)"
         return
     end
-    local state = recorder.LearnChestOnly and "Waiting for one manual carrot withdrawal" or recorder.LearnBaitOnly and "Waiting for one bait use (no call log)" or recorder.LearnWoodOnly and "Learning axe request; normal input stays available (no call log)" or (recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused"))
+    local state = recorder.LearnChestOnly and "Learning chests; press Stop learning when finished" or recorder.LearnBaitOnly and "Waiting for one bait use (no call log)" or recorder.LearnWoodOnly and "Learning axe request; normal input stays available (no call log)" or (recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused"))
     local learned = {}
     for _, name in ipairs({"OEzzgCCBzocxJw", "ohy6O10QKzyGZE", "raqRasAwcny1zh", "RZQQNNDRUvfj1N"}) do
         if RemoteCatalog.RequestId(name) then table.insert(learned, RemoteCatalog.VerifiedRequests[name]) end
@@ -3390,6 +3418,7 @@ local function getTopFish()
 end
 
 local function updateBoard()
+    if RemoteCatalog.UpdateChestSelectionUI then RemoteCatalog.UpdateChestSelectionUI() end
     if RemoteCatalog.UpdateTeleportLabels then RemoteCatalog.UpdateTeleportLabels() end
     RemoteCatalog.BaitNativeLabel.Text=RemoteCatalog.BaitNativeStatus or "Food API: not checked yet"
     RemoteCatalog.UpdateCaptureUI()
@@ -4659,13 +4688,16 @@ setHarvestEnabled = function(state) setFarmMode("crop", state) end
 
 function RemoteCatalog.StopChestLearning()
     local recorder=RemoteCatalog.Recorder
+    if RemoteCatalog.ChestLearnButton then RemoteCatalog.ChestLearnButton.Text="Learn chests (withdraw once from each)" end
     if recorder and recorder.LearnChestOnly then
-        recorder.LearnChestOnly=false
+        recorder.LearnChestOnly=false;recorder.LearnChestMany=false
         if not recorder.LearnWoodOnly and not recorder.LearnBaitOnly then recorder:Stop() end
     end
 end
 track(RemoteCatalog.ChestLearnButton.Activated:Connect(function()
     if RemoteCatalog.SetChestAuto then RemoteCatalog.SetChestAuto(false) end
+    RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
+    if RemoteCatalog.ChestBusy then setStatus("Wait for the current chest request to finish",COLORS.warn);return end
     local recorder=RemoteCatalog.Recorder
     if recorder and recorder.LearnChestOnly then
         RemoteCatalog.StopChestLearning()
@@ -4675,16 +4707,58 @@ track(RemoteCatalog.ChestLearnButton.Activated:Connect(function()
     local ok,result=pcall(RemoteCatalog.StartCapture)
     if not ok or not result then setStatus("This host cannot learn chest calls",COLORS.warn);return end
     RemoteCatalog.Recorder=result
-    result.LearnChestOnly=true;result.Active=false
-    setStatus("Withdraw carrots manually once, then use Withdraw carrots",COLORS.good)
+    result.LearnChestOnly=true;result.LearnChestMany=true;result.Active=false
+    setStatus("Withdraw carrots once from EACH chest, then press Stop learning chests",COLORS.good)
+    RemoteCatalog.ChestLearnButton.Text="Stop learning chests"
     RemoteCatalog.UpdateCaptureUI()
 end))
-function RemoteCatalog.WithdrawCarrots(amount)
-    local recorder=RemoteCatalog.LiveRecorder("ChestBinding")
-    if not recorder or not recorder.CanUseChestBinding or not recorder:CanUseChestBinding() then
+function RemoteCatalog.ChestTargets()
+    local recorders={}
+    if RemoteCatalog.Recorder then table.insert(recorders,RemoteCatalog.Recorder) end
+    local ok,other=pcall(function() return (type(getgenv)=="function" and getgenv() or _G).RebornCapture end)
+    if ok and other and other~=RemoteCatalog.Recorder then table.insert(recorders,other) end
+    if #recorders==0 then
+        local fallback=RemoteCatalog.LiveRecorder("ChestBinding")
+        if fallback then table.insert(recorders,fallback) end
+    end
+    local targets={}
+    for _,recorder in ipairs(recorders) do
+        local bindings=recorder.GetChestBindings and recorder:GetChestBindings() or (recorder.ChestBinding and {recorder.ChestBinding} or {})
+        for _,binding in ipairs(bindings) do
+            if recorder.CanUseChestBinding and recorder:CanUseChestBinding(binding) then
+                local duplicate=false
+                for i,entry in ipairs(targets) do
+                    if entry.Binding.Chest==binding.Chest and entry.Binding.Slot==binding.Slot then
+                        duplicate=true
+                        if (binding.ObservedAt or 0)>(entry.Binding.ObservedAt or 0) then targets[i]={Recorder=recorder,Binding=binding} end
+                        break
+                    end
+                end
+                if not duplicate then table.insert(targets,{Recorder=recorder,Binding=binding}) end
+            end
+        end
+    end
+    return targets
+end
+function RemoteCatalog.SelectedChestTargets()
+    local targets={}
+    for _,entry in ipairs(RemoteCatalog.ChestTargets()) do
+        local selected=RemoteCatalog.ChestSelection
+        if not selected or selected.Chest==entry.Binding.Chest and selected.Slot==entry.Binding.Slot then table.insert(targets,entry) end
+    end
+    return targets
+end
+function RemoteCatalog.WithdrawCarrots(amount,recorder,binding)
+    if not recorder then
+        local target=RemoteCatalog.SelectedChestTargets()[1]
+        recorder=target and target.Recorder
+        binding=target and target.Binding
+    end
+    if not recorder or not recorder.CanUseChestBinding or not recorder:CanUseChestBinding(binding) then
         return false,"Learn a carrot withdrawal on this character first"
     end
-    local chest=recorder.ChestBinding.Chest
+    binding=binding or recorder.ChestBinding
+    local chest=binding.Chest
     local island=getPlayerIsland()
     local cursor=chest
     while cursor and cursor~=island do cursor=cursor.Parent end
@@ -4695,7 +4769,7 @@ function RemoteCatalog.WithdrawCarrots(amount)
     if not root or not position or (position-root.Position).Magnitude>20 then
         return false,"Stand within 20 studs of the learned chest"
     end
-    return recorder:WithdrawCarrots(amount or (RemoteCatalog.ChestAmount=="Learned" and recorder.ChestBinding.Amount or RemoteCatalog.ChestAmount))
+    return recorder:WithdrawCarrots(amount or (RemoteCatalog.ChestAmount=="Learned" and binding.Amount or RemoteCatalog.ChestAmount),binding)
 end
 function RemoteCatalog.ChestResultText(value)
     local seen={}
@@ -4724,9 +4798,10 @@ track(RemoteCatalog.ChestCopyButton.Activated:Connect(function()
     if type(copy)=="function" and pcall(copy,detail) then setStatus("Chest result copied",COLORS.good)
     else print(detail);setStatus("Chest result printed to console",COLORS.warn) end
 end))
-function RemoteCatalog.ApproachChest(recorder,active)
-    if not recorder:CanUseChestBinding() then return false,"Learn this chest again" end
-    local chest=recorder.ChestBinding.Chest
+function RemoteCatalog.ApproachChest(recorder,active,binding)
+    if not recorder:CanUseChestBinding(binding) then return false,"Learn this chest again" end
+    binding=binding or recorder.ChestBinding
+    local chest=binding.Chest
     local island=getPlayerIsland()
     local cursor=chest
     while cursor and cursor~=island do cursor=cursor.Parent end
@@ -4743,8 +4818,64 @@ function RemoteCatalog.ApproachChest(recorder,active)
         return false,"Pause other farming movement before walking to the chest"
     end
     return RemoteCatalog.Navigation.Approach(player,chest,12,function()
-        return active() and RemoteCatalog.ChestTravel=="Walk" and recorder:CanUseChestBinding()
+        return active() and RemoteCatalog.ChestTravel=="Walk" and recorder:CanUseChestBinding(binding)
     end,getPartPosition,"Walk","Chest")
+end
+function RemoteCatalog.UpdateChestSelectionUI()
+    local all=RemoteCatalog.ChestTargets()
+    local selected=RemoteCatalog.ChestSelection
+    local text="All learned ("..#all..")"
+    if selected then
+        text="Selection unavailable"
+        for i,entry in ipairs(all) do
+            if entry.Binding.Chest==selected.Chest and entry.Binding.Slot==selected.Slot then text="#"..i.." "..entry.Binding.Chest.Name.." / slot "..tostring(selected.Slot);break end
+        end
+    end
+    RemoteCatalog.ChestSelectButton.Text="Chests: "..text.."  ▾"
+    if not RemoteCatalog.ChestBusy then
+        RemoteCatalog.ChestWithdrawButton.Text=#all>0 and "Withdraw carrots ("..(selected and "selected chest" or "all learned chests")..")" or "Withdraw carrots (learn first)"
+    end
+    RemoteCatalog.ChestLearnButton.Text=RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnChestOnly and "Stop learning chests" or "Learn chests (withdraw once from each)"
+end
+track(RemoteCatalog.ChestSelectButton.Activated:Connect(function()
+    local menu=RemoteCatalog.ChestSelectMenu
+    if menu.Visible then menu.Visible=false;return end
+    for _,connection in ipairs(RemoteCatalog.ChestMenuConnections) do connection:Disconnect() end
+    table.clear(RemoteCatalog.ChestMenuConnections)
+    for _,child in ipairs(menu:GetChildren()) do child:Destroy() end
+    local list=Instance.new("ScrollingFrame")
+    list.Size=UDim2.fromScale(1,1);list.BackgroundTransparency=1;list.BorderSizePixel=0
+    list.ScrollBarThickness=5;list.CanvasSize=UDim2.new();list.AutomaticCanvasSize=Enum.AutomaticSize.Y
+    list.ZIndex=41;list.Parent=menu
+    local targets=RemoteCatalog.ChestTargets()
+    menu.Size=UDim2.new(1,-12,0,math.min(224,(#targets+1)*32))
+    for i=0,#targets do
+        local entry=targets[i]
+        local option=button({Parent=list,Text=i==0 and "All learned chests" or "#"..i.." "..entry.Binding.Chest.Name.." / slot "..tostring(entry.Binding.Slot),TextSize=12,
+            Size=UDim2.new(1,-8,0,30),Position=UDim2.fromOffset(2,i*32)})
+        option.ZIndex=42
+        table.insert(RemoteCatalog.ChestMenuConnections,option.Activated:Connect(function()
+            RemoteCatalog.SetChestAuto(false)
+            RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
+            RemoteCatalog.ChestSelection=entry and {Chest=entry.Binding.Chest,Slot=entry.Binding.Slot} or nil
+            menu.Visible=false;RemoteCatalog.UpdateChestSelectionUI()
+        end))
+    end
+    menu.Visible=true
+end))
+function RemoteCatalog.WithdrawSelectedCarrots(generation)
+    local targets=RemoteCatalog.SelectedChestTargets()
+    local results={}
+    local any=false
+    for i,entry in ipairs(targets) do
+        if not gui.Parent or generation and RemoteCatalog.ChestManualGeneration~=generation then break end
+        local ran,ok,result=pcall(RemoteCatalog.WithdrawCarrots,nil,entry.Recorder,entry.Binding)
+        if not ran then ok,result=false,ok end
+        any=any or ok
+        table.insert(results,"#"..i..": "..(ok and "request sent" or RemoteCatalog.ChestResultText(result)))
+        if i<#targets then task.wait(.6) end
+    end
+    return any,#results>0 and table.concat(results,"; ") or "Learn at least one chest first"
 end
 -- CHEST AUTO BEGIN
 function RemoteCatalog.CarrotCount()
@@ -4760,7 +4891,7 @@ function RemoteCatalog.CarrotCount()
 end
 function RemoteCatalog.ChestAutoMessage(text)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn teleport-labels-34\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn multi-chest-35\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
 end
 function RemoteCatalog.SetChestAuto(state)
@@ -4779,15 +4910,16 @@ function RemoteCatalog.SetChestAuto(state)
         RemoteCatalog.ChestAutoMessage("Wait for the current chest request to finish")
         return false
     end
-    local recorder=RemoteCatalog.LiveRecorder("ChestBinding")
-    if not recorder or not recorder.CanUseChestBinding or not recorder:CanUseChestBinding() then
-        RemoteCatalog.ChestAutoMessage("Learn a carrot withdrawal on this character first")
-        return false
+    local targets=RemoteCatalog.SelectedChestTargets()
+    local states={}
+    for _,entry in ipairs(targets) do
+        local maximum=entry.Binding.Amount
+        if type(maximum)=="number" and maximum>=1 and maximum%1==0 and maximum<=1000000 then
+            table.insert(states,{Recorder=entry.Recorder,Binding=entry.Binding,Maximum=maximum,Amount=maximum,NoProgress=0})
+        end
     end
-    local binding=recorder.ChestBinding
-    local maximum=binding.Amount
-    if type(maximum)~="number" or maximum<1 or maximum%1~=0 or maximum>1000000 then
-        RemoteCatalog.ChestAutoMessage("Learn a valid chest stack amount first")
+    if #states==0 then
+        RemoteCatalog.ChestAutoMessage("Learn and select at least one valid carrot chest first")
         return false
     end
     RemoteCatalog.ChestAutoGeneration=(RemoteCatalog.ChestAutoGeneration or 0)+1
@@ -4795,7 +4927,7 @@ function RemoteCatalog.SetChestAuto(state)
     RemoteCatalog.ChestAutoWorker=generation
     RemoteCatalog.ChestAutoEnabled=true
     RemoteCatalog.ChestAutoTotal=0
-    RemoteCatalog.ChestAutoButton.Text="AUTO WITHDRAW MAX: ON"
+    RemoteCatalog.ChestAutoButton.Text="AUTO WITHDRAW MAX: ON ("..#states..")"
     RemoteCatalog.ChestAutoButton.BackgroundColor3=COLORS.on
     task.spawn(function()
         local ownsBusy=false
@@ -4803,31 +4935,37 @@ function RemoteCatalog.SetChestAuto(state)
             return gui.Parent~=nil and RemoteCatalog.ChestAutoEnabled and RemoteCatalog.ChestAutoGeneration==generation
         end
         local ok,failure=pcall(function()
-            local amount=maximum
-            local noProgress=0
+            local index=0
             while active() do
-                if recorder.ChestBinding~=binding or not recorder:CanUseChestBinding() then
-                    RemoteCatalog.ChestAutoMessage("Chest session changed. Learn again before restarting.")
-                    break
+                local pending=false
+                for _,state in ipairs(states) do if not state.Done then pending=true;break end end
+                if not pending then break end
+                index=index%#states+1
+                local state=states[index]
+                if state.Done then continue end
+                local recorder,binding=state.Recorder,state.Binding
+                if not recorder:CanUseChestBinding(binding) then
+                    state.Done=true
+                    RemoteCatalog.ChestAutoMessage("Skipping chest #"..index..": its session or chest is no longer valid")
+                    continue
                 end
-                local reached,reason=RemoteCatalog.ApproachChest(recorder,active)
+                local reached,reason=RemoteCatalog.ApproachChest(recorder,active,binding)
                 if not active() then break end
                 if not reached then
-                    RemoteCatalog.ChestAutoMessage("Auto withdraw waiting: "..tostring(reason))
+                    RemoteCatalog.ChestAutoMessage("Chest #"..index.." waiting: "..tostring(reason))
                     task.wait(1)
                     continue
                 end
                 local before=RemoteCatalog.CarrotCount()
                 if before==nil then
-                    RemoteCatalog.ChestAutoMessage("Cannot read carrot inventory count. Use the manual withdrawal button.")
+                    RemoteCatalog.ChestAutoMessage("Cannot read carrot inventory count. Use manual withdrawal.")
                     break
                 end
                 RemoteCatalog.ChestBusy=true;ownsBusy=true
-                local ran,sent,response=pcall(RemoteCatalog.WithdrawCarrots,amount)
+                local ran,sent,response=pcall(RemoteCatalog.WithdrawCarrots,state.Amount,recorder,binding)
                 if not active() then break end
-                if not ran then error(sent) end
+                if not ran then sent,response=false,sent end
                 local after=RemoteCatalog.CarrotCount()
-                -- Responses alone do not prove a transfer. Wait for inventory replication.
                 local elapsed=0
                 while sent and active() and after~=nil and after<=before and elapsed<2 do
                     task.wait(.1);elapsed+=.1
@@ -4843,19 +4981,17 @@ function RemoteCatalog.SetChestAuto(state)
                 local gained=math.max(0,after-before)
                 if sent and gained>0 then
                     RemoteCatalog.ChestAutoTotal+=gained
-                    RemoteCatalog.ChestAutoMessage("Auto withdraw: collected "..RemoteCatalog.ChestAutoTotal.." carrots from the learned slot")
-                    amount=maximum;noProgress=0
+                    RemoteCatalog.ChestAutoMessage("Collected "..RemoteCatalog.ChestAutoTotal.." carrots across "..#states.." selected chest slots")
+                    state.Amount=state.Maximum;state.NoProgress=0
                     task.wait(.6)
                 else
-                    local reason=RemoteCatalog.ChestResultText(response)
-                    RemoteCatalog.ChestAutoMessage("No inventory gain. Chest may be empty or inventory full. Response: "..reason)
-                    if amount>1 then
-                        amount=math.max(1,math.floor(amount/2))
+                    RemoteCatalog.ChestAutoMessage("Chest #"..index..": no inventory gain. "..RemoteCatalog.ChestResultText(response))
+                    if state.Amount>1 then
+                        state.Amount=math.max(1,math.floor(state.Amount/2))
                         task.wait(.6)
                     else
-                        noProgress+=1
-                        if noProgress>=3 then break end
-                        task.wait(3)
+                        state.NoProgress+=1
+                        if state.NoProgress>=3 then state.Done=true else task.wait(3) end
                     end
                 end
             end
@@ -4876,16 +5012,19 @@ end))
 
 track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
     if RemoteCatalog.ChestBusy or RemoteCatalog.ChestAutoEnabled then return end
+    RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
+    local generation=RemoteCatalog.ChestManualGeneration
     RemoteCatalog.ChestBusy=true
     RemoteCatalog.ChestWithdrawButton.Text="Sending withdrawal…"
     task.spawn(function()
-        local ran,ok,reason=pcall(RemoteCatalog.WithdrawCarrots)
+        local ran,ok,reason=pcall(RemoteCatalog.WithdrawSelectedCarrots,generation)
         RemoteCatalog.ChestBusy=false
         if not gui.Parent then return end
-        RemoteCatalog.ChestWithdrawButton.Text="Withdraw carrots (learned chest)"
+        RemoteCatalog.ChestWithdrawButton.Text="Withdraw carrots (selected chests)"
+        if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn teleport-labels-34\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn multi-chest-35\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Carrot withdrawal request sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)
@@ -4959,6 +5098,7 @@ function RemoteCatalog.TeleportSavedSpot(name)
     if root.Anchored then return false,"Your character cannot move right now" end
     local previous={CFrame=root.CFrame,OwnerUserId=player.UserId,PlaceId=game.PlaceId,JobId=game.JobId}
     RemoteCatalog.SetChestAuto(false)
+    RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
     setEnabled(false);setBaitEnabled(false)
     setFarmMode("crop",false);setFarmMode("wood",false);setFarmMode("mine",false)
     buildController:Stop()
@@ -5019,6 +5159,7 @@ end
 
 
 track(stopAllButton.Activated:Connect(function()
+    RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
     RemoteCatalog.SetChestAuto(false)
     RemoteCatalog.StopChestLearning()
     RemoteCatalog.AntiAFK:SetEnabled(false)
@@ -5279,6 +5420,9 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
+    for _,connection in ipairs(RemoteCatalog.ChestMenuConnections) do connection:Disconnect() end
+    table.clear(RemoteCatalog.ChestMenuConnections)
+    RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
     RemoteCatalog.SetChestAuto(false)
     hub._destroyed=true
     hub._transitionGeneration=(hub._transitionGeneration or 0)+1

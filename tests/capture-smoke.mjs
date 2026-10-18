@@ -392,6 +392,30 @@ game.JobId=nil;assert(capture:CanUseBaitBinding(),'restoring exact live context 
  assert(not capture:WithdrawCarrots(),'transport errors must be handled')
  chest.Parent=nil;assert(not capture:CanUseChestBinding(),'removed chest must invalidate binding')
 end)()
+;(function()
+ capture:Resume();capture.Active=false;capture.LearnChestOnly=true;capture.LearnChestMany=true
+ local function chest(name) return {_type='Instance',Name=name,Parent=game,IsA=function(_,class) return class=='Model' end} end
+ local a,b=chest('Chest A'),chest('Chest B')
+ local endpoint=remote('differentChestEndpoint');endpoint.Parent={Name='rotatedGroup',Parent={Name='out',Parent=game}}
+ local packets={}
+ endpoint.InvokeServer=function(_,packet) table.insert(packets,packet);return true end
+ local records=#capture.Records
+ installedHook(endpoint,{context='account-A',body={chest=a,action='withdraw',slot=1,item='carrotHarvested',amount=30}})
+ local bindingA=capture.ChestBinding
+ installedHook(endpoint,{context='account-B',body={chest=b,action='withdraw',slot=4,item='carrotHarvested',amount=12}})
+ local bindingB=capture.ChestBinding
+ assert(#capture:GetChestBindings()==2 and capture.LearnChestOnly and not capture.Stopped and #capture.Records==records,'multi learning must retain two chests and stay quiet/active until explicitly stopped')
+ assert(capture:WithdrawCarrots(5,bindingA) and capture.ChestBinding==bindingB,'explicit replay must not replace the latest observed binding')
+ assert(packets[1].context=='account-A' and packets[1].body.chest==a and packets[1].body.slot==1 and packets[1].body.amount==5,'first chest replay mixed another chest envelope')
+ assert(capture:WithdrawCarrots(2,bindingB) and packets[2].context=='account-B' and packets[2].body.chest==b and packets[2].body.slot==4,'second chest replay must preserve its own slot/context')
+ installedHook(endpoint,{context='updated-A',body={chest=a,action='withdraw',slot=1,item='carrotHarvested',amount=15}})
+ assert(#capture:GetChestBindings()==2 and capture.ChestBinding.Args[1].context=='updated-A','relearning one chest/slot must replace, not duplicate it')
+ installedHook(endpoint,{context='another-slot',body={chest=a,action='withdraw',slot=2,item='carrotHarvested',amount=8}})
+ assert(#capture:GetChestBindings()==3,'different carrot slots in one chest must remain distinct')
+ b.Parent=nil
+ assert(#capture:GetChestBindings()==2 and not capture:WithdrawCarrots(1,bindingB),'removed chest must be excluded without losing other bindings')
+ capture:Stop();assert(not capture.LearnChestOnly and not capture.LearnChestMany,'Stop must end multi learning')
+end)()
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
 const state=await LuauState.createAsync();

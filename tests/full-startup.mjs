@@ -279,12 +279,12 @@ end)()
  local foreign={Name='other-island'}
  local chest={Parent=island,Position=position(5),IsA=function(_,kind) return kind=='BasePart' end}
  local root={Position=position(0)}
- player.Character={FindFirstChild=function(_,name) return name=='HumanoidRootPart' and root or nil end}
+ player.Character={FindFirstChild=function(_,name) return name=='HumanoidRootPart' and root or nil end,FindFirstChildOfClass=function() return nil end}
  workspace.FindFirstChild=function(_,name)
   if name=='Islands' then return {FindFirstChild=function(_,key) return key=='7-island' and island or nil end} end
  end
  local sent,requested,denied=0,nil,nil
- local recorder={ChestBinding={Chest=chest,Amount=26},CanUseChestBinding=function() return true end,WithdrawCarrots=function(_,amount) sent+=1;requested=amount;if denied then return false,denied end;return true end}
+ local recorder={Records={},MaxCalls=100,Active=false,ChestBinding={Chest=chest,Amount=26},CanUseChestBinding=function() return true end,WithdrawCarrots=function(_,amount) sent+=1;requested=amount;if denied then return false,denied end;return true end}
  RemoteCatalog.LiveRecorder=function() return recorder end
  assert(RemoteCatalog.WithdrawCarrots() and sent==1,'nearby owned chest request must send once')
  assert(requested==1,'chest UI must default to one carrot rather than replaying the old stack amount')
@@ -335,6 +335,34 @@ end)()
  local cyclic={};cyclic.error=cyclic
  assert(string.find(RemoteCatalog.ChestResultText(cyclic),'cycle',1,true),'cyclic error responses must be bounded')
  RemoteCatalog.ChestAmount=1
+ -- Select one or all learned chests and cancel a multi-chest manual batch.
+ local savedLocalRecorder=RemoteCatalog.Recorder
+ local a=recorder.ChestBinding;a.Slot=1;chest.Name='Chest A'
+ local other={Name='Chest B',Parent=island,Position=position(7),IsA=chest.IsA}
+ local b={Chest=other,Slot=2,Amount=12}
+ recorder.GetChestBindings=function() return {a,b} end
+ RemoteCatalog.Recorder=recorder
+ recorder.CanUseChestBinding=function() return true end
+ local requestedBindings={}
+ recorder.WithdrawCarrots=function(_,amount,binding) table.insert(requestedBindings,binding);return true end
+ RemoteCatalog.ChestSelectButton.Activated:Fire()
+ local list=RemoteCatalog.ChestSelectMenu:GetChildren()[1]
+ for _,option in ipairs(list:GetChildren()) do if string.find(option.Text,'#2',1,true) then option.Activated:Fire() end end
+ assert(#RemoteCatalog.SelectedChestTargets()==1 and RemoteCatalog.SelectedChestTargets()[1].Binding==b,'selector must support an individual chest')
+ assert(RemoteCatalog.WithdrawCarrots() and requestedBindings[1]==b,'individual request must dispatch to selected chest')
+ RemoteCatalog.ChestSelectButton.Activated:Fire()
+ list=RemoteCatalog.ChestSelectMenu:GetChildren()[1]
+ for _,option in ipairs(list:GetChildren()) do if option.Text=='All learned chests' then option.Activated:Fire() end end
+ assert(#RemoteCatalog.SelectedChestTargets()==2,'All must retain both chests')
+ requestedBindings={}
+ RemoteCatalog.ChestWithdrawButton.Activated:Fire()
+ assert(#requestedBindings==1 and RemoteCatalog.ChestBusy,'manual all-chest batch must be serialized')
+ stopAllButton.Activated:Fire();stepWorkers()
+ assert(#requestedBindings==1 and not RemoteCatalog.ChestBusy,'Stop All must cancel remaining manual chest requests')
+ requestedBindings={}
+ RemoteCatalog.ChestWithdrawButton.Activated:Fire();stepWorkers()
+ assert(#requestedBindings==2 and requestedBindings[1]==a and requestedBindings[2]==b and not RemoteCatalog.ChestBusy,'manual All must withdraw from both learned chests')
+ RemoteCatalog.Recorder=savedLocalRecorder;RemoteCatalog.ChestSelection=nil
  workspace.FindFirstChild,RemoteCatalog.LiveRecorder,player.Character=savedFind,savedLive,savedChar
  local savedRecorder=RemoteCatalog.Recorder
  local stopped=false
