@@ -28,8 +28,54 @@ function AutoBuild.Plan(preset, width, length, height)
     end)
     return cells
 end
+-- Plain-data blueprints are validated before use or persistence.
+function AutoBuild.Validate(data)
+    assert(type(data)=="table" and data.Version==1,"Unsupported blueprint version")
+    assert(type(data.Name)=="string" and #data.Name>0 and #data.Name<=48,"Use a blueprint name of 1–48 bytes")
+    assert(type(data.BlockSize)=="number" and data.BlockSize>=1 and data.BlockSize<=20,"Invalid blueprint block size")
+    assert(type(data.Cells)=="table" and #data.Cells>=1 and #data.Cells<=300,"Blueprint must contain 1–300 blocks")
+    local count=0
+    for index in pairs(data.Cells) do
+        assert(type(index)=="number" and index%1==0 and index>=1 and index<=#data.Cells,"Invalid blueprint cell list")
+        count+=1
+    end
+    assert(count==#data.Cells,"Blueprint cell list contains gaps")
+    local result={Version=1,Name=data.Name,BlockSize=data.BlockSize,Cells={}}
+    local seen={}
+    for index,cell in ipairs(data.Cells) do
+        assert(type(cell)=="table" and type(cell.Material)=="string" and #cell.Material>0 and #cell.Material<=128,"Invalid block material")
+        assert(type(cell.Components)=="table" and #cell.Components==12,"Invalid block transform")
+        local c={}
+        for i=1,12 do
+            local n=cell.Components[i]
+            assert(type(n)=="number" and n==n and math.abs(n)<=(i<=3 and 3000 or 1.001),"Invalid block coordinates")
+            c[i]=n
+        end
+        -- Rotation rows must form an orthonormal, right-handed basis.
+        for row=0,2 do
+            local a=4+row*3
+            assert(math.abs(c[a]^2+c[a+1]^2+c[a+2]^2-1)<.002,"Invalid block rotation")
+            for other=row+1,2 do
+                local b=4+other*3
+                assert(math.abs(c[a]*c[b]+c[a+1]*c[b+1]+c[a+2]*c[b+2])<.002,"Invalid block rotation")
+            end
+        end
+        local determinant=c[4]*(c[8]*c[12]-c[9]*c[11])-c[5]*(c[7]*c[12]-c[9]*c[10])+c[6]*(c[7]*c[11]-c[8]*c[10])
+        assert(math.abs(determinant-1)<.002,"Invalid block rotation")
+        local key=string.format("%.3f,%.3f,%.3f",c[1],c[2],c[3])
+        assert(not seen[key],"Duplicate block position");seen[key]=true
+        result.Cells[index]={Material=cell.Material,Components=c}
+    end
+    table.sort(result.Cells,function(a,b)
+        local x,y=a.Components,b.Components
+        if x[2]~=y[2] then return x[2]<y[2] end
+        if x[3]~=y[3] then return x[3]<y[3] end
+        return x[1]<y[1]
+    end)
+    return result
+end
 function AutoBuild.new(ctx)
-    local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0}
+    local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30}
     local inputs,buttons={},{}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
@@ -38,6 +84,7 @@ function AutoBuild.new(ctx)
     function self:ClearPreview()
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
         self.Cells=nil
+        if self.MaterialSummary then self.MaterialSummary.Text="Preview or load a blueprint to see its material counts." end
     end
     function self:Stop()
         self.Token+=1;self.Running=false
@@ -75,11 +122,13 @@ function AutoBuild.new(ctx)
         self:ClearPreview()
         local char,root=characterRoot()
         if not root then status("Wait for your character to spawn.");return false end
-        local ok,plan=pcall(AutoBuild.Plan,self.Preset,self.Width,self.Length,self.Height)
+        local ok,plan
+        if self.SavedPlan then ok,plan=pcall(AutoBuild.Validate,self.SavedPlan)
+        else ok,plan=pcall(AutoBuild.Plan,self.Preset,self.Width,self.Length,self.Height) end
         if not ok then status(plan);return false end
         local material=inputs.Material.Text:match("^%s*(.-)%s*$")
         local pathMaterial=inputs.Path.Text:match("^%s*(.-)%s*$")
-        if material=="" or self.Preset=="Farm plots" and pathMaterial=="" then status("Choose bed/build and path materials.");return false end
+        if not self.SavedPlan and (material=="" or self.Preset=="Farm plots" and pathMaterial=="") then status("Choose bed/build and path materials.");return false end
         local params=RaycastParams.new()
         params.FilterType=Enum.RaycastFilterType.Exclude
         params.FilterDescendantsInstances={char}
@@ -92,24 +141,30 @@ function AutoBuild.new(ctx)
         anchor=anchor*CFrame.new(self.OffsetX*size,self.OffsetY*size,-self.OffsetZ*size)
         self.Anchor=anchor
         local definitions=game:GetService("ReplicatedStorage"):FindFirstChild("Blocks")
-        if definitions then
+        if definitions and self.SavedPlan then
+            for _,cell in ipairs(plan.Cells) do
+                if not definitions:FindFirstChild(cell.Material) then status("Unknown saved block: "..cell.Material);return false end
+            end
+        elseif definitions then
             if not definitions:FindFirstChild(material) then status("Unknown build block: "..material);return false end
             if self.Preset=="Farm plots" and not definitions:FindFirstChild(pathMaterial) then status("Unknown path block: "..pathMaterial);return false end
         end
+        if self.SavedPlan and math.abs(plan.BlockSize-size)>.001 then status("Saved blueprint uses a different block size.");return false end
         local folder=Instance.new("Folder");folder.Name="RebornBuildPreview";folder.Parent=space
         self.PreviewFolder=folder
         self.Cells={}
-        for _,cell in ipairs(plan) do
-            local cf=anchor*CFrame.new(cell.x*size,cell.y*size,-cell.z*size)
+        for _,cell in ipairs(self.SavedPlan and plan.Cells or plan) do
+            local cf=anchor*(self.SavedPlan and CFrame.new(table.unpack(cell.Components)) or CFrame.new(cell.x*size,cell.y*size,-cell.z*size))
             local part=Instance.new("Part")
             part.Name="PlannedBlock";part.Anchored=true;part.CanCollide=false;part.CanTouch=false;part.CanQuery=false
             part.Size=Vector3.new(size-.15,size-.15,size-.15);part.CFrame=cf
             part.Transparency=.65;part.Material=Enum.Material.ForceField
             part.Color=cell.role=="path" and Color3.fromRGB(210,180,100) or Color3.fromRGB(100,160,255)
             part.Parent=folder
-            table.insert(self.Cells,{CFrame=cf,Material=cell.role=="path" and pathMaterial or material,Preview=part})
+            table.insert(self.Cells,{CFrame=cf,Material=self.SavedPlan and cell.Material or cell.role=="path" and pathMaterial or material,Preview=part})
         end
         self.BlockSize=size
+        self:UpdateMaterials(self.Cells)
         status(string.format("Preview: %s, %d blocks. Blue = build/beds; gold = paths.",self.Preset,#self.Cells))
         return true
     end
@@ -190,6 +245,88 @@ function AutoBuild.new(ctx)
             end
         end)
     end
+    function self:UpdateMaterials(cells)
+        local counts,names={},{}
+        for _,cell in ipairs(cells or {}) do
+            if not counts[cell.Material] then counts[cell.Material]=0;table.insert(names,cell.Material) end
+            counts[cell.Material]+=1
+        end
+        table.sort(names)
+        local lines={"Planned materials (availability not checked):"}
+        for index,name in ipairs(names) do
+            if index>5 then table.insert(lines,"More material types: "..(#names-5));break end
+            table.insert(lines,name.." ×"..counts[name])
+        end
+        if self.MaterialSummary then self.MaterialSummary.Text=table.concat(lines,"\n") end
+        return counts
+    end
+    function self:StoreBlueprint(data)
+        local ok,copy=pcall(AutoBuild.Validate,data)
+        if not ok then status(copy);return false end
+        self.Library[self.Slot]=copy
+        local persisted=false
+        if ctx.WriteBlueprint then
+            local ran,result=pcall(ctx.WriteBlueprint,self.Slot,copy)
+            persisted=ran and result==true
+        end
+        status("Saved slot "..self.Slot..": "..copy.Name.." ("..#copy.Cells.." blocks). "..(persisted and "Saved to file." or "Session only; file saving is unavailable or failed."))
+        return true
+    end
+    function self:SavePreview()
+        if self.Running then status("Stop the build before saving a blueprint.");return false end
+        if not self.Cells or not self.Anchor then status("Preview a build before saving it.");return false end
+        local data={Version=1,Name=inputs.Name.Text,BlockSize=self.BlockSize,Cells={}}
+        for _,cell in ipairs(self.Cells) do
+            table.insert(data.Cells,{Material=cell.Material,Components={self.Anchor:ToObjectSpace(cell.CFrame):GetComponents()}})
+        end
+        return self:StoreBlueprint(data)
+    end
+    function self:LoadBlueprint()
+        if self.Running then status("Stop the build before loading a blueprint.");return false end
+        local data=self.Library[self.Slot]
+        if not data and ctx.ReadBlueprint then
+            local ran,result=pcall(ctx.ReadBlueprint,self.Slot)
+            if ran then data=result end
+        end
+        local ok,copy=pcall(AutoBuild.Validate,data)
+        if not ok then status("Cannot load slot "..self.Slot..": "..tostring(copy));return false end
+        self:ClearPreview()
+        self.Library[self.Slot]=copy;self.SavedPlan=copy
+        self.Preset="Saved: "..copy.Name;buttons.Preset.Text=self.Preset.."  ▼"
+        inputs.Name.Text=copy.Name
+        self.OffsetX,self.OffsetY,self.OffsetZ=0,0,0
+        self.Rotation=0;buttons.Rotate.Text="Rotate: 0°"
+        self:UpdateMaterials(copy.Cells)
+        status("Loaded "..copy.Name..". Preview at your current position, adjust offset/rotation, then Start. Materials and permissions are still required.")
+        return true
+    end
+    function self:CaptureIsland()
+        if self.Running then status("Stop the build before saving island blocks.");return false end
+        local _,root=characterRoot()
+        local blocks=ctx.IslandBlocks and ctx.IslandBlocks()
+        if not root or not blocks then status("Stand on your own island to save nearby blocks.");return false end
+        local definitions=ctx.BlockDefinitions and ctx.BlockDefinitions()
+        if not definitions then status("Block definitions are unavailable; island capture was not saved.");return false end
+        local selected,minY={},math.huge
+        for _,block in ipairs(blocks:GetChildren()) do
+            if definitions:FindFirstChild(block.Name) and (block:IsA("BasePart") or block:IsA("Model")) then
+                local ok,cf=pcall(function() return block:IsA("BasePart") and block.CFrame or block:GetPivot() end)
+                if not ok then status("A block transform is unreadable; nothing was saved.");return false end
+                if (cf.Position-root.Position).Magnitude<=self.CaptureRange then
+                    table.insert(selected,{CFrame=cf,Material=block.Name});minY=math.min(minY,cf.Position.Y)
+                    if #selected>300 then status("Area exceeds 300 blocks. Reduce capture range or choose a smaller island section; nothing was saved.");return false end
+                end
+            end
+        end
+        if #selected==0 then status("No supported placed blocks within "..self.CaptureRange.." studs.");return false end
+        local size=blockSize()
+        local origin=CFrame.new(math.round(root.Position.X/size)*size,minY,math.round(root.Position.Z/size)*size)
+        local data={Version=1,Name=inputs.Name.Text,BlockSize=size,Cells={}}
+        for _,cell in ipairs(selected) do
+            table.insert(data.Cells,{Material=cell.Material,Components={origin:ToObjectSpace(cell.CFrame):GetComponents()}})
+        end
+        return self:StoreBlueprint(data)
+    end
     function self:Destroy() self:Stop();self:ClearPreview() end
     local function label(text,y,height)
         return ctx.Label({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(1,-12,0,height or 24),Position=UDim2.fromOffset(6,y)})
@@ -239,6 +376,7 @@ function AutoBuild.new(ctx)
         option.ZIndex=36
         ctx.Track(option.Activated:Connect(function()
             if self.Running then return end
+            self.SavedPlan=nil
             self.Preset=preset;buttons.Preset.Text=preset.."  ▼";presetMenu.Visible=false;invalidate()
         end))
     end
@@ -250,9 +388,9 @@ function AutoBuild.new(ctx)
         inputs[key]=field
         local committed=field.Text
         ctx.Track(field.FocusLost:Connect(function()
-            if self.Running then
+            if self.Running or self.SavedPlan then
                 field.Text=committed
-                status("Stop the build before changing its plan.")
+                status(self.SavedPlan and "Saved layouts keep their materials and shape. Choose a built-in blueprint to edit them." or "Stop the build before changing its plan.")
                 return
             end
             if numeric then
@@ -278,6 +416,26 @@ function AutoBuild.new(ctx)
     button("Clear","Clear preview",.5,486,.5,function() if not self.Running then self:ClearPreview();status("Preview cleared.") end end)
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
+    self.MaterialSummary=label("Preview or load a blueprint to see its material counts.",616,100)
+    self.MaterialSummary.TextWrapped=true
+    label("SAVED BLUEPRINTS · own-island block layouts, up to 300 blocks",724,34)
+    local name=Instance.new("TextBox");name.Name="BlueprintName";name.Text="My island build";name.PlaceholderText="Blueprint name (1–48 bytes)"
+    name.ClearTextOnFocus=false;name.TextSize=14;name.TextColor3=Color3.fromRGB(226,232,240);name.BackgroundColor3=Color3.fromRGB(29,39,48)
+    name.Size=UDim2.new(1,-12,0,32);name.Position=UDim2.fromOffset(6,764);name.Parent=ctx.Parent;inputs.Name=name
+    button("Slot","Blueprint slot: 1 / 5",0,804,1,function()
+        if self.Running then status("Stop the build before changing its blueprint slot.");return end
+        self.Slot=self.Slot%5+1;buttons.Slot.Text="Blueprint slot: "..self.Slot.." / 5"
+    end)
+    button("Save","Save preview",0,844,.5,function() self:SavePreview() end)
+    button("Capture","Save island area",.5,844,.5,function() self:CaptureIsland() end)
+    button("Load","Load selected slot",0,884,1,function() self:LoadBlueprint() end)
+    button("CaptureRange","Save radius: 30 studs",0,924,1,function()
+        if self.Running then return end
+        self.CaptureRange=self.CaptureRange>=120 and 15 or self.CaptureRange*2
+        buttons.CaptureRange.Text="Save radius: "..self.CaptureRange.." studs"
+    end)
+    local hint=label("Save preview stores its shape and materials. Save island area stores nearby placed blocks on your own island. Saving overwrites the selected slot. Load never starts building. Chest contents, inventories and scripts are not saved.",966,110)
+    hint.TextWrapped=true
     self.Buttons=buttons;self.Inputs=inputs
     return self
 end

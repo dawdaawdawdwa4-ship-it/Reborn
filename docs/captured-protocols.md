@@ -197,3 +197,13 @@ catch counter; resource goals advance through confirmed target changes. Final
 crop replanting precedes goal stopping. Mode limits invalidate only the relevant
 worker through its existing OFF control. Session reporting reads counters and
 mode flags without replaying requests. All mode limits default to Unlimited.
+
+### Saved island layouts (island-blueprints-45)
+
+The build library adds local versioned JSON block-layout data, not remote schemas.
+Only the owned island Blocks folder is eligible for nearby capture. Each saved
+cell contains a known block name and twelve relative CFrame components; it does
+not contain session envelopes, inventory contents or scripts. Preview reconstructs
+cells at the current character ground anchor. Start uses the existing placement
+wrapper with unchanged `{cframe, blockType}` payloads. Save/load never place
+blocks. The existing 300-block cap, normal reach and confirmation rules remain.

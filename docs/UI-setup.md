@@ -492,3 +492,53 @@ exclusive farm switching, statistics-reset independence, unrelated-mode
 preservation and clipboard failure. The real loop fixtures also verify fishing
 exits before another input and crop goals preserve final replanting. Existing
 v41–v43 defaults remain covered. Live Roblox behavior remains unverified.
+
+### Saved island blueprints and build library (v45)
+
+Auto Build now has five named blueprint slots. To save a generated build, configure
+its shape and materials, Preview, enter a name, choose a slot and press **Save
+preview**. This saves the resulting block layout and materials, so it also works
+as a named build preset. Saving overwrites the selected slot.
+
+To save part of your own island, enter a name, select the save radius (15/30/60/120
+studs; default 30), choose a slot and press **Save island area**. Capture reads
+only the owned island's Blocks folder and includes nearby BaseParts/Models whose
+names exist in the game's block definitions. It stores block types and complete
+relative CFrames, retaining rotations. Source origin uses the snapped player X/Z
+and lowest captured block Y. It sends no placement requests.
+
+This is a block-layout snapshot, not a full game save: chest contents, inventory,
+scripts, machine settings, crop growth and other object state are not serialized.
+Folders and unknown block types are excluded. The existing 300-block build limit
+also applies to saves. Areas over the limit fail without truncation or replacing
+the selected slot; reduce the radius or save a smaller island section. Missing
+island/definitions or unreadable transforms also leave existing slots intact.
+
+**Load selected slot** validates the saved data and selects it without starting
+placement. Preview positions it relative to your current ground anchor and facing;
+it does not restore the original world location. Use Rotate and Move blueprint to
+align it, then Start build. Saved layouts retain their own materials and shape;
+choose a built-in blueprint to edit generator dimensions or material fields.
+The material summary lists planned quantities, not owned stock. Rebuilding still
+requires materials, normal reach, support and island permissions, and uses the
+existing occupied-cell skipping, confirmation, cancellation and failure limits.
+
+Hosts with file APIs save JSON in `RebornBlueprint_<UserId>_<slot>.json`. Hosts
+without working file saving retain slots in this hub session and say **Session
+only**. New hub sessions read a slot's file on first load. Files have a versioned,
+validated schema with 1–300 unique block positions, bounded finite coordinates,
+valid rotation matrices and bounded names. Read errors or invalid files do not
+replace the current preview. The library is per account; blueprint names do not
+become filenames.
+
+Chests' item checklist also supports case-insensitive, literal text search. Search
+hides unmatched rows without changing selection, invalidating workers or sending
+requests. Empty results explain this. Closing the menu releases search focus.
+Fishing, Harvest, Wood and Mining pages now also show their goal control below
+their existing settings, sharing the same state and behavior as Stats.
+
+Tests cover named round trips, relative rotation/material preservation, imported
+preview/build confirmation, malformed/oversized data, capture radius and source
+adapters, file failure fallback, active-build guards, account-specific file
+paths, search selection isolation and shared inline goal controls. Live Roblox
+rendering, save compatibility and server placement remain unverified.

@@ -31,6 +31,28 @@ local function warn() end
 `;
 const checks=`
 flush()
+ ;(function()
+ local originalWrite,originalRead=writefile,readfile
+ local encode,decode=HttpService.JSONEncode,HttpService.JSONDecode
+ local path,encoded,snapshot
+ HttpService.JSONEncode=function(_,data) snapshot=data;return 'blueprint-json' end
+ HttpService.JSONDecode=function(_,value) assert(value=='blueprint-json');return snapshot end
+ writefile=function(name,value) path=name;encoded=value end
+ readfile=function(name) assert(name==path);return encoded end
+ local plan={Version=1,Name='House',BlockSize=3,Cells={{Material='grass',Components={0,0,0,1,0,0,0,1,0,0,0,1}}}}
+ assert(buildController:StoreBlueprint(plan) and path=='RebornBlueprint_7_1.json' and encoded=='blueprint-json','host adapter must use account-specific fixed slot filenames')
+ buildController.Library={}
+ buildController.Buttons.Load.Activated:Fire()
+ assert(buildController.SavedPlan and buildController.SavedPlan.Name=='House' and not buildController.Running and not buildController.Cells,'Load button must validate disk data without starting a build')
+ buildController.Buttons.Slot.Activated:Fire()
+ assert(buildController.Slot==2,'slot button must cycle independently of blueprint names')
+ buildController.Buttons.CaptureRange.Activated:Fire()
+ assert(buildController.CaptureRange==60,'capture range must be configurable')
+ buildController.SavedPlan=nil;buildController.Preset='Farm plots';buildController.Slot=1;buildController.Library={};buildController.CaptureRange=30
+ writefile,readfile=originalWrite,originalRead
+ HttpService.JSONEncode,HttpService.JSONDecode=encode,decode
+ end)()
+
 buildController.Buttons.Preview.Activated:Fire()
 assert(string.find(buildController.Status.Text,"spawn",1,true))
 assert(buildController.Preset=="Farm plots")
@@ -453,6 +475,32 @@ end)()
  assert(#selectedItems==1 and selectedItems[1].Binding==b,'actual UI item handler must filter to stone')
  chooseItem('wood')
  assert(RemoteCatalog.ChestItems.wood and #RemoteCatalog.SelectedChestTargets()==2 and RemoteCatalog.ChestItemSelectionText()=='2 selected','two checked items must both be retained')
+ local beforeSearch=RemoteCatalog.ChestManualGeneration
+ local beforeRequests=#requestedBindings
+ local function searchItems(query)
+  RemoteCatalog.ChestItemSearch.Text=query
+  RemoteCatalog.ChestItemSearch:GetPropertyChangedSignal('Text'):Fire()
+ end
+ local function itemVisible(name)
+  for _,child in ipairs(RemoteCatalog.ChestItemMenu:GetChildren()) do
+   if child.Text==name or child.Text=='✓ '..name then return child.Visible end
+  end
+  error('missing search item '..name)
+ end
+ searchItems('  StOnE  ')
+ assert(itemVisible('stone') and not itemVisible('wood'),'search must match case-insensitively and trim outer spaces')
+ assert(RemoteCatalog.ChestItems.wood and RemoteCatalog.ChestItems.stone and #RemoteCatalog.SelectedChestTargets()==2,'filtering must preserve checked items outside the visible results')
+ searchItems('[')
+ assert(not itemVisible('wood') and not itemVisible('stone'),'search punctuation must be treated literally')
+ local empty=false
+ for _,child in ipairs(RemoteCatalog.ChestItemMenu:GetChildren()) do
+  if child.Text=='No matching items. Your selection is unchanged.' then empty=child.Visible end
+ end
+ assert(empty,'empty results must explain that selection is unchanged')
+ assert(RemoteCatalog.ChestManualGeneration==beforeSearch and #requestedBindings==beforeRequests,'typing a search must neither cancel collection nor send requests')
+ searchItems('')
+ assert(itemVisible('wood') and itemVisible('stone'),'clearing search must restore all item rows')
+
  chooseItem('stone')
  selectedItems=RemoteCatalog.SelectedChestTargets()
  assert(#selectedItems==1 and selectedItems[1].Binding==a,'unchecking one item must preserve the other')
@@ -540,6 +588,14 @@ end)()
  for _,mode in ipairs({'fishing','crop','wood','mine'}) do
   local goal=RemoteCatalog.ModeGoals[mode]
   assert(not goal.Limit and goal.Progress==0,'all mode goals must start unlimited')
+  assert(goal.PageButton and goal.PageButton.Text==goal.Button.Text,'each farming page must expose its current goal')
+  for _,limit in ipairs({10,25,50,100}) do
+   goal.PageButton.Activated:Fire()
+   assert(goal.Limit==limit and goal.Button.Text==goal.PageButton.Text,'inline controls must share the Stats goal controller')
+  end
+  goal.PageButton.Activated:Fire()
+  assert(not goal.Limit,'inline goals must cycle back to Unlimited')
+
  end
  local fish=RemoteCatalog.ModeGoals.fishing
  fish.Button.Activated:Fire()
@@ -581,7 +637,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn session-goals-44',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn island-blueprints-45',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()

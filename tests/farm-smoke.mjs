@@ -38,10 +38,13 @@ local other=node('8-island','Model',{node('Blocks','Folder',{node('stone','Part'
 local publicTree=node('treePalm','Model',nil,vec(25,0,0))
 local workspace=node('Workspace','Workspace',{node('Islands','Folder',{owned,other}),node('spawnPrefabs','Folder',{node('Forest','Folder',{publicTree})})})
 local player={UserId=7,Character=node('Character','Model',{node('HumanoidRootPart','Part')})}
+local RemoteCatalog={}
 local CONFIG={HarvestCrop='wheat',WoodRange=30,MineRange=90,CropRange=15}
 local harvestEnabled,woodEnabled,mineEnabled=true,true,true
 `;
 const checks=`
+assert(RemoteCatalog.BuildIslandBlocks()==blocks,'blueprint capture adapter must resolve only the owned island blocks')
+player.UserId=999;assert(RemoteCatalog.BuildIslandBlocks()==nil,'blueprint capture must never fall back to another island');player.UserId=7
 assert(FarmLogic.Category('saplingOrange')==nil and FarmLogic.Category('berryHarvested')==nil)
 assert(FarmLogic.Category('grass')==nil and FarmLogic.Category('treeOak')=='wood')
 assert(getPlayerIsland()==owned,'must select owned island')

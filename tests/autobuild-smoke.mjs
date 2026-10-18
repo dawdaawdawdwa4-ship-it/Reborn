@@ -22,7 +22,7 @@ local function signal()
  return {Connect=function(_,callback) table.insert(callbacks,callback);return {} end,
  Fire=function() for _,callback in ipairs(callbacks) do callback() end end}
 end
-local function control() return {Activated=signal(),FocusLost=signal()} end
+local function control() return {Activated=signal(),FocusLost=signal(),Destroy=function(self) self.Destroyed=true end} end
 local Instance={new=function() return control() end}
 local UDim2={new=function() return {} end,fromOffset=function() return {} end}
 local Color3={fromRGB=function() return {} end}
@@ -39,6 +39,28 @@ fm.__index={Inverse=function(a)
  return frame(-p.X*c+p.Z*s,-p.Y,-p.X*s-p.Z*c,-a.yaw)
 end}
 local CFrame={new=frame}
+local function vector(x,y,z)
+ return setmetatable({X=x,Y=y,Z=z},{__sub=function(a,b)
+  return {Magnitude=math.sqrt((a.X-b.X)^2+(a.Y-b.Y)^2+(a.Z-b.Z)^2)}
+ end})
+end
+local Vector3={new=vector}
+local RaycastParams={new=function() return {} end}
+local Enum={RaycastFilterType={Exclude=1},Material={ForceField=1}}
+local definitions={FindFirstChild=function(_,name) return (name=='grass' or name=='stone') and {} end}
+local game={GetService=function() return {FindFirstChild=function() return definitions end} end}
+fm.__index.ToObjectSpace=function(a,b) return a:Inverse()*b end
+fm.__index.GetComponents=function(a)
+ local p=a.Position;local c,s=math.cos(a.yaw),math.sin(a.yaw)
+ return p.X,p.Y,p.Z,c,0,s,0,1,0,-s,0,c
+end
+CFrame.new=function(x,y,z,...)
+ local rotation={...}
+ local cf=frame(x,y,z,#rotation==9 and math.atan2(rotation[3],rotation[1]) or rotation[1])
+ cf.Position=vector(x,y,z);cf.LookVector={X=-math.sin(cf.yaw),Z=-math.cos(cf.yaw)}
+ return cf
+end
+CFrame.Angles=function(_,yaw) return CFrame.new(0,0,0,yaw) end
 -- Re-evaluate with the injected UI globals.
 local A=(function() ${source} end)()
 local ticks,worker,requests=0,nil,0
@@ -105,6 +127,75 @@ moved.Running=true;assert(not moved:Move(1,0,0),'cannot shift active queue');mov
 assert(moved:Move(-moved.OffsetX,-moved.OffsetY,-moved.OffsetZ))
 local restored=moved.Cells[1].CFrame.Position
 assert(math.abs(restored.X-original.Position.X)<.001 and math.abs(restored.Z-original.Position.Z)<.001,'reset offset must restore preview')
+-- Named, plain-data layouts preserve materials and rotations across save/load.
+local stored,writes=nil,0
+ctx.WriteBlueprint=function(slot,data) assert(slot==1);writes+=1;stored=data;return true end
+ctx.ReadBlueprint=function(slot) assert(slot==1);return stored end
+local library=A.new(ctx)
+library.Anchor=frame(30,0,20,math.pi/2);library.BlockSize=3
+library.Cells={
+ {CFrame=library.Anchor*frame(0,0,0),Material='grass'},
+ {CFrame=library.Anchor*frame(3,3,-3,math.pi/2),Material='stone'}}
+assert(library:SavePreview() and writes==1 and #stored.Cells==2,'saving preview must persist a validated layout')
+assert(stored.Name=='My island build' and stored.Cells[2].Material=='stone','saved layout must retain its name and per-block material')
+assert(math.abs(stored.Cells[2].Components[1]-3)<.001 and math.abs(stored.Cells[2].Components[6]-1)<.001,'saved transforms must be relative and preserve rotation')
+library.Cells[2].Material='changed'
+assert(stored.Cells[2].Material=='stone','saved layouts must not alias a mutable preview')
+local loaded=A.new(ctx)
+local requestsBefore=requests
+assert(loaded:LoadBlueprint() and loaded.SavedPlan and not loaded.Cells and not loaded.Running and requests==requestsBefore,'loading must not preview or send placements')
+local previous=loaded.SavedPlan
+loaded.Library={};ctx.ReadBlueprint=function() return {Version=99} end
+assert(not loaded:LoadBlueprint() and loaded.SavedPlan==previous,'invalid disk data must preserve the current plan')
+loaded.Running=true
+assert(not loaded:LoadBlueprint() and not loaded:SavePreview() and not loaded:CaptureIsland(),'active plans must refuse library mutation')
+loaded.Running=false
+local function valid()
+ return {Version=1,Name='Test',BlockSize=3,Cells={{Material='grass',Components={0,0,0,1,0,0,0,1,0,0,0,1}}}}
+end
+for _,change in ipairs({
+ function(d) d.Cells[1].Components[1]=0/0 end,
+ function(d) d.Cells[1].Components[2]=math.huge end,
+ function(d) d.Cells[1].Components[4]=2 end,
+ function(d) d.Cells[1].Components[12]=-1 end,
+ function(d) d.Cells[1].Material='' end,
+ function(d) d.Name=string.rep('x',49) end,
+ function(d) d.BlockSize=0 end,
+ function(d) d.Cells[2]=d.Cells[1] end,
+ function(d) d.Cells.extra=d.Cells[1] end,
+ function(d) for i=2,301 do d.Cells[i]=d.Cells[1] end end
+}) do local data=valid();change(data);assert(not pcall(A.Validate,data),'malformed blueprints must fail validation') end
+-- Captures are sourced only from the owned-island adapter and the chosen radius.
+root.CFrame=CFrame.new(0,3,0);root.Position=root.CFrame.Position
+ctx.BlockDefinitions=function() return definitions end
+local function block(name,x,y,z,model)
+ return {Name=name,CFrame=CFrame.new(x,y,z,model and math.pi/2 or 0),
+  IsA=function(_,kind) return kind==(model and 'Model' or 'BasePart') end,
+  GetPivot=function(self) return self.CFrame end}
+end
+local islandBlocks={block('grass',0,0,0),block('stone',3,3,0,true),block('grass',100,0,0),block('unknown',0,0,0)}
+ctx.IslandBlocks=function() return {GetChildren=function() return islandBlocks end} end
+assert(library:CaptureIsland() and writes==2 and #stored.Cells==2,'capture must include nearby defined blocks and exclude distant or unknown objects')
+local saved=library.Library[1]
+ctx.IslandBlocks=function() return nil end
+assert(not library:CaptureIsland() and library.Library[1]==saved,'missing owned island must preserve the saved slot')
+islandBlocks={}
+for i=1,301 do islandBlocks[i]=block('grass',i*.05,0,0) end
+ctx.IslandBlocks=function() return {GetChildren=function() return islandBlocks end} end
+assert(not library:CaptureIsland() and library.Library[1]==saved and writes==2,'oversized areas must refuse without truncating or overwriting the saved slot')
+ctx.WriteBlueprint=function() error('disk unavailable') end
+assert(library:StoreBlueprint(valid()) and library.Library[1].Name=='Test' and string.find(library.Status.Text,'Session only',1,true),'file errors must retain a usable session blueprint')
+-- Loaded layouts feed the existing preview and placement confirmation pipeline.
+ctx.Workspace.Raycast=function() return {Position=vector(0,1.5,0)} end
+loaded.SavedPlan=A.Validate(stored);loaded.Preset='Saved test';loaded.Cells=nil
+loaded.Inputs.Material.Text='';loaded.Inputs.Path.Text='' -- saved materials are independent of generator inputs
+assert(loaded:Preview() and #loaded.Cells==2,'loaded layouts must generate preview cells')
+assert(loaded.Cells[2].Material=='stone' and math.abs(loaded.Cells[2].CFrame.yaw-math.pi/2)<.001,'loaded previews must retain per-block material and rotation')
+local needs=loaded:UpdateMaterials(loaded.Cells)
+assert(needs.grass==1 and needs.stone==1,'material summary must count each saved block type')
+occupied={};before=requests;loaded:Start()
+while coroutine.status(worker)~='dead' do step() end
+assert(requests-before==2 and string.find(loaded.Status.Text,'2 confirmed',1,true),'saved layouts must build only through the existing confirmed queue')
 return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}
