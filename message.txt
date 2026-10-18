@@ -1779,7 +1779,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "ui-lifecycle-26",
+    Subtitle = "bait-activation-27",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2122,7 +2122,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn ui-lifecycle-26",
+    return table.concat({"Reborn bait-activation-27",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2131,6 +2131,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         "Current bait binding: "..tostring(recorder~=nil),
         "Binding refresh needed: "..tostring(RemoteCatalog.BaitNeedsRefresh==true),
         "Last learned request: "..tostring(RemoteCatalog.BaitLearnedStatus or "not tried"),
+        "Next activation: "..(RemoteCatalog.BaitTrySignal and "food signal/handler" or RemoteCatalog.BaitTryToolActivation and "Tool:Activate" or "mouse click"),
         "Tool.Enabled: "..property("Enabled"),
         "Tool.ManualActivationOnly: "..property("ManualActivationOnly"),
         "Activation signal support: "..tostring(RemoteCatalog.BaitSignalAvailable()),
@@ -2320,9 +2321,12 @@ RemoteCatalog.ActivateBait = function(tool, prepared)
             end
         end
         RemoteCatalog.BaitTransport="Tool:Activate"
-        tool:Activate()
-        task.wait(0.15)
-        return true, "tool activation attempted"
+        -- Use the engine activation lifecycle, including its release. A signal alone
+        -- does not update the Tool's internal activation state.
+        local pressed,reason=pcall(function() tool:Activate() end)
+        local held=pcall(task.wait,.15)
+        local released=pcall(function() tool:Deactivate() end)
+        return pressed and held and released,pressed and "tool activation attempted" or tostring(reason)
     end
     if prepared then return activate() end
     return RemoteCatalog.WithBaitTool(tool, activate)
@@ -2341,12 +2345,17 @@ local function applyBait()
             if string.lower(owned.Name)=="bait" then baitTool=owned;break end
         end
     end
-    if baitTool and (RemoteCatalog.BaitInputCharacter~=character or RemoteCatalog.BaitInputTool~=baitTool) then
-        RemoteCatalog.BaitInputCharacter,RemoteCatalog.BaitInputTool=character,baitTool
+    if baitTool and RemoteCatalog.BaitInputCharacter~=character then
+        RemoteCatalog.BaitInputCharacter=character
         RemoteCatalog.BaitDirectSignalFailed=nil
-        RemoteCatalog.BaitTrySignal=RemoteCatalog.BaitSignalAvailable()
+        local checked,manual=pcall(function() return baitTool.ManualActivationOnly end)
+        -- These tools explicitly require Tool:Activate. Prefer it to a synthetic signal.
+        RemoteCatalog.BaitTrySignal=not (checked and manual==true) and RemoteCatalog.BaitSignalAvailable()
         RemoteCatalog.BaitTryToolActivation=not RemoteCatalog.BaitTrySignal
     end
+    -- Inventory rebuilds can replace the Tool without replacing the character.
+    -- Keep fallback progress so each replacement cannot restart a failed signal path.
+    RemoteCatalog.BaitInputTool=baitTool
     local count=baitTool and RemoteCatalog.BaitCount(baitTool)
     local recorder=RemoteCatalog.AcceptFreshBaitBinding()
     local binding=recorder and recorder.BaitBinding
@@ -2429,6 +2438,7 @@ local function setBaitEnabled(state)
     end
     RemoteCatalog.BaitPending=state
     if state then
+        RemoteCatalog.BaitInputCharacter=nil
         RemoteCatalog.BaitNativeFailed=nil
         RemoteCatalog.BaitDirectSignalFailed=nil
         RemoteCatalog.BaitTrySignal=RemoteCatalog.BaitSignalAvailable()

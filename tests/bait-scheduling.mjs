@@ -102,6 +102,37 @@ do
  assert(not applyBait() and not RemoteCatalog.BaitTrySignal and RemoteCatalog.BaitTryToolActivation,'failed signal activation must try the standard Tool method next')
  firesignal=nil
 end
+-- ManualActivationOnly must select the engine first, and Tool replacement must not restart fallback.
+do
+ local bait={Name='bait',ManualActivationOnly=true}
+ local char={FindFirstChild=function() return bait end}
+ local player={Character=char}
+ firesignal=function() end -- API exists but silently does nothing on this account.
+ RemoteCatalog.AcceptFreshBaitBinding=function() return nil end
+ RemoteCatalog.LiveRecorder=function() return nil end
+ RemoteCatalog.BaitCount=function() return 43 end
+ RemoteCatalog.BaitInputCharacter=nil
+ RemoteCatalog.BaitSample=nil
+ local attempts=0
+ RemoteCatalog.WithBaitTool=function()
+  attempts+=1
+  if attempts==1 then
+   assert(RemoteCatalog.BaitTryToolActivation and not RemoteCatalog.BaitTrySignal,'manual-only bait must use real engine activation before a synthetic signal')
+   RemoteCatalog.BaitTransport='Tool:Activate'
+  else
+   assert(not RemoteCatalog.BaitTrySignal and not RemoteCatalog.BaitTryToolActivation,'replacement bait must retain the next mouse fallback, not restart the signal route')
+   RemoteCatalog.BaitTransport='host mouse bait click'
+  end
+  return false,'Bait use unconfirmed'
+ end
+ ${apply}
+ assert(not applyBait(),'no consumption must not be confirmed')
+ local old=bait
+ bait={Name='bait',ManualActivationOnly=true}
+ assert(not applyBait() and attempts==2 and RemoteCatalog.BaitInputTool==bait,'same-character inventory rebuild must preserve fallback progress')
+ assert(RemoteCatalog.BaitTrySignal,'after a failed mouse attempt, the signal method must still get a turn')
+ firesignal=nil
+end
 -- Manual learning must accept the last bait disappearing before Auto Bait is re-enabled.
 do
  local bait={Name='bait',Parent=nil}

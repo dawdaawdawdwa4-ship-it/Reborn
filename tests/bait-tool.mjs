@@ -7,10 +7,13 @@ local baitBusy,fishingInputBusy=false,false
 local baitEnabled,baitCycleId=true,1
 local gui={Parent=true}
 local current,activated,failActivate,stop,changed=nil,0,false,false,false
+local deactivated=0
+local engineActive=false
 local rod={Name='fishingRod'}
 local quantity,consumeAfter=48,nil
 local bait={Name='bait',GetAttributes=function() return {Amount=quantity} end}
-function bait:Activate() activated+=1;if failActivate then error('activation blocked') end;consumeAfter=.5 end
+function bait:Activate() activated+=1;if failActivate then error('activation blocked') end;assert(not engineActive,'engine activation must release before reuse');engineActive=true;consumeAfter=.5 end
+function bait:Deactivate() deactivated+=1;engineActive=false end
 local character={FindFirstChildOfClass=function() return current end}
 current=rod;rod.Parent=character
 local player={Character=character}
@@ -18,14 +21,22 @@ local RemoteCatalog={EquipTool=function(tool) current=tool;tool.Parent=character
 local task={wait=function(dt) if stop then baitEnabled=false end;if consumeAfter then consumeAfter-=dt;if consumeAfter<=0 then quantity-=1;consumeAfter=nil end end end}
 ${source}
 assert(RemoteCatalog.ActivateBait(bait))
-assert(activated==1 and current==rod and not baitBusy,'bait activation must restore the rod')
+assert(activated==1 and deactivated==1 and not engineActive and current==rod and not baitBusy,'bait activation must release engine input and restore the rod')
 fishingInputBusy=true
 assert(not RemoteCatalog.ActivateBait(bait) and activated==1,'must wait for an active rod press')
 fishingInputBusy=false;stop=true
 assert(not RemoteCatalog.ActivateBait(bait) and activated==1 and current==rod and not baitBusy,'Stop during equip must not consume bait')
 stop=false;baitEnabled=true;failActivate=true
 assert(not RemoteCatalog.ActivateBait(bait) and current==rod and not baitBusy,'activation error must restore rod and unlock fishing')
+assert(not engineActive and deactivated==2,'failed engine activation must still release')
 failActivate=false
+local savedWait=task.wait
+local savedActivate=bait.Activate
+bait.Activate=function() activated+=1;engineActive=true end
+local releaseBefore=deactivated
+task.wait=function(dt) if engineActive then baitEnabled=false end end
+assert(not RemoteCatalog.ActivateBait(bait) and not engineActive and deactivated==releaseBefore+1 and not baitBusy,'Stop during activation must release engine input')
+bait.Activate=savedActivate;task.wait=savedWait;baitEnabled=true
 local callbackCalls=0
 local beforeActivation=activated
 assert(RemoteCatalog.WithBaitTool(bait,function()
