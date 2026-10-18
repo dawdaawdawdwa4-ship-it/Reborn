@@ -5134,7 +5134,8 @@ function RemoteCatalog.CarrotCount(item)
     for _,tool in ipairs(RemoteCatalog.OwnedTools()) do
         if tool.Name==(item or "carrotHarvested") then
             local count=RemoteCatalog.BaitCount(tool)
-            if count==nil or count~=count or count==math.huge then return nil end
+            -- Inventory confirmation needs exact whole-item totals.
+            if type(count)~="number" or count<0 or count%1~=0 or count>9007199254740991-total then return nil end
             total+=count
         end
     end

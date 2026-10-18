@@ -54,6 +54,28 @@ readable=false;calls={}
 assert(RemoteCatalog.SetChestAuto(true));drain()
 assert(#calls==0 and not RemoteCatalog.ChestAutoEnabled,'unreadable inventory must stop before sending')
 readable=true
+-- Invalid stack counts must never become transfer confirmation or issue requests.
+local originalCount=RemoteCatalog.BaitCount
+for _,count in ipairs({-1,0.5,math.huge,-math.huge,0/0,"5",9007199254740992}) do
+ RemoteCatalog.BaitCount=function() return count end
+ calls={};RemoteCatalog.WithdrawCarrots=request
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#calls==0 and RemoteCatalog.ChestAutoTotal==0,'invalid stack count must stop before sending')
+end
+-- Valid individual stacks can still overflow the exact aggregate integer range.
+local originalTools=RemoteCatalog.OwnedTools
+RemoteCatalog.OwnedTools=function() return {{Name='carrotHarvested'},{Name='carrotHarvested'}} end
+RemoteCatalog.BaitCount=function() return 4503599627370496 end
+assert(RemoteCatalog.CarrotCount()==nil,'inexact aggregate count must be unreadable')
+RemoteCatalog.OwnedTools=originalTools
+RemoteCatalog.BaitCount=originalCount
+inventory=0;calls={}
+RemoteCatalog.WithdrawCarrots=function(amount)
+ table.insert(calls,amount);inventory=0.5;return true
+end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(#calls==1 and RemoteCatalog.ChestAutoTotal==0 and not RemoteCatalog.ChestBusy and not RemoteCatalog.ChestAutoWorker,'invalid replicated count must stop without confirming a transfer')
+inventory=0
 -- Range/path waits send no requests, and can resume once approach succeeds.
 reached=false;calls={};chest=60;inventory=0;RemoteCatalog.WithdrawCarrots=request
 assert(RemoteCatalog.SetChestAuto(true) and #calls==0 and RemoteCatalog.ChestAutoEnabled)
