@@ -225,6 +225,42 @@ assert(not string.find(status.Text,'stopped:',1,true),'worker error during actua
   assert(string.find(baitToggle.Text,'AUTO BAIT ON',1,true) and not string.find(baitToggle.Text,'RETRY',1,true),'confirmed manual use must enter the refresh timer')
   stopAllButton.Activated:Fire();stepWorkers()
  end
+ -- Automatic handler learning: click only Auto Bait, with no manual use/button.
+ do
+  local env,connections,fire=getfenv,getconnections,firesignal
+  local globalOwned=RemoteCatalog.OwnedTools
+  RemoteCatalog.CallBait=callBait
+  firesignal=nil
+  for _,initial in ipairs({3,1}) do
+   local quantity,sent=initial,0
+   local current
+   local food={}
+   local bait={Name='bait',Parent={},Activated={},Deactivated={},GetAttributes=function() return {Amount=quantity} end}
+   function bait:FindFirstChild(name) if name=='food' and self.Parent then return food end end
+   local character
+   local hum={EquipTool=function(_,tool) current=tool;tool.Parent=character end}
+   character={FindFirstChild=function(_,name) if name=='bait' and bait.Parent==character then return bait end end,
+    FindFirstChildOfClass=function(_,class) if class=='Humanoid' then return hum elseif class=='Tool' then return current end end}
+   player.Character=character
+   RemoteCatalog.Recorder={Stopped=false,Records={},MaxCalls=100,Active=false}
+   RemoteCatalog.OwnedTools=function() return bait.Parent and {bait} or {} end
+   local function activateFood()
+    sent+=1;quantity-=1
+    RemoteCatalog.Recorder.BaitBinding={Remote={Parent=true},Target=bait,ObservedAt=os.clock()}
+    RemoteCatalog.Recorder.LearnBaitOnly=false
+    if quantity==0 then bait.Parent=nil;current=nil end
+   end
+   getfenv=function(fn) return {script=fn==activateFood and food or {}} end
+   getconnections=function(event) return event==bait.Activated and {{Enabled=true,Function=activateFood}} or {} end
+   baitToggle.Activated:Fire()
+   for i=1,8 do stepWorkers() end
+   assert(enabled and baitEnabled and sent==1 and quantity==initial-1,'Auto Bait alone must call the food handler once, confirm consumption and start Fishing')
+   assert(RemoteCatalog.BaitTransport=='Tool.Activated food handler','automatic startup must not depend on mouse or manual learning')
+   stopAllButton.Activated:Fire();stepWorkers()
+  end
+  getfenv,getconnections,firesignal=env,connections,fire
+  RemoteCatalog.OwnedTools=globalOwned
+ end
  applyBait,run,player.Character=originalApply,originalRun,originalCharacter
  RemoteCatalog.OwnedTools,RemoteCatalog.PrepareBaitLearning,RemoteCatalog.StopBaitLearning,RemoteCatalog.Recorder,RemoteCatalog.CallBait=owned,prepare,stop,recorder,callBait
  RemoteCatalog.BaitSample=nil;RemoteCatalog.BaitNeedsRefresh=false;RemoteCatalog.BaitFailedBinding=nil

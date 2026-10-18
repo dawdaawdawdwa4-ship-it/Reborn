@@ -1728,7 +1728,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-signal-22",
+    Subtitle = "auto-bait-23",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2071,7 +2071,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn bait-signal-22",
+    return table.concat({"Reborn auto-bait-23",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2082,7 +2082,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         "Last learned request: "..tostring(RemoteCatalog.BaitLearnedStatus or "not tried"),
         "Tool.Enabled: "..property("Enabled"),
         "Tool.ManualActivationOnly: "..property("ManualActivationOnly"),
-        "Activation signal support: "..tostring(type(firesignal)=="function"),
+        "Activation signal support: "..tostring(RemoteCatalog.BaitSignalAvailable()),
         "Capture hook support: "..tostring(type(hookmetamethod)=="function" and type(getnamecallmethod)=="function"),
         "Auto Bait: "..tostring(baitEnabled),"Fishing: "..tostring(enabled)},"\n")
 end
@@ -2215,14 +2215,45 @@ RemoteCatalog.ClickBaitTool=function(tool)
     return active(),host and "host mouse bait click" or "virtual mouse bait click"
 end
 -- BAIT NORMAL CLICK END
+RemoteCatalog.BaitSignalAvailable=function()
+    return type(firesignal)=="function" or type(getconnections)=="function" and type(getfenv)=="function"
+end
+RemoteCatalog.FireBaitSignal=function(tool,pressed)
+    if pressed and (tool.Parent~=player.Character or tool.Enabled==false) then return false,"Bait is not ready to activate" end
+    local event=pressed and tool.Activated or tool.Deactivated
+    if type(firesignal)=="function" then return pcall(firesignal,event) end
+    if type(getconnections)~="function" or type(getfenv)~="function" then return false,"Activation signal unavailable" end
+    local found,food=pcall(function() return tool:FindFirstChild("food") end)
+    if not found or not food then return not pressed,"Bait food script unavailable" end
+    local ok,list=pcall(getconnections,event)
+    if not ok or type(list)~="table" then return false,"Food activation callbacks unavailable" end
+    RemoteCatalog.BaitTransport="Tool.Activated food handler"
+    local sent=0
+    for _,connection in ipairs(list) do
+        local matched,callback=pcall(function()
+            if connection.Enabled==false or type(connection.Function)~="function" then return end
+            -- Invoke only this equipped tool's own food script callbacks.
+            if getfenv(connection.Function).script==food then return connection.Function end
+        end)
+        if matched and callback then
+            if pressed and tool.Parent~=player.Character then break end
+            local fired=pcall(function()
+                if type(connection.Fire)=="function" then connection:Fire() else callback() end
+            end)
+            if not fired then return false,"Food activation handler failed" end
+            sent+=1
+        end
+    end
+    return sent>0 or not pressed,"No enabled food activation handler found"
+end
 RemoteCatalog.ActivateBait = function(tool, prepared)
     local function activate()
-        if RemoteCatalog.BaitTrySignal and type(firesignal)=="function" then
+        if RemoteCatalog.BaitTrySignal~=false and RemoteCatalog.BaitSignalAvailable() then
             RemoteCatalog.BaitTransport="Tool.Activated signal"
-            local pressed=pcall(firesignal,tool.Activated)
+            local pressed,reason=RemoteCatalog.FireBaitSignal(tool,true)
             local held=pcall(task.wait,.15)
-            local released=pcall(firesignal,tool.Deactivated)
-            return pressed and held and released,"bait activation signal attempted"
+            local released=RemoteCatalog.FireBaitSignal(tool,false)
+            return pressed and held and released,pressed and "bait activation signal attempted" or reason
         end
         if not RemoteCatalog.BaitTryToolActivation then
             local clicked,reason=RemoteCatalog.ClickBaitTool(tool)
@@ -2304,8 +2335,10 @@ local function applyBait()
             end
             -- A successful mouse API call can still produce no game input on this host.
             -- Try one other normal activation method on the next scheduled attempt.
-            RemoteCatalog.BaitTrySignal=RemoteCatalog.BaitTransport=="Tool:Activate" and type(firesignal)=="function"
-            RemoteCatalog.BaitTryToolActivation=RemoteCatalog.BaitTransport~="Tool:Activate" and RemoteCatalog.BaitTransport~="Tool.Activated signal"
+            local transport=RemoteCatalog.BaitTransport or ""
+            local signal=transport=="Tool.Activated signal" or transport=="Tool.Activated food handler"
+            RemoteCatalog.BaitTrySignal=not signal and transport~="Tool:Activate" and RemoteCatalog.BaitSignalAvailable()
+            RemoteCatalog.BaitTryToolActivation=signal or transport~="Tool:Activate" and not RemoteCatalog.BaitTrySignal
         end
         baitInfo.Text = "Bait waiting: " .. tostring(result) .. (enabled and " Fishing continues." or " Fishing is OFF.") .. " ["..tostring(RemoteCatalog.BaitTransport or "no request").."]"
         baitInfo.TextColor3 = COLORS.warn
@@ -2330,7 +2363,11 @@ local function setBaitEnabled(state)
         return
     end
     RemoteCatalog.BaitPending=state
-    if state then RemoteCatalog.BaitNativeFailed=nil end
+    if state then
+        RemoteCatalog.BaitNativeFailed=nil
+        RemoteCatalog.BaitTrySignal=RemoteCatalog.BaitSignalAvailable()
+        RemoteCatalog.BaitTryToolActivation=not RemoteCatalog.BaitTrySignal
+    end
     RemoteCatalog.StartFishingOnBait=state
     baitEnabled = state
     baitCycleId += 1

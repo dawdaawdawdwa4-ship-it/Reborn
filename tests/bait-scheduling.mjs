@@ -6,7 +6,7 @@ const apply=main.slice(main.indexOf("local function applyBait()"),main.indexOf("
 const run=main.slice(main.indexOf('local function run(myCycle)'),main.indexOf('-- Controls\n'));
 const code=`
 local recoveries=0
-local RemoteCatalog={AcceptFreshBaitBinding=function() return nil end,RecoverFishingCast=function() recoveries+=1;return true end,EquipFishingRod=function() return false,"No rod" end}
+local RemoteCatalog={BaitSignalAvailable=function() return type(firesignal)=="function" end,AcceptFreshBaitBinding=function() return nil end,RecoverFishingCast=function() recoveries+=1;return true end,EquipFishingRod=function() return false,"No rod" end}
 local baitEnabled,baitBusy,baitCycleId=false,false,0
 local gui={Parent=true}
 local baitToggle,baitInfo={},{}
@@ -85,9 +85,9 @@ do
  assert(not applyBait() and attempts==2,'a different character must not inherit consumption confirmation')
  assert(not RemoteCatalog.BaitTryToolActivation,'unconfirmed tool use must allow the mouse method on a later retry')
  firesignal=function() end
- assert(not applyBait() and RemoteCatalog.BaitTrySignal,'a failed tool activation must try the actual activation signal when supported')
+ assert(not applyBait() and not RemoteCatalog.BaitTrySignal and not RemoteCatalog.BaitTryToolActivation,'failed tool activation must leave mouse input a turn instead of looping only signals/tools')
  RemoteCatalog.BaitTransport='Tool.Activated signal'
- assert(not applyBait() and not RemoteCatalog.BaitTrySignal and not RemoteCatalog.BaitTryToolActivation,'failed signal activation must return to mouse input on a later attempt')
+ assert(not applyBait() and not RemoteCatalog.BaitTrySignal and RemoteCatalog.BaitTryToolActivation,'failed signal activation must try the standard Tool method next')
  firesignal=nil
 end
 -- Manual learning must accept the last bait disappearing before Auto Bait is re-enabled.

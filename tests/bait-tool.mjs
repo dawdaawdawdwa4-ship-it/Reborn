@@ -80,7 +80,26 @@ firesignal=function(signal)
  if signal==bait.Activated then bait.Parent=nil;current=nil end
 end
 assert(RemoteCatalog.ActivateBait(bait) and current==rod and not baitBusy,'consuming the last bait must confirm tool removal even if its old quantity attribute still says one')
-firesignal=nil;RemoteCatalog.BaitTrySignal=false
+firesignal=nil
+local realGetfenv=getfenv
+local food,unrelated={},{}
+function bait:FindFirstChild(name) if name=='food' then return food end end
+quantity=3;consumeAfter=nil
+local foodCalls,releases,foreign=0,0,0
+local function activatedFood() foodCalls+=1;consumeAfter=.5 end
+local function deactivatedFood() releases+=1 end
+local function unrelatedCallback() foreign+=1 end
+getfenv=function(fn) return {script=fn==unrelatedCallback and unrelated or food} end
+getconnections=function(event)
+ local function connection(fn,enabled) return {Function=fn,Enabled=enabled,Fire=function(self) self.Function() end} end
+ if event==bait.Activated then return {connection(unrelatedCallback,true),connection(activatedFood,false),connection(activatedFood,true)} end
+ return {connection(deactivatedFood,true)}
+end
+RemoteCatalog.BaitTrySignal=nil -- automatic preference, without the manual-learning button
+assert(RemoteCatalog.ActivateBait(bait) and foodCalls==1 and releases==1 and foreign==0 and RemoteCatalog.BaitTransport=='Tool.Activated food handler','automatic handler activation must consume bait using only the equipped food script, respecting disabled/foreign callbacks')
+getconnections=function() return {{Function=unrelatedCallback,Enabled=true}} end
+assert(not RemoteCatalog.ActivateBait(bait) and foreign==0,'unrelated event callbacks must never be invoked')
+getconnections=nil;getfenv=realGetfenv;RemoteCatalog.BaitTrySignal=false
 RemoteCatalog.ClickBaitTool=normalClick
 
 RemoteCatalog.BobberActive=function() return true end
