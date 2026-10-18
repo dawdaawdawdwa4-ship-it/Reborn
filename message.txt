@@ -1673,7 +1673,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "harvest-range-13",
+    Subtitle = "cleanup-14",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -1686,6 +1686,21 @@ local airflowTabs = {}
 local pages = {}
 local cropDropdown, cropDropdownOpen
 local activeTab = "Fishing"
+
+RemoteCatalog.MenuClosers={}
+function RemoteCatalog.CloseMenus()
+    for _,close in ipairs(RemoteCatalog.MenuClosers) do close() end
+end
+local selectTabOriginal=hub.SelectTab
+hub.SelectTab=function(self,...)
+    RemoteCatalog.CloseMenus()
+    return selectTabOriginal(self,...)
+end
+local toggleOriginal=hub.Toggle
+hub.Toggle=function(self,...)
+    RemoteCatalog.CloseMenus()
+    return toggleOriginal(self,...)
+end
 
 local function createPage(name)
     local tab = hub:Tab({ Name = name })
@@ -1873,7 +1888,7 @@ statsOverlayTitle.InputBegan:Connect(function(input)
         end)
     end
 end)
-UserInputService.InputChanged:Connect(function(input)
+track(UserInputService.InputChanged:Connect(function(input)
     if draggingOverlay and overlayDragStart and overlayStartPosition then
         local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
         local isTouchMove = overlayDragInput and input == overlayDragInput
@@ -1885,7 +1900,7 @@ UserInputService.InputChanged:Connect(function(input)
             )
         end
     end
-end)
+end))
 
 local statsOverlayText = Instance.new("Frame")
 statsOverlayText.Name = "StatsContent"
@@ -2355,7 +2370,17 @@ function RemoteCatalog.TravelSelector(page,y)
             savePreferences()
         end))
     end
-    track(selector.Activated:Connect(function() local show=not options[1].Visible;for _,item in ipairs(options) do item.Visible=show end end))
+    local function close()
+        for _,item in ipairs(options) do item.Visible=false end
+        selector.Text=title..CONFIG[key].."  ▾"
+    end
+    table.insert(RemoteCatalog.MenuClosers,close)
+    track(selector.Activated:Connect(function()
+        local show=not options[1].Visible
+        RemoteCatalog.CloseMenus()
+        for _,item in ipairs(options) do item.Visible=show end
+        selector.Text=title..CONFIG[key]..(show and "  ▴" or "  ▾")
+    end))
 end
 RemoteCatalog.TravelSelector(harvestPage,286)
 RemoteCatalog.TravelSelector(woodPage,280)
@@ -2653,6 +2678,7 @@ local movementController = (function()
         local menu=Instance.new("Frame");menu.BackgroundColor3=COLORS.panel;menu.BorderSizePixel=0
         menu.Size=UDim2.new(1,-12,0,#options*36);menu.Position=UDim2.fromOffset(6,y);menu.ZIndex=30;menu.Visible=false;menu.Parent=movementPage;corner(menu,8)
         table.insert(self.Menus,menu)
+        table.insert(RemoteCatalog.MenuClosers,function() menu.Visible=false end)
         for i, option in ipairs(options) do
             local choice=button({Parent=menu,Text=tostring(option),Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(i-1)*36)})
             choice.ZIndex=31
@@ -2660,7 +2686,7 @@ local movementController = (function()
         end
         track(anchor.Activated:Connect(function()
             local open=not menu.Visible
-            for _,other in ipairs(self.Menus) do other.Visible=false end
+            RemoteCatalog.CloseMenus()
             menu.Visible=open
         end))
     end
@@ -3244,7 +3270,7 @@ local function firePlant(cf, blockType)
 end
 
 -- Plant a grid of crops around the player
-local function plantAroundPlayer(blockType)
+local function plantAroundPlayer(blockType,token)
     if not RemoteCatalog.PlacementAvailable() then
         setStatus("Place one block manually with capture active first.", COLORS.warn)
         return 0
@@ -3262,6 +3288,7 @@ local function plantAroundPlayer(blockType)
 
 	for x = -r, r, step do
 		for z = -r, r, step do
+            if not gui.Parent or player.Character~=char or RemoteCatalog.PlantGeneration~=token then return planted end
 			local pos = Vector3.new(origin.X + x, origin.Y, origin.Z + z)
 			-- Keep upright rotation like the Cobalt sample
 			local cf = CFrame.new(pos) * CFrame.Angles(0, 0, 0)
@@ -4069,6 +4096,9 @@ setHarvestEnabled = function(state) setFarmMode("crop", state) end
 
 track(stopAllButton.Activated:Connect(function()
     RemoteCatalog.AntiAFK:SetEnabled(false)
+    RemoteCatalog.PlantGeneration=(RemoteCatalog.PlantGeneration or 0)+1
+    RemoteCatalog.Planting=false
+    plantBtn.Text="Plant selected crop"
     buildController:Stop()
     movementController:Reset()
     cycleId += 1
@@ -4102,6 +4132,7 @@ track(woodToggle.Activated:Connect(function() setFarmMode("wood", not woodEnable
 track(mineToggle.Activated:Connect(function() setFarmMode("mine", not mineEnabled) end))
 RemoteCatalog.CropControlPositions={}
 function RemoteCatalog.SetCropDropdown(open)
+    if open then RemoteCatalog.CloseMenus() end
     cropDropdownOpen=open
     cropDropdown.Visible=open
     local offset=open and cropDropdown.Size.Y.Offset+8 or 0
@@ -4117,6 +4148,7 @@ function RemoteCatalog.SetCropDropdown(open)
     end
     refreshCropSelectionUI()
 end
+table.insert(RemoteCatalog.MenuClosers,function() RemoteCatalog.SetCropDropdown(false) end)
 track(cropSelect.Activated:Connect(function()
     RemoteCatalog.SetCropDropdown(not cropDropdownOpen)
 end))
@@ -4212,8 +4244,11 @@ local function makeToolDropdown(page, anchor, options, kind, yPosition, onChoose
             refresh()
         end))
     end
+    table.insert(RemoteCatalog.MenuClosers,function() menu.Visible=false;refresh() end)
     track(anchor.Activated:Connect(function()
-        menu.Visible = not menu.Visible
+        local show=not menu.Visible
+        RemoteCatalog.CloseMenus()
+        menu.Visible = show
         refresh()
     end))
     RemoteCatalog.ToolMenuRefresh=RemoteCatalog.ToolMenuRefresh or {}
@@ -4288,15 +4323,21 @@ track(layoutBtn.Activated:Connect(function()
 end))
 
 track(plantBtn.Activated:Connect(function()
-	setStatus("🌱 Planting " .. CONFIG.PlantType .. "...", COLORS.good)
-	task.spawn(function()
-		local n = plantAroundPlayer(CONFIG.PlantType)
-		if n > 0 then
-            setStatus("Placement requests sent: " .. n .. " × " .. CONFIG.PlantType, COLORS.good)
-        else
-            setStatus("No placement requests sent. Place a block manually first; check tool and range.", COLORS.warn)
-        end
-	end)
+    if RemoteCatalog.Planting then return end
+    RemoteCatalog.PlantGeneration=(RemoteCatalog.PlantGeneration or 0)+1
+    local token=RemoteCatalog.PlantGeneration
+    RemoteCatalog.Planting=true
+    plantBtn.Text="Planting… use Stop All to cancel"
+    setStatus("Planting "..CONFIG.PlantType.."...",COLORS.good)
+    task.spawn(function()
+        local ok,n=pcall(plantAroundPlayer,CONFIG.PlantType,token)
+        if not gui.Parent or RemoteCatalog.PlantGeneration~=token then return end
+        RemoteCatalog.Planting=false
+        plantBtn.Text="Plant selected crop"
+        if not ok then setStatus("Planting stopped: "..tostring(n),COLORS.warn)
+        elseif n>0 then setStatus("Placement requests sent: "..n.." × "..CONFIG.PlantType,COLORS.good)
+        else setStatus("No placement requests sent. Place a block manually first; check tool and range.",COLORS.warn) end
+    end)
 end))
 
 --------------------------------------------------------------------
@@ -4312,6 +4353,9 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
+    RemoteCatalog.PlantGeneration=(RemoteCatalog.PlantGeneration or 0)+1
+    RemoteCatalog.Planting=false
+    woodEnabled=false;mineEnabled=false
     RemoteCatalog.AntiAFK:Destroy()
     RemoteCatalog.Navigation.Stop()
     buildController:Destroy()

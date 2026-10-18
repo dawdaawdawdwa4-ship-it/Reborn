@@ -3,6 +3,7 @@ import {LuauState} from 'luau-web';
 const source=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const logic=fs.readFileSync(new URL('../tools/FarmLogic.lua',import.meta.url),'utf8');
 const loop=source.slice(source.indexOf('local function harvestLoop(myCycle)'),source.indexOf('-- Main fishing loop'));
+const planting=source.slice(source.indexOf('local function plantAroundPlayer('),source.indexOf('-- Hotbar layout remote'));
 const code=`
 local FarmLogic=(function() ${logic} end)()
 local function runScenario(scenario)
@@ -101,6 +102,30 @@ local function runScenario(scenario)
  if scenario=='prompt-cancel' then assert(released and not held and counted==0 and planted==0,'Stop must release prompt and cancel post-processing') end
 end
 for _,scenario in ipairs({'unready','walk-short','walk-crop','walk-cancel','berry-persistent','unchanged','removed','regrow','cancel','prompt-cancel','learned-prompt','server-replant','fruit','fruit-cancel','wood-equip','blocked-wood','multi-carrot'}) do runScenario(scenario) end
+-- Manual grid planting must stop before the next request after cancellation or respawn.
+do
+ local RemoteCatalog={PlacementAvailable=function() return true end,PlantGeneration=1}
+ local gui={Parent=true}
+ local CONFIG={PlantType='wheat',PlantRadius=3,PlantSpacing=3,PlantDelay=.1}
+ local root={Position={X=0,Y=0,Z=0}}
+ local char={FindFirstChild=function() return root end}
+ local player={Character=char}
+ local Vector3={new=function() return {} end}
+ local frame=setmetatable({},{__mul=function(a) return a end})
+ local CFrame={new=function() return frame end,Angles=function() return frame end}
+ local calls=0
+ local function setStatus() end
+ local COLORS={warn=1}
+ local function firePlant() calls+=1;return true end
+ local task={wait=function() RemoteCatalog.PlantGeneration+=1 end}
+ ${planting}
+ assert(plantAroundPlayer('wheat',1)==1 and calls==1,'Stop All token must prevent subsequent planting requests')
+ calls=0
+ assert(plantAroundPlayer('wheat',1)==0 and calls==0,'stale planting worker must send nothing')
+ RemoteCatalog.PlantGeneration=3
+ task.wait=function() player.Character={} end
+ assert(plantAroundPlayer('wheat',3)==1,'respawn must cancel remaining planting requests')
+end
 return 'Harvest loop passed: no false counts, confirmed removal/replant, regrow in place, Stop/cycle cancellation and prompt release'
 `;
 const state=await LuauState.createAsync();
