@@ -1709,7 +1709,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "recovery-16",
+    Subtitle = "resource-check-17",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2666,11 +2666,18 @@ local movementController = (function()
         local char = player.Character
         return char and char:FindFirstChildOfClass("Humanoid")
     end
-    local function remember(hum)
-        if not originals[hum] then
-            originals[hum] = {WalkSpeed=hum.WalkSpeed,JumpPower=hum.JumpPower,JumpHeight=hum.JumpHeight}
+    local function override(hum,property,value)
+        local original=originals[hum]
+        if not original then original={};originals[hum]=original end
+        if original[property]==nil then original[property]=hum[property] end
+        hum[property]=value
+    end
+    local function restore(hum,property)
+        local original=originals[hum]
+        if original and original[property]~=nil then
+            hum[property]=original[property]
+            original[property]=nil
         end
-        return originals[hum]
     end
     local info = label({Parent=movementPage,Text="Adjust walking and jumping. Changes apply only while enabled; Reset restores your character's original values.",
         TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-12,0,48),Position=UDim2.fromOffset(6,4)})
@@ -2683,32 +2690,38 @@ local movementController = (function()
     self.Status=label({Parent=movementPage,Text="Movement uses the game's character settings; the server may override changes.",
         TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-12,0,42),Position=UDim2.fromOffset(6,302)})
     self.Status.TextWrapped=true
-    function self:Apply()
+    function self:Apply(feature)
         walk.Text=self.WalkEnabled and "Custom walk: ON" or "Custom walk: OFF"
         jump.Text=self.JumpEnabled and "Custom jump: ON" or "Custom jump: OFF"
         walk.BackgroundColor3=self.WalkEnabled and COLORS.on or COLORS.off
         jump.BackgroundColor3=self.JumpEnabled and COLORS.on or COLORS.off
         local hum=humanoid()
         if not hum then self.Status.Text="Wait for your character to spawn.";return end
-        local original=remember(hum)
-        hum.WalkSpeed=self.WalkEnabled and self.Speed or original.WalkSpeed
-        if hum.UseJumpPower then hum.JumpPower=self.JumpEnabled and self.JumpPower or original.JumpPower
-        else hum.JumpHeight=self.JumpEnabled and self.JumpHeight or original.JumpHeight end
-        self.Status.Text="Movement updated. Reset restores this character's starting settings."
+        if feature~="jump" then
+            if self.WalkEnabled then override(hum,"WalkSpeed",self.Speed)
+            else restore(hum,"WalkSpeed") end
+        end
+        if feature~="walk" then
+            local property=hum.UseJumpPower and "JumpPower" or "JumpHeight"
+            local other=hum.UseJumpPower and "JumpHeight" or "JumpPower"
+            restore(hum,other)
+            if self.JumpEnabled then override(hum,property,self[property])
+            else restore(hum,property) end
+        end
+        self.Status.Text="Movement updated. Reset restores only settings changed here."
     end
     function self:Reset()
         self.WalkEnabled,self.JumpEnabled=false,false
         local hum=humanoid()
-        local original=hum and originals[hum]
-        if original then
-            hum.WalkSpeed=original.WalkSpeed;hum.JumpPower=original.JumpPower;hum.JumpHeight=original.JumpHeight
+        if hum then
+            restore(hum,"WalkSpeed");restore(hum,"JumpPower");restore(hum,"JumpHeight")
         end
         walk.Text="Custom walk: OFF";jump.Text="Custom jump: OFF"
         walk.BackgroundColor3=COLORS.off;jump.BackgroundColor3=COLORS.off
         self.Status.Text="Original movement restored."
     end
-    track(walk.Activated:Connect(function() self.WalkEnabled=not self.WalkEnabled;self:Apply() end))
-    track(jump.Activated:Connect(function() self.JumpEnabled=not self.JumpEnabled;self:Apply() end))
+    track(walk.Activated:Connect(function() self.WalkEnabled=not self.WalkEnabled;self:Apply("walk") end))
+    track(jump.Activated:Connect(function() self.JumpEnabled=not self.JumpEnabled;self:Apply("jump") end))
     track(reset.Activated:Connect(function() self:Reset() end))
     local function dropdown(anchor, options, y, select)
         local menu=Instance.new("Frame");menu.BackgroundColor3=COLORS.panel;menu.BorderSizePixel=0
@@ -2728,11 +2741,11 @@ local movementController = (function()
     end
     self.Menus={}
     local speeds={16,20,24,32}
-    dropdown(speed,speeds,146,function(i) self.Speed=speeds[i];speed.Text="Walk speed: "..self.Speed.."  ▾";if self.WalkEnabled then self:Apply() end end)
+    dropdown(speed,speeds,146,function(i) self.Speed=speeds[i];speed.Text="Walk speed: "..self.Speed.."  ▾";if self.WalkEnabled then self:Apply("walk") end end)
     local powers={50,60,75};local heights={7.2,10,14};local names={"Normal","Medium","High"}
     dropdown(height,names,242,function(i)
         self.JumpPower,self.JumpHeight=powers[i],heights[i];height.Text="Jump strength: "..names[i].."  ▾"
-        if self.JumpEnabled then self:Apply() end
+        if self.JumpEnabled then self:Apply("jump") end
     end)
     track(player.CharacterAdded:Connect(function(char)
         if self.WalkEnabled or self.JumpEnabled then
@@ -3857,6 +3870,9 @@ local function harvestLoop(myCycle)
                 if char:FindFirstChildOfClass("Tool")~=previous then task.wait(0.1) end
             end
             if not active() then break end
+            -- Tool equip and travel yield; another player may remove this resource meanwhile.
+            if not obj.Parent or player.Character~=char or char:FindFirstChild("HumanoidRootPart")~=hrp then continue end
+            if target.kind=="fruit" and (not target.model.Parent or not obj:IsDescendantOf(target.model)) then continue end
             position = getPartPosition(obj)
             if not position or (position - hrp.Position).Magnitude > FarmLogic.Range(target.category, CONFIG) then continue end
             local before = FarmLogic.Snapshot(obj)
