@@ -189,3 +189,11 @@ Timer expiry calls existing Stop All cleanup and invalidates worker generations.
 History retains only confirmed count summaries for at most five automatic runs;
 no session identifiers, request payloads or live chest references are stored.
 Cancelled in-flight withdrawals retain only previously confirmed counts.
+
+### Mode goals (session-goals-44)
+
+Mode goals introduce no remote formats. Fishing advances through its existing
+catch counter; resource goals advance through confirmed target changes. Final
+crop replanting precedes goal stopping. Mode limits invalidate only the relevant
+worker through its existing OFF control. Session reporting reads counters and
+mode flags without replaying requests. All mode limits default to Unlimited.

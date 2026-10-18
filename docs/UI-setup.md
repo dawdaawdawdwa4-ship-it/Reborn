@@ -462,3 +462,33 @@ Mock checks cover actual dashboard and timer callbacks, one-shot expiry,
 cancellation, destruction, shared Stop All cleanup, history ordering/bounds,
 snapshot isolation, copy behavior, scroll-container wiring and preview reasons.
 Real Roblox rendering and live server behavior remain unverified.
+
+### Mode goals and session report (v44)
+
+Stats > **Mode goals** provides independent Fishing, Harvest, Wood and Mining
+goals: Unlimited (default), 10, 25, 50 or 100. Choosing a goal stops that mode
+and resets its progress; start the mode normally when ready. Every new run starts
+at zero. Session-stat resets do not change goal progress. A farm-mode switch
+starts fresh progress for the newly selected mode and retains the stopped mode's
+last progress for inspection. These goals are session-only.
+
+Fishing goals use the existing catch counter, including its current confirmation
+limits; a catch is not independently verified by server inventory. Resource goals
+advance only through the existing confirmed target-change path, counting targets
+rather than item stack amounts. Requests and unchanged targets do not advance
+resource goals. Final crop replanting gets its normal opportunity before a
+reached goal stops Harvest. A reached goal disables only its own mode: other
+independent modes and manual Auto Bait remain as selected. Existing Stop All and
+the session stop timer still cancel all modes.
+
+**Copy session report** exports active time, fishing/resource/chest totals,
+current mode states, each goal's progress and up to ten sorted fish-type totals.
+It reads state without sending requests or changing active modes. Missing or
+failing clipboard support prints the same report to the console. Reports omit
+request envelopes and account/server identifiers.
+
+Full-startup tests exercise actual goal and report controls, completion, restart,
+exclusive farm switching, statistics-reset independence, unrelated-mode
+preservation and clipboard failure. The real loop fixtures also verify fishing
+exits before another input and crop goals preserve final replanting. Existing
+v41–v43 defaults remain covered. Live Roblox behavior remains unverified.

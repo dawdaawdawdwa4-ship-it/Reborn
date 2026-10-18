@@ -71,13 +71,19 @@ local function runScenario(scenario)
  local function fireModelHarvest(obj)
   assert(scenario~='unready','unready crops must not receive requests')
   assert(scenario~='walk-short','navigation success outside reach must never send harvest')
-  if scenario=='walk-crop' or scenario=='removed' or scenario=='learned-prompt' or scenario=='server-replant' or scenario=='multi-carrot' or scenario=='server-replant-off' then obj.Parent=nil end
+  if scenario=='goal-replant' or scenario=='walk-crop' or scenario=='removed' or scenario=='learned-prompt' or scenario=='server-replant' or scenario=='multi-carrot' or scenario=='server-replant-off' then obj.Parent=nil end
   if scenario=='regrow' then obj.attributes.Mature=false end
   if scenario=='cancel' then obj.Parent=nil;harvestCycleId+=1 end
   return true
  end
  local function fireBlockMine() assert(not equipRace,'must not send a resource request after target removal, respawn or root replacement during equip');if scenario=='blocked-wood' then return false,'Obstacle blocks trunk' end;if scenario=='wood-equip' then assert(selectedTool==newTool and time>=.1,'must allow changed axe to equip before hitting');target.Parent=nil end;return true end
  local RemoteCatalog={Navigation={Approach=function(_,obj,reach,active) assert(obj==target and reach==8 and active());walked=scenario~="walk-short";if scenario=="walk-cancel" then harvestCycleId+=1;return false,"Walking stopped" end;return true end},GameModule=function() return nil end,WoodReach=function() return true end,RequestId=function() return 'current-session' end,PlacementAvailable=function() return true end,HarvestEndpoint=function() return nil end}
+ RemoteCatalog.CompleteModeGoal=function(category)
+  if scenario=='goal-replant' then
+   assert(counted==1 and planted==1 and category=='crop','goal completion must follow confirmed harvest and final replant')
+   harvestCycleId+=1;harvestEnabled=false
+  end
+ end
  RemoteCatalog.ServerReplantEnabled=function() return RemoteCatalog.ServerAutoReplant==true end
  RemoteCatalog.CallFruit=function(model,obj)
   assert(model==fruitTree and obj==target,'fruit target pair must be preserved')
@@ -109,11 +115,12 @@ local function runScenario(scenario)
  if scenario=='server-replant-off' then assert(counted==1 and planted==1,'accepted server OFF must restore local planting despite cached ON') end
  if scenario=='server-replant' then assert(counted==1 and planted==0,'game AutoReplant must suppress duplicate local planting') end
  if scenario=='removed' then assert(counted==1 and planted==1,'removed crop must count once and replant') end
+ if scenario=='goal-replant' then assert(not harvestEnabled and counted==1 and planted==1,'goal must stop the loop after preserving final replant') end
  if scenario=='regrow' then assert(counted==1 and planted==0,'crop regrowing in place must not be planted over') end
  if scenario=='cancel' then assert(counted==0 and planted==0,'cancelled cycle must not count/replant') end
  if scenario=='prompt-cancel' then assert(released and not held and counted==0 and planted==0,'Stop must release prompt and cancel post-processing') end
 end
-for _,scenario in ipairs({'unready','walk-short','walk-crop','walk-cancel','berry-persistent','unchanged','removed','regrow','cancel','prompt-cancel','learned-prompt','server-replant','server-replant-off','fruit','fruit-cancel','wood-equip','wood-detached','wood-respawn','wood-root-replaced','blocked-wood','multi-carrot'}) do runScenario(scenario) end
+for _,scenario in ipairs({'unready','walk-short','walk-crop','walk-cancel','berry-persistent','unchanged','removed','regrow','cancel','prompt-cancel','learned-prompt','server-replant','server-replant-off','fruit','fruit-cancel','wood-equip','wood-detached','wood-respawn','wood-root-replaced','blocked-wood','multi-carrot','goal-replant'}) do runScenario(scenario) end
 -- Manual grid planting must stop before the next request after cancellation or respawn.
 do
  local RemoteCatalog={PlacementAvailable=function() return true end,PlantGeneration=1}

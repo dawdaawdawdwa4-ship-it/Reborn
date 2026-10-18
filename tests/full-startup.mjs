@@ -535,6 +535,63 @@ end)()
  player.Character=original
 end)()
  ;(function()
+ local originalRun,originalHarvest,originalStats=run,harvestLoop,stats
+ run=function() end;harvestLoop=function() end;stats=newStats()
+ for _,mode in ipairs({'fishing','crop','wood','mine'}) do
+  local goal=RemoteCatalog.ModeGoals[mode]
+  assert(not goal.Limit and goal.Progress==0,'all mode goals must start unlimited')
+ end
+ local fish=RemoteCatalog.ModeGoals.fishing
+ fish.Button.Activated:Fire()
+ assert(fish.Limit==10 and not enabled,'choosing a fishing goal must not start fishing')
+ setEnabled(true);baitEnabled=true
+ for index=1,9 do registerCatch('Trout');RemoteCatalog.CompleteModeGoal('fishing') end
+ assert(enabled and fish.Progress==9 and not fish.Reached,'fishing must continue below its goal')
+ registerCatch('Trout');RemoteCatalog.CompleteModeGoal('fishing')
+ assert(not enabled and baitEnabled and fish.Reached and fish.Progress==10,'fishing goal must stop only Fishing and preserve manual Auto Bait')
+ RemoteCatalog.CompleteModeGoal('fishing')
+ assert(fish.Progress==10,'completed goals must not dispatch a second stop')
+ setEnabled(true)
+ assert(fish.Progress==0 and not fish.Reached,'restarting a mode must reset only its run progress')
+ fish.Button.Activated:Fire()
+ assert(not enabled and fish.Limit==25,'changing an active goal must stop that mode before replacing its limit')
+ for _,limit in ipairs({50,100}) do fish.Button.Activated:Fire();assert(fish.Limit==limit) end
+ fish.Button.Activated:Fire()
+ assert(not fish.Limit,'goal selector must cycle back to Unlimited')
+ setEnabled(true)
+ for _,mode in ipairs({'crop','wood','mine'}) do
+  local goal=RemoteCatalog.ModeGoals[mode]
+  goal.Button.Activated:Fire();setFarmMode(mode,true)
+  for index=1,10 do registerHarvest('testResource',mode);RemoteCatalog.CompleteModeGoal(mode) end
+  assert(goal.Progress==10 and goal.Reached,'each farm mode must retain its own reached goal')
+  assert(not harvestEnabled and not woodEnabled and not mineEnabled and enabled,'farm goal must preserve Fishing while stopping its farm mode')
+  registerHarvest('external',mode)
+  assert(goal.Progress==10,'inactive targets must not advance a mode goal')
+ end
+ local crop=RemoteCatalog.ModeGoals.crop
+ setFarmMode('crop',true);registerHarvest('wheat','crop')
+ assert(crop.Progress==1,'only the active matching category must advance')
+ stats=newStats()
+ assert(crop.Progress==1,'session statistics reset must not reset an active goal')
+ setFarmMode('wood',true)
+ assert(not harvestEnabled and woodEnabled and RemoteCatalog.ModeGoals.wood.Progress==0,'exclusive farm switching must start fresh progress for the new mode')
+ assert(crop.Progress==1,'switching modes must retain the stopped mode progress')
+ RemoteCatalog.StopAllAutomation()
+ local originalCopy=setclipboard
+ local copied
+ setclipboard=function(value) copied=value end
+ RemoteCatalog.SessionReportButton.Activated:Fire()
+ assert(copied and string.find(copied,'Reborn session-goals-44',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
+ setclipboard=function() error('unavailable') end
+ RemoteCatalog.SessionReportButton.Activated:Fire()
+ assert(string.find(status.Text,'printed to console',1,true),'failed clipboard must use the console fallback')
+ setclipboard=originalCopy
+ for mode,goal in pairs(RemoteCatalog.ModeGoals) do goal.Limit=nil;RemoteCatalog.ResetModeGoal(mode) end
+ run,harvestLoop,stats=originalRun,originalHarvest,originalStats
+ updateBoard()
+ end)()
+ ;(function()
  assert(RemoteCatalog.ChestResultLabel.Parent==RemoteCatalog.ChestResultView and RemoteCatalog.ChestResultLabel.AutomaticSize==Enum.AutomaticSize.Y,'long results must grow inside a scrollable viewport')
  assert(RemoteCatalog.ChestCopyButton.Position.Y.Offset>=RemoteCatalog.ChestResultView.Position.Y.Offset+RemoteCatalog.ChestResultView.Size.Y.Offset,'result actions must remain below the fixed viewport')
  local originalHistory=RemoteCatalog.ChestHistory

@@ -1824,7 +1824,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "session-dashboard-43",
+    Subtitle = "session-goals-44",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2172,7 +2172,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn session-dashboard-43",
+    return table.concat({"Reborn session-goals-44",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -3058,7 +3058,7 @@ end))
 for _,child in ipairs(statsPage:GetChildren()) do
     if child:IsA("GuiObject") then
         local p=child.Position
-        child.Position=UDim2.new(p.X.Scale,p.X.Offset,p.Y.Scale,p.Y.Offset+350)
+        child.Position=UDim2.new(p.X.Scale,p.X.Offset,p.Y.Scale,p.Y.Offset+574)
     end
 end
 pageHeading(statsPage,"SESSION DASHBOARD",6)
@@ -3096,8 +3096,58 @@ track(RemoteCatalog.StopTimerButton.Activated:Connect(function()
     else RemoteCatalog.StopTimerDeadline=os.clock()+RemoteCatalog.StopTimerMinutes*60 end
     RemoteCatalog.UpdateDashboard()
 end))
+RemoteCatalog.ModeGoals={}
+RemoteCatalog.GoalNames={fishing="Fishing",crop="Harvest",wood="Wood",mine="Mining"}
+pageHeading(statsPage,"MODE GOALS",352)
+for index,mode in ipairs({"fishing","crop","wood","mine"}) do
+    local col=(index-1)%2
+    local goal={Progress=0}
+    RemoteCatalog.ModeGoals[mode]=goal
+    goal.Button=button({Parent=statsPage,Text=RemoteCatalog.GoalNames[mode].." goal: Unlimited",TextSize=12,
+        Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(col*.5,col==0 and 6 or 3,0,380+math.floor((index-1)/2)*40)})
+    track(goal.Button.Activated:Connect(function()
+        RemoteCatalog.StopGoalMode(mode)
+        local limits={0,10,25,50,100}
+        local index=table.find(limits,goal.Limit or 0) or 1
+        local limit=limits[index%#limits+1]
+        goal.Limit=limit>0 and limit or nil;goal.Progress=0;goal.Reached=false
+        RemoteCatalog.UpdateModeGoals()
+        setStatus(RemoteCatalog.GoalNames[mode].." goal updated. Start that mode when ready.",COLORS.muted)
+    end))
+end
+RemoteCatalog.GoalHint=label({Parent=statsPage,Text="Goals start Unlimited. Choose a limit, then start the mode. Each run starts at zero. Harvest goals count confirmed targets, not stack quantities.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,52),Position=UDim2.fromOffset(8,462)})
+RemoteCatalog.GoalHint.TextWrapped=true
+RemoteCatalog.SessionReportButton=button({Parent=statsPage,Text="Copy session report",TextSize=13,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,526)})
+track(RemoteCatalog.SessionReportButton.Activated:Connect(function() RemoteCatalog.CopySessionReport() end))
+function RemoteCatalog.UpdateModeGoals()
+    for mode,goal in pairs(RemoteCatalog.ModeGoals) do
+        goal.Button.Text=RemoteCatalog.GoalNames[mode]..(goal.Limit and (": "..goal.Progress.."/"..goal.Limit..(goal.Reached and " ✓" or "")) or " goal: Unlimited")
+        goal.Button.BackgroundColor3=goal.Reached and COLORS.on or COLORS.panel
+    end
+end
+function RemoteCatalog.ResetModeGoal(mode)
+    local goal=RemoteCatalog.ModeGoals[mode]
+    goal.Progress=0;goal.Reached=false
+    RemoteCatalog.UpdateModeGoals()
+end
+function RemoteCatalog.ProgressModeGoal(mode)
+    local goal=RemoteCatalog.ModeGoals[mode]
+    local active=mode=="fishing" and enabled or mode=="crop" and harvestEnabled or mode=="wood" and woodEnabled or mode=="mine" and mineEnabled
+    if goal and active and not goal.Reached then goal.Progress+=1 end
+end
+function RemoteCatalog.CompleteModeGoal(mode)
+    local goal=RemoteCatalog.ModeGoals[mode]
+    if not goal or not goal.Limit or goal.Reached or goal.Progress<goal.Limit then return end
+    goal.Reached=true
+    RemoteCatalog.StopGoalMode(mode)
+    RemoteCatalog.UpdateModeGoals()
+    setStatus(RemoteCatalog.GoalNames[mode].." goal reached: "..goal.Progress..". That mode is stopped.",COLORS.good)
+end
 function RemoteCatalog.UpdateDashboard()
     if not gui.Parent then return end
+    RemoteCatalog.UpdateModeGoals()
     local deadline=RemoteCatalog.StopTimerDeadline
     if deadline and os.clock()>=deadline then
         RemoteCatalog.StopTimerDeadline=nil
@@ -3631,6 +3681,32 @@ local function getTopFish()
 	return "–"
 end
 
+function RemoteCatalog.SessionReport()
+    local text={"Reborn session-goals-44", "Active time: "..formatTime(getActiveTime()),
+        "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
+        "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
+        "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
+        "Modes: Fishing "..(enabled and "ON" or "OFF")..", Bait "..(baitEnabled and "ON" or "OFF")..", Harvest "..(harvestEnabled and "ON" or "OFF")..", Wood "..(woodEnabled and "ON" or "OFF")..", Mining "..(mineEnabled and "ON" or "OFF")}
+    for _,mode in ipairs({"fishing","crop","wood","mine"}) do
+        local goal=RemoteCatalog.ModeGoals[mode]
+        table.insert(text,RemoteCatalog.GoalNames[mode].." goal: "..goal.Progress.."/"..tostring(goal.Limit or "unlimited")..(goal.Reached and " reached" or ""))
+    end
+    local fish={}
+    for name in pairs(stats.perFish) do table.insert(fish,name) end
+    table.sort(fish)
+    for index,name in ipairs(fish) do
+        if index>10 then table.insert(text,"More fish types: "..(#fish-10));break end
+        table.insert(text,"Fish "..name..": "..stats.perFish[name])
+    end
+    return table.concat(text,"\n")
+end
+function RemoteCatalog.CopySessionReport()
+    local report=RemoteCatalog.SessionReport()
+    local copy=setclipboard or toclipboard
+    if type(copy)=="function" and pcall(copy,report) then setStatus("Session report copied",COLORS.good)
+    else print(report);setStatus("Session report printed to console",COLORS.warn) end
+    return report
+end
 local function updateBoard()
     RemoteCatalog.UpdateDashboard()
     if RemoteCatalog.UpdateChestSelectionUI then RemoteCatalog.UpdateChestSelectionUI() end
@@ -3745,6 +3821,7 @@ local function registerCatch(fishName)
 	end
 
 	flash(rows.catches, COLORS.good)
+    RemoteCatalog.ProgressModeGoal("fishing")
 	updateBoard()
 end
 
@@ -3759,6 +3836,7 @@ local function registerHarvest(name, category)
     category=category or FarmLogic.Category(name or "")
     if category and stats.resourceCounts[category]~=nil then
         stats.resourceCounts[category]+=1;stats.resourceLast[category]=name
+        RemoteCatalog.ProgressModeGoal(category)
     end
 	stats.harvests += 1
 	if name then
@@ -4656,6 +4734,8 @@ local function harvestLoop(myCycle)
                     end
                 end
             end
+            if confirmed then RemoteCatalog.CompleteModeGoal(target.category) end
+            if not active() then break end
             local quickCrop=target.category=="crop" and (confirmed or persistentBerry and ok)
             FarmState.Cooldowns[obj] = os.clock() + (persistentBerry and ok and 15 or quickCrop and 0.08 or ok and 0.25 or 2)
             task.wait(quickCrop and math.min(CONFIG.MineDelay,0.08) or CONFIG.MineDelay)
@@ -4725,6 +4805,8 @@ local function run(myCycle)
 					local fishName
 					if lastNewItem and lastNewItem.at >= reelTime then fishName = lastNewItem.name end
 					registerCatch(fishName)
+                    RemoteCatalog.CompleteModeGoal("fishing")
+                    if not running(myCycle) then break end
 					setStatus("Caught " .. (fishName or "a fish") .. "! 🐟", COLORS.good)
 				else
                     if not countedMisses[bobber] then
@@ -4798,6 +4880,7 @@ setEnabled = function(state)
 	cycleId += 1
 
 	if enabled then
+        RemoteCatalog.ResetModeGoal("fishing")
 		if not stats.onSince then
 			stats.onSince = os.clock()
 		end
@@ -4852,6 +4935,7 @@ local function setFarmMode(mode, state)
     if current == state then return end
     RemoteCatalog.Navigation.Stop()
     if state then
+        RemoteCatalog.ResetModeGoal(mode)
         harvestEnabled,woodEnabled,mineEnabled=false,false,false
         if FarmState and FarmState.LastFailure then FarmState.LastFailure[mode]=nil end
     end
@@ -4900,6 +4984,9 @@ local function setFarmMode(mode, state)
 end
 
 setHarvestEnabled = function(state) setFarmMode("crop", state) end
+function RemoteCatalog.StopGoalMode(mode)
+    if mode=="fishing" then setEnabled(false) else setFarmMode(mode,false) end
+end
 
 function RemoteCatalog.StopChestLearning()
     local recorder=RemoteCatalog.Recorder
@@ -5302,7 +5389,7 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn session-dashboard-43\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn session-goals-44\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -5496,7 +5583,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn session-dashboard-43\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn session-goals-44\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn

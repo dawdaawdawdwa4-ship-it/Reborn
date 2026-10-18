@@ -228,6 +228,31 @@ do
  repeatedReel(1)
  assert(attempts==2 and misses==1 and stats.bites==1,'one bobber must not inflate bite/miss counts on retries')
 end
+-- A reached catch goal exits the real fishing loop before another input.
+do
+ local enabled=true
+ local function running() return enabled end
+ local CONFIG={ActionCooldown=0,ReelSettleDelay=.01,ReelTimeout=.7}
+ local lastAction=-100
+ local bobber={Parent=true}
+ local stats={bites=0}
+ local function getBobber() return bobber end
+ local function waitForTug() return true,false end
+ local clicks,catches=0,0
+ local function clickOnce() clicks+=1;return true end
+ local function updateBoard() end
+ local function waitUntil() return true end
+ local function registerCatch() catches+=1 end
+ local task={wait=function() end}
+ local RemoteCatalog={CompleteModeGoal=function(mode)
+  assert(mode=='fishing' and catches==1,'fishing goal check must follow catch registration')
+  enabled=false
+ end}
+ baitBusy=false
+ ${run.replace('local function run(myCycle)','local function goalFishing(myCycle)')}
+ goalFishing(1)
+ assert(clicks==1 and catches==1 and not enabled,'reached goal must prevent another cast or reel input')
+end
 return 'Bait scheduling: queued priority, long-cast retry, success/OFF release, next-cast blocking and existing-cast completion passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'bait-scheduling',true)());}finally{state.destroy();}
