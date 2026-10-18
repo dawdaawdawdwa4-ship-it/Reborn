@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==142)
+assert(#RemoteCatalog.Entries==143)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -299,7 +299,7 @@ do
  RemoteCatalog.GameEndpoint,RemoteCatalog.ActivateBait=oldEndpoint,oldActivate
  RemoteCatalog.BaitNativeFailed=nil
 end
-return '142 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '143 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}

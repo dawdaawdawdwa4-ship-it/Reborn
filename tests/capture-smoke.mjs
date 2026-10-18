@@ -347,6 +347,44 @@ gamePlayer.Character=originalCharacter
 game.JobId='different-server'
 assert(not capture:CanUseBaitBinding(),'another server must invalidate bait context')
 game.JobId=nil;assert(capture:CanUseBaitBinding(),'restoring exact live context must restore binding validity')
+;(function()
+ capture:Resume();capture.Active=false;capture.LearnChestOnly=true
+ local chest={_type='Instance',Name='chestMediumIndustrialIO',Parent=game,IsA=function(_,class) return class=='Model' end}
+ local endpoint=remote('rotatedChestEndpoint')
+ endpoint.Parent={Name='rotatingGroup',Parent={Name='out',Parent=game}}
+ local payload={sessionKey='live-account-context',body={chest=chest,action='withdraw',slot=1,item='carrotHarvested',amount=26}}
+ local recorded=#capture.Records
+ installedHook(endpoint,{body={chest=chest,action='deposit',slot=1,item='carrotHarvested',amount=26}})
+ assert(not capture.ChestBinding and capture.LearnChestOnly,'deposit must not learn withdrawal')
+ payload.body.amount=0/0
+ installedHook(endpoint,payload)
+ assert(not capture.ChestBinding,'invalid amount must not learn')
+ payload.body.amount=26
+ capture.LearnBaitOnly=true
+ local forwarded=table.pack(installedHook(endpoint,payload,nil,'tail',nil))
+ assert(forwarded.n==3 and forwarded[1]=='original-result','chest capture must preserve original returns')
+ assert(not capture.LearnChestOnly and capture.LearnBaitOnly and not capture.Stopped,'chest learning must leave bait learning running')
+ assert(#capture.Records==recorded,'quiet chest learning must not fill call log')
+ capture:Stop()
+ local replay
+ endpoint.InvokeServer=function(_,...) replay=table.pack(...);return nil end
+ assert(capture:WithdrawCarrots(),'learned request should send')
+ assert(replay.n==4 and replay[2]==nil and replay[3]=='tail' and replay[4]==nil,'withdrawal trailing arguments lost')
+ assert(replay[1].sessionKey=='live-account-context' and replay[1].body.chest==chest and replay[1].body.amount==26 and replay[1].body.slot==1,'withdrawal envelope changed')
+ local char=gamePlayer.Character
+ gamePlayer.Character={}
+ assert(not capture:WithdrawCarrots(),'respawn must invalidate chest binding')
+ gamePlayer.Character=char
+ local user=gamePlayer.UserId;gamePlayer.UserId=123
+ assert(not capture:WithdrawCarrots(),'different account must not reuse binding')
+ gamePlayer.UserId=user
+ game.JobId='new-server';assert(not capture:WithdrawCarrots(),'server change must invalidate binding');game.JobId=nil
+ endpoint.InvokeServer=function() return {success=false} end
+ assert(not capture:WithdrawCarrots(),'server rejection must propagate')
+ endpoint.InvokeServer=function() error('network failure') end
+ assert(not capture:WithdrawCarrots(),'transport errors must be handled')
+ chest.Parent=nil;assert(not capture:CanUseChestBinding(),'removed chest must invalidate binding')
+end)()
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
 const state=await LuauState.createAsync();

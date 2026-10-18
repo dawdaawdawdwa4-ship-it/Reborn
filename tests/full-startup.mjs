@@ -265,6 +265,35 @@ assert(not string.find(status.Text,'stopped:',1,true),'worker error during actua
  RemoteCatalog.OwnedTools,RemoteCatalog.PrepareBaitLearning,RemoteCatalog.StopBaitLearning,RemoteCatalog.Recorder,RemoteCatalog.CallBait=owned,prepare,stop,recorder,callBait
  RemoteCatalog.BaitSample=nil;RemoteCatalog.BaitNeedsRefresh=false;RemoteCatalog.BaitFailedBinding=nil
 end)()
+ ;(function()
+ local savedFind,savedLive,savedChar=workspace.FindFirstChild,RemoteCatalog.LiveRecorder,player.Character
+ local function position(x) return setmetatable({X=x},{__sub=function(a,b) return {Magnitude=math.abs(a.X-b.X)} end}) end
+ local island={Name='7-island'}
+ local foreign={Name='other-island'}
+ local chest={Parent=island,Position=position(5),IsA=function(_,kind) return kind=='BasePart' end}
+ local root={Position=position(0)}
+ player.Character={FindFirstChild=function(_,name) return name=='HumanoidRootPart' and root or nil end}
+ workspace.FindFirstChild=function(_,name)
+  if name=='Islands' then return {FindFirstChild=function(_,key) return key=='7-island' and island or nil end} end
+ end
+ local sent=0
+ local recorder={ChestBinding={Chest=chest},CanUseChestBinding=function() return true end,WithdrawCarrots=function() sent+=1;return true end}
+ RemoteCatalog.LiveRecorder=function() return recorder end
+ assert(RemoteCatalog.WithdrawCarrots() and sent==1,'nearby owned chest request must send once')
+ chest.Position=position(50)
+ assert(not RemoteCatalog.WithdrawCarrots() and sent==1,'distant chest must not send')
+ chest.Position=position(5);chest.Parent=foreign
+ assert(not RemoteCatalog.WithdrawCarrots() and sent==1,'foreign chest must not send')
+ recorder.CanUseChestBinding=function() return false end
+ assert(not RemoteCatalog.WithdrawCarrots() and sent==1,'stale chest binding must not send')
+ workspace.FindFirstChild,RemoteCatalog.LiveRecorder,player.Character=savedFind,savedLive,savedChar
+ local savedRecorder=RemoteCatalog.Recorder
+ local stopped=false
+ RemoteCatalog.Recorder={LearnChestOnly=true,LearnBaitOnly=true,Stop=function() stopped=true end}
+ RemoteCatalog.StopChestLearning()
+ assert(not stopped and RemoteCatalog.Recorder.LearnBaitOnly and not RemoteCatalog.Recorder.LearnChestOnly,'stopping chest learner must preserve bait learner')
+ RemoteCatalog.Recorder=savedRecorder
+end)()
 gui:Destroy();stepWorkers()
 assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'

@@ -22,6 +22,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- Discovery is read-only. Captured names do not define request payloads.
 local RemoteCatalog = (function()
     local catalog = { Entries = {
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.zqRqLAHd5h4QeC.kAnpiAlDrqMuEh", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.AutoReplantSetting", Class = "RemoteEvent" },
         { Path = "ReplicatedStorage.BlockRemoverRequest", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.CmdrEvent", Class = "RemoteEvent" },
@@ -250,6 +251,7 @@ local RemoteCatalog = (function()
         local binding=recorder and recorder[bindingName]
         local localValid=binding and binding.Remote and binding.Remote.Parent
             and (bindingName~="BaitBinding" or catalog.BaitRecorderValid(recorder))
+            and (bindingName~="ChestBinding" or recorder.CanUseChestBinding and recorder:CanUseChestBinding())
         if bindingName~="BaitBinding" and localValid then return recorder end
         local ok,existing=pcall(function()
             local environment=type(getgenv)=="function" and getgenv() or _G
@@ -258,6 +260,7 @@ local RemoteCatalog = (function()
         local other=ok and existing and existing[bindingName]
         local otherValid=other and other.Remote and other.Remote.Parent
             and (bindingName~="BaitBinding" or catalog.BaitRecorderValid(existing))
+            and (bindingName~="ChestBinding" or existing.CanUseChestBinding and existing:CanUseChestBinding())
         if otherValid and (not localValid or bindingName~="BaitBinding" or (other.ObservedAt or 0)>=(binding.ObservedAt or 0)) then return existing end
         if localValid then return recorder end
     end
@@ -489,13 +492,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 21 and previous.Resume then
+if previous and previous.Version == 22 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 21, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 22, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -505,6 +508,7 @@ if previous then
     capture.WoodHitBinding = previous.WoodHitBinding
     capture.MineHitBinding = previous.MineHitBinding
     capture.AutoReplantBinding = previous.AutoReplantBinding
+    capture.ChestBinding = previous.ChestBinding
     capture.FruitBinding = previous.FruitBinding
     capture.HotbarBinding = previous.HotbarBinding
     capture.HotbarLayout = previous.HotbarLayout
@@ -668,6 +672,7 @@ function capture:Stop()
     self.Active, self.Stopped = false, true
     self.LearnWoodOnly = false
     self.LearnBaitOnly = false
+    self.LearnChestOnly = false
     -- Retain the single hotkey connection so this same recorder can be resumed.
     -- It ignores input while stopped; no extra hooks or listeners are installed.
     -- Leave our hook in pass-through mode; restoring it could overwrite another hook.
@@ -864,6 +869,40 @@ function capture:Bait(tool)
     if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
     return true, result
 end
+-- Learn only an observed carrot withdrawal; never infer rotating envelope keys.
+local function learnChest(remote,method,args)
+    if method~="InvokeServer" or type(args[1])~="table" then return false end
+    local group=remote.Parent
+    if remote.Name~="kAnpiAlDrqMuEh" and (not group or not group.Parent or group.Parent.Name~="out") then return false end
+    local body=args[1]
+    for _,value in pairs(body) do
+        if type(value)=="table" and value.action=="withdraw" then body=value;break end
+    end
+    if body.action~="withdraw" or body.item~="carrotHarvested" or typeof(body.chest)~="Instance"
+        or not (body.chest:IsA("Model") or body.chest:IsA("BasePart")) then return false end
+    if type(body.slot)~="number" or body.slot<0 or body.slot%1~=0
+        or type(body.amount)~="number" or body.amount<=0 or body.amount%1~=0 then return false end
+    local owner=game:GetService("Players").LocalPlayer
+    if not owner or not owner.Character then return false end
+    capture.ChestBinding={Remote=remote,Method=method,Args=cloneArguments(args),Chest=body.chest,
+        Slot=body.slot,Amount=body.amount,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId}
+    return true
+end
+function capture:CanUseChestBinding()
+    local b=self.ChestBinding
+    local owner=game:GetService("Players").LocalPlayer
+    return b~=nil and b.Remote~=nil and b.Remote.Parent~=nil and b.Chest~=nil and b.Chest.Parent~=nil
+        and owner~=nil and owner.Character~=nil and b.OwnerCharacter==owner.Character
+        and b.OwnerUserId==owner.UserId and b.JobId==game.JobId
+end
+function capture:WithdrawCarrots()
+    if not self:CanUseChestBinding() then return false,"Learn a carrot withdrawal on this character first" end
+    local b=self.ChestBinding
+    local args=cloneArguments(b.Args)
+    local ok,result=pcall(function() return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n)) end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    return true,result
+end
 local function learnHarvest(remote, method, args)
     if args.n < 1 or type(args[1]) ~= "table" then return false end
     local packet = args[1]
@@ -898,7 +937,7 @@ local original
 local function intercept(remote, ...)
     if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
-    if capture.LearnWoodOnly or capture.LearnBaitOnly then
+    if capture.LearnWoodOnly or capture.LearnBaitOnly or capture.LearnChestOnly then
         if method == "InvokeServer" then
             local args = table.pack(...)
             pcall(function()
@@ -910,7 +949,8 @@ local function intercept(remote, ...)
                         if learnedWood and learnedWood~=previousWood and learnedWood.Remote and learnedWood.Remote.Parent then capture.LearnWoodOnly=false end
                     end
                     if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
-                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly then capture:Stop() end
+                    if capture.LearnChestOnly and learnChest(remote,method,args) then capture.LearnChestOnly=false end
+                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly then capture:Stop() end
                 end
             end)
         end
@@ -926,7 +966,7 @@ local function intercept(remote, ...)
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
                 learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args)
                 if not learned then learned,autoReplantValue=learnAutoReplant(remote, method, args) end
-                learned = learned or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learned or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -1728,7 +1768,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-recovery-24",
+    Subtitle = "chest-25",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2071,7 +2111,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn bait-recovery-24",
+    return table.concat({"Reborn chest-25",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2550,6 +2590,14 @@ local fruitHint=label({Parent=harvestPage,Text="Pick fruit from your island's tr
     Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,412)})
 fruitHint.TextWrapped=true
 
+RemoteCatalog.ChestLearnButton=button({Parent=harvestPage,Text="Learn carrot chest withdrawal",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,466)})
+RemoteCatalog.ChestWithdrawButton=button({Parent=harvestPage,Text="Withdraw carrots (learn first)",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,504)})
+RemoteCatalog.ChestHint=label({Parent=harvestPage,Text="Learn: withdraw carrots manually once. Reuse requests the same chest, slot and amount. Stand beside your chest.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,48),Position=UDim2.fromOffset(8,544)})
+RemoteCatalog.ChestHint.TextWrapped=true
+
 RemoteCatalog.HarvestWalkButton=button({Parent=harvestPage,Text=CONFIG.HarvestWalk and "AUTO MOVE: ON" or "AUTO MOVE: OFF",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,244),Bg=CONFIG.HarvestWalk and COLORS.on or COLORS.off})
 track(RemoteCatalog.HarvestWalkButton.Activated:Connect(function()
@@ -2974,7 +3022,7 @@ function RemoteCatalog.UpdateCaptureUI()
         RemoteCatalog.CaptureToggle.Text = RemoteCatalog.CaptureAttempted and "Retry capture setup" or "Start capture (optional)"
         return
     end
-    local state = recorder.LearnBaitOnly and "Waiting for one bait use (no call log)" or recorder.LearnWoodOnly and "Learning axe request; normal input stays available (no call log)" or (recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused"))
+    local state = recorder.LearnChestOnly and "Waiting for one manual carrot withdrawal" or recorder.LearnBaitOnly and "Waiting for one bait use (no call log)" or recorder.LearnWoodOnly and "Learning axe request; normal input stays available (no call log)" or (recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused"))
     local learned = {}
     for _, name in ipairs({"OEzzgCCBzocxJw", "ohy6O10QKzyGZE", "raqRasAwcny1zh", "RZQQNNDRUvfj1N"}) do
         if RemoteCatalog.RequestId(name) then table.insert(learned, RemoteCatalog.VerifiedRequests[name]) end
@@ -2986,6 +3034,7 @@ function RemoteCatalog.UpdateCaptureUI()
     if recorder.MineHitBinding then table.insert(learned, "mining hit") end
     if recorder.AutoReplantBinding then table.insert(learned, "game AutoReplant") end
     if recorder.FruitBinding then table.insert(learned, "fruit picking") end
+    if recorder.ChestBinding then table.insert(learned, "carrot chest") end
     if recorder.HotbarBinding then table.insert(learned, "hotbar (current remote)") end
     local mining = #learned > 0 and ("Ready: " .. table.concat(learned, ", ")) or "Perform actions manually once to learn their request IDs"
     RemoteCatalog.CaptureStatus.Text = RemoteCatalog.CopyNotice or string.format("%s: %d / %d calls. %s.", state, #recorder.Records, recorder.MaxCalls, mining)
@@ -3014,7 +3063,7 @@ function RemoteCatalog.StopBaitLearning()
     local recorder=RemoteCatalog.Recorder
     if recorder and recorder.LearnBaitOnly then
         recorder.LearnBaitOnly=false
-        if not recorder.LearnWoodOnly then recorder:Stop() end
+        if not recorder.LearnWoodOnly and not recorder.LearnChestOnly then recorder:Stop() end
     end
 end
 function RemoteCatalog.PrepareWoodLearning()
@@ -3031,11 +3080,11 @@ function RemoteCatalog.PrepareWoodLearning()
 end
 function RemoteCatalog.StopWoodLearning()
     local recorder=RemoteCatalog.Recorder
-    if recorder and recorder.LearnWoodOnly then recorder.LearnWoodOnly=false;if not recorder.LearnBaitOnly then recorder:Stop() end end
+    if recorder and recorder.LearnWoodOnly then recorder.LearnWoodOnly=false;if not recorder.LearnBaitOnly and not recorder.LearnChestOnly then recorder:Stop() end end
 end
 track(RemoteCatalog.CaptureToggle.Activated:Connect(function()
     RemoteCatalog.CopyNotice = nil
-    if RemoteCatalog.Recorder then RemoteCatalog.Recorder.LearnWoodOnly=false;RemoteCatalog.Recorder.LearnBaitOnly=false end
+    if RemoteCatalog.Recorder then RemoteCatalog.Recorder.LearnWoodOnly=false;RemoteCatalog.Recorder.LearnBaitOnly=false;RemoteCatalog.Recorder.LearnChestOnly=false end
     local recorder = RemoteCatalog.Recorder
     if not recorder then
         RemoteCatalog.EnableCapture()
@@ -4411,7 +4460,61 @@ end
 
 setHarvestEnabled = function(state) setFarmMode("crop", state) end
 
+function RemoteCatalog.StopChestLearning()
+    local recorder=RemoteCatalog.Recorder
+    if recorder and recorder.LearnChestOnly then
+        recorder.LearnChestOnly=false
+        if not recorder.LearnWoodOnly and not recorder.LearnBaitOnly then recorder:Stop() end
+    end
+end
+track(RemoteCatalog.ChestLearnButton.Activated:Connect(function()
+    local recorder=RemoteCatalog.Recorder
+    if recorder and recorder.LearnChestOnly then
+        RemoteCatalog.StopChestLearning()
+        setStatus("Chest learning stopped",COLORS.warn)
+        return
+    end
+    local ok,result=pcall(RemoteCatalog.StartCapture)
+    if not ok or not result then setStatus("This host cannot learn chest calls",COLORS.warn);return end
+    RemoteCatalog.Recorder=result
+    result.LearnChestOnly=true;result.Active=false
+    setStatus("Withdraw carrots manually once, then use Withdraw carrots",COLORS.good)
+    RemoteCatalog.UpdateCaptureUI()
+end))
+function RemoteCatalog.WithdrawCarrots()
+    local recorder=RemoteCatalog.LiveRecorder("ChestBinding")
+    if not recorder or not recorder.CanUseChestBinding or not recorder:CanUseChestBinding() then
+        return false,"Learn a carrot withdrawal on this character first"
+    end
+    local chest=recorder.ChestBinding.Chest
+    local island=getPlayerIsland()
+    local cursor=chest
+    while cursor and cursor~=island do cursor=cursor.Parent end
+    if not island or cursor~=island then return false,"The learned chest is not on your island" end
+    local char=player.Character
+    local root=char and char:FindFirstChild("HumanoidRootPart")
+    local position=getPartPosition(chest)
+    if not root or not position or (position-root.Position).Magnitude>20 then
+        return false,"Stand within 20 studs of the learned chest"
+    end
+    return recorder:WithdrawCarrots()
+end
+track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
+    if RemoteCatalog.ChestBusy then return end
+    RemoteCatalog.ChestBusy=true
+    RemoteCatalog.ChestWithdrawButton.Text="Sending withdrawal…"
+    task.spawn(function()
+        local ran,ok,reason=pcall(RemoteCatalog.WithdrawCarrots)
+        RemoteCatalog.ChestBusy=false
+        if not gui.Parent then return end
+        RemoteCatalog.ChestWithdrawButton.Text="Withdraw carrots (learned chest)"
+        if ran and ok then setStatus("Carrot withdrawal request sent; check your inventory",COLORS.good)
+        else setStatus("Chest: "..tostring(ran and reason or ok),COLORS.warn) end
+    end)
+end))
+
 track(stopAllButton.Activated:Connect(function()
+    RemoteCatalog.StopChestLearning()
     RemoteCatalog.AntiAFK:SetEnabled(false)
     RemoteCatalog.PlantGeneration=(RemoteCatalog.PlantGeneration or 0)+1
     RemoteCatalog.Planting=false

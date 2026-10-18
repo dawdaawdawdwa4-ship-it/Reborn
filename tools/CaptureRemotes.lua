@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 21 and previous.Resume then
+if previous and previous.Version == 22 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 21, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 22, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -24,6 +24,7 @@ if previous then
     capture.WoodHitBinding = previous.WoodHitBinding
     capture.MineHitBinding = previous.MineHitBinding
     capture.AutoReplantBinding = previous.AutoReplantBinding
+    capture.ChestBinding = previous.ChestBinding
     capture.FruitBinding = previous.FruitBinding
     capture.HotbarBinding = previous.HotbarBinding
     capture.HotbarLayout = previous.HotbarLayout
@@ -187,6 +188,7 @@ function capture:Stop()
     self.Active, self.Stopped = false, true
     self.LearnWoodOnly = false
     self.LearnBaitOnly = false
+    self.LearnChestOnly = false
     -- Retain the single hotkey connection so this same recorder can be resumed.
     -- It ignores input while stopped; no extra hooks or listeners are installed.
     -- Leave our hook in pass-through mode; restoring it could overwrite another hook.
@@ -383,6 +385,40 @@ function capture:Bait(tool)
     if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
     return true, result
 end
+-- Learn only an observed carrot withdrawal; never infer rotating envelope keys.
+local function learnChest(remote,method,args)
+    if method~="InvokeServer" or type(args[1])~="table" then return false end
+    local group=remote.Parent
+    if remote.Name~="kAnpiAlDrqMuEh" and (not group or not group.Parent or group.Parent.Name~="out") then return false end
+    local body=args[1]
+    for _,value in pairs(body) do
+        if type(value)=="table" and value.action=="withdraw" then body=value;break end
+    end
+    if body.action~="withdraw" or body.item~="carrotHarvested" or typeof(body.chest)~="Instance"
+        or not (body.chest:IsA("Model") or body.chest:IsA("BasePart")) then return false end
+    if type(body.slot)~="number" or body.slot<0 or body.slot%1~=0
+        or type(body.amount)~="number" or body.amount<=0 or body.amount%1~=0 then return false end
+    local owner=game:GetService("Players").LocalPlayer
+    if not owner or not owner.Character then return false end
+    capture.ChestBinding={Remote=remote,Method=method,Args=cloneArguments(args),Chest=body.chest,
+        Slot=body.slot,Amount=body.amount,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId}
+    return true
+end
+function capture:CanUseChestBinding()
+    local b=self.ChestBinding
+    local owner=game:GetService("Players").LocalPlayer
+    return b~=nil and b.Remote~=nil and b.Remote.Parent~=nil and b.Chest~=nil and b.Chest.Parent~=nil
+        and owner~=nil and owner.Character~=nil and b.OwnerCharacter==owner.Character
+        and b.OwnerUserId==owner.UserId and b.JobId==game.JobId
+end
+function capture:WithdrawCarrots()
+    if not self:CanUseChestBinding() then return false,"Learn a carrot withdrawal on this character first" end
+    local b=self.ChestBinding
+    local args=cloneArguments(b.Args)
+    local ok,result=pcall(function() return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n)) end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    return true,result
+end
 local function learnHarvest(remote, method, args)
     if args.n < 1 or type(args[1]) ~= "table" then return false end
     local packet = args[1]
@@ -417,7 +453,7 @@ local original
 local function intercept(remote, ...)
     if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
-    if capture.LearnWoodOnly or capture.LearnBaitOnly then
+    if capture.LearnWoodOnly or capture.LearnBaitOnly or capture.LearnChestOnly then
         if method == "InvokeServer" then
             local args = table.pack(...)
             pcall(function()
@@ -429,7 +465,8 @@ local function intercept(remote, ...)
                         if learnedWood and learnedWood~=previousWood and learnedWood.Remote and learnedWood.Remote.Parent then capture.LearnWoodOnly=false end
                     end
                     if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
-                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly then capture:Stop() end
+                    if capture.LearnChestOnly and learnChest(remote,method,args) then capture.LearnChestOnly=false end
+                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly then capture:Stop() end
                 end
             end)
         end
@@ -445,7 +482,7 @@ local function intercept(remote, ...)
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
                 learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args)
                 if not learned then learned,autoReplantValue=learnAutoReplant(remote, method, args) end
-                learned = learned or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learned or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
