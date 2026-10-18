@@ -170,3 +170,14 @@ Recorder v26 accepts a nonempty observed item string up to 128 bytes in the exis
 ### Multiple item selection and remainder batches (chest-selection-41)
 
 The Items checklist tracks independent item identifiers; nil means all learned items and an empty map means none. Changes invalidate pending manual generations and stop Auto Withdraw. Done closes the inline menu without changing selection. Automatic non-probe success caps that slot's maximum at its current successful request size, avoiding repeated resets to an oversized learned amount after backoff. Successful one-item discovery probes retain the learned maximum. Tests cover actual checklist callbacks, multiple choices, independent removal, explicit none/all, cancellation generation changes and successful reduced-batch retention.
+
+### Collection planner (chest-planner-42)
+
+Collection goals and selection preview reuse v41 bindings without changing the
+withdraw envelope or item identity. Preview only checks local ownership and
+proximity. Goals cap the requested batch to the remaining combined confirmed
+item total; failures halve the actual attempted quantity. No inventory gain
+means no goal progress. Unlimited remains the default, discovery still starts
+with a one-item probe, and successful reduced batches retain their maximum.
+Per-item totals use each binding's item-specific inventory reader. Goal changes
+stop the existing generation before a new run can start.

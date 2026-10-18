@@ -205,6 +205,47 @@ end
 assert(RemoteCatalog.SetChestAuto(true));drain()
 assert(quantities.wood==7 and quantities.stone==4 and RemoteCatalog.ChestAutoTotal==11,'mixed items must be counted using their own inventory totals')
 assert(quantities.carrotHarvested==300,'unrelated carrot quantity must not affect the collected total')
+assert(RemoteCatalog.ChestAutoItems.wood==7 and RemoteCatalog.ChestAutoItems.stone==4,'per-item totals must retain confirmed mixed transfers')
+assert(string.find(RemoteCatalog.ChestLastDetail,'By item: stone: 4, wood: 7',1,true),'copyable result must include a sorted item breakdown')
+-- A goal caps the last request and ends the pass without draining the chest.
+RemoteCatalog.SelectedChestTargets=function() return {{Recorder=recorder,Binding={Amount=30,Item='wood'}}} end
+RemoteCatalog.OwnedTools=function() return {{Name='wood'}} end
+RemoteCatalog.BaitCount=function() return inventory end
+RemoteCatalog.ChestGoal=35;inventory=0;calls={}
+RemoteCatalog.WithdrawCarrots=function(amount) table.insert(calls,amount);inventory+=amount;return true end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(#calls==2 and calls[1]==30 and calls[2]==5 and inventory==35,'goal must cap the final batch to the remaining whole-item total')
+assert(not RemoteCatalog.ChestAutoEnabled and not RemoteCatalog.ChestAutoWorker and not RemoteCatalog.ChestBusy,'goal completion must release the worker and lock')
+assert(string.find(RemoteCatalog.ChestLastDetail,'Goal reached: 35',1,true) and RemoteCatalog.ChestAutoItems.wood==35,'goal completion must explain why unchecked slots remain')
+-- A rejected capped batch backs off from the amount actually sent.
+RemoteCatalog.ChestGoal=5;inventory=0;calls={}
+RemoteCatalog.WithdrawCarrots=function(amount)
+ table.insert(calls,amount)
+ if amount>2 then return false,'batch too large' end
+ inventory+=amount;return true
+end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(#calls==4 and calls[1]==5 and calls[2]==2 and calls[3]==2 and calls[4]==1,'capped failures must halve the actual attempted batch and retain successful remainder sizes')
+assert(inventory==5 and RemoteCatalog.ChestAutoItems.wood==5,'new run must reset the per-item totals')
+-- Unconfirmed responses do not satisfy a goal.
+RemoteCatalog.ChestGoal=1;inventory=0;calls={}
+RemoteCatalog.WithdrawCarrots=function(amount) table.insert(calls,amount);return true end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(#calls==3 and RemoteCatalog.ChestAutoTotal==0 and next(RemoteCatalog.ChestAutoItems)==nil,'goal still requires inventory confirmation and bounded no-progress retries')
+-- A goal is shared by mixed items, rather than applied separately to each.
+RemoteCatalog.ChestGoal=6;quantities.wood=0;quantities.stone=0;calls={}
+RemoteCatalog.SelectedChestTargets=function() return {
+ {Recorder=recorder,Binding={Amount=4,Item='wood'}},
+ {Recorder=recorder,Binding={Amount=4,Item='stone'}}
+} end
+RemoteCatalog.OwnedTools=function() return {{Name='wood'},{Name='stone'}} end
+RemoteCatalog.BaitCount=function(tool) return quantities[tool.Name] end
+RemoteCatalog.WithdrawCarrots=function(amount,_,binding)
+ table.insert(calls,amount);quantities[binding.Item]+=amount;return true
+end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(#calls==2 and quantities.wood==4 and quantities.stone==2 and RemoteCatalog.ChestAutoTotal==6,'mixed items must share one combined collection goal')
+RemoteCatalog.ChestGoal=nil
 return 'Chest Auto Max: batches/remainder, inventory confirmation, range wait/resume, one worker, bounded no-progress, Stop/in-flight restart, errors/session/GUI cleanup passed'
 `;
 const state=await LuauState.createAsync();

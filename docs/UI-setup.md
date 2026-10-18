@@ -406,3 +406,28 @@ valid empty inventory. Item selection, reduced remainder batches and one-item
 discovery probes retain v41 behavior. Regression tests cover fractional, negative,
 nonfinite, nonnumeric and oversized counts, aggregate overflow and invalid
 replicated counts after a withdrawal. Live server behavior remains unverified.
+
+### Collection planner (v42)
+
+The Chests page places a Collection plan section before the collection actions.
+**Preview selection** shows selected physical chests, slot checks, item types and
+checks currently within normal withdrawal reach. Preview does not move, withdraw
+or start automation. It is a snapshot; refresh it after moving or changing filters.
+It cannot determine chest contents.
+
+**Auto goal** cycles through Unlimited (default), 25, 50, 100, 250 and 500 items.
+The goal applies to the combined confirmed inventory gain across selected items
+in one run. The final request is capped to the remaining goal. Rejections retain
+adaptive backoff, and accepted responses without inventory gain do not advance
+the goal. Changing the goal stops an active run; start Auto Withdraw again to
+use the new goal. Manual withdrawal is independent of this control. Concurrent
+external inventory gains can still affect confirmation totals.
+
+The collected card updates after each confirmed batch. Completed results include
+a sorted per-item breakdown, also included by Copy result. **Select none** clears
+the item checklist explicitly while keeping it open; All learned items restores
+the earlier selection behavior. Inline menus push the planner and later controls
+down instead of overlapping them. Regression checks cover actual UI callbacks,
+preview isolation, layout, shared mixed-item goals, capped requests, no-progress
+limits and per-run totals. The complete mock suite passes; live Roblox rendering
+and server interaction still require an available client session.

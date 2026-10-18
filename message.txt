@@ -1824,7 +1824,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-selection-41",
+    Subtitle = "chest-planner-42",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2172,7 +2172,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-selection-41",
+    return table.concat({"Reborn chest-planner-42",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2821,6 +2821,29 @@ RemoteCatalog.ChestItemMenu.CanvasSize=UDim2.new();RemoteCatalog.ChestItemMenu.V
 RemoteCatalog.ChestItemMenu.ZIndex=40;RemoteCatalog.ChestItemMenu.Parent=RemoteCatalog.ChestPage
 RemoteCatalog.ChestItemConnections={}
 track(RemoteCatalog.ChestItemButton.Activated:Connect(function() RemoteCatalog.ToggleChestItems() end))
+for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
+    if child:IsA("GuiObject") and child~=RemoteCatalog.ChestAmountMenu and child.Position.Y.Offset>=376 then
+        local p=child.Position
+        child.Position=UDim2.new(p.X.Scale,p.X.Offset,p.Y.Scale,p.Y.Offset+166)
+    end
+end
+pageHeading(RemoteCatalog.ChestPage,"COLLECTION PLAN",376)
+RemoteCatalog.ChestPreviewButton=button({Parent=RemoteCatalog.ChestPage,Text="Preview selection",TextSize=13,
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,404)})
+RemoteCatalog.ChestGoalButton=button({Parent=RemoteCatalog.ChestPage,Text="Auto goal: Unlimited",TextSize=13,
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,404)})
+RemoteCatalog.ChestPlanLabel=label({Parent=RemoteCatalog.ChestPage,Text="Preview checks your selected targets without moving or withdrawing. Auto goal limits the combined confirmed total across all items.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,90),Position=UDim2.fromOffset(8,446)})
+RemoteCatalog.ChestPlanLabel.TextWrapped=true
+track(RemoteCatalog.ChestPreviewButton.Activated:Connect(function() RemoteCatalog.PreviewChestSelection() end))
+track(RemoteCatalog.ChestGoalButton.Activated:Connect(function()
+    RemoteCatalog.SetChestAuto(false)
+    local goals={0,25,50,100,250,500}
+    local index=table.find(goals,RemoteCatalog.ChestGoal or 0) or 1
+    local goal=goals[index%#goals+1]
+    RemoteCatalog.ChestGoal=goal>0 and goal or nil
+    RemoteCatalog.ChestGoalButton.Text="Auto goal: "..(RemoteCatalog.ChestGoal and tostring(goal).." items" or "Unlimited")
+end))
 RemoteCatalog.ChestControlPositions={}
 for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
     if child:IsA("GuiObject") and child~=RemoteCatalog.ChestSelectMenu and child~=RemoteCatalog.ChestAmountMenu and child~=RemoteCatalog.ChestItemMenu then
@@ -2834,11 +2857,11 @@ function RemoteCatalog.LayoutChestControls()
     for child,base in pairs(RemoteCatalog.ChestControlPositions) do
         local y=base.Y.Offset
         if y>=328 then y+=selectOffset end
-        if base.Y.Offset>=476 then y+=amountOffset end
+        if base.Y.Offset>=642 then y+=amountOffset end
         if base.Y.Offset>=260 then y+=itemOffset end
         child.Position=UDim2.new(base.X.Scale,base.X.Offset,base.Y.Scale,y)
     end
-    RemoteCatalog.ChestAmountMenu.Position=UDim2.new(.5,3,0,462+selectOffset+itemOffset)
+    RemoteCatalog.ChestAmountMenu.Position=UDim2.new(.5,3,0,628+selectOffset+itemOffset)
     RemoteCatalog.ChestSelectMenu.Position=UDim2.fromOffset(6,326+itemOffset)
 end
 table.insert(RemoteCatalog.MenuClosers,function()
@@ -4920,7 +4943,7 @@ function RemoteCatalog.ToggleChestItems()
         if not seen[item] then seen[item]=true;table.insert(items,item) end
     end
     table.sort(items)
-    menu.Size=UDim2.new(1,-12,0,math.min(224,(#items+2)*32))
+    menu.Size=UDim2.new(1,-12,0,math.min(224,(#items+3)*32))
     local function refresh()
         for index,option in pairs(options) do
             local item=items[index]
@@ -4947,12 +4970,42 @@ function RemoteCatalog.ToggleChestItems()
             refresh();RemoteCatalog.UpdateChestSelectionUI()
         end))
     end
-    local done=button({Parent=menu,Text="Done",TextSize=12,Size=UDim2.new(1,-8,0,30),Position=UDim2.fromOffset(2,(#items+1)*32)})
+    local none=button({Parent=menu,Text="Select none",TextSize=12,Size=UDim2.new(1,-8,0,30),Position=UDim2.fromOffset(2,(#items+1)*32)})
+    none.ZIndex=41
+    table.insert(RemoteCatalog.ChestItemConnections,none.Activated:Connect(function()
+        RemoteCatalog.SetChestAuto(false)
+        RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
+        RemoteCatalog.ChestItem=nil;RemoteCatalog.ChestItems={}
+        refresh();RemoteCatalog.UpdateChestSelectionUI()
+    end))
+    local done=button({Parent=menu,Text="Done",TextSize=12,Size=UDim2.new(1,-8,0,30),Position=UDim2.fromOffset(2,(#items+2)*32)})
     done.ZIndex=41
     table.insert(RemoteCatalog.ChestItemConnections,done.Activated:Connect(function()
         menu.Visible=false;RemoteCatalog.LayoutChestControls()
     end))
     refresh();menu.Visible=true;RemoteCatalog.LayoutChestControls()
+end
+function RemoteCatalog.PreviewChestSelection()
+    local targets=RemoteCatalog.SelectedChestTargets()
+    local chests,items={},{}
+    local count,ready=0,0
+    for _,entry in ipairs(targets) do
+        local binding=entry.Binding
+        if not chests[binding.Chest] then chests[binding.Chest]=true;count+=1 end
+        items[binding.Item or "carrotHarvested"]=true
+        if RemoteCatalog.ChestRequestReady(binding) then ready+=1 end
+    end
+    local names={}
+    for name in pairs(items) do table.insert(names,name) end
+    table.sort(names)
+    local itemCount=#names
+    while #names>4 do table.remove(names) end
+    local text=#targets==0 and "No targets selected. Learn a withdrawal and choose items first." or
+        (count.." chests · "..#targets.." slot checks · "..itemCount.." item types\n"..
+        ready.." checks in reach; "..(#targets-ready).." need approach or attention.\n"..
+        table.concat(names,", ")..(itemCount>4 and " …" or "").."\nInventory contents remain unknown until withdrawal.")
+    RemoteCatalog.ChestPlanLabel.Text=text
+    return text
 end
 function RemoteCatalog.ChestRequestReady(binding)
     local chest=binding and binding.Chest
@@ -5143,7 +5196,7 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-selection-41\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-planner-42\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
 end
@@ -5180,11 +5233,15 @@ function RemoteCatalog.SetChestAuto(state)
     RemoteCatalog.ChestAutoWorker=generation
     RemoteCatalog.ChestAutoEnabled=true
     RemoteCatalog.ChestAutoTotal=0
+    RemoteCatalog.ChestAutoItems={}
+    if RemoteCatalog.ChestStats then RemoteCatalog.ChestStats["AUTO COLLECTED"].Text="0" end
+    local goal=RemoteCatalog.ChestGoal
     RemoteCatalog.ChestAutoButton.Text="AUTO WITHDRAW: ON"
     RemoteCatalog.ChestAutoButton.BackgroundColor3=COLORS.on
     task.spawn(function()
         local ownsBusy=false
         local completed=false
+        local goalReached=false
         local function active()
             return gui.Parent~=nil and RemoteCatalog.ChestAutoEnabled and RemoteCatalog.ChestAutoGeneration==generation
         end
@@ -5197,6 +5254,7 @@ function RemoteCatalog.SetChestAuto(state)
                 if chest and not chestNumbers[chest] then chestCount+=1;chestNumbers[chest]=chestCount end
             end
             while active() do
+                if goal and RemoteCatalog.ChestAutoTotal>=goal then goalReached=true;break end
                 local finished=0
                 for _,state in ipairs(states) do if state.Done then finished+=1 end end
                 RemoteCatalog.ChestAutoButton.Text="AUTO WITHDRAW: ON · "..finished.."/"..#states.." checks"
@@ -5231,7 +5289,9 @@ function RemoteCatalog.SetChestAuto(state)
                     break
                 end
                 RemoteCatalog.ChestBusy=true;ownsBusy=true
-                local ran,sent,response=pcall(RemoteCatalog.WithdrawCarrots,state.Amount,recorder,binding)
+                local amount=goal and math.min(state.Amount,goal-RemoteCatalog.ChestAutoTotal) or state.Amount
+                state.Amount=amount
+                local ran,sent,response=pcall(RemoteCatalog.WithdrawCarrots,amount,recorder,binding)
                 if not active() then break end
                 if not ran then sent,response=false,sent end
                 local after=RemoteCatalog.CarrotCount(binding.Item)
@@ -5250,6 +5310,9 @@ function RemoteCatalog.SetChestAuto(state)
                 local gained=math.max(0,after-before)
                 if sent and gained>0 then
                     RemoteCatalog.ChestAutoTotal+=gained
+                    local item=binding.Item or "carrotHarvested"
+                    RemoteCatalog.ChestAutoItems[item]=(RemoteCatalog.ChestAutoItems[item] or 0)+gained
+                    if RemoteCatalog.ChestStats then RemoteCatalog.ChestStats["AUTO COLLECTED"].Text=tostring(RemoteCatalog.ChestAutoTotal) end
                     RemoteCatalog.ChestAutoMessage("Collected "..RemoteCatalog.ChestAutoTotal.." items · "..finished.."/"..#states.." checks finished\n"..target,COLORS.good)
                     if not state.Probe then state.Maximum=math.min(state.Maximum,state.Amount) end
                     state.Amount=state.Maximum;state.NoProgress=0;state.Probe=false
@@ -5274,7 +5337,13 @@ function RemoteCatalog.SetChestAuto(state)
         if RemoteCatalog.ChestAutoGeneration==generation then
             RemoteCatalog.SetChestAuto(false)
             if not ok then RemoteCatalog.ChestAutoMessage("Auto withdraw stopped: "..RemoteCatalog.ChestResultText(failure))
+            elseif goalReached then RemoteCatalog.ChestAutoMessage("Goal reached: "..RemoteCatalog.ChestAutoTotal.." items collected. Remaining slots were not checked.",COLORS.good)
             elseif completed then RemoteCatalog.ChestAutoMessage("Pass finished: "..RemoteCatalog.ChestAutoTotal.." items collected. All "..#states.." selected slot checks finished; empty or unconfirmed slots were skipped.\nLast result: "..tostring(RemoteCatalog.ChestResultLabel.Text),COLORS.good) end
+            local names,totals={},{}
+            for item in pairs(RemoteCatalog.ChestAutoItems) do table.insert(names,item) end
+            table.sort(names)
+            for _,item in ipairs(names) do table.insert(totals,item..": "..RemoteCatalog.ChestAutoItems[item]) end
+            if #totals>0 then RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestResultLabel.Text.."\nBy item: "..table.concat(totals,", "),RemoteCatalog.ChestResultLabel.TextColor3) end
         end
     end)
     return true
@@ -5303,7 +5372,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-selection-41\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-planner-42\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Withdrawal requests sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)

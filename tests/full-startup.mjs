@@ -420,8 +420,33 @@ end)()
  assert(not RemoteCatalog.SetChestAuto(true) and string.find(RemoteCatalog.ChestResultLabel.Text,'No items selected',1,true),'empty selection must explain why collection cannot start')
  chooseItem('All learned items')
  assert(not RemoteCatalog.ChestItems and #RemoteCatalog.SelectedChestTargets()==2,'All learned items must restore mixed collection')
+ chooseItem('Select none')
+ assert(RemoteCatalog.ChestItems and next(RemoteCatalog.ChestItems)==nil and #RemoteCatalog.SelectedChestTargets()==0,'Select none must leave an explicit empty selection')
+ RemoteCatalog.ChestPreviewButton.Activated:Fire()
+ assert(string.find(RemoteCatalog.ChestPlanLabel.Text,'No targets selected',1,true),'empty preview must explain how to choose targets')
+ chooseItem('All learned items')
  chooseItem('Done')
  assert(not RemoteCatalog.ChestItemMenu.Visible,'Done must close the item checklist')
+ local beforePreview=#requestedBindings
+ chest.Position=position(80)
+ RemoteCatalog.ChestPreviewButton.Activated:Fire()
+ assert(#requestedBindings==beforePreview and not RemoteCatalog.ChestAutoEnabled,'preview must never withdraw or start automation')
+ assert(string.find(RemoteCatalog.ChestPlanLabel.Text,'2 chests · 2 slot checks · 2 item types',1,true),'preview must describe the actual selection')
+ assert(string.find(RemoteCatalog.ChestPlanLabel.Text,'1 checks in reach; 1 need approach',1,true),'preview must distinguish reachable and distant targets')
+ assert(string.find(RemoteCatalog.ChestPlanLabel.Text,'stone, wood',1,true),'preview must show sorted selected items')
+ assert(RemoteCatalog.ChestAutoButton.Position.Y.Offset>=RemoteCatalog.ChestPlanLabel.Position.Y.Offset+RemoteCatalog.ChestPlanLabel.Size.Y.Offset,'plan must fit above the collection action')
+ assert(not RemoteCatalog.ChestGoal,'goal must default to unlimited')
+ RemoteCatalog.ChestAutoEnabled=true
+ RemoteCatalog.ChestGoalButton.Activated:Fire()
+ assert(not RemoteCatalog.ChestAutoEnabled and RemoteCatalog.ChestGoal==25 and RemoteCatalog.ChestGoalButton.Text=='Auto goal: 25 items','changing the goal must stop the old worker and update its label')
+ for _,goal in ipairs({50,100,250,500}) do
+  RemoteCatalog.ChestGoalButton.Activated:Fire()
+  assert(RemoteCatalog.ChestGoal==goal,'goal control must cycle through its labelled choices')
+ end
+ RemoteCatalog.ChestGoalButton.Activated:Fire()
+ assert(not RemoteCatalog.ChestGoal and RemoteCatalog.ChestGoalButton.Text=='Auto goal: Unlimited','goal control must return to unlimited')
+ chest.Position=position(5)
+
  RemoteCatalog.Recorder=savedLocalRecorder;RemoteCatalog.ChestSelection=nil
  workspace.FindFirstChild,RemoteCatalog.LiveRecorder,player.Character=savedFind,savedLive,savedChar
  local savedRecorder=RemoteCatalog.Recorder
