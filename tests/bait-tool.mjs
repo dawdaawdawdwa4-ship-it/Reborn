@@ -55,6 +55,16 @@ end)
 assert(consumed and detail=='bait consumption confirmed' and quantity==beforeEmptyHand-1 and not baitBusy,'empty-hand bait use must confirm and release tool control')
 current=rod
 
+local normalClick=RemoteCatalog.ClickBaitTool
+local mouseAttempts=0
+RemoteCatalog.ClickBaitTool=function() mouseAttempts+=1;return true,'host mouse bait click' end
+local beforeAlternate=activated
+assert(not RemoteCatalog.ActivateBait(bait) and mouseAttempts==1 and activated==beforeAlternate,'a mouse call without consumption must fail without also activating the tool')
+RemoteCatalog.BaitTryToolActivation=true
+assert(RemoteCatalog.ActivateBait(bait) and mouseAttempts==1 and activated==beforeAlternate+1 and RemoteCatalog.BaitTransport=='Tool:Activate','next retry must be able to use tool activation even when host mouse APIs claim success')
+RemoteCatalog.BaitTryToolActivation=false
+RemoteCatalog.ClickBaitTool=normalClick
+
 RemoteCatalog.BobberActive=function() return true end
 assert(not RemoteCatalog.WithBaitTool(bait,function() error('must not run during a cast') end) and current==rod,'bait must wait for current bobber')
 RemoteCatalog.BobberActive=nil

@@ -1709,7 +1709,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "cast-reset-18",
+    Subtitle = "bait-fallback-19",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2161,12 +2161,14 @@ end
 -- BAIT NORMAL CLICK END
 RemoteCatalog.ActivateBait = function(tool, prepared)
     local function activate()
-        local clicked,reason=RemoteCatalog.ClickBaitTool(tool)
-        if clicked~=nil then
-            RemoteCatalog.BaitTransport=reason
-            return clicked,reason
+        if not RemoteCatalog.BaitTryToolActivation then
+            local clicked,reason=RemoteCatalog.ClickBaitTool(tool)
+            if clicked~=nil then
+                RemoteCatalog.BaitTransport=reason
+                return clicked,reason
+            end
         end
-        RemoteCatalog.BaitTransport="Tool:Activate fallback"
+        RemoteCatalog.BaitTransport="Tool:Activate"
         tool:Activate()
         task.wait(0.15)
         return true, "tool activation attempted"
@@ -2224,6 +2226,9 @@ local function applyBait()
             local recorder=RemoteCatalog.LiveRecorder("BaitBinding")
             RemoteCatalog.BaitFailedBinding=recorder and recorder.BaitBinding
             RemoteCatalog.BaitNeedsRefresh=true
+            -- A successful mouse API call can still produce no game input on this host.
+            -- Try one other normal activation method on the next scheduled attempt.
+            RemoteCatalog.BaitTryToolActivation=RemoteCatalog.BaitTransport~="Tool:Activate"
         end
         baitInfo.Text = "Bait waiting: " .. tostring(result) .. (enabled and " Fishing continues." or " Fishing is OFF.") .. " ["..tostring(RemoteCatalog.BaitTransport or "no request").."]"
         baitInfo.TextColor3 = COLORS.warn

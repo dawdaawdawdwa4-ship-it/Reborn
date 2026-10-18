@@ -73,12 +73,16 @@ do
  local attempts=0
  RemoteCatalog.WithBaitTool=function() attempts+=1;return false,'Bait use unconfirmed' end
  ${apply}
+ RemoteCatalog.BaitTransport='host mouse bait click'
  assert(not applyBait() and attempts==1,'first unconfirmed attempt must establish a count sample')
+ assert(RemoteCatalog.BaitTryToolActivation,'unconfirmed mouse use must select the alternate method for the next retry')
  quantity=15;recorder.BaitBinding={Target=bait}
  local confirmed,detail=applyBait()
  assert(confirmed and detail=='bait consumption confirmed' and attempts==1,'fresh captured use plus decreased quantity between retries must confirm without consuming more bait')
  player.Character={FindFirstChild=function() return bait end};quantity=14;recorder.BaitBinding={Target=bait}
+ RemoteCatalog.BaitTransport='Tool:Activate'
  assert(not applyBait() and attempts==2,'a different character must not inherit consumption confirmation')
+ assert(not RemoteCatalog.BaitTryToolActivation,'unconfirmed tool use must allow the mouse method on a later retry')
 end
 -- Timeouts must keep Fishing enabled, including after bait runs out.
 do
