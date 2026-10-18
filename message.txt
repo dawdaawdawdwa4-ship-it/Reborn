@@ -1793,7 +1793,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "teleport-32",
+    Subtitle = "spawn-33",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2138,7 +2138,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn teleport-32",
+    return table.concat({"Reborn spawn-33",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -3118,8 +3118,27 @@ track(centerWindow.Activated:Connect(function() frame.Position=UDim2.fromScale(.
 track(biggerWindow.Activated:Connect(function() resizeHub(1.1) end))
 
 RemoteCatalog.TeleportCards={}
+RemoteCatalog.TeleportPresetNames={"Spawn","Own island portal","Hub return portal","Fishing pond","Slime portal","Slime return portal","Buffalkor"}
+pageHeading(RemoteCatalog.TeleportPage,"DESTINATIONS",0)
+for i,name in ipairs(RemoteCatalog.TeleportPresetNames) do
+    local column=(i-1)%2
+    local y=28+math.floor((i-1)/2)*82
+    local teleport=button({Parent=RemoteCatalog.TeleportPage,Text=name,TextSize=12,
+        Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(column*.5,column==0 and 6 or 3,0,y)})
+    local hint=label({Parent=RemoteCatalog.TeleportPage,Text="Built-in destination",TextSize=12,Color=COLORS.muted,
+        Size=UDim2.new(.5,-12,0,34),Position=UDim2.new(column*.5,column==0 and 8 or 5,0,y+38)})
+    hint.TextWrapped=true
+    RemoteCatalog.TeleportCards[name]={Label=hint,Teleport=teleport,Preset=true}
+    track(teleport.Activated:Connect(function()
+        local ok,reason=RemoteCatalog.TeleportSavedSpot(name)
+        RemoteCatalog.TeleportStatus.Text=reason
+        RemoteCatalog.UpdateTeleportLabels()
+        setStatus(reason,ok and COLORS.good or COLORS.warn)
+    end))
+end
+RemoteCatalog.TeleportSavedStart=48+math.ceil(#RemoteCatalog.TeleportPresetNames/2)*82
 for i,name in ipairs({"Water hole","Island / home","Custom spot"}) do
-    local y=(i-1)*128
+    local y=RemoteCatalog.TeleportSavedStart+(i-1)*128
     pageHeading(RemoteCatalog.TeleportPage,string.upper(name),y)
     local save=button({Parent=RemoteCatalog.TeleportPage,Text="Save current position",TextSize=12,
         Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,y+28)})
@@ -3143,7 +3162,7 @@ for i,name in ipairs({"Water hole","Island / home","Custom spot"}) do
     end))
 end
 RemoteCatalog.TeleportBackButton=button({Parent=RemoteCatalog.TeleportPage,Text="Return to previous position",TextSize=12,
-    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,390)})
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,RemoteCatalog.TeleportSavedStart+390)})
 track(RemoteCatalog.TeleportBackButton.Activated:Connect(function()
     local ok,reason=RemoteCatalog.TeleportSavedSpot("Previous")
     RemoteCatalog.TeleportStatus.Text=reason
@@ -3151,7 +3170,7 @@ track(RemoteCatalog.TeleportBackButton.Activated:Connect(function()
     setStatus(reason,ok and COLORS.good or COLORS.warn)
 end))
 RemoteCatalog.TeleportClearButton=button({Parent=RemoteCatalog.TeleportPage,Text="Clear saved positions",TextSize=12,
-    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,434)})
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,RemoteCatalog.TeleportSavedStart+434)})
 track(RemoteCatalog.TeleportClearButton.Activated:Connect(function()
     RemoteCatalog.WaterSpot=nil;RemoteCatalog.TeleportSpots={};RemoteCatalog.TeleportPrevious=nil
     RemoteCatalog.TeleportGeneration=(RemoteCatalog.TeleportGeneration or 0)+1
@@ -3159,7 +3178,7 @@ track(RemoteCatalog.TeleportClearButton.Activated:Connect(function()
     RemoteCatalog.UpdateTeleportLabels()
 end))
 RemoteCatalog.TeleportStatus=label({Parent=RemoteCatalog.TeleportPage,Text="Save a clear spot beside the water or on your island. Teleport pauses automation. Positions last for this script session and server.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,64),Position=UDim2.fromOffset(8,482)})
+    Size=UDim2.new(1,-16,0,64),Position=UDim2.fromOffset(8,RemoteCatalog.TeleportSavedStart+482)})
 RemoteCatalog.TeleportStatus.TextWrapped=true
 
 -- Captured remotes are visible here; this page never sends server requests.
@@ -4741,7 +4760,7 @@ function RemoteCatalog.CarrotCount()
 end
 function RemoteCatalog.ChestAutoMessage(text)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn teleport-32\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn spawn-33\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
 end
 function RemoteCatalog.SetChestAuto(state)
@@ -4866,7 +4885,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         RemoteCatalog.ChestWithdrawButton.Text="Withdraw carrots (learned chest)"
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn teleport-32\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn spawn-33\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Carrot withdrawal request sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)
@@ -4874,12 +4893,37 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
 end))
 
 -- WATER SPOT BEGIN
+RemoteCatalog.TeleportPresets={
+    ["Slime portal"]={Preset=true,PlaceId=137524393306210,Values={546.674561,94.422081,-496.263855,
+        -0.606078446,-1.57274496e-08,-0.795404911,1.38278917e-08,1,-3.03093906e-08,0.795404911,-2.93686391e-08,-0.606078446}},
+    ["Slime return portal"]={Preset=true,PlaceId=137524393306210,Values={659.497559,184.839874,-230.143631,
+        0.901966453,4.62149821e-08,0.431806058,-2.75788059e-09,1,-1.01266451e-07,-0.431806058,9.01480703e-08,0.901966453}},
+    Buffalkor={Preset=true,PlaceId=137524393306210,Values={806.163635,181.826767,17.0179768,
+        -0.902585447,1.43885499e-08,-0.43051073,2.56835941e-10,1,3.28835803e-08,0.43051073,2.95696694e-08,-0.902585447}},
+    ["Hub return portal"]={Preset=true,PlaceId=137524393306210,Values={272.612946,97.3866577,-560.961792,
+        0.000488042773,1.19634796e-15,-0.999999881,5.54841454e-17,1,1.19637517e-15,0.999999881,-5.60680225e-17,0.000488042773}},
+    ["Fishing pond"]={Preset=true,PlaceId=137524393306210,Values={424.779266,87.5868607,-640.204895,
+        0.449412435,-0.00346118957,-0.893317699,-0.00705892686,0.999947488,-0.0074255527,0.89329648,0.00964299962,0.449364424}},
+    ["Own island portal"]={Preset=true,PlaceId=137524393306210,Values={6001.06689,-1.20368242,5868.05078,
+        0.99984771,4.66931249e-09,-0.0174530018,-3.22085181e-09,1,8.30201685e-08,0.0174530018,-8.29513098e-08,0.99984771}},
+    Spawn={Preset=true,PlaceId=137524393306210,Values={6000.14014,-1.20368242,5997.77197,
+        -0.0349005498,7.73404949e-08,-0.999390781,-2.64594533e-08,1,7.83116505e-08,0.999390781,2.91764533e-08,-0.0349005498}},
+}
+function RemoteCatalog.TeleportSpotValid(spot)
+    return spot~=nil and spot.PlaceId==game.PlaceId and (spot.Preset==true or spot.OwnerUserId==player.UserId and spot.JobId==game.JobId)
+end
 function RemoteCatalog.GetTeleportSpot(name)
+    local preset=RemoteCatalog.TeleportPresets[name]
+    if preset then
+        if preset.PlaceId==game.PlaceId and not preset.CFrame then preset.CFrame=CFrame.new(table.unpack(preset.Values)) end
+        return preset
+    end
     if name=="Water hole" then return RemoteCatalog.WaterSpot end
     if name=="Previous" then return RemoteCatalog.TeleportPrevious end
     return RemoteCatalog.TeleportSpots and RemoteCatalog.TeleportSpots[name]
 end
 function RemoteCatalog.SetTeleportSpot(name,point)
+    if RemoteCatalog.TeleportPresets[name] then return end
     if name=="Water hole" then RemoteCatalog.WaterSpot=point
     elseif name=="Previous" then RemoteCatalog.TeleportPrevious=point
     else
@@ -4902,7 +4946,8 @@ function RemoteCatalog.SaveWaterSpot() return RemoteCatalog.SaveTeleportSpot("Wa
 function RemoteCatalog.TeleportSavedSpot(name)
     local spot=RemoteCatalog.GetTeleportSpot(name)
     if not spot then return false,name=="Previous" and "No previous teleport position yet" or "Save "..name.." first" end
-    if spot.OwnerUserId~=player.UserId or spot.PlaceId~=game.PlaceId or spot.JobId~=game.JobId then
+    if not RemoteCatalog.TeleportSpotValid(spot) then
+        if spot.Preset then return false,name.." preset is only available in PlaceId "..tostring(spot.PlaceId) end
         RemoteCatalog.SetTeleportSpot(name,nil)
         return false,"Saved spot belongs to another account or server; save it again"
     end
@@ -4959,14 +5004,15 @@ function RemoteCatalog.UpdateTeleportLabels()
     local root=char and char:FindFirstChild("HumanoidRootPart")
     for name,card in pairs(RemoteCatalog.TeleportCards) do
         local spot=RemoteCatalog.GetTeleportSpot(name)
-        local valid=spot and spot.OwnerUserId==player.UserId and spot.PlaceId==game.PlaceId and spot.JobId==game.JobId
-        local text=valid and "Saved for this server" or "Not saved"
+        local valid=RemoteCatalog.TeleportSpotValid(spot)
+        local text=card.Preset and (valid and "Built-in destination" or "Available in PlaceId "..tostring(spot.PlaceId))
+            or (valid and "Saved for this server" or "Not saved")
         if valid and root then
             local ok,distance=pcall(function() return (root.Position-spot.CFrame.Position).Magnitude end)
             if ok then text=text.." · "..math.floor(distance).." studs away" end
         end
         card.Label.Text=text
-        card.Teleport.Text=valid and "Teleport" or "Save a position first"
+        card.Teleport.Text=valid and "Teleport" or card.Preset and "Different place" or "Save a position first"
         card.Teleport.BackgroundColor3=valid and COLORS.on or COLORS.off
     end
 end

@@ -351,6 +351,12 @@ end)()
  local character={FindFirstChild=function(_,name) return name=='HumanoidRootPart' and root end,FindFirstChildOfClass=function(_,class) return class=='Humanoid' and humanoid end}
  root.Parent=character;player.Character=character
  assert(airflowTabs.Teleport and pages.Teleport==RemoteCatalog.TeleportPage,'dedicated Teleport tab must exist')
+ for name,preset in pairs(RemoteCatalog.TeleportPresets) do
+  assert(RemoteCatalog.TeleportCards[name] and table.find(RemoteCatalog.TeleportPresetNames,name),'every preset must have a destination button: '..name)
+  assert(not RemoteCatalog.TeleportCards[name].Save,'built-in destinations must not expose an overwrite button')
+ end
+ RemoteCatalog.TeleportCards.Spawn.Teleport.Activated:Fire()
+ assert(string.find(RemoteCatalog.TeleportStatus.Text,'137524393306210',1,true),'wrong-place preset click must explain the required place')
  RemoteCatalog.TeleportCards['Water hole'].Save.Activated:Fire()
  assert(RemoteCatalog.WaterSpot.CFrame==frame and RemoteCatalog.TeleportCards['Water hole'].Label.Text~='Not saved','water save card must save the actual point')
  root.CFrame={Position=Vector2.new(50,50)}

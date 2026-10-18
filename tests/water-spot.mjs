@@ -8,6 +8,7 @@ velocityMt.__mul=function(_,n) return setmetatable({value=n},velocityMt) end
 local zero=setmetatable({value=7},velocityMt)
 local vmt={__sub=function(a,b) return {Magnitude=math.abs(a.X-b.X)} end}
 local function position(x) return setmetatable({X=x},vmt) end
+local CFrame={new=function(...) local values=table.pack(...);return {Values=values,Position=position(values[1])} end}
 local savedFrame={location='water hole',Position=position(10)}
 local root={CFrame=savedFrame,Position=position(10),AssemblyLinearVelocity=zero,AssemblyAngularVelocity=zero}
 local humanoid={Health=100}
@@ -77,6 +78,32 @@ assert(RemoteCatalog.TeleportWaterSpot())
 local result=RemoteCatalog.TeleportLastResult
 player.Character={};flushChecks()
 assert(RemoteCatalog.TeleportLastResult==result,'verification must stop after character replacement')
+player.Character=character;root.Parent=character
+local wrongFrame=root.CFrame
+assert(not RemoteCatalog.TeleportSavedSpot('Spawn') and root.CFrame==wrongFrame,'preset must refuse another PlaceId without moving')
+game.PlaceId=137524393306210
+local spawn=RemoteCatalog.GetTeleportSpot('Spawn')
+assert(spawn.CFrame.Values.n==12 and spawn.CFrame.Values[1]==6000.14014 and spawn.CFrame.Values[2]==-1.20368242 and spawn.CFrame.Values[3]==5997.77197,'Spawn must use the provided location')
+assert(spawn.CFrame.Values[4]==-0.0349005498 and spawn.CFrame.Values[12]==-0.0349005498,'Spawn orientation must be retained')
+assert(RemoteCatalog.TeleportSavedSpot('Spawn') and root.CFrame==spawn.CFrame,'provided Spawn preset must teleport without manual saving')
+RemoteCatalog.TeleportSpots={};RemoteCatalog.WaterSpot=nil;RemoteCatalog.TeleportPrevious=nil
+assert(RemoteCatalog.GetTeleportSpot('Spawn')==spawn,'clearing user saves must preserve the built-in preset')
+game.JobId='new-server';player.UserId=99
+assert(RemoteCatalog.TeleportSpotValid(spawn),'place presets must remain usable across accounts and servers of the same place')
+local portal=RemoteCatalog.GetTeleportSpot('Own island portal')
+assert(portal.CFrame.Values[1]==6001.06689 and portal.CFrame.Values[2]==-1.20368242 and portal.CFrame.Values[3]==5868.05078,'own-island portal must be separate from Spawn')
+assert(RemoteCatalog.TeleportSavedSpot('Own island portal') and root.CFrame==portal.CFrame,'portal destination must dispatch without replacing Spawn')
+assert(RemoteCatalog.GetTeleportSpot('Spawn')==spawn,'adding the island portal must preserve Spawn')
+local hub=RemoteCatalog.GetTeleportSpot('Hub return portal')
+assert(hub.CFrame.Values[1]==272.612946 and hub.CFrame.Values[2]==97.3866577 and hub.CFrame.Values[3]==-560.961792,'hub return portal must retain its supplied location')
+local pond=RemoteCatalog.GetTeleportSpot('Fishing pond')
+assert(pond.CFrame.Values[1]==424.779266 and pond.CFrame.Values[2]==87.5868607 and pond.CFrame.Values[3]==-640.204895,'fishing pond must retain its supplied location')
+assert(RemoteCatalog.TeleportSavedSpot('Fishing pond') and root.CFrame==pond.CFrame,'pond preset must use the standard teleport/verification path')
+for name,expected in pairs({['Slime portal']={546.674561,94.422081,-496.263855},['Slime return portal']={659.497559,184.839874,-230.143631},Buffalkor={806.163635,181.826767,17.0179768}}) do
+ local point=RemoteCatalog.GetTeleportSpot(name)
+ assert(point and point.CFrame.Values.n==12,'preset missing: '..name)
+ for i=1,3 do assert(point.CFrame.Values[i]==expected[i],'incorrect preset position: '..name) end
+end
 return 'Saved water-hole TP: exact location, stopped workers, cleared momentum, busy/dead/anchored guards and account/server/place validation passed'
 `;
 const state=await LuauState.createAsync();
