@@ -114,6 +114,32 @@ assert(not RemoteCatalog.ActivateBait(bait) and foodCalls==1 and releases==1 and
 assert(RemoteCatalog.ActivateBait(bait) and foodCalls==2 and releases==2 and RemoteCatalog.BaitTransport=='Tool.Activated food handler','a later signal attempt must reach the food handlers after the direct API fails')
 firesignal=nil
 
+-- Mouse-bound food scripts must work even when Tool.Activated is a no-op.
+local mouse={Button1Down={},Button1Up={}}
+player.GetMouse=function() return mouse end
+local mouseFoodCalls,mouseReleases=0,0
+local foodFails=false
+local function mouseFood() mouseFoodCalls+=1;if foodFails then error('food callback failed') end;consumeAfter=.5 end
+local function mouseReleased() mouseReleases+=1 end
+getconnections=function(event)
+ if event==mouse.Button1Down then return {{Enabled=true,Function=unrelatedCallback},{Enabled=false,Function=mouseFood},{Enabled=true,Function=mouseFood}} end
+ if event==mouse.Button1Up then return {{Enabled=true,Function=mouseReleased}} end
+ return {}
+end
+local beforeEngine,beforeMouse,beforeFood=activated,mouseAttempts,foodCalls
+RemoteCatalog.BaitTryMouseHandler=nil
+quantity=8
+assert(RemoteCatalog.ActivateBait(bait) and mouseFoodCalls==1 and mouseReleases==1 and foreign==0,'mouse food route must call only enabled callbacks owned by this food script')
+assert(activated==beforeEngine and mouseAttempts==beforeMouse and foodCalls==beforeFood and RemoteCatalog.BaitTransport=='Mouse.Button1Down food handler','mouse handler route must not also fire another input backend')
+foodFails=true
+assert(not RemoteCatalog.ActivateBait(bait) and mouseReleases==2 and not baitBusy and current==rod,'failed mouse handler must release and restore rod')
+foodFails=false
+local mouseWait=task.wait
+task.wait=function(dt) if consumeAfter then baitEnabled=false end end
+assert(not RemoteCatalog.ActivateBait(bait) and mouseReleases==3 and not baitBusy,'Stop during mouse handler input must release and unlock')
+task.wait=mouseWait;baitEnabled=true;consumeAfter=nil
+player.GetMouse=nil
+
 getconnections=function() return {{Function=unrelatedCallback,Enabled=true}} end
 assert(not RemoteCatalog.ActivateBait(bait) and foreign==0,'unrelated event callbacks must never be invoked')
 getconnections=nil;getfenv=realGetfenv;RemoteCatalog.BaitTrySignal=false

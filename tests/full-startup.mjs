@@ -228,14 +228,18 @@ assert(not string.find(status.Text,'stopped:',1,true),'worker error during actua
  -- Automatic handler learning: click only Auto Bait, with no manual use/button.
  do
   local env,connections,fire=getfenv,getconnections,firesignal
+  local getMouse=player.GetMouse
   local globalOwned=RemoteCatalog.OwnedTools
   RemoteCatalog.CallBait=callBait
   firesignal=nil
+  for _,channel in ipairs({'Activated','Mouse'}) do
   for _,initial in ipairs({3,1}) do
    local quantity,sent=initial,0
    local current
    local food={}
-   local bait={Name='bait',Parent={},Activated={},Deactivated={},GetAttributes=function() return {Amount=quantity} end}
+   local mouse={Button1Down={},Button1Up={}}
+   player.GetMouse=function() return channel=='Mouse' and mouse or nil end
+   local bait={Name='bait',ManualActivationOnly=channel=='Mouse',Parent={},Activated={},Deactivated={},GetAttributes=function() return {Amount=quantity} end}
    function bait:FindFirstChild(name) if name=='food' and self.Parent then return food end end
    local character
    local hum={EquipTool=function(_,tool) current=tool;tool.Parent=character end}
@@ -251,14 +255,16 @@ assert(not string.find(status.Text,'stopped:',1,true),'worker error during actua
     if quantity==0 then bait.Parent=nil;current=nil end
    end
    getfenv=function(fn) return {script=fn==activateFood and food or {}} end
-   getconnections=function(event) return event==bait.Activated and {{Enabled=true,Function=activateFood}} or {} end
+   getconnections=function(event) return event==(channel=='Mouse' and mouse.Button1Down or bait.Activated) and {{Enabled=true,Function=activateFood}} or {} end
    baitToggle.Activated:Fire()
    for i=1,8 do stepWorkers() end
    assert(enabled and baitEnabled and sent==1 and quantity==initial-1,'Auto Bait alone must call the food handler once, confirm consumption and start Fishing')
-   assert(RemoteCatalog.BaitTransport=='Tool.Activated food handler','automatic startup must not depend on mouse or manual learning')
+   assert(RemoteCatalog.BaitTransport==(channel=='Mouse' and 'Mouse.Button1Down food handler' or 'Tool.Activated food handler'),'automatic startup must select the food script input channel without manual learning')
    stopAllButton.Activated:Fire();stepWorkers()
   end
+  end
   getfenv,getconnections,firesignal=env,connections,fire
+  player.GetMouse=getMouse
   RemoteCatalog.OwnedTools=globalOwned
  end
  applyBait,run,player.Character=originalApply,originalRun,originalCharacter

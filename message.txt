@@ -1793,7 +1793,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-amount-29",
+    Subtitle = "bait-food-input-30",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2137,7 +2137,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-amount-29",
+    return table.concat({"Reborn bait-food-input-30",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2146,7 +2146,9 @@ function RemoteCatalog.BaitDiagnosticReport()
         "Current bait binding: "..tostring(recorder~=nil),
         "Binding refresh needed: "..tostring(RemoteCatalog.BaitNeedsRefresh==true),
         "Last learned request: "..tostring(RemoteCatalog.BaitLearnedStatus or "not tried"),
-        "Next activation: "..(RemoteCatalog.BaitTrySignal and "food signal/handler" or RemoteCatalog.BaitTryToolActivation and "Tool:Activate" or "mouse click"),
+        "Next activation: "..(RemoteCatalog.BaitTryMouseHandler and "food mouse handler" or RemoteCatalog.BaitTrySignal and "food signal/handler" or RemoteCatalog.BaitTryToolActivation and "Tool:Activate" or "mouse click"),
+        "Food mouse handler: "..tostring(RemoteCatalog.BaitFoodMouseStatus or "not inspected"),
+        "Bait learner: "..tostring(RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnBaitOnly==true),
         "Tool.Enabled: "..property("Enabled"),
         "Tool.ManualActivationOnly: "..property("ManualActivationOnly"),
         "Activation signal support: "..tostring(RemoteCatalog.BaitSignalAvailable()),
@@ -2294,32 +2296,60 @@ RemoteCatalog.FireBaitSignal=function(tool,pressed,directRelease)
         if pressed and not ok then RemoteCatalog.BaitDirectSignalFailed=true end
         return ok,result
     end
-    if type(getconnections)~="function" or type(getfenv)~="function" then return false,"Activation signal unavailable" end
-    local found,food=pcall(function() return tool:FindFirstChild("food") end)
-    if not found or not food then return not pressed,"Bait food script unavailable" end
-    local ok,list=pcall(getconnections,event)
-    if not ok or type(list)~="table" then return false,"Food activation callbacks unavailable" end
     RemoteCatalog.BaitTransport="Tool.Activated food handler"
-    local sent=0
+    return RemoteCatalog.FireBaitFoodEvent(tool,event,pressed)
+end
+RemoteCatalog.BaitFoodConnections=function(tool,event)
+    if type(getconnections)~="function" or type(getfenv)~="function" then return {},"Food handler inspection unavailable" end
+    local found,food=pcall(function() return tool:FindFirstChild("food") end)
+    if not found or not food then return {},"Bait food script unavailable" end
+    local ok,list=pcall(getconnections,event)
+    if not ok or type(list)~="table" then return {},"Food activation callbacks unavailable" end
+    local matched={}
     for _,connection in ipairs(list) do
-        local matched,callback=pcall(function()
+        local valid,callback=pcall(function()
             if connection.Enabled==false or type(connection.Function)~="function" then return end
-            -- Invoke only this equipped tool's own food script callbacks.
             if getfenv(connection.Function).script==food then return connection.Function end
         end)
-        if matched and callback then
-            if pressed and tool.Parent~=player.Character then break end
-            local fired=pcall(function()
-                if type(connection.Fire)=="function" then connection:Fire() else callback() end
-            end)
-            if not fired then return false,"Food activation handler failed" end
-            sent+=1
-        end
+        if valid and callback then table.insert(matched,{Connection=connection,Callback=callback}) end
     end
-    return sent>0 or not pressed,"No enabled food activation handler found"
+    return matched,#matched>0 and "Enabled food handlers found" or "No enabled food activation handler found"
+end
+RemoteCatalog.FireBaitFoodEvent=function(tool,event,pressed)
+    if pressed and (tool.Parent~=player.Character or tool.Enabled==false) then return false,"Bait is not ready to activate" end
+    local list,reason=RemoteCatalog.BaitFoodConnections(tool,event)
+    local sent=0
+    for _,handler in ipairs(list) do
+        if pressed and tool.Parent~=player.Character then break end
+        local fired=pcall(function()
+            if type(handler.Connection.Fire)=="function" then handler.Connection:Fire() else handler.Callback() end
+        end)
+        if not fired then return false,"Food activation handler failed" end
+        sent+=1
+    end
+    return sent>0 or not pressed,reason
+end
+RemoteCatalog.BaitFoodMouse=function()
+    local ok,mouse=pcall(function() return player:GetMouse() end)
+    if ok and mouse then return mouse end
+end
+RemoteCatalog.BaitFoodMouseAvailable=function(tool)
+    local mouse=RemoteCatalog.BaitFoodMouse()
+    if not mouse then RemoteCatalog.BaitFoodMouseStatus="Player mouse unavailable";return false end
+    local list,reason=RemoteCatalog.BaitFoodConnections(tool,mouse.Button1Down)
+    RemoteCatalog.BaitFoodMouseStatus=reason
+    return #list>0
 end
 RemoteCatalog.ActivateBait = function(tool, prepared)
     local function activate()
+        if RemoteCatalog.BaitTryMouseHandler~=false and RemoteCatalog.BaitFoodMouseAvailable(tool) then
+            local mouse=RemoteCatalog.BaitFoodMouse()
+            RemoteCatalog.BaitTransport="Mouse.Button1Down food handler"
+            local pressed,reason=RemoteCatalog.FireBaitFoodEvent(tool,mouse.Button1Down,true)
+            local held=pcall(task.wait,.15)
+            local released=RemoteCatalog.FireBaitFoodEvent(tool,mouse.Button1Up,false)
+            return pressed and held and released,pressed and "bait food mouse handler attempted" or reason
+        end
         if RemoteCatalog.BaitTrySignal~=false and RemoteCatalog.BaitSignalAvailable() then
             RemoteCatalog.BaitTransport="Tool.Activated signal"
             local direct=type(firesignal)=="function" and not RemoteCatalog.BaitDirectSignalFailed
@@ -2362,6 +2392,7 @@ local function applyBait()
     end
     if baitTool and RemoteCatalog.BaitInputCharacter~=character then
         RemoteCatalog.BaitInputCharacter=character
+        RemoteCatalog.BaitTryMouseHandler=nil
         RemoteCatalog.BaitDirectSignalFailed=nil
         local checked,manual=pcall(function() return baitTool.ManualActivationOnly end)
         -- These tools explicitly require Tool:Activate. Prefer it to a synthetic signal.
@@ -2427,6 +2458,9 @@ local function applyBait()
             -- A successful mouse API call can still produce no game input on this host.
             -- Try one other normal activation method on the next scheduled attempt.
             local transport=RemoteCatalog.BaitTransport or ""
+            -- Give an observed food mouse handler a turn after normal mouse input fails.
+            RemoteCatalog.BaitTryMouseHandler=(transport=="host mouse bait click" or transport=="virtual mouse bait click")
+                and RemoteCatalog.BaitFoodMouseAvailable and RemoteCatalog.BaitFoodMouseAvailable(baitTool) or false
             local signal=transport=="Tool.Activated signal" or transport=="Tool.Activated food handler"
             if transport=="Tool.Activated signal" then RemoteCatalog.BaitDirectSignalFailed=true end
             local handlers=transport=="Tool.Activated signal" and type(getconnections)=="function" and type(getfenv)=="function"
@@ -2458,6 +2492,7 @@ local function setBaitEnabled(state)
     RemoteCatalog.BaitPending=state
     if state then
         RemoteCatalog.BaitInputCharacter=nil
+        RemoteCatalog.BaitTryMouseHandler=nil
         RemoteCatalog.BaitNativeFailed=nil
         RemoteCatalog.BaitDirectSignalFailed=nil
         RemoteCatalog.BaitTrySignal=RemoteCatalog.BaitSignalAvailable()
@@ -4606,7 +4641,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         RemoteCatalog.ChestWithdrawButton.Text="Withdraw carrots (learned chest)"
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-amount-29\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn bait-food-input-30\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Carrot withdrawal request sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)
