@@ -122,6 +122,18 @@ assert(not statsOverlayGui.Enabled,'stats control must hide the corner display')
 statsOverlay.Position=UDim2.fromOffset(-1000,-1000)
 RemoteCatalog.StatsResetButton.Activated:Fire()
 assert(statsOverlayGui.Enabled and statsOverlay.Position.X.Scale==1 and statsOverlay.Position.X.Offset==-14,'reset must recover a hidden or lost corner display')
+do
+RemoteCatalog.BaitNativeStatus="Food API unavailable: Module path not found"
+RemoteCatalog.BaitTransport="Tool:Activate"
+local report=RemoteCatalog.BaitDiagnosticReport()
+assert(string.find(report,"Module path not found",1,true) and string.find(report,"Tool:Activate",1,true),'bait diagnostics must retain native-route failure alongside the fallback transport')
+assert(not string.find(report,"RequestIds",1,true),'diagnostic report must not dump captured request contexts')
+local copied
+setclipboard=function(value) copied=value end
+RemoteCatalog.BaitDiagnosticButton.Activated:Fire()
+assert(copied==report,'bait diagnostic button must copy the current report')
+setclipboard=nil
+end
 local originalReplantY=replantToggle.Position.Y.Offset
 cropSelect.Activated:Fire()
 assert(cropDropdownOpen and replantToggle.Position.Y.Offset>cropDropdown.Position.Y.Offset+cropDropdown.Size.Y.Offset,'expanded crop menu must push following controls below its options')

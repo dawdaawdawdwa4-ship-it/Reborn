@@ -79,6 +79,8 @@ local actualBlock={Name='test-block'}
 local ok,result=fireBlockMine(actualBlock)
 assert(ok,'mining call not forwarded')
 assert(sent.TrNhTTgExIb1Bg=='test-current-session' and sent.TlSR8Mzd9FLwaZ.block==actualBlock,'mining must use current ID and actual block Instance')
+local absentFood,foodReason=RemoteCatalog.GameEndpoint('CLIENT_EAT_FOOD')
+assert(absentFood==nil and foodReason=='Module path not found','missing game API must report why native bait is unavailable')
 local CONFIG={PlantType='wheat'}
 local bait={Name='bait'}
 player={Character={FindFirstChild=function(_,name) if name=='bait' then return bait end end,FindFirstChildOfClass=function() return nil end},FindFirstChildOfClass=function() return nil end}
@@ -290,6 +292,7 @@ do
  result={success=false}
  assert(not RemoteCatalog.CallBait(bait) and nativeCalls==2 and inputCalls==0,'rejected native bait must not send another transport in the same attempt')
  assert(RemoteCatalog.CallBait(bait) and nativeCalls==2 and inputCalls==1,'next attempt must fall back rather than retrying a rejected native route indefinitely')
+ assert(RemoteCatalog.BaitNativeStatus=='Food request rejected or errored','fallback must preserve the original native-route failure for diagnostics')
  RemoteCatalog.BaitNativeFailed=nil;result=true
  assert(RemoteCatalog.CallBait(bait) and nativeCalls==3,'clearing retry state must allow the native route again')
  RemoteCatalog.GameEndpoint,RemoteCatalog.ActivateBait=oldEndpoint,oldActivate

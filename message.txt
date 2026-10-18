@@ -223,10 +223,11 @@ local RemoteCatalog = (function()
         return true, result
     end
     catalog.ModuleCache = {}
+    catalog.ModuleErrors = {}
     function catalog.GameModule(path, export)
         if catalog.ModuleCache[path] then return catalog.ModuleCache[path][export] end
         local module = catalog.FindPath(path, "ModuleScript")
-        if not module then return nil end
+        if not module then catalog.ModuleErrors[path]="Module path not found";return nil end
         local ok, result = pcall(require, module)
         if (not ok or type(result) ~= "table") and type(getrenv) == "function" then
             local gotEnvironment, environment = pcall(getrenv)
@@ -234,7 +235,8 @@ local RemoteCatalog = (function()
                 ok, result = pcall(environment.require, module)
             end
         end
-        if not ok or type(result) ~= "table" then return nil end
+        if not ok or type(result) ~= "table" then catalog.ModuleErrors[path]="Module could not be loaded";return nil end
+        catalog.ModuleErrors[path]=nil
         catalog.ModuleCache[path] = result
         return result[export]
     end
@@ -280,9 +282,10 @@ local RemoteCatalog = (function()
     end
     function catalog.GameEndpoint(name)
         local client = catalog.PlacementClient()
-        if not client then return nil end
+        if not client then return nil,catalog.ModuleErrors["ReplicatedStorage.TS.network.requests"] or "Requests.Client export unavailable" end
         local ok, endpoint = pcall(function() return client:Get(name) end)
-        return ok and endpoint or nil
+        if not ok or not endpoint then return nil,"Request endpoint lookup failed" end
+        return endpoint
     end
     function catalog.SendEndpoint(endpoint, body)
         local ok, result = pcall(function() return endpoint:CallServer(body) end)
@@ -315,13 +318,15 @@ local RemoteCatalog = (function()
         -- CLIENT_EAT_FOOD and its tool body are present in the supplied remote captures.
         local failed=catalog.BaitNativeFailed
         if not failed or failed.Character~=player.Character or failed.Tool~=tool then
-            local endpoint=catalog.GameEndpoint("CLIENT_EAT_FOOD")
+            local endpoint,unavailable=catalog.GameEndpoint("CLIENT_EAT_FOOD")
             if endpoint then
                 catalog.BaitTransport="game food request"
                 local ok,reason=catalog.SendEndpoint(endpoint,{tool=tool})
+                catalog.BaitNativeStatus=ok and "Food request sent; awaiting consumption" or "Food request rejected or errored"
                 if not ok then catalog.BaitNativeFailed={Character=player.Character,Tool=tool} end
                 return ok,reason
             end
+            catalog.BaitNativeStatus="Food API unavailable: "..tostring(unavailable or "endpoint not found")
         end
         local recorder=catalog.AcceptFreshBaitBinding()
         if catalog.BaitNeedsRefresh and catalog.ActivateBait then
@@ -1721,7 +1726,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-native-20",
+    Subtitle = "bait-diagnostics-21",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2049,6 +2054,33 @@ local baitInfo = label({
 })
 baitInfo.TextWrapped = true
 
+RemoteCatalog.BaitNativeLabel=label({Parent=fishingPage,Text="Food API: not checked yet",TextSize=11,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,48),Position=UDim2.fromOffset(8,356)})
+RemoteCatalog.BaitNativeLabel.TextWrapped=true
+RemoteCatalog.BaitDiagnosticButton=button({Parent=fishingPage,Text="Copy bait diagnostics",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,410)})
+function RemoteCatalog.BaitDiagnosticReport()
+    local bait
+    local ok,tools=pcall(RemoteCatalog.OwnedTools)
+    if ok then for _,tool in ipairs(tools) do if string.lower(tool.Name)=="bait" then bait=tool;break end end end
+    local recorder=RemoteCatalog.LiveRecorder("BaitBinding")
+    return table.concat({"Reborn bait-diagnostics-21",
+        "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
+        "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
+        "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
+        "Bait quantity: "..tostring(bait and (RemoteCatalog.BaitCount(bait) or "unreadable") or "no tool"),
+        "Bait equipped: "..tostring(bait~=nil and bait.Parent==player.Character),
+        "Current bait binding: "..tostring(recorder~=nil),
+        "Capture hook support: "..tostring(type(hookmetamethod)=="function" and type(getnamecallmethod)=="function"),
+        "Auto Bait: "..tostring(baitEnabled),"Fishing: "..tostring(enabled)},"\n")
+end
+track(RemoteCatalog.BaitDiagnosticButton.Activated:Connect(function()
+    local report=RemoteCatalog.BaitDiagnosticReport()
+    local copy=setclipboard or toclipboard
+    if type(copy)=="function" and pcall(copy,report) then setStatus("Bait diagnostics copied",COLORS.good)
+    else print(report);setStatus("Bait diagnostics printed to the console",COLORS.warn) end
+end))
+
 -- BAIT TOOL INPUT BEGIN
 RemoteCatalog.BaitCount=function(tool)
     if not tool then return nil end
@@ -2240,6 +2272,9 @@ local function applyBait()
             RemoteCatalog.BaitNeedsRefresh=true
             if RemoteCatalog.BaitTransport=="game food request" then
                 RemoteCatalog.BaitNativeFailed={Character=character,Tool=baitTool}
+                if RemoteCatalog.BaitNativeStatus=="Food request sent; awaiting consumption" then
+                    RemoteCatalog.BaitNativeStatus="Food request sent but consumption was not observed"
+                end
             end
             -- A successful mouse API call can still produce no game input on this host.
             -- Try one other normal activation method on the next scheduled attempt.
@@ -2258,6 +2293,7 @@ local function applyBait()
         baitInfo.Text = "Bait consumption confirmed. Refreshes after 60 seconds."
         baitInfo.TextColor3 = COLORS.good
     end
+    RemoteCatalog.BaitLastResult=tostring(result)
     return ok, result
 end
 
@@ -2998,6 +3034,7 @@ local function getTopFish()
 end
 
 local function updateBoard()
+    RemoteCatalog.BaitNativeLabel.Text=RemoteCatalog.BaitNativeStatus or "Food API: not checked yet"
     RemoteCatalog.UpdateCaptureUI()
 	local t = getActiveTime()
 
