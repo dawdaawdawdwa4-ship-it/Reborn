@@ -181,3 +181,11 @@ means no goal progress. Unlimited remains the default, discovery still starts
 with a one-item probe, and successful reduced batches retain their maximum.
 Per-item totals use each binding's item-specific inventory reader. Goal changes
 stop the existing generation before a new run can start.
+
+### Session controls (session-dashboard-43)
+
+The dashboard, stop timer and run history introduce no remote request formats.
+Timer expiry calls existing Stop All cleanup and invalidates worker generations.
+History retains only confirmed count summaries for at most five automatic runs;
+no session identifiers, request payloads or live chest references are stored.
+Cancelled in-flight withdrawals retain only previously confirmed counts.

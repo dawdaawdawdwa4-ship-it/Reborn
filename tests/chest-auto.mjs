@@ -96,6 +96,7 @@ assert(RemoteCatalog.SetChestAuto(true) and #calls==1)
 RemoteCatalog.SetChestAuto(false)
 assert(not RemoteCatalog.SetChestAuto(true),'restart must wait for an in-flight worker to finish')
 drain();assert(#calls==1 and not RemoteCatalog.ChestBusy and not RemoteCatalog.ChestAutoWorker and not RemoteCatalog.ChestAutoEnabled,'stopped request must clean up without sending again')
+assert(RemoteCatalog.ChestHistory[1].Outcome=='Stopped' and RemoteCatalog.ChestHistory[1].Total==0,'cancelled in-flight requests must record only previously confirmed totals')
 -- Exceptions, session changes and GUI destruction must release the worker.
 RemoteCatalog.WithdrawCarrots=function() error('transport failed') end
 assert(RemoteCatalog.SetChestAuto(true));drain()
@@ -246,6 +247,12 @@ end
 assert(RemoteCatalog.SetChestAuto(true));drain()
 assert(#calls==2 and quantities.wood==4 and quantities.stone==2 and RemoteCatalog.ChestAutoTotal==6,'mixed items must share one combined collection goal')
 RemoteCatalog.ChestGoal=nil
+assert(RemoteCatalog.ChestHistory[1].Outcome=='Goal reached' and RemoteCatalog.ChestHistory[1].Total==6 and RemoteCatalog.ChestHistory[1].Goal==6,'automatic completion must retain its outcome, total and goal')
+local historical=RemoteCatalog.ChestHistory[1]
+RemoteCatalog.ChestAutoItems.wood=999
+assert(historical.Items.wood==4,'history must snapshot totals instead of retaining mutable run state')
+for index=1,8 do RemoteCatalog.RecordChestRun('Stopped',index,{wood=index}) end
+assert(#RemoteCatalog.ChestHistory==5 and RemoteCatalog.ChestHistory[1].Total==8 and RemoteCatalog.ChestHistory[5].Total==4,'history must keep only the newest five runs in order')
 return 'Chest Auto Max: batches/remainder, inventory confirmation, range wait/resume, one worker, bounded no-progress, Stop/in-flight restart, errors/session/GUI cleanup passed'
 `;
 const state=await LuauState.createAsync();

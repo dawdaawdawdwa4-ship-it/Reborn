@@ -1824,7 +1824,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-planner-42",
+    Subtitle = "session-dashboard-43",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2172,7 +2172,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-planner-42",
+    return table.concat({"Reborn session-dashboard-43",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2799,11 +2799,33 @@ RemoteCatalog.ChestMovementHint=label({Parent=RemoteCatalog.ChestPage,Text="Stay
     Size=UDim2.new(1,-16,0,34),Position=UDim2.fromOffset(8,500)})
 RemoteCatalog.ChestMovementHint.TextWrapped=true
 pageHeading(RemoteCatalog.ChestPage,"LATEST RESULT",554)
-RemoteCatalog.ChestResultLabel=label({Parent=RemoteCatalog.ChestPage,Text="Ready to learn your first chest.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,84),Position=UDim2.fromOffset(8,582)})
+RemoteCatalog.ChestResultView=Instance.new("ScrollingFrame")
+RemoteCatalog.ChestResultView.Size=UDim2.new(1,-12,0,84)
+RemoteCatalog.ChestResultView.Position=UDim2.fromOffset(6,582)
+RemoteCatalog.ChestResultView.BackgroundColor3=COLORS.panel;RemoteCatalog.ChestResultView.BorderSizePixel=0
+RemoteCatalog.ChestResultView.ScrollBarThickness=5;RemoteCatalog.ChestResultView.AutomaticCanvasSize=Enum.AutomaticSize.Y
+RemoteCatalog.ChestResultView.CanvasSize=UDim2.new();RemoteCatalog.ChestResultView.ScrollingDirection=Enum.ScrollingDirection.Y
+RemoteCatalog.ChestResultView.Parent=RemoteCatalog.ChestPage
+RemoteCatalog.ChestResultLabel=label({Parent=RemoteCatalog.ChestResultView,Text="Ready to learn your first chest.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-20,0,24),Position=UDim2.fromOffset(8,4)})
 RemoteCatalog.ChestResultLabel.TextWrapped=true
+RemoteCatalog.ChestResultLabel.AutomaticSize=Enum.AutomaticSize.Y
+RemoteCatalog.ChestResultLabel.TextTruncate=Enum.TextTruncate.None
+RemoteCatalog.ChestResultLabel.TextYAlignment=Enum.TextYAlignment.Top
 RemoteCatalog.ChestCopyButton=button({Parent=RemoteCatalog.ChestPage,Text="Copy result",TextSize=13,
-    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,674)})
+    Size=UDim2.new(.5,-9,0,32),Position=UDim2.fromOffset(6,674)})
+RemoteCatalog.ChestHistoryButton=button({Parent=RemoteCatalog.ChestPage,Text="Previous runs (0)",TextSize=13,
+    Size=UDim2.new(.5,-9,0,32),Position=UDim2.new(.5,3,0,674)})
+track(RemoteCatalog.ChestHistoryButton.Activated:Connect(function()
+    if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then
+        setStatus("Finish or stop collection before viewing previous runs",COLORS.warn);return
+    end
+    local history=RemoteCatalog.ChestHistory or {}
+    if #history==0 then setStatus("No completed collection runs in this session yet",COLORS.muted);return end
+    RemoteCatalog.ChestHistoryIndex=(RemoteCatalog.ChestHistoryIndex or 0)%#history+1
+    local index=RemoteCatalog.ChestHistoryIndex
+    RemoteCatalog.ChestAutoMessage("Previous run "..index.."/"..#history.." (newest first)\n"..history[index].Text,COLORS.muted)
+end))
 for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
     if child:IsA("GuiObject") and child.Position.Y.Offset>=214 then
         local p=child.Position
@@ -2832,9 +2854,17 @@ RemoteCatalog.ChestPreviewButton=button({Parent=RemoteCatalog.ChestPage,Text="Pr
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,404)})
 RemoteCatalog.ChestGoalButton=button({Parent=RemoteCatalog.ChestPage,Text="Auto goal: Unlimited",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,404)})
-RemoteCatalog.ChestPlanLabel=label({Parent=RemoteCatalog.ChestPage,Text="Preview checks your selected targets without moving or withdrawing. Auto goal limits the combined confirmed total across all items.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,90),Position=UDim2.fromOffset(8,446)})
-RemoteCatalog.ChestPlanLabel.TextWrapped=true
+RemoteCatalog.ChestPlanView=Instance.new("ScrollingFrame")
+RemoteCatalog.ChestPlanView.Size=UDim2.new(1,-12,0,90);RemoteCatalog.ChestPlanView.Position=UDim2.fromOffset(6,446)
+RemoteCatalog.ChestPlanView.BackgroundColor3=COLORS.panel;RemoteCatalog.ChestPlanView.BorderSizePixel=0
+RemoteCatalog.ChestPlanView.ScrollBarThickness=5;RemoteCatalog.ChestPlanView.AutomaticCanvasSize=Enum.AutomaticSize.Y
+RemoteCatalog.ChestPlanView.CanvasSize=UDim2.new();RemoteCatalog.ChestPlanView.ScrollingDirection=Enum.ScrollingDirection.Y
+RemoteCatalog.ChestPlanView.Parent=RemoteCatalog.ChestPage
+RemoteCatalog.ChestPlanLabel=label({Parent=RemoteCatalog.ChestPlanView,Text="Preview checks your selected targets without moving or withdrawing. Auto goal limits the combined confirmed total across all items.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-20,0,24),Position=UDim2.fromOffset(8,4)})
+RemoteCatalog.ChestPlanLabel.TextWrapped=true;RemoteCatalog.ChestPlanLabel.AutomaticSize=Enum.AutomaticSize.Y
+RemoteCatalog.ChestPlanLabel.TextYAlignment=Enum.TextYAlignment.Top
+RemoteCatalog.ChestPlanLabel.TextTruncate=Enum.TextTruncate.None
 track(RemoteCatalog.ChestPreviewButton.Activated:Connect(function() RemoteCatalog.PreviewChestSelection() end))
 track(RemoteCatalog.ChestGoalButton.Activated:Connect(function()
     RemoteCatalog.SetChestAuto(false)
@@ -3023,6 +3053,69 @@ track(RemoteCatalog.StatsResetButton.Activated:Connect(function()
     statsOverlayGui.Enabled=true
     RemoteCatalog.StatsVisibilityButton.Text="CORNER STATS: ON"
 end))
+
+-- Session overview and shortcuts are read-only until Stop all is pressed.
+for _,child in ipairs(statsPage:GetChildren()) do
+    if child:IsA("GuiObject") then
+        local p=child.Position
+        child.Position=UDim2.new(p.X.Scale,p.X.Offset,p.Y.Scale,p.Y.Offset+350)
+    end
+end
+pageHeading(statsPage,"SESSION DASHBOARD",6)
+RemoteCatalog.DashboardStatus=label({Parent=statsPage,Text="Checking session…",TextSize=13,Color=COLORS.text,
+    Size=UDim2.new(1,-16,0,90),Position=UDim2.fromOffset(8,30)})
+RemoteCatalog.DashboardStatus.TextWrapped=true
+RemoteCatalog.DashboardButtons={}
+for index,name in ipairs({"Fishing","Harvest","Wood Farm","Mining","Chests","Stop all"}) do
+    local col=(index-1)%2
+    local control=button({Parent=statsPage,Text=name=="Stop all" and "STOP ALL AUTOMATION" or "Open "..name,TextSize=12,
+        Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(col*.5,col==0 and 6 or 3,0,126+math.floor((index-1)/2)*40),
+        Bg=name=="Stop all" and COLORS.off or COLORS.panel})
+    RemoteCatalog.DashboardButtons[name]=control
+    track(control.Activated:Connect(function()
+        if name=="Stop all" then RemoteCatalog.StopAllAutomation() else showTab(name) end
+    end))
+end
+RemoteCatalog.StopTimerMinutes=15
+RemoteCatalog.StopTimerDuration=button({Parent=statsPage,Text="Stop after: 15 minutes",TextSize=12,
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,256)})
+RemoteCatalog.StopTimerButton=button({Parent=statsPage,Text="Start stop timer",TextSize=12,
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,256)})
+RemoteCatalog.StopTimerHint=label({Parent=statsPage,Text="Timer is OFF. Starting it does not enable any mode. Expiry uses Stop All.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,300)})
+RemoteCatalog.StopTimerHint.TextWrapped=true
+track(RemoteCatalog.StopTimerDuration.Activated:Connect(function()
+    if RemoteCatalog.StopTimerDeadline then setStatus("Cancel the running stop timer before changing its duration",COLORS.warn);return end
+    local choices={5,15,30,60}
+    local index=table.find(choices,RemoteCatalog.StopTimerMinutes) or 2
+    RemoteCatalog.StopTimerMinutes=choices[index%#choices+1]
+    RemoteCatalog.StopTimerDuration.Text="Stop after: "..RemoteCatalog.StopTimerMinutes.." minutes"
+end))
+track(RemoteCatalog.StopTimerButton.Activated:Connect(function()
+    if RemoteCatalog.StopTimerDeadline then RemoteCatalog.StopTimerDeadline=nil
+    else RemoteCatalog.StopTimerDeadline=os.clock()+RemoteCatalog.StopTimerMinutes*60 end
+    RemoteCatalog.UpdateDashboard()
+end))
+function RemoteCatalog.UpdateDashboard()
+    if not gui.Parent then return end
+    local deadline=RemoteCatalog.StopTimerDeadline
+    if deadline and os.clock()>=deadline then
+        RemoteCatalog.StopTimerDeadline=nil
+        RemoteCatalog.StopAllAutomation()
+        setStatus("Session timer finished. All automation stopped.",COLORS.warn)
+    end
+    local remaining=RemoteCatalog.StopTimerDeadline and math.max(0,math.ceil(RemoteCatalog.StopTimerDeadline-os.clock()))
+    RemoteCatalog.StopTimerButton.Text=remaining and "Cancel stop timer" or "Start stop timer"
+    RemoteCatalog.StopTimerButton.BackgroundColor3=remaining and COLORS.on or COLORS.off
+    RemoteCatalog.StopTimerHint.Text=remaining and ("Stops all automation in "..math.floor(remaining/60)..":"..string.format("%02d",remaining%60)..". Cancel to keep playing.")
+        or "Timer is OFF. Starting it does not enable any mode. Expiry uses Stop All."
+    local function state(value) return value and "ON" or "OFF" end
+    local chest=RemoteCatalog.ChestAutoEnabled and "collecting" or RemoteCatalog.ChestAutoWorker and "stopping" or RemoteCatalog.ChestBusy and "manual request" or "idle"
+    RemoteCatalog.DashboardStatus.Text="Fishing "..state(enabled).." · Bait "..state(baitEnabled)..
+        "\nHarvest "..state(harvestEnabled).." · Wood "..state(woodEnabled).." · Mining "..state(mineEnabled)..
+        "\nChests: "..chest.." · Build "..state(buildController.Running)..
+        "\nConfirmed chest items this run: "..tostring(RemoteCatalog.ChestAutoTotal or 0)
+end
 
 -- ANTI AFK BEGIN
 RemoteCatalog.AntiAFKClass=(function()
@@ -3539,6 +3632,7 @@ local function getTopFish()
 end
 
 local function updateBoard()
+    RemoteCatalog.UpdateDashboard()
     if RemoteCatalog.UpdateChestSelectionUI then RemoteCatalog.UpdateChestSelectionUI() end
     if RemoteCatalog.UpdateTeleportLabels then RemoteCatalog.UpdateTeleportLabels() end
     RemoteCatalog.BaitNativeLabel.Text=RemoteCatalog.BaitNativeStatus or "Food API: not checked yet"
@@ -4989,11 +5083,18 @@ function RemoteCatalog.PreviewChestSelection()
     local targets=RemoteCatalog.SelectedChestTargets()
     local chests,items={},{}
     local count,ready=0,0
+    local reasons,reasonOrder={},{}
     for _,entry in ipairs(targets) do
         local binding=entry.Binding
         if not chests[binding.Chest] then chests[binding.Chest]=true;count+=1 end
         items[binding.Item or "carrotHarvested"]=true
-        if RemoteCatalog.ChestRequestReady(binding) then ready+=1 end
+        local available,reason=RemoteCatalog.ChestRequestReady(binding)
+        if available then ready+=1
+        else
+            reason=tostring(reason or "Unavailable")
+            if not reasons[reason] then reasons[reason]=0;table.insert(reasonOrder,reason) end
+            reasons[reason]+=1
+        end
     end
     local names={}
     for name in pairs(items) do table.insert(names,name) end
@@ -5004,7 +5105,12 @@ function RemoteCatalog.PreviewChestSelection()
         (count.." chests · "..#targets.." slot checks · "..itemCount.." item types\n"..
         ready.." checks in reach; "..(#targets-ready).." need approach or attention.\n"..
         table.concat(names,", ")..(itemCount>4 and " …" or "").."\nInventory contents remain unknown until withdrawal.")
+    for index,reason in ipairs(reasonOrder) do
+        if index>3 then text..="\nMore blocked checks: refresh after resolving the above.";break end
+        text..="\n"..reasons[reason].." checks: "..reason
+    end
     RemoteCatalog.ChestPlanLabel.Text=text
+    RemoteCatalog.ChestPlanView.CanvasPosition=Vector2.zero
     return text
 end
 function RemoteCatalog.ChestRequestReady(binding)
@@ -5196,9 +5302,23 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-planner-42\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn session-dashboard-43\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
+    if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
+end
+function RemoteCatalog.RecordChestRun(outcome,total,items,goal)
+    local snapshot,names={},{}
+    for item,count in pairs(items or {}) do snapshot[item]=count;table.insert(names,item) end
+    table.sort(names)
+    local text=outcome..": "..total.." confirmed items"..(goal and " · goal "..goal or " · unlimited")
+    for _,item in ipairs(names) do text..="\n"..item..": "..snapshot[item] end
+    local history=RemoteCatalog.ChestHistory or {}
+    RemoteCatalog.ChestHistory=history
+    table.insert(history,1,{Outcome=outcome,Total=total,Items=snapshot,Goal=goal,Text=text})
+    while #history>5 do table.remove(history) end
+    RemoteCatalog.ChestHistoryIndex=0
+    if RemoteCatalog.ChestHistoryButton then RemoteCatalog.ChestHistoryButton.Text="Previous runs ("..#history..")" end
 end
 function RemoteCatalog.SetChestAuto(state)
     if not state then
@@ -5334,6 +5454,10 @@ function RemoteCatalog.SetChestAuto(state)
         end)
         if ownsBusy then RemoteCatalog.ChestBusy=false end
         RemoteCatalog.ChestAutoWorker=nil
+        if gui.Parent then
+            local outcome=not ok and "Failed" or goalReached and "Goal reached" or completed and "Pass finished" or "Stopped"
+            RemoteCatalog.RecordChestRun(outcome,RemoteCatalog.ChestAutoTotal,RemoteCatalog.ChestAutoItems,goal)
+        end
         if RemoteCatalog.ChestAutoGeneration==generation then
             RemoteCatalog.SetChestAuto(false)
             if not ok then RemoteCatalog.ChestAutoMessage("Auto withdraw stopped: "..RemoteCatalog.ChestResultText(failure))
@@ -5372,8 +5496,9 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-planner-42\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn session-dashboard-43\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
+        RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Withdrawal requests sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)
     end)
@@ -5506,7 +5631,8 @@ function RemoteCatalog.UpdateTeleportLabels()
 end
 
 
-track(stopAllButton.Activated:Connect(function()
+function RemoteCatalog.StopAllAutomation()
+    RemoteCatalog.StopTimerDeadline=nil
     RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
     RemoteCatalog.SetChestAuto(false)
     RemoteCatalog.StopChestLearning()
@@ -5526,7 +5652,9 @@ track(stopAllButton.Activated:Connect(function()
     setStatus("All automation stopped — all cycle tokens invalidated", COLORS.warn)
     refreshModeStatus()
     if stopAllButton then stopAllButton.Text = "ALL STOPPED ✓"; task.delay(1.5, function() if stopAllButton and stopAllButton.Parent then stopAllButton.Text = "STOP ALL AUTOMATION" end end) end
-end))
+    RemoteCatalog.UpdateDashboard()
+end
+track(stopAllButton.Activated:Connect(RemoteCatalog.StopAllAutomation))
 
 track(toggle.Activated:Connect(function()
     if RemoteCatalog.BaitMouseInput or RemoteCatalog.FishingMouseInput then return end
@@ -5768,6 +5896,7 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
+    RemoteCatalog.StopTimerDeadline=nil
     for _,connection in ipairs(RemoteCatalog.ChestItemConnections) do connection:Disconnect() end
     table.clear(RemoteCatalog.ChestItemConnections)
     for _,connection in ipairs(RemoteCatalog.ChestMenuConnections) do connection:Disconnect() end

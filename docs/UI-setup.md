@@ -431,3 +431,34 @@ down instead of overlapping them. Regression checks cover actual UI callbacks,
 preview isolation, layout, shared mixed-item goals, capped requests, no-progress
 limits and per-run totals. The complete mock suite passes; live Roblox rendering
 and server interaction still require an available client session.
+
+### Session dashboard and stop timer (v43)
+
+Open **Stats** for a session dashboard above the existing statistics and recent
+catches. It shows Fishing, Bait, Harvest, Wood, Mining, Chests and Auto Build
+state and the current confirmed chest total. Page shortcuts only navigate.
+The dashboard Stop All button uses the same cleanup as Settings > Stop All.
+
+The optional stop timer starts OFF. Choose 5, 15, 30 or 60 minutes (15 selected by
+default), then press **Start stop timer**. Starting it does not enable a mode.
+The countdown uses elapsed time and the existing live-refresh loop; expiry stops
+all automation once, without restarting it. Cancel disarms the timer. Its duration
+cannot be changed while running. Stop All and hub destruction also clear it.
+A paused or suspended client can delay processing until the next refresh; an
+in-flight server call cannot be recalled.
+
+Chests > **Previous runs** cycles through the newest five automatic runs in this
+hub session, including stopped runs. Each summary snapshots its outcome, goal,
+confirmed total and per-item totals. History is memory-only and contains no
+request envelopes or chest Instances. An interrupted in-flight request is not
+retroactively counted. Copy result copies whichever summary is displayed.
+History browsing waits for active collection to finish so it cannot overwrite
+live progress.
+
+Preview and latest-result panels now scroll long text within fixed viewports,
+leaving later controls reachable. Preview groups blocked slot checks by up to
+three actionable reasons. It still makes no requests and never moves the player.
+Mock checks cover actual dashboard and timer callbacks, one-shot expiry,
+cancellation, destruction, shared Stop All cleanup, history ordering/bounds,
+snapshot isolation, copy behavior, scroll-container wiring and preview reasons.
+Real Roblox rendering and live server behavior remain unverified.

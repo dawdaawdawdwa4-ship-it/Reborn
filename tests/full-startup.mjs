@@ -48,6 +48,47 @@ RemoteCatalog.AntiAFKButton.Activated:Fire()
 stopAllButton.Activated:Fire()
 player.Idled:Fire()
 assert(not RemoteCatalog.AntiAFK.Enabled and idleClicks==1,'Stop All must disable Anti AFK')
+ ;(function()
+ assert(not RemoteCatalog.StopTimerDeadline and RemoteCatalog.StopTimerMinutes==15,'session timer must start OFF with a fifteen-minute choice')
+ RemoteCatalog.UpdateDashboard()
+ assert(string.find(RemoteCatalog.DashboardStatus.Text,'Fishing OFF',1,true) and string.find(RemoteCatalog.DashboardStatus.Text,'Chests: idle',1,true),'dashboard must reflect startup mode state')
+ for _,name in ipairs({'Fishing','Harvest','Wood Farm','Mining','Chests'}) do
+  RemoteCatalog.DashboardButtons[name].Activated:Fire()
+  assert(hub.CurrentTab==airflowTabs[name],'dashboard shortcut must open its page')
+  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled and not RemoteCatalog.ChestAutoEnabled,'navigation must never start automation')
+ end
+ RemoteCatalog.StopTimerButton.Activated:Fire()
+ local deadline=RemoteCatalog.StopTimerDeadline
+ assert(deadline and deadline-os.clock()>899 and deadline-os.clock()<=900,'timer start must use the selected real duration')
+ assert(not enabled and not baitEnabled and RemoteCatalog.StopTimerButton.Text=='Cancel stop timer','starting a timer must not enable gameplay')
+ RemoteCatalog.StopTimerDuration.Activated:Fire()
+ assert(RemoteCatalog.StopTimerDeadline==deadline and RemoteCatalog.StopTimerMinutes==15,'duration clicks must not extend a running timer')
+ RemoteCatalog.StopTimerButton.Activated:Fire()
+ assert(not RemoteCatalog.StopTimerDeadline,'Cancel must disarm the timer')
+ for _,minutes in ipairs({30,60,5,15}) do
+  RemoteCatalog.StopTimerDuration.Activated:Fire()
+  assert(RemoteCatalog.StopTimerMinutes==minutes,'timer duration must cycle through all supported choices')
+ end
+ local originalStop=RemoteCatalog.StopAllAutomation
+ local stops=0
+ RemoteCatalog.StopAllAutomation=function() stops+=1;originalStop() end
+ RemoteCatalog.StopTimerDeadline=os.clock()+60
+ RemoteCatalog.UpdateDashboard()
+ assert(stops==0 and RemoteCatalog.StopTimerDeadline,'future timers must leave modes unchanged')
+ enabled=true;baitEnabled=true;harvestEnabled=true;woodEnabled=true;mineEnabled=true
+ buildController.Running=true;RemoteCatalog.ChestAutoEnabled=true;RemoteCatalog.Planting=true
+ RemoteCatalog.StopTimerDeadline=os.clock()-1
+ RemoteCatalog.UpdateDashboard();RemoteCatalog.UpdateDashboard()
+ assert(stops==1 and not RemoteCatalog.StopTimerDeadline,'expired timer must dispatch Stop All exactly once')
+ assert(not enabled and not baitEnabled and not harvestEnabled and not woodEnabled and not mineEnabled and not RemoteCatalog.ChestAutoEnabled and not buildController.Running and not RemoteCatalog.Planting,'timer expiry must stop all gameplay workers')
+ assert(string.find(status.Text,'Session timer finished',1,true),'timer expiry must explain the stop')
+ RemoteCatalog.StopTimerButton.Activated:Fire()
+ RemoteCatalog.DashboardButtons['Stop all'].Activated:Fire()
+ assert(stops==2 and not RemoteCatalog.StopTimerDeadline,'dashboard Stop all must use shared cleanup and cancel the timer')
+ RemoteCatalog.StopAllAutomation=originalStop
+ showTab('Fishing')
+ end)()
+
 
 assert(CONFIG.CastDistance==12 and activeFishingMode=='Fast' and CONFIG.FishingPollInterval==.005,'startup must use fixed Fast mode and 12-stud aim')
 applyFishingMode('Safe')
@@ -434,7 +475,10 @@ end)()
  assert(string.find(RemoteCatalog.ChestPlanLabel.Text,'2 chests · 2 slot checks · 2 item types',1,true),'preview must describe the actual selection')
  assert(string.find(RemoteCatalog.ChestPlanLabel.Text,'1 checks in reach; 1 need approach',1,true),'preview must distinguish reachable and distant targets')
  assert(string.find(RemoteCatalog.ChestPlanLabel.Text,'stone, wood',1,true),'preview must show sorted selected items')
- assert(RemoteCatalog.ChestAutoButton.Position.Y.Offset>=RemoteCatalog.ChestPlanLabel.Position.Y.Offset+RemoteCatalog.ChestPlanLabel.Size.Y.Offset,'plan must fit above the collection action')
+ assert(string.find(RemoteCatalog.ChestPlanLabel.Text,'Stand within 20 studs',1,true),'preview must give an actionable reason for blocked checks')
+ assert(RemoteCatalog.ChestPlanLabel.Parent==RemoteCatalog.ChestPlanView and RemoteCatalog.ChestPlanView.AutomaticCanvasSize==Enum.AutomaticSize.Y,'long preview details must scroll within their own viewport')
+
+ assert(RemoteCatalog.ChestAutoButton.Position.Y.Offset>=RemoteCatalog.ChestPlanView.Position.Y.Offset+RemoteCatalog.ChestPlanView.Size.Y.Offset,'plan must fit above the collection action')
  assert(not RemoteCatalog.ChestGoal,'goal must default to unlimited')
  RemoteCatalog.ChestAutoEnabled=true
  RemoteCatalog.ChestGoalButton.Activated:Fire()
@@ -490,7 +534,33 @@ end)()
  assert(RemoteCatalog.TeleportCards['Water hole'].Label.Text=='Not saved','Clear must update displayed state')
  player.Character=original
 end)()
+ ;(function()
+ assert(RemoteCatalog.ChestResultLabel.Parent==RemoteCatalog.ChestResultView and RemoteCatalog.ChestResultLabel.AutomaticSize==Enum.AutomaticSize.Y,'long results must grow inside a scrollable viewport')
+ assert(RemoteCatalog.ChestCopyButton.Position.Y.Offset>=RemoteCatalog.ChestResultView.Position.Y.Offset+RemoteCatalog.ChestResultView.Size.Y.Offset,'result actions must remain below the fixed viewport')
+ local originalHistory=RemoteCatalog.ChestHistory
+ RemoteCatalog.ChestHistory={}
+ RemoteCatalog.RecordChestRun('Pass finished',8,{wood=8})
+ RemoteCatalog.RecordChestRun('Goal reached',5,{stone=5},5)
+ RemoteCatalog.ChestHistoryButton.Activated:Fire()
+ assert(string.find(RemoteCatalog.ChestResultLabel.Text,'Previous run 1/2',1,true) and string.find(RemoteCatalog.ChestLastDetail,'stone: 5',1,true),'history must display the newest run first and make it copyable')
+ local originalCopy=setclipboard
+ local copied
+ setclipboard=function(value) copied=value end
+ RemoteCatalog.ChestCopyButton.Activated:Fire()
+ assert(copied==RemoteCatalog.ChestLastDetail,'Copy result must copy the selected historical report')
+ setclipboard=originalCopy
+ RemoteCatalog.ChestHistoryButton.Activated:Fire()
+ assert(string.find(RemoteCatalog.ChestResultLabel.Text,'wood: 8',1,true),'history must cycle to older runs')
+ local previous=RemoteCatalog.ChestResultLabel.Text
+ RemoteCatalog.ChestBusy=true
+ RemoteCatalog.ChestHistoryButton.Activated:Fire()
+ assert(RemoteCatalog.ChestResultLabel.Text==previous,'history must not overwrite an active request status')
+ RemoteCatalog.ChestBusy=false
+ RemoteCatalog.ChestHistory=originalHistory
+ end)()
+RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
+assert(not RemoteCatalog.StopTimerDeadline,'destroying the hub must clear its timer')
 assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'
 `;
