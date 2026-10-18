@@ -26,6 +26,16 @@ assert(calls==1 and RemoteCatalog.BaitPending,'bait due during a cast must reser
 assert(coroutine.resume(worker));assert(calls==2 and RemoteCatalog.BaitPending,'reservation must survive a long cast')
 assert(coroutine.resume(worker));assert(calls==3 and not RemoteCatalog.BaitPending,'successful bait must release fishing during its 60-second timer')
 setBaitEnabled(false);assert(not RemoteCatalog.BaitPending,'manual OFF must clear queued bait')
+-- A transient application exception must not strand the switch or cast reservation.
+do
+ local attempts=0
+ applyBait=function() attempts+=1;if attempts==1 then error('temporary client error') end;return true,'accepted' end
+ setBaitEnabled(true)
+ assert(baitEnabled and not RemoteCatalog.BaitPending and string.find(RemoteCatalog.BaitLastResult,'temporary client error',1,true),'unexpected errors must leave a retrying worker with no stale cast reservation')
+ for i=1,5 do assert(coroutine.resume(worker)) end
+ assert(attempts==2 and not RemoteCatalog.BaitPending,'worker must retry after a transient exception')
+ setBaitEnabled(false)
+end
 -- Execute the actual fishing loop with a pending application and no bobber.
 local enabled,cycleId=true,1
 local harvestEnabled,woodEnabled,mineEnabled=false,false,false
@@ -81,8 +91,10 @@ do
  local confirmed,detail=applyBait()
  assert(confirmed and detail=='bait consumption confirmed' and attempts==1,'fresh captured use plus decreased quantity between retries must confirm without consuming more bait')
  player.Character={FindFirstChild=function() return bait end};quantity=14;recorder.BaitBinding={Target=bait}
+ RemoteCatalog.BaitDirectSignalFailed=true
  RemoteCatalog.BaitTransport='Tool:Activate'
  assert(not applyBait() and attempts==2,'a different character must not inherit consumption confirmation')
+ assert(not RemoteCatalog.BaitDirectSignalFailed,'a new character must get a fresh activation attempt rather than inheriting the old signal failure')
  assert(not RemoteCatalog.BaitTryToolActivation,'unconfirmed tool use must allow the mouse method on a later retry')
  firesignal=function() end
  assert(not applyBait() and not RemoteCatalog.BaitTrySignal and not RemoteCatalog.BaitTryToolActivation,'failed tool activation must leave mouse input a turn instead of looping only signals/tools')

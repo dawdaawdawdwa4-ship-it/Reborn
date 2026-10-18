@@ -75,7 +75,7 @@ RemoteCatalog.BaitTrySignal=true
 assert(RemoteCatalog.ActivateBait(bait) and signalPress==1 and signalRelease==1 and mouseAttempts==1 and activated==beforeAlternate+1,'signal route must activate the game handler without another mouse/Tool activation')
 signalFail=true
 assert(not RemoteCatalog.ActivateBait(bait) and signalPress==2 and signalRelease==2 and not baitBusy,'failed signal press must still release and unlock input')
-signalFail=false;quantity=1
+signalFail=false;quantity=1;RemoteCatalog.BaitDirectSignalFailed=nil
 firesignal=function(signal)
  if signal==bait.Activated then bait.Parent=nil;current=nil end
 end
@@ -97,6 +97,12 @@ getconnections=function(event)
 end
 RemoteCatalog.BaitTrySignal=nil -- automatic preference, without the manual-learning button
 assert(RemoteCatalog.ActivateBait(bait) and foodCalls==1 and releases==1 and foreign==0 and RemoteCatalog.BaitTransport=='Tool.Activated food handler','automatic handler activation must consume bait using only the equipped food script, respecting disabled/foreign callbacks')
+firesignal=function() error('host signal blocked') end
+RemoteCatalog.BaitDirectSignalFailed=nil
+assert(not RemoteCatalog.ActivateBait(bait) and foodCalls==1 and releases==1 and RemoteCatalog.BaitDirectSignalFailed,'blocked direct signals must release the same backend without invoking handlers in the same attempt')
+assert(RemoteCatalog.ActivateBait(bait) and foodCalls==2 and releases==2 and RemoteCatalog.BaitTransport=='Tool.Activated food handler','a later signal attempt must reach the food handlers after the direct API fails')
+firesignal=nil
+
 getconnections=function() return {{Function=unrelatedCallback,Enabled=true}} end
 assert(not RemoteCatalog.ActivateBait(bait) and foreign==0,'unrelated event callbacks must never be invoked')
 getconnections=nil;getfenv=realGetfenv;RemoteCatalog.BaitTrySignal=false

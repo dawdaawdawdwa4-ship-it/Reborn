@@ -1728,7 +1728,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "auto-bait-23",
+    Subtitle = "bait-recovery-24",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2071,7 +2071,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn auto-bait-23",
+    return table.concat({"Reborn bait-recovery-24",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2216,12 +2216,17 @@ RemoteCatalog.ClickBaitTool=function(tool)
 end
 -- BAIT NORMAL CLICK END
 RemoteCatalog.BaitSignalAvailable=function()
-    return type(firesignal)=="function" or type(getconnections)=="function" and type(getfenv)=="function"
+    return type(firesignal)=="function" and not RemoteCatalog.BaitDirectSignalFailed
+        or type(getconnections)=="function" and type(getfenv)=="function"
 end
-RemoteCatalog.FireBaitSignal=function(tool,pressed)
+RemoteCatalog.FireBaitSignal=function(tool,pressed,directRelease)
     if pressed and (tool.Parent~=player.Character or tool.Enabled==false) then return false,"Bait is not ready to activate" end
     local event=pressed and tool.Activated or tool.Deactivated
-    if type(firesignal)=="function" then return pcall(firesignal,event) end
+    if type(firesignal)=="function" and (not RemoteCatalog.BaitDirectSignalFailed or directRelease) then
+        local ok,result=pcall(firesignal,event)
+        if pressed and not ok then RemoteCatalog.BaitDirectSignalFailed=true end
+        return ok,result
+    end
     if type(getconnections)~="function" or type(getfenv)~="function" then return false,"Activation signal unavailable" end
     local found,food=pcall(function() return tool:FindFirstChild("food") end)
     if not found or not food then return not pressed,"Bait food script unavailable" end
@@ -2250,9 +2255,10 @@ RemoteCatalog.ActivateBait = function(tool, prepared)
     local function activate()
         if RemoteCatalog.BaitTrySignal~=false and RemoteCatalog.BaitSignalAvailable() then
             RemoteCatalog.BaitTransport="Tool.Activated signal"
+            local direct=type(firesignal)=="function" and not RemoteCatalog.BaitDirectSignalFailed
             local pressed,reason=RemoteCatalog.FireBaitSignal(tool,true)
             local held=pcall(task.wait,.15)
-            local released=RemoteCatalog.FireBaitSignal(tool,false)
+            local released=RemoteCatalog.FireBaitSignal(tool,false,direct)
             return pressed and held and released,pressed and "bait activation signal attempted" or reason
         end
         if not RemoteCatalog.BaitTryToolActivation then
@@ -2283,6 +2289,12 @@ local function applyBait()
         for _,owned in ipairs(RemoteCatalog.OwnedTools()) do
             if string.lower(owned.Name)=="bait" then baitTool=owned;break end
         end
+    end
+    if baitTool and (RemoteCatalog.BaitInputCharacter~=character or RemoteCatalog.BaitInputTool~=baitTool) then
+        RemoteCatalog.BaitInputCharacter,RemoteCatalog.BaitInputTool=character,baitTool
+        RemoteCatalog.BaitDirectSignalFailed=nil
+        RemoteCatalog.BaitTrySignal=RemoteCatalog.BaitSignalAvailable()
+        RemoteCatalog.BaitTryToolActivation=not RemoteCatalog.BaitTrySignal
     end
     local count=baitTool and RemoteCatalog.BaitCount(baitTool)
     local recorder=RemoteCatalog.AcceptFreshBaitBinding()
@@ -2337,7 +2349,9 @@ local function applyBait()
             -- Try one other normal activation method on the next scheduled attempt.
             local transport=RemoteCatalog.BaitTransport or ""
             local signal=transport=="Tool.Activated signal" or transport=="Tool.Activated food handler"
-            RemoteCatalog.BaitTrySignal=not signal and transport~="Tool:Activate" and RemoteCatalog.BaitSignalAvailable()
+            if transport=="Tool.Activated signal" then RemoteCatalog.BaitDirectSignalFailed=true end
+            local handlers=transport=="Tool.Activated signal" and type(getconnections)=="function" and type(getfenv)=="function"
+            RemoteCatalog.BaitTrySignal=handlers or not signal and transport~="Tool:Activate" and RemoteCatalog.BaitSignalAvailable()
             RemoteCatalog.BaitTryToolActivation=signal or transport~="Tool:Activate" and not RemoteCatalog.BaitTrySignal
         end
         baitInfo.Text = "Bait waiting: " .. tostring(result) .. (enabled and " Fishing continues." or " Fishing is OFF.") .. " ["..tostring(RemoteCatalog.BaitTransport or "no request").."]"
@@ -2365,6 +2379,7 @@ local function setBaitEnabled(state)
     RemoteCatalog.BaitPending=state
     if state then
         RemoteCatalog.BaitNativeFailed=nil
+        RemoteCatalog.BaitDirectSignalFailed=nil
         RemoteCatalog.BaitTrySignal=RemoteCatalog.BaitSignalAvailable()
         RemoteCatalog.BaitTryToolActivation=not RemoteCatalog.BaitTrySignal
     end
@@ -2382,8 +2397,18 @@ local function setBaitEnabled(state)
     task.spawn(function()
         while baitEnabled and baitCycleId == myCycle and gui.Parent do
             RemoteCatalog.BaitPending=true
-            local applied, detail = applyBait()
+            local succeeded,applied,detail=pcall(applyBait)
             if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
+            if not succeeded then
+                detail="Unexpected bait error: "..tostring(applied)
+                applied=false
+                baitBusy=false
+                RemoteCatalog.BaitPending=false
+                RemoteCatalog.BaitLastResult=detail
+                baitInfo.Text=detail.." Retrying; Fishing stays under your control."
+                baitInfo.TextColor3=COLORS.warn
+                setStatus(detail,COLORS.warn)
+            end
             local waiting=not applied and (detail=="Waiting for current rod input" or detail=="Waiting for the current cast to finish")
             RemoteCatalog.BaitPending=waiting
             if waiting then
