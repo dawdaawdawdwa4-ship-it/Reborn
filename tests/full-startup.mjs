@@ -276,16 +276,34 @@ end)()
  workspace.FindFirstChild=function(_,name)
   if name=='Islands' then return {FindFirstChild=function(_,key) return key=='7-island' and island or nil end} end
  end
- local sent=0
- local recorder={ChestBinding={Chest=chest},CanUseChestBinding=function() return true end,WithdrawCarrots=function() sent+=1;return true end}
+ local sent,requested,denied=0,nil,nil
+ local recorder={ChestBinding={Chest=chest,Amount=26},CanUseChestBinding=function() return true end,WithdrawCarrots=function(_,amount) sent+=1;requested=amount;if denied then return false,denied end;return true end}
  RemoteCatalog.LiveRecorder=function() return recorder end
  assert(RemoteCatalog.WithdrawCarrots() and sent==1,'nearby owned chest request must send once')
+ assert(requested==1,'chest UI must default to one carrot rather than replaying the old stack amount')
  chest.Position=position(50)
  assert(not RemoteCatalog.WithdrawCarrots() and sent==1,'distant chest must not send')
  chest.Position=position(5);chest.Parent=foreign
  assert(not RemoteCatalog.WithdrawCarrots() and sent==1,'foreign chest must not send')
  recorder.CanUseChestBinding=function() return false end
  assert(not RemoteCatalog.WithdrawCarrots() and sent==1,'stale chest binding must not send')
+ chest.Parent=island;recorder.CanUseChestBinding=function() return true end
+ RemoteCatalog.ChestAmountButton.Activated:Fire()
+ assert(RemoteCatalog.ChestAmountMenu.Visible,'amount dropdown must open')
+ for _,child in ipairs(RemoteCatalog.ChestAmountMenu:GetChildren()) do
+  if child:IsA('TextButton') and child.Text=='5' then child.Activated:Fire() end
+ end
+ assert(RemoteCatalog.ChestAmount==5 and not RemoteCatalog.ChestAmountMenu.Visible,'amount dropdown must select and close')
+ denied={success=false,error={message='Not enough carrots in slot',code='INSUFFICIENT_ITEMS'}}
+ RemoteCatalog.ChestWithdrawButton.Activated:Fire()
+ assert(requested==5 and not RemoteCatalog.ChestBusy,'withdraw handler must send the selected amount and release its lock')
+ assert(string.find(RemoteCatalog.ChestResultLabel.Text,'Not enough carrots',1,true) and string.find(RemoteCatalog.ChestLastDetail,'INSUFFICIENT_ITEMS',1,true),'structured server rejection must be readable and copyable')
+ RemoteCatalog.ChestAmount='Learned'
+ RemoteCatalog.WithdrawCarrots()
+ assert(requested==26,'Learned option must use the observed count')
+ local cyclic={};cyclic.error=cyclic
+ assert(string.find(RemoteCatalog.ChestResultText(cyclic),'cycle',1,true),'cyclic error responses must be bounded')
+ RemoteCatalog.ChestAmount=1
  workspace.FindFirstChild,RemoteCatalog.LiveRecorder,player.Character=savedFind,savedLive,savedChar
  local savedRecorder=RemoteCatalog.Recorder
  local stopped=false

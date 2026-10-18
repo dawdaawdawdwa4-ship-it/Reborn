@@ -371,6 +371,13 @@ game.JobId=nil;assert(capture:CanUseBaitBinding(),'restoring exact live context 
  assert(capture:WithdrawCarrots(),'learned request should send')
  assert(replay.n==4 and replay[2]==nil and replay[3]=='tail' and replay[4]==nil,'withdrawal trailing arguments lost')
  assert(replay[1].sessionKey=='live-account-context' and replay[1].body.chest==chest and replay[1].body.amount==26 and replay[1].body.slot==1,'withdrawal envelope changed')
+ assert(capture:WithdrawCarrots(1) and replay[1].body.amount==1 and replay[1].body.slot==1 and replay[1].sessionKey=='live-account-context','chosen amount must replace only the learned body amount')
+ assert(capture.ChestBinding.Args[1].body.amount==26 and capture.ChestBinding.Amount==26,'changing the request amount must not mutate the capture')
+ for _,amount in ipairs({0,-1,.5,math.huge,0/0,1000001,'1'}) do
+  replay=nil
+  assert(not capture:WithdrawCarrots(amount) and replay==nil,'invalid amount must not send')
+ end
+ assert(capture:WithdrawCarrots() and replay[1].body.amount==26,'learned amount must remain available after custom requests')
  local char=gamePlayer.Character
  gamePlayer.Character={}
  assert(not capture:WithdrawCarrots(),'respawn must invalidate chest binding')

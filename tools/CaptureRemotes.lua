@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 22 and previous.Resume then
+if previous and previous.Version == 23 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 22, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 23, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -411,10 +411,22 @@ function capture:CanUseChestBinding()
         and owner~=nil and owner.Character~=nil and b.OwnerCharacter==owner.Character
         and b.OwnerUserId==owner.UserId and b.JobId==game.JobId
 end
-function capture:WithdrawCarrots()
+function capture:WithdrawCarrots(amount)
     if not self:CanUseChestBinding() then return false,"Learn a carrot withdrawal on this character first" end
     local b=self.ChestBinding
+    amount=amount==nil and b.Amount or amount
+    if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount" end
     local args=cloneArguments(b.Args)
+    local body=args[1]
+    if type(body)~="table" then return false,"Learn this chest withdrawal again" end
+    if body.chest~=b.Chest then
+        for _,value in pairs(body) do
+            if type(value)=="table" and value.chest==b.Chest and value.action=="withdraw" then body=value;break end
+        end
+    end
+    if body.chest~=b.Chest or body.action~="withdraw" or body.item~="carrotHarvested" then return false,"Learn this chest withdrawal again" end
+    -- Change only the requested count; retain the observed slot, chest and session envelope.
+    body.amount=amount
     local ok,result=pcall(function() return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n)) end)
     if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     return true,result
