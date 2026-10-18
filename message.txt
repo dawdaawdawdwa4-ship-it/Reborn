@@ -1709,7 +1709,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "resource-check-17",
+    Subtitle = "cast-reset-18",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3319,6 +3319,58 @@ local function waitUntil(myCycle, timeout, predicate)
 	return running(myCycle) and predicate()
 end
 
+-- FISHING RECOVERY BEGIN
+RemoteCatalog.RecoverFishingCast=function(myCycle,bobber)
+    if not running(myCycle) or baitBusy or fishingInputBusy then return false end
+    if player:GetAttribute("ToolsLocked")==true then return false end
+    local loading=player:FindFirstChild("SessionLoading")
+    if loading and loading.Value then return false end
+    local focusedOK,focused=pcall(function() return UserInputService:GetFocusedTextBox() end)
+    if focusedOK and focused then return false end
+    local character=player.Character
+    local rod=character and character:FindFirstChildOfClass("Tool")
+    if not character or not hasRodEquipped() then
+        RemoteCatalog.EquipFishingRod(myCycle)
+        return false
+    end
+    local function active()
+        return running(myCycle) and player.Character==character and not baitBusy
+    end
+    local current=character:FindFirstChildOfClass("Tool")
+    if current~=rod then return false end
+    setStatus("Resetting stuck cast: putting the rod away...",COLORS.warn)
+    local service=RemoteCatalog.GameModule("Players."..player.Name..".PlayerScripts.TS.inventory.client-inventory-service","ClientInventoryService")
+    if not active() or character:FindFirstChildOfClass("Tool")~=rod then return false end
+    local toggled=false
+    if service then
+        local slot=service.selectedHotbarIndex
+        if slot~=nil and service.hotbar and service.hotbar[slot]==rod then
+            toggled=pcall(function() service:setSelectedHotbarIndex(slot) end)
+        end
+    end
+    if not toggled then
+        local humanoid=character:FindFirstChildOfClass("Humanoid")
+        if humanoid then pcall(function() humanoid:UnequipTools() end) end
+    end
+    -- Never destroy/ignore a server bobber or claim a catch to unblock bait.
+    local cleared=waitUntil(myCycle,2,function()
+        return not active() or not bobber.Parent or getBobber()~=bobber
+    end)
+    if not active() then return false end
+    cleared=cleared and (not bobber.Parent or getBobber()~=bobber)
+    local selected=character:FindFirstChildOfClass("Tool")
+    if not selected and (not cleared or not RemoteCatalog.BaitPending) then
+        pcall(RemoteCatalog.EquipTool,rod)
+    end
+    if cleared then
+        setStatus("Stuck cast cleared; continuing fishing and queued bait.",COLORS.good)
+    else
+        setStatus("Cast reset not confirmed; Fishing stays ON and will retry.",COLORS.warn)
+    end
+    return cleared
+end
+-- FISHING RECOVERY END
+
 --------------------------------------------------------------------
 -- Auto Mine (Cobalt remotes for Islands)
 -- Works with stone, iron, coal, ores, rocks, trees, etc.
@@ -3953,12 +4005,19 @@ local function run(myCycle)
 	local failedCasts = 0
     local countedBites = setmetatable({}, {__mode = "k"})
     local countedMisses = setmetatable({}, {__mode = "k"})
+    local reelAttempts = setmetatable({}, {__mode = "k"})
 
 	while running(myCycle) do
         if baitBusy then task.wait(0.05); continue end
 		local bobber = getBobber()
 
 		if bobber then
+            if (reelAttempts[bobber] or 0)>=3 then
+                RemoteCatalog.RecoverFishingCast(myCycle,bobber)
+                reelAttempts[bobber]=0
+                task.wait(1)
+                continue
+            end
 			failedCasts = 0
 			setStatus("Waiting for fish...")
 			local tugged, timedOut = waitForTug(bobber, myCycle)
@@ -3966,7 +4025,7 @@ local function run(myCycle)
 
 			if timedOut then
                 setStatus("No bite yet — resetting the cast and continuing without requiring bait.", COLORS.warn)
-                clickOnce("reel",myCycle)
+                RemoteCatalog.RecoverFishingCast(myCycle,bobber)
                 task.wait(1)
                 continue
             elseif not tugged then
@@ -3978,6 +4037,7 @@ local function run(myCycle)
 				if not countedBites[bobber] then stats.bites += 1; countedBites[bobber] = true end
 				updateBoard()
 				setStatus("Tug! Reeling in...", COLORS.gold)
+                reelAttempts[bobber]=(reelAttempts[bobber] or 0)+1
                 if not clickOnce("reel", myCycle) then
                     if not running(myCycle) then break end
                     setStatus("Reel input blocked; retrying.", COLORS.warn)

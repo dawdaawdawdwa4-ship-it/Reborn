@@ -5,7 +5,8 @@ const controls=main.slice(main.indexOf('local function setBaitEnabled(state)'),m
 const apply=main.slice(main.indexOf("local function applyBait()"),main.indexOf("local function setBaitEnabled(state)"));
 const run=main.slice(main.indexOf('local function run(myCycle)'),main.indexOf('-- Controls\n'));
 const code=`
-local RemoteCatalog={EquipFishingRod=function() return false,"No rod" end}
+local recoveries=0
+local RemoteCatalog={RecoverFishingCast=function() recoveries+=1;return true end,EquipFishingRod=function() return false,"No rod" end}
 local baitEnabled,baitBusy,baitCycleId=false,false,0
 local gui={Parent=true}
 local baitToggle,baitInfo={},{}
@@ -100,7 +101,7 @@ do
  baitBusy=false;baitEnabled=true;RemoteCatalog.BaitPending=false;RemoteCatalog.BaitOutOfStock=true
  ${run.replace('local function run(myCycle)','local function retryRun(myCycle)')}
  retryRun(1)
- assert(clicks==1 and waited==1,'bite timeout must reset the cast without disabling Fishing')
+ assert(clicks==0 and recoveries==1 and waited==1,'bite timeout must recover the cast without disabling Fishing')
  enabled=true;mode='cast';clicks=0
  retryRun(1)
  assert(clicks==1 and waited==2,'failed casts must back off without disabling Fishing')
