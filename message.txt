@@ -317,6 +317,7 @@ local RemoteCatalog = (function()
         return recorder
     end
     function catalog.CallBait(tool, prepared)
+        catalog.BaitAttemptedBinding=nil
         -- The game's wrapper supplies the current session envelope for food use.
         -- CLIENT_EAT_FOOD and its tool body are present in the supplied remote captures.
         local failed=catalog.BaitNativeFailed
@@ -349,6 +350,7 @@ local RemoteCatalog = (function()
             local remote = recorder.BaitBinding.Remote
             if not remote or remote.Parent then
                 catalog.BaitTransport="learned request "..tostring(remote and remote.Name or "unknown")
+                catalog.BaitAttemptedBinding=recorder.BaitBinding
                 local ok,result=recorder:Bait(tool)
                 catalog.BaitLearnedStatus=ok and "Returned without rejection; consumption required" or "Request rejected or errored"
                 return ok,result
@@ -1779,7 +1781,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-activation-27",
+    Subtitle = "bait-binding-28",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2122,7 +2124,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn bait-activation-27",
+    return table.concat({"Reborn bait-binding-28",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2393,11 +2395,15 @@ local function applyBait()
         return false,"bait tool not found"
     end
     if RemoteCatalog.PrepareBaitLearning then RemoteCatalog.PrepareBaitLearning() end
+    RemoteCatalog.BaitAttemptedBinding=nil
     local ok, result = RemoteCatalog.WithBaitTool(baitTool, function() return RemoteCatalog.CallBait(baitTool, true) end)
     if not ok then
         if result~="Waiting for current rod input" and result~="Waiting for the current cast to finish" and result~="Auto Bait stopped" then
-            local recorder=RemoteCatalog.LiveRecorder("BaitBinding")
-            RemoteCatalog.BaitFailedBinding=recorder and recorder.BaitBinding
+            -- Normal input can capture a NEW request even when consumption is late.
+            -- Reject only the exact learned template that was actually replayed.
+            if RemoteCatalog.BaitAttemptedBinding then
+                RemoteCatalog.BaitFailedBinding=RemoteCatalog.BaitAttemptedBinding
+            end
             RemoteCatalog.BaitNeedsRefresh=true
             if RemoteCatalog.BaitTransport=="game food request" then
                 RemoteCatalog.BaitNativeFailed={Character=character,Tool=baitTool}

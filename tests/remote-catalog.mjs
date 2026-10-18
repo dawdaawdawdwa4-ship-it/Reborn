@@ -133,6 +133,7 @@ responses.OEzzgCCBzocxJw=nil
 RemoteCatalog.InputMine=nil
 RemoteCatalog.Recorder={BaitBinding={Remote={Parent=true,Name='old-bait'}},Bait=function(_,tool) assert(tool==bait);return true end}
 assert(applyBait(),'learned bait request must work without old endpoint')
+assert(RemoteCatalog.BaitAttemptedBinding==RemoteCatalog.Recorder.BaitBinding,'dispatch must identify the exact template replayed')
 RemoteCatalog.Recorder.Bait=function() return false,'denied' end
 sent=nil
 assert(not applyBait() and sent==nil,'learned bait rejection must not fall back to legacy')
@@ -141,6 +142,7 @@ local oldActivation=RemoteCatalog.ActivateBait
 local refreshAttempts=0
 RemoteCatalog.ActivateBait=function(tool) assert(tool==bait);refreshAttempts+=1;return true end
 assert(RemoteCatalog.CallBait(bait) and refreshAttempts==1,'an explicitly requested refresh must try normal input on the next call instead of replaying stale binding')
+assert(RemoteCatalog.BaitAttemptedBinding==nil,'normal input must not inherit an earlier attempted learned binding')
 local freshCalls=0
 RemoteCatalog.Recorder.BaitBinding={Remote={Parent=true,Name='fresh-bait'}}
 RemoteCatalog.Recorder.Bait=function(_,tool) assert(tool==bait);freshCalls+=1;return true end

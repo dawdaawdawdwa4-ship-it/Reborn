@@ -102,6 +102,40 @@ do
  assert(not applyBait() and not RemoteCatalog.BaitTrySignal and RemoteCatalog.BaitTryToolActivation,'failed signal activation must try the standard Tool method next')
  firesignal=nil
 end
+-- A newly captured request during failed normal input has not failed replay.
+do
+ local bait={Name='bait'}
+ local character={FindFirstChild=function() return bait end}
+ local player={Character=character}
+ local recorder={}
+ local original={Remote={Parent=true},Target=bait}
+ local captured={Remote={Parent=true},Target=bait}
+ local quantity=175
+ RemoteCatalog.BaitCount=function() return quantity end
+ RemoteCatalog.LiveRecorder=function() return recorder.BaitBinding and recorder or nil end
+ RemoteCatalog.BaitFailedBinding=original
+ RemoteCatalog.BaitSample=nil
+ RemoteCatalog.AcceptFreshBaitBinding=function() return recorder.BaitBinding and recorder or nil end
+ RemoteCatalog.WithBaitTool=function()
+  recorder.BaitBinding=captured -- outgoing hook learns while normal input is in flight
+  RemoteCatalog.BaitTransport='host mouse bait click'
+  return false,'Bait use unconfirmed'
+ end
+ ${apply}
+ assert(not applyBait() and RemoteCatalog.BaitFailedBinding==original,'unconfirmed input must not blacklist a captured request which was never replayed')
+ quantity=174
+ local ok,reason=applyBait()
+ assert(ok and reason=='bait consumption confirmed','late consumption with a fresh captured request must confirm without another use')
+ -- If replay itself fails, blacklist the attempted template, not a newer one observed in flight.
+ RemoteCatalog.BaitSample=nil
+ RemoteCatalog.WithBaitTool=function()
+  RemoteCatalog.BaitAttemptedBinding=captured
+  recorder.BaitBinding={Remote={Parent=true},Target=bait}
+  RemoteCatalog.BaitTransport='learned request test'
+  return false,'Bait use unconfirmed'
+ end
+ assert(not applyBait() and RemoteCatalog.BaitFailedBinding==captured and RemoteCatalog.BaitFailedBinding~=recorder.BaitBinding,'only the actually attempted binding must be marked failed')
+end
 -- ManualActivationOnly must select the engine first, and Tool replacement must not restart fallback.
 do
  local bait={Name='bait',ManualActivationOnly=true}
