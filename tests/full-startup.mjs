@@ -97,6 +97,7 @@ woodToggle.Activated:Fire();harvestToggle.Activated:Fire()
 assert(harvestEnabled and not woodEnabled and not mineEnabled,'Harvest must switch off wood/mining')
 mineToggle.Activated:Fire();assert(mineEnabled and not harvestEnabled and not woodEnabled,'Mining must select only its worker mode')
 mineToggle.Activated:Fire();stepWorkers()
+RemoteCatalog.TestOriginalApplyBait=applyBait
 local baitApplications=0
 applyBait=function() baitApplications+=1;return true end
 for _,button in ipairs({toggle,harvestToggle,woodToggle,mineToggle,baitToggle}) do
@@ -190,6 +191,44 @@ assert(not enabled and not RemoteCatalog.StartFishingOnBait,'manual Fishing OFF 
 setBaitEnabled(false);stepWorkers()
 assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled and not baitEnabled)
 assert(not string.find(status.Text,'stopped:',1,true),'worker error during actual startup/switch test: '..status.Text)
+;(function()
+ local originalApply,originalRun,originalCharacter=applyBait,run,player.Character
+ local owned,prepare,stop,recorder,callBait=RemoteCatalog.OwnedTools,RemoteCatalog.PrepareBaitLearning,RemoteCatalog.StopBaitLearning,RemoteCatalog.Recorder,RemoteCatalog.CallBait
+ local applications=0
+ applyBait=RemoteCatalog.TestOriginalApplyBait
+ RemoteCatalog.CallBait=function() applications+=1;error('manual confirmation must not consume more bait') end
+ run=function() assert(enabled,'confirmed manual bait must start the real Fishing control') end
+ for _,initial in ipairs({3,1}) do
+  local quantity=initial
+  local bait={Name='bait',GetAttributes=function() return {Amount=quantity} end}
+  local character={FindFirstChild=function(_,name) if name=='bait' and bait.Parent then return bait end end,
+   FindFirstChildOfClass=function(_,class) if class=='Tool' and bait.Parent then return bait end end}
+  player.Character=character;bait.Parent=character
+  local oldBinding={Remote={Parent=true},Target=bait}
+  RemoteCatalog.Recorder={BaitBinding=oldBinding,Stopped=false,Records={},MaxCalls=100,Active=false}
+  RemoteCatalog.OwnedTools=function() return bait.Parent and {bait} or {} end
+  RemoteCatalog.PrepareBaitLearning=function() RemoteCatalog.Recorder.LearnBaitOnly=true;RemoteCatalog.Recorder.Stopped=false end
+  RemoteCatalog.StopBaitLearning=function() RemoteCatalog.Recorder.LearnBaitOnly=false end
+  local realApply=applyBait
+  applyBait=function() return false,'waiting for manual learning' end
+  setEnabled(true);setBaitEnabled(true)
+  applyBait=realApply
+  RemoteCatalog.LearnBaitButton.Activated:Fire()
+  assert(not enabled and not baitEnabled and RemoteCatalog.BaitSample.Tool==bait and RemoteCatalog.BaitSample.Count==initial and RemoteCatalog.Recorder.LearnBaitOnly,'learn button must snapshot this account before manual input')
+  -- A real manually observed use creates a new binding, then the server removes one bait.
+  RemoteCatalog.Recorder.BaitBinding={Remote={Parent=true},Target=bait,ObservedAt=os.clock()}
+  RemoteCatalog.Recorder.LearnBaitOnly=false;RemoteCatalog.Recorder.Stopped=true
+  quantity-=1;if quantity==0 then bait.Parent=nil end
+  baitToggle.Activated:Fire()
+  assert(enabled and baitEnabled and not RemoteCatalog.StartFishingOnBait and applications==0,'manual use must start Fishing through the real switches without consuming another bait')
+  assert(RemoteCatalog.BaitOutOfStock==(initial==1),'last-item manual consumption must hand off to Fishing despite empty inventory')
+  assert(string.find(baitToggle.Text,'AUTO BAIT ON',1,true) and not string.find(baitToggle.Text,'RETRY',1,true),'confirmed manual use must enter the refresh timer')
+  stopAllButton.Activated:Fire();stepWorkers()
+ end
+ applyBait,run,player.Character=originalApply,originalRun,originalCharacter
+ RemoteCatalog.OwnedTools,RemoteCatalog.PrepareBaitLearning,RemoteCatalog.StopBaitLearning,RemoteCatalog.Recorder,RemoteCatalog.CallBait=owned,prepare,stop,recorder,callBait
+ RemoteCatalog.BaitSample=nil;RemoteCatalog.BaitNeedsRefresh=false;RemoteCatalog.BaitFailedBinding=nil
+end)()
 gui:Destroy();stepWorkers()
 assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'
