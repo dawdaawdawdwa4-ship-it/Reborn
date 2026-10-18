@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const main=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
-const controls=main.slice(main.indexOf('local function setBaitEnabled(state)'),main.indexOf('local harvestToggle ='));
+const controls=main.slice(main.indexOf('local function setBaitEnabled(state)'),main.indexOf('RemoteCatalog.LearnBaitButton=button('));
 const apply=main.slice(main.indexOf("local function applyBait()"),main.indexOf("local function setBaitEnabled(state)"));
 const run=main.slice(main.indexOf('local function run(myCycle)'),main.indexOf('-- Controls\n'));
 const code=`
 local recoveries=0
-local RemoteCatalog={RecoverFishingCast=function() recoveries+=1;return true end,EquipFishingRod=function() return false,"No rod" end}
+local RemoteCatalog={AcceptFreshBaitBinding=function() return nil end,RecoverFishingCast=function() recoveries+=1;return true end,EquipFishingRod=function() return false,"No rod" end}
 local baitEnabled,baitBusy,baitCycleId=false,false,0
 local gui={Parent=true}
 local baitToggle,baitInfo={},{}
@@ -84,6 +84,25 @@ do
  RemoteCatalog.BaitTransport='Tool:Activate'
  assert(not applyBait() and attempts==2,'a different character must not inherit consumption confirmation')
  assert(not RemoteCatalog.BaitTryToolActivation,'unconfirmed tool use must allow the mouse method on a later retry')
+ firesignal=function() end
+ assert(not applyBait() and RemoteCatalog.BaitTrySignal,'a failed tool activation must try the actual activation signal when supported')
+ RemoteCatalog.BaitTransport='Tool.Activated signal'
+ assert(not applyBait() and not RemoteCatalog.BaitTrySignal and not RemoteCatalog.BaitTryToolActivation,'failed signal activation must return to mouse input on a later attempt')
+ firesignal=nil
+end
+-- Manual learning must accept the last bait disappearing before Auto Bait is re-enabled.
+do
+ local bait={Name='bait',Parent=nil}
+ local character={FindFirstChild=function() return nil end}
+ local player={Character=character,FindFirstChildOfClass=function() return nil end}
+ local binding={Target=bait,ObservedAt=os.clock()}
+ RemoteCatalog.OwnedTools=function() return {} end
+ RemoteCatalog.AcceptFreshBaitBinding=function() return {BaitBinding=binding} end
+ RemoteCatalog.BaitSample={Character=character,Tool=bait,Count=1,Binding={},At=os.clock()-30,Manual=true}
+ ${apply}
+ local ok,detail=applyBait()
+ assert(ok and detail=='bait consumption confirmed' and RemoteCatalog.BaitOutOfStock,'captured manual consumption of the last bait must confirm before the empty-inventory branch')
+ assert(not applyBait(),'one manual use must never be confirmed a second time')
 end
 -- Timeouts must keep Fishing enabled, including after bait runs out.
 do

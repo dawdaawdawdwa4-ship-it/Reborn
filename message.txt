@@ -346,7 +346,9 @@ local RemoteCatalog = (function()
             local remote = recorder.BaitBinding.Remote
             if not remote or remote.Parent then
                 catalog.BaitTransport="learned request "..tostring(remote and remote.Name or "unknown")
-                return recorder:Bait(tool)
+                local ok,result=recorder:Bait(tool)
+                catalog.BaitLearnedStatus=ok and "Returned without rejection; consumption required" or "Request rejected or errored"
+                return ok,result
             end
             -- A removed captured remote sends nothing; normal tool activation is still safe.
         end
@@ -1726,7 +1728,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-diagnostics-21",
+    Subtitle = "bait-signal-22",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2064,13 +2066,23 @@ function RemoteCatalog.BaitDiagnosticReport()
     local ok,tools=pcall(RemoteCatalog.OwnedTools)
     if ok then for _,tool in ipairs(tools) do if string.lower(tool.Name)=="bait" then bait=tool;break end end end
     local recorder=RemoteCatalog.LiveRecorder("BaitBinding")
-    return table.concat({"Reborn bait-diagnostics-21",
+    local function property(name)
+        if not bait then return "no tool" end
+        local ok,value=pcall(function() return bait[name] end)
+        return ok and tostring(value) or "unavailable"
+    end
+    return table.concat({"Reborn bait-signal-22",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
         "Bait quantity: "..tostring(bait and (RemoteCatalog.BaitCount(bait) or "unreadable") or "no tool"),
         "Bait equipped: "..tostring(bait~=nil and bait.Parent==player.Character),
         "Current bait binding: "..tostring(recorder~=nil),
+        "Binding refresh needed: "..tostring(RemoteCatalog.BaitNeedsRefresh==true),
+        "Last learned request: "..tostring(RemoteCatalog.BaitLearnedStatus or "not tried"),
+        "Tool.Enabled: "..property("Enabled"),
+        "Tool.ManualActivationOnly: "..property("ManualActivationOnly"),
+        "Activation signal support: "..tostring(type(firesignal)=="function"),
         "Capture hook support: "..tostring(type(hookmetamethod)=="function" and type(getnamecallmethod)=="function"),
         "Auto Bait: "..tostring(baitEnabled),"Fishing: "..tostring(enabled)},"\n")
 end
@@ -2205,6 +2217,13 @@ end
 -- BAIT NORMAL CLICK END
 RemoteCatalog.ActivateBait = function(tool, prepared)
     local function activate()
+        if RemoteCatalog.BaitTrySignal and type(firesignal)=="function" then
+            RemoteCatalog.BaitTransport="Tool.Activated signal"
+            local pressed=pcall(firesignal,tool.Activated)
+            local held=pcall(task.wait,.15)
+            local released=pcall(firesignal,tool.Deactivated)
+            return pressed and held and released,"bait activation signal attempted"
+        end
         if not RemoteCatalog.BaitTryToolActivation then
             local clicked,reason=RemoteCatalog.ClickBaitTool(tool)
             if clicked~=nil then
@@ -2234,6 +2253,27 @@ local function applyBait()
             if string.lower(owned.Name)=="bait" then baitTool=owned;break end
         end
     end
+    local count=baitTool and RemoteCatalog.BaitCount(baitTool)
+    local recorder=RemoteCatalog.AcceptFreshBaitBinding()
+    local binding=recorder and recorder.BaitBinding
+    local sample=RemoteCatalog.BaitSample
+    local consumed=sample and type(sample.Count)=="number" and sample.Tool and
+        (baitTool==sample.Tool and type(count)=="number" and count<sample.Count or sample.Count==1 and sample.Tool.Parent==nil)
+    if consumed and type(sample.At)=="number" and sample.Character==character
+        and binding and binding~=sample.Binding and binding.Target==sample.Tool
+        and (os.clock()-sample.At<=15 or sample.Manual and type(binding.ObservedAt)=="number"
+            and binding.ObservedAt>=sample.At and os.clock()-binding.ObservedAt<=15) then
+        RemoteCatalog.BaitNeedsRefresh=false
+        RemoteCatalog.BaitFailedBinding=nil
+        RemoteCatalog.BaitPending=false
+        RemoteCatalog.BaitOutOfStock=not baitTool or count==0
+        RemoteCatalog.BaitSample={Character=character,Tool=baitTool,Count=count,Binding=binding,At=os.clock()}
+        local observed=type(binding.ObservedAt)=="number" and binding.ObservedAt or os.clock()
+        RemoteCatalog.BaitRefreshDelay=math.clamp(math.floor(60-(os.clock()-observed)),1,60)
+        baitInfo.Text="Manual bait consumption confirmed; ready to fish."
+        baitInfo.TextColor3=COLORS.good
+        return true,"bait consumption confirmed"
+    end
     if not baitTool then
         RemoteCatalog.BaitOutOfStock=true
         RemoteCatalog.BaitPending=false
@@ -2243,20 +2283,6 @@ local function applyBait()
         return false, "bait tool not found"
     end
     RemoteCatalog.BaitOutOfStock=false
-    local count=RemoteCatalog.BaitCount(baitTool)
-    local recorder=RemoteCatalog.AcceptFreshBaitBinding()
-    local binding=recorder and recorder.BaitBinding
-    local sample=RemoteCatalog.BaitSample
-    if sample and type(sample.At)=="number" and os.clock()-sample.At<=15 and sample.Character==character and sample.Tool==baitTool and type(sample.Count)=="number" and type(count)=="number"
-        and count<sample.Count and binding and binding~=sample.Binding and binding.Target==baitTool then
-        RemoteCatalog.BaitNeedsRefresh=false
-        RemoteCatalog.BaitFailedBinding=nil
-        RemoteCatalog.BaitPending=false
-        RemoteCatalog.BaitSample={Character=character,Tool=baitTool,Count=count,Binding=binding,At=os.clock()}
-        baitInfo.Text="Bait consumption confirmed between attempts."
-        baitInfo.TextColor3=COLORS.good
-        return true,"bait consumption confirmed"
-    end
     RemoteCatalog.BaitSample={Character=character,Tool=baitTool,Count=count,Binding=binding,At=os.clock()}
     if count==0 then
         RemoteCatalog.BaitOutOfStock=true;RemoteCatalog.BaitPending=false
@@ -2278,7 +2304,8 @@ local function applyBait()
             end
             -- A successful mouse API call can still produce no game input on this host.
             -- Try one other normal activation method on the next scheduled attempt.
-            RemoteCatalog.BaitTryToolActivation=RemoteCatalog.BaitTransport~="Tool:Activate"
+            RemoteCatalog.BaitTrySignal=RemoteCatalog.BaitTransport=="Tool:Activate" and type(firesignal)=="function"
+            RemoteCatalog.BaitTryToolActivation=RemoteCatalog.BaitTransport~="Tool:Activate" and RemoteCatalog.BaitTransport~="Tool.Activated signal"
         end
         baitInfo.Text = "Bait waiting: " .. tostring(result) .. (enabled and " Fishing continues." or " Fishing is OFF.") .. " ["..tostring(RemoteCatalog.BaitTransport or "no request").."]"
         baitInfo.TextColor3 = COLORS.warn
@@ -2298,7 +2325,10 @@ local function applyBait()
 end
 
 local function setBaitEnabled(state)
-    if baitEnabled == state then return end
+    if baitEnabled == state then
+        if not state and RemoteCatalog.StopBaitLearning then RemoteCatalog.StopBaitLearning() end
+        return
+    end
     RemoteCatalog.BaitPending=state
     if state then RemoteCatalog.BaitNativeFailed=nil end
     RemoteCatalog.StartFishingOnBait=state
@@ -2331,7 +2361,8 @@ local function setBaitEnabled(state)
             end
             if applied then setStatus(detail == "tool activation attempted" and "Bait tool activated; next attempt in 60s" or "Auto Bait applied; refresh in 60s", COLORS.good) end
             baitToggle.BackgroundColor3 = applied and COLORS.on or COLORS.off
-            local delay = applied and 60 or 5
+            local delay = applied and (RemoteCatalog.BaitRefreshDelay or 60) or 5
+            RemoteCatalog.BaitRefreshDelay=nil
             for remaining = delay, 1, -1 do
                 if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
                 baitToggle.Text = string.format(applied and "AUTO BAIT ON  [%ds]" or RemoteCatalog.BaitOutOfStock and "AUTO BAIT ON · NO BAIT  [%ds]" or "AUTO BAIT ON · RETRY  [%ds]", remaining)
@@ -2340,6 +2371,34 @@ local function setBaitEnabled(state)
         end
     end)
 end
+
+RemoteCatalog.LearnBaitButton=button({Parent=fishingPage,Text="Learn bait manually (pause fishing & bait)",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,452)})
+track(RemoteCatalog.LearnBaitButton.Activated:Connect(function()
+    if baitBusy then setStatus("Wait for the current bait attempt to finish",COLORS.warn);return end
+    setBaitEnabled(false)
+    setEnabled(false)
+    local recorder=RemoteCatalog.LiveRecorder("BaitBinding")
+    RemoteCatalog.BaitSample=nil
+    for _,tool in ipairs(RemoteCatalog.OwnedTools()) do
+        if string.lower(tool.Name)=="bait" then
+            RemoteCatalog.BaitSample={Character=player.Character,Tool=tool,Count=RemoteCatalog.BaitCount(tool),
+                Binding=recorder and recorder.BaitBinding,At=os.clock(),Manual=true}
+            break
+        end
+    end
+    RemoteCatalog.BaitFailedBinding=recorder and recorder.BaitBinding
+    RemoteCatalog.BaitNeedsRefresh=true
+    RemoteCatalog.PrepareBaitLearning()
+    local capture=RemoteCatalog.Recorder
+    if capture and not capture.Stopped and (capture.Active or capture.LearnBaitOnly) then
+        baitInfo.Text="Hide the hub, use bait once manually, then immediately turn Auto Bait ON. Learning sends no requests."
+        baitInfo.TextColor3=COLORS.good
+        setStatus("Manual bait learning ready. Hide the hub with Right Ctrl and use bait once.",COLORS.good)
+    else
+        setStatus("Manual bait capture is unavailable on this client",COLORS.warn)
+    end
+end))
 
 local harvestToggle = button({
     Parent = harvestPage, Text = "CROP FARM OFF", TextSize = 13, Bg = COLORS.off,

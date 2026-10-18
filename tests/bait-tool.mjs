@@ -63,6 +63,24 @@ assert(not RemoteCatalog.ActivateBait(bait) and mouseAttempts==1 and activated==
 RemoteCatalog.BaitTryToolActivation=true
 assert(RemoteCatalog.ActivateBait(bait) and mouseAttempts==1 and activated==beforeAlternate+1 and RemoteCatalog.BaitTransport=='Tool:Activate','next retry must be able to use tool activation even when host mouse APIs claim success')
 RemoteCatalog.BaitTryToolActivation=false
+local signalPress,signalRelease=0,0
+bait.Activated={};bait.Deactivated={}
+local signalFail=false
+firesignal=function(signal)
+ if signal==bait.Activated then
+  signalPress+=1;if signalFail then error('signal blocked') end;consumeAfter=.5
+ elseif signal==bait.Deactivated then signalRelease+=1 end
+end
+RemoteCatalog.BaitTrySignal=true
+assert(RemoteCatalog.ActivateBait(bait) and signalPress==1 and signalRelease==1 and mouseAttempts==1 and activated==beforeAlternate+1,'signal route must activate the game handler without another mouse/Tool activation')
+signalFail=true
+assert(not RemoteCatalog.ActivateBait(bait) and signalPress==2 and signalRelease==2 and not baitBusy,'failed signal press must still release and unlock input')
+signalFail=false;quantity=1
+firesignal=function(signal)
+ if signal==bait.Activated then bait.Parent=nil;current=nil end
+end
+assert(RemoteCatalog.ActivateBait(bait) and current==rod and not baitBusy,'consuming the last bait must confirm tool removal even if its old quantity attribute still says one')
+firesignal=nil;RemoteCatalog.BaitTrySignal=false
 RemoteCatalog.ClickBaitTool=normalClick
 
 RemoteCatalog.BobberActive=function() return true end

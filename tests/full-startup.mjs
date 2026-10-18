@@ -134,6 +134,20 @@ RemoteCatalog.BaitDiagnosticButton.Activated:Fire()
 assert(copied==report,'bait diagnostic button must copy the current report')
 setclipboard=nil
 end
+(function()
+ local prepare,stop,recorder=RemoteCatalog.PrepareBaitLearning,RemoteCatalog.StopBaitLearning,RemoteCatalog.Recorder
+ local learnedBefore={Remote={Parent=true}}
+ RemoteCatalog.Recorder={BaitBinding=learnedBefore,Stopped=false}
+ RemoteCatalog.PrepareBaitLearning=function() RemoteCatalog.Recorder.LearnBaitOnly=true end
+ RemoteCatalog.StopBaitLearning=function() RemoteCatalog.Recorder.LearnBaitOnly=false end
+ local attempts=baitApplications
+ RemoteCatalog.LearnBaitButton.Activated:Fire()
+ assert(not baitEnabled and RemoteCatalog.Recorder.LearnBaitOnly and RemoteCatalog.BaitNeedsRefresh and baitApplications==attempts,'manual learning must arm capture without starting bait or sending an application')
+ stopAllButton.Activated:Fire()
+ assert(not RemoteCatalog.Recorder.LearnBaitOnly,'Stop All must cancel manual bait learning even when Auto Bait is already OFF')
+ RemoteCatalog.PrepareBaitLearning,RemoteCatalog.StopBaitLearning,RemoteCatalog.Recorder=prepare,stop,recorder
+ RemoteCatalog.BaitNeedsRefresh=false;RemoteCatalog.BaitFailedBinding=nil
+end)()
 local originalReplantY=replantToggle.Position.Y.Offset
 cropSelect.Activated:Fire()
 assert(cropDropdownOpen and replantToggle.Position.Y.Offset>cropDropdown.Position.Y.Offset+cropDropdown.Size.Y.Offset,'expanded crop menu must push following controls below its options')
