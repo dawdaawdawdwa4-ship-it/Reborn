@@ -17,7 +17,11 @@ assert(not pcall(A.Plan,'Wall',0,1,1),'invalid dimensions must fail')
 local paths=0
 for _,c in ipairs(A.Plan('Farm plots',5,6,1)) do if c.role=='path' then paths+=1 end end
 assert(paths==6,'farm needs one path column per three columns')
-local function signal() return {Connect=function() return {} end} end
+local function signal()
+ local callbacks={}
+ return {Connect=function(_,callback) table.insert(callbacks,callback);return {} end,
+ Fire=function() for _,callback in ipairs(callbacks) do callback() end end}
+end
 local function control() return {Activated=signal(),FocusLost=signal()} end
 local Instance={new=function() return control() end}
 local UDim2={new=function() return {} end,fromOffset=function() return {} end}
@@ -62,6 +66,32 @@ assert(not string.find(b.Status.Text,'confirmed',1,true),'accepted request alone
 root.Position=setmetatable({},{__sub=function() return {Magnitude=100} end})
 b.Cells=cells(2);before=requests;b:Start();assert(requests==before,'out of reach must pause requests')
 b:Stop();step();assert(requests==before,'stop must cancel a paused build')
+-- A restarted build may begin with completed cells that are now far away.
+-- These must be skipped without pulling the player back to the old work area.
+ctx.Place=function(body) requests+=1;occupied[body.cframe.Position]=true;return true end
+occupied={[1]=true}
+root.Position=setmetatable({},{__sub=function(_,position) return {Magnitude=position==1 and 100 or 0} end})
+b.Cells=cells(2);before=requests;b:Start();step()
+assert(requests-before==1,'resume must skip distant completed cells before checking reach')
+while coroutine.status(worker)~='dead' do step() end
+assert(string.find(b.Status.Text,'1 occupied/skipped',1,true),'completed cells must remain skipped in the result')
+-- Someone else can fill a target while this player is waiting to approach it.
+root.Position=setmetatable({},{__sub=function() return {Magnitude=100} end})
+occupied={};b.Cells=cells(2);before=requests;b:Start()
+occupied[1]=true;step();step()
+assert(string.find(b.Status.Text,'block 2/2',1,true),'a completed waiting cell must advance to the next target')
+assert(requests==before,'remote targets must not be sent while out of reach')
+b:Stop();step()
+-- Plan controls must agree with the immutable active preview.
+root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+occupied={};b.Cells=cells(2);b:Start()
+b.Inputs.Width.Text='9';b.Inputs.Width.FocusLost:Fire()
+assert(b.Width==5 and b.Inputs.Width.Text=='5','active dimensions must not silently invalidate the queued plan')
+b.Inputs.Material.Text='stone';b.Inputs.Material.FocusLost:Fire()
+assert(b.Inputs.Material.Text=='grass','active material edits must not disagree with the preview')
+b:Stop();step()
+b.Inputs.Width.Text='9';b.Inputs.Width.FocusLost:Fire()
+assert(b.Width==9 and b.Inputs.Width.Text=='9' and b.Cells==nil,'stopped plan edits must invalidate the old preview')
 local moved=A.new(ctx)
 moved.Anchor=frame(10,0,10,math.pi/2);moved.BlockSize=3
 local original=moved.Anchor*frame(0,0,-3)
@@ -75,6 +105,6 @@ moved.Running=true;assert(not moved:Move(1,0,0),'cannot shift active queue');mov
 assert(moved:Move(-moved.OffsetX,-moved.OffsetY,-moved.OffsetZ))
 local restored=moved.Cells[1].CFrame.Position
 assert(math.abs(restored.X-original.Position.X)<.001 and math.abs(restored.Z-original.Position.Z)<.001,'reset offset must restore preview')
-return 'Auto Build blueprints, paths, placement confirmation, occupied skip, single worker, cancellation and failure stop passed'
+return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

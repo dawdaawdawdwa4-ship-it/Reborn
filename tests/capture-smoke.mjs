@@ -36,6 +36,7 @@ local function hookmetamethod(_,_,fn)
  return function(object,...)
   table.insert(calls,table.pack(object,...))
   if object.fail then error('original failure') end
+  if object.originalHandler then return object.originalHandler(...) end
   return 'original-result',nil,42
  end
 end
@@ -195,10 +196,40 @@ local settingArgs
 settingRemote.InvokeServer=function(_,packet) settingArgs=packet;return true end
 local settingPacket={E6N43ldyV5t9lg='live-settings-context',wGquKmyB3mV2Cf={name='AutoReplant',value=true}}
 installedHook(settingRemote,settingPacket)
-assert(capture.AutoReplantBinding and capture:SetAutoReplant(false),'AutoReplant setting not learned')
+assert(capture.AutoReplantBinding and capture.AutoReplantState==true,'accepted manual AutoReplant setting must update live state')
+assert(capture:SetAutoReplant(false),'AutoReplant setting not learned')
 assert(settingArgs.E6N43ldyV5t9lg=='live-settings-context' and settingArgs.wGquKmyB3mV2Cf.name=='AutoReplant' and settingArgs.wGquKmyB3mV2Cf.value==false,'setting context/value lost')
 assert(settingPacket.wGquKmyB3mV2Cf.value==true,'setting template mutated')
 settingRemote.InvokeServer=function() return false end;assert(not capture:SetAutoReplant(true),'setting rejection must remain failure')
+local manualOff={E6N43ldyV5t9lg='live-settings-context',wGquKmyB3mV2Cf={name='AutoReplant',value=false}}
+installedHook(settingRemote,settingPacket)
+assert(capture.AutoReplantState==true,'manual AutoReplant ON must replace the accepted replay state')
+installedHook(settingRemote,manualOff)
+assert(capture.AutoReplantState==false,'manual AutoReplant OFF must replace the previous accepted ON state')
+local beforeSettingCalls=#calls
+settingRemote.originalHandler=function() return false,nil,'rejected',nil end
+local rejectedSetting=table.pack(installedHook(settingRemote,settingPacket,nil,'tail',nil))
+assert(capture.AutoReplantState==false,'rejected manual setting must preserve accepted OFF state')
+assert(rejectedSetting.n==4 and rejectedSetting[1]==false and rejectedSetting[2]==nil and rejectedSetting[3]=='rejected' and rejectedSetting[4]==nil,'setting rejection returns must remain unchanged')
+assert(#calls==beforeSettingCalls+1 and calls[#calls].n==5 and calls[#calls][2]==settingPacket and calls[#calls][4]=='tail','recognized setting must forward original arguments exactly once')
+settingRemote.originalHandler=function() return {success=false} end
+assert(installedHook(settingRemote,settingPacket).success==false and capture.AutoReplantState==false,'structured setting rejection must not update state')
+settingRemote.originalHandler=function() error('original setting failure',0) end
+beforeSettingCalls=#calls
+local settingOK,settingError=pcall(installedHook,settingRemote,settingPacket)
+assert(not settingOK and settingError=='original setting failure' and #calls==beforeSettingCalls+1,'recognized setting must preserve the original error without retrying')
+assert(capture.AutoReplantState==false,'failed setting must preserve the accepted state')
+settingRemote.originalHandler=function(packet)
+ packet.wGquKmyB3mV2Cf.value=false
+ return nil,nil,42,nil
+end
+local acceptedSetting=table.pack(installedHook(settingRemote,settingPacket))
+assert(acceptedSetting.n==4 and acceptedSetting[1]==nil and acceptedSetting[2]==nil and acceptedSetting[3]==42 and acceptedSetting[4]==nil,'recognized setting must preserve all accepted returns, including nils')
+assert(capture.AutoReplantState==true,'accepted state must use the observed value before the original call mutated its packet')
+settingPacket.wGquKmyB3mV2Cf.value=true
+settingRemote.originalHandler=nil
+installedHook(settingRemote,{E6N43ldyV5t9lg='live-settings-context',wGquKmyB3mV2Cf={name='OtherSetting',value=false}})
+assert(capture.AutoReplantState==true,'unrecognized settings must not affect AutoReplant state')
 local placementRemote=remote('u71Y03otNIwj9g')
 local placementArgs
 placementRemote.InvokeServer=function(_,...) placementArgs=table.pack(...);return true end
@@ -279,6 +310,16 @@ assert(not capture.WoodHitBinding and capture.LearnWoodOnly and #capture.Records
 installedHook(newestAxe,{HrGxW0IGeHngmz='fresh-session',H3ZxjzDRyU5tvI={block=tree}})
 assert(capture.Stopped and not capture.LearnWoodOnly and #capture.Records==quietCount,'wood learning must stop after its first binding without logging')
 assert(capture:Hit(nextTree,'wood') and newestArgs.HrGxW0IGeHngmz=='fresh-session' and newestArgs.H3ZxjzDRyU5tvI.block==nextTree,'quiet learning must retain fresh context and allow later tree hits')
+local staleWood=capture.WoodHitBinding
+newestAxe.Parent=nil
+capture:Resume();capture.Active=false;capture.LearnWoodOnly=true
+installedHook(mining,{TrNhTTgExIb1Bg='manual-mining-context',TlSR8Mzd9FLwaZ={block=rock}})
+assert(capture.LearnWoodOnly and not capture.Stopped and capture.WoodHitBinding==staleWood,'unrelated mining must not finish quiet wood learning with a stale binding')
+assert(#capture.Records==quietCount,'quiet wood learning must not log the unrelated mining call')
+newestAxe.Parent=game
+installedHook(newestAxe,{HrGxW0IGeHngmz='refreshed-wood-session',H3ZxjzDRyU5tvI={block=tree}})
+assert(capture.Stopped and not capture.LearnWoodOnly and capture.WoodHitBinding~=staleWood,'a fresh valid wood binding must finish quiet learning')
+assert(capture:Hit(nextTree,'wood') and newestArgs.HrGxW0IGeHngmz=='refreshed-wood-session','quiet learning must replace stale wood context before reuse')
 capture:Resume();capture.Active=false;capture.LearnBaitOnly=true;capture.BaitBinding=nil
 local quietBaitCount=#capture.Records
 installedHook(target,{})

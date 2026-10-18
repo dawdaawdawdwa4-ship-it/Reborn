@@ -14,7 +14,10 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode)
     if not root or not humanoid then return false,"Waiting for your character" end
     local generation=Navigation.Generation
     local function valid()
-        return active() and Navigation.Generation==generation and player.Character==character and target.Parent~=nil and humanoid.Health>0
+        return active() and Navigation.Generation==generation and player.Character==character
+            and character:FindFirstChild("HumanoidRootPart")==root
+            and character:FindFirstChildOfClass("Humanoid")==humanoid
+            and target.Parent~=nil and humanoid.Health>0
     end
     local function near()
         local point=positionOf(target)

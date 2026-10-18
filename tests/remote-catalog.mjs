@@ -105,6 +105,8 @@ assert(setHotbarLayout(layout))
 assert(requests.RZQQNNDRUvfj1N.TrNhTTgExIb1Bg=='hotbar-session' and requests.RZQQNNDRUvfj1N.TlSR8Mzd9FLwaZ.layout==layout,'hotbar payload changed')
 responses.ohy6O10QKzyGZE=false
 assert(firePlant(cf,'sapling')==false,'explicit rejection must not count as success')
+responses.ohy6O10QKzyGZE={success=false}
+assert(firePlant(cf,'sapling')==false,'structured legacy rejection must not count as success')
 responses.ohy6O10QKzyGZE='throw'
 assert(firePlant(cf,'sapling')==false,'server error must not escape')
 assert(RemoteCatalog.InvokeCaptured('uncaptured',{})==false,'uncaptured action must not send')
@@ -176,6 +178,10 @@ sent=nil;assert(not RemoteCatalog.CallMine(observedTree,'wood') and sent==nil,'a
 context.RebornCapture={AutoReplantBinding={Remote={Parent=true}},SetAutoReplant=function(_,state) return state end}
 assert(RemoteCatalog.SetAutoReplant(true) and RemoteCatalog.ServerAutoReplant==true,'game setting must mark server replant only on acceptance')
 assert(not RemoteCatalog.SetAutoReplant(false) and RemoteCatalog.ServerAutoReplant==true,'rejected setting must preserve previous server state')
+context.RebornCapture.AutoReplantState=false
+assert(not RemoteCatalog.ServerReplantEnabled(),'accepted manual OFF must override an older cached ON state')
+context.RebornCapture.AutoReplantState=true
+assert(RemoteCatalog.ServerReplantEnabled(),'accepted manual ON must be recognized')
 RemoteCatalog.ServerAutoReplant=nil;context.RebornCapture=savedContext
 local hotbarContext=context.RebornCapture
 local updatedHotbarCalls=0

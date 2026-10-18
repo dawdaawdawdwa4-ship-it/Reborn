@@ -13,6 +13,9 @@ local tool={Name='fishingRod'}
 local root={Position=vec(0,0,0),CFrame={LookVector=vec(0,0,-1)}}
 local player={Name='Test',UserId=7,Character={FindFirstChildOfClass=function() return tool end,FindFirstChild=function() return root end}}
 local events={}
+local focused,covered,swapOnAim,respawnOnHold
+local UserInputService={GetFocusedTextBox=function() return focused end}
+local playerGui={GetGuiObjectsAtPosition=function() return covered and {{IsA=function(_,class) return class=='GuiButton' end}} or {} end}
 local mouseX,mouseY=0,0
 local failMove,failDown,failWait=false,false,false
 local game={}
@@ -33,6 +36,8 @@ local CONFIG={CastHold=.35}
 local os={clock=function() return time end}
 local task={wait=function(dt)
  time+=dt
+ if swapOnAim and not down then tool={Name='stonePickaxe'} end
+ if respawnOnHold and down then player.Character={} end
  if down and cancel then enabled=false end
  if down and failWait then error('interrupted hold') end
 end}
@@ -64,6 +69,17 @@ failDown=false;failMove=true;events={}
 assert(not clickOnce('cast',1) and #events==0,'blocked mouse move must not send press')
 failMove=false;tool.Name='stonePickaxe';assert(not hasRodEquipped() and not clickOnce('cast',1),'pickaxe must not count as rod')
 tool.Name='fishingRod'
+focused={};events={}
+assert(not clickOnce('cast',1) and #events==0,'editing chat must pause fishing input')
+focused=nil;covered=true;events={}
+assert(not clickOnce('reel',1) and #events==0,'game buttons covering the aim must prevent synthetic clicks')
+covered=false;swapOnAim=true;events={}
+assert(not clickOnce('cast',1) and #events==1 and events[1][1]=='move','tool switch during aiming must prevent press')
+swapOnAim=false;tool={Name='fishingRod'}
+local savedCharacter=player.Character
+respawnOnHold=true;events={}
+assert(not clickOnce('cast',1) and not down and events[#events][1]=='up' and not RemoteCatalog.FishingMouseInput,'respawn during charge must release input and clear the UI guard')
+respawnOnHold=false;player.Character=savedCharacter
 local savedRod=tool
 local baitTool={Name='bait'}
 local equips=0

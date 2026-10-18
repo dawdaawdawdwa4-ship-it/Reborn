@@ -219,7 +219,7 @@ local RemoteCatalog = (function()
                 TlSR8Mzd9FLwaZ = body,
             })
         end)
-        if not ok or result == false then return false, result end
+        if not ok or result == false or type(result)=="table" and result.success==false then return false, result end
         return true, result
     end
     catalog.ModuleCache = {}
@@ -342,7 +342,8 @@ local RemoteCatalog = (function()
     end
     function catalog.ServerReplantEnabled()
         local recorder=catalog.LiveRecorder("AutoReplantBinding")
-        return catalog.ServerAutoReplant == true or recorder and recorder.AutoReplantState == true
+        if recorder and type(recorder.AutoReplantState)=="boolean" then return recorder.AutoReplantState end
+        return catalog.ServerAutoReplant == true
     end
     function catalog.CallFruit(model,fruit)
         local recorder=catalog.LiveRecorder("FruitBinding")
@@ -469,13 +470,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 20 and previous.Resume then
+if previous and previous.Version == 21 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 20, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 21, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -719,7 +720,7 @@ local function learnAutoReplant(remote, method, args)
     local body=args[1].wGquKmyB3mV2Cf
     if type(body)~="table" or body.name~="AutoReplant" or type(body.value)~="boolean" then return false end
     capture.AutoReplantBinding={Remote=remote,Method=method,Args=cloneArguments(args)}
-    return true
+    return true,body.value
 end
 function capture:SetAutoReplant(value)
     local binding=self.AutoReplantBinding
@@ -883,7 +884,12 @@ local function intercept(remote, ...)
             local args = table.pack(...)
             pcall(function()
                 if typeof(remote)=="Instance" and remote:IsA("RemoteFunction") then
-                    if capture.LearnWoodOnly and learnBlockHit(remote,method,args) and capture.WoodHitBinding then capture.LearnWoodOnly=false end
+                    if capture.LearnWoodOnly then
+                        local previousWood=capture.WoodHitBinding
+                        learnBlockHit(remote,method,args)
+                        local learnedWood=capture.WoodHitBinding
+                        if learnedWood and learnedWood~=previousWood and learnedWood.Remote and learnedWood.Remote.Parent then capture.LearnWoodOnly=false end
+                    end
                     if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
                     if not capture.LearnWoodOnly and not capture.LearnBaitOnly then capture:Stop() end
                 end
@@ -891,6 +897,7 @@ local function intercept(remote, ...)
         end
         return original(remote,...)
     end
+    local autoReplantValue
     if not capture.Stopped and (capture.Active or #capture.Records >= capture.MaxCalls)
         and (method == "InvokeServer" or method == "FireServer") then
         local args = table.pack(...)
@@ -898,7 +905,9 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args) or learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args)
+                if not learned then learned,autoReplantValue=learnAutoReplant(remote, method, args) end
+                learned = learned or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -925,6 +934,19 @@ local function intercept(remote, ...)
                 warn("[Reborn capture] 100-call limit reached. Press F9 to export.")
             end
         end)
+    end
+    if autoReplantValue~=nil then
+        -- Observing a setting request does not prove the server accepted it.
+        -- Snapshot its value before the original call can yield or mutate the packet.
+        -- Do not catch original errors, and retain every return (including nils).
+        local returned=table.pack(original(remote,...))
+        pcall(function()
+            local response=returned[1]
+            if response~=false and not (type(response)=="table" and response.success==false) then
+                capture.AutoReplantState=autoReplantValue
+            end
+        end)
+        return table.unpack(returned,1,returned.n)
     end
     return original(remote, ...)
 end
@@ -1218,35 +1240,42 @@ function AutoBuild.new(ctx)
             local ok,err=pcall(function()
                 for index,cell in ipairs(self.Cells) do
                     if not active() then return end
-                    local _,root=characterRoot()
-                    local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
-                    if type(reach)~="number" then reach=20 end
-                    while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
-                        status(string.format("Move within %d studs of block %d/%d, or press Stop.",reach,index,#self.Cells))
-                        scheduler.wait(.2);_,root=characterRoot()
-                    end
-                    if not active() then return end
-                    if occupied(cell.CFrame,self.BlockSize) then
+                    local existing=occupied(cell.CFrame,self.BlockSize)
+                    if existing then
                         skipped+=1
                     else
-                        status(string.format("Building %d/%d: %s",index,#self.Cells,cell.Material))
-                        local sent,reason=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
-                        if not active() then return end
-                        local confirmed=false
-                        if sent then
-                            local deadline=now()+1
-                            repeat
-                                if not active() then return end
-                                confirmed=occupied(cell.CFrame,self.BlockSize)
-                                if confirmed then break end
-                                scheduler.wait(.05)
-                            until now()>=deadline
+                        local _,root=characterRoot()
+                        local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
+                        if type(reach)~="number" then reach=20 end
+                        while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
+                            status(string.format("Move within %d studs of block %d/%d, or press Stop.",reach,index,#self.Cells))
+                            scheduler.wait(.2);_,root=characterRoot()
+                            if active() then existing=occupied(cell.CFrame,self.BlockSize) end
+                            if existing then break end
                         end
-                        if confirmed then placed+=1;streak=0
-                        else failed+=1;streak+=1 end
-                        if streak>=3 then
-                            status("Build paused after 3 failures: "..tostring(reason or "no block appeared")..". Check materials, support and island access.")
-                            return
+                        if not active() then return end
+                        if existing or occupied(cell.CFrame,self.BlockSize) then
+                            skipped+=1
+                        else
+                            status(string.format("Building %d/%d: %s",index,#self.Cells,cell.Material))
+                            local sent,reason=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
+                            if not active() then return end
+                            local confirmed=false
+                            if sent then
+                                local deadline=now()+1
+                                repeat
+                                    if not active() then return end
+                                    confirmed=occupied(cell.CFrame,self.BlockSize)
+                                    if confirmed then break end
+                                    scheduler.wait(.05)
+                                until now()>=deadline
+                            end
+                            if confirmed then placed+=1;streak=0
+                            else failed+=1;streak+=1 end
+                            if streak>=3 then
+                                status("Build paused after 3 failures: "..tostring(reason or "no block appeared")..". Check materials, support and island access.")
+                                return
+                            end
                         end
                     end
                     if cell.Preview then cell.Preview:Destroy();cell.Preview=nil end
@@ -1318,11 +1347,18 @@ function AutoBuild.new(ctx)
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240)
         field.BackgroundColor3=Color3.fromRGB(29,39,48);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
         inputs[key]=field
+        local committed=field.Text
         ctx.Track(field.FocusLost:Connect(function()
+            if self.Running then
+                field.Text=committed
+                status("Stop the build before changing its plan.")
+                return
+            end
             if numeric then
                 local limit=key=="Height" and 8 or 12
                 self[key]=math.clamp(math.floor(tonumber(field.Text) or self[key]),1,limit);field.Text=tostring(self[key])
             end
+            committed=field.Text
             invalidate()
         end))
     end
@@ -1673,7 +1709,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "reel-aim-15",
+    Subtitle = "recovery-16",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3158,6 +3194,14 @@ local function clickOnce(action, myCycle)
     local camera = workspace.CurrentCamera
     if baitBusy or not camera or not hasRodEquipped() or not running(myCycle) then return false end
     local character = player.Character
+    local tool=character and character:FindFirstChildOfClass("Tool")
+    local function activeInput()
+        if baitBusy or not running(myCycle) or player.Character~=character
+            or not character or character:FindFirstChildOfClass("Tool")~=tool then return false end
+        local ok,focused=pcall(function() return UserInputService:GetFocusedTextBox() end)
+        return not (ok and focused)
+    end
+    if not activeInput() then return false end
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local x, y = camera.ViewportSize.X * 0.7, camera.ViewportSize.Y * 0.6
     if action == "reel" and lastFishingAim then
@@ -3177,25 +3221,41 @@ local function clickOnce(action, myCycle)
         setStatus("Move the hub away from the water aiming area.", COLORS.warn)
         return false
     end
+    local function clearInputPoint()
+        if overPanel(x,y) then return false end
+        local ok,objects=pcall(function() return playerGui:GetGuiObjectsAtPosition(x,y) end)
+        if ok then
+            for _,object in ipairs(objects) do
+                if object:IsA("GuiButton") or object:IsA("TextBox") then return false end
+            end
+        end
+        return true
+    end
+    if not clearInputPoint() then
+        setStatus("Move on-screen controls away from the fishing aim.",COLORS.warn)
+        return false
+    end
     -- Update the Mouse ray first; button events alone leave the aim over the UI.
     -- The user or another tool may have moved the cursor since the cast.
     -- Restore the saved aim for every reel as well as every new cast.
     local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
     if not moved then return false end
     task.wait(action == "reel" and .01 or .03)
-    if baitBusy or not running(myCycle) then return false end
+    if not activeInput() or not clearInputPoint() then return false end
     lastFishingAim = {X=x,Y=y}
     fishingInputBusy = true
+    RemoteCatalog.FishingMouseInput=true
     local pressed = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0) end)
     local held = pcall(function()
         if not pressed then return end
         local deadline = os.clock() + (action == "cast" and CONFIG.CastHold or 0.01)
-        while running(myCycle) and os.clock() < deadline do task.wait(0.01) end
+        while activeInput() and os.clock() < deadline do task.wait(0.01) end
     end)
     -- Release independently of both input errors and Stop during the charge.
     local released = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0) end)
     fishingInputBusy = false
-    return pressed and held and released and running(myCycle)
+    RemoteCatalog.FishingMouseInput=false
+    return pressed and held and released and activeInput()
 end
 local function getBobber()
     local folder = workspace:FindFirstChild("FishingBobbers")
@@ -3544,7 +3604,10 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode)
     if not root or not humanoid then return false,"Waiting for your character" end
     local generation=Navigation.Generation
     local function valid()
-        return active() and Navigation.Generation==generation and player.Character==character and target.Parent~=nil and humanoid.Health>0
+        return active() and Navigation.Generation==generation and player.Character==character
+            and character:FindFirstChild("HumanoidRootPart")==root
+            and character:FindFirstChildOfClass("Humanoid")==humanoid
+            and target.Parent~=nil and humanoid.Health>0
     end
     local function near()
         local point=positionOf(target)
@@ -3613,7 +3676,6 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode)
     return ok and result==true,ok and "Target not reached; skipping this target" or "Travel unavailable; skipping this target"
 end
 return Navigation
-
 end)()
 -- FARM NAVIGATION END
 
@@ -3849,7 +3911,7 @@ local function harvestLoop(myCycle)
                 registerHarvest(target.name, target.category)
                 setStatus("Confirmed: " .. target.name .. " ×" .. stats.harvests, COLORS.good)
                 -- A plant that regrows in place must never be planted over.
-                if target.category == "crop" and target.kind ~= "fruit" and not obj.Parent and plantedFrame and CONFIG.PlantEnabled and CONFIG.AutoReplant and not (RemoteCatalog.ServerAutoReplant or RemoteCatalog.ServerReplantEnabled and RemoteCatalog.ServerReplantEnabled()) then
+                if target.category == "crop" and target.kind ~= "fruit" and not obj.Parent and plantedFrame and CONFIG.PlantEnabled and CONFIG.AutoReplant and not (RemoteCatalog.ServerReplantEnabled()) then
                     if RemoteCatalog.PlacementAvailable() then
                         if active() then firePlant(plantedFrame, plantedType) end
                     else
@@ -4114,7 +4176,7 @@ track(stopAllButton.Activated:Connect(function()
 end))
 
 track(toggle.Activated:Connect(function()
-    if RemoteCatalog.BaitMouseInput then return end
+    if RemoteCatalog.BaitMouseInput or RemoteCatalog.FishingMouseInput then return end
     setEnabled(not enabled)
     refreshModeStatus()
 end))
@@ -4123,7 +4185,7 @@ for modeName, modeButton in pairs(modeButtons) do
 end
 applyFishingMode(activeFishingMode)
 track(baitToggle.Activated:Connect(function()
-    if RemoteCatalog.BaitMouseInput then return end
+    if RemoteCatalog.BaitMouseInput or RemoteCatalog.FishingMouseInput then return end
     setBaitEnabled(not baitEnabled); refreshModeStatus()
 end))
 
@@ -4176,7 +4238,7 @@ do
         task.spawn(function()
             local ok,reason,state=RemoteCatalog.SetAutoReplant(desired)
             if not gui.Parent then return end
-            if ok or state=="unavailable" and not (RemoteCatalog.ServerAutoReplant or RemoteCatalog.ServerReplantEnabled and RemoteCatalog.ServerReplantEnabled()) then
+            if ok or state=="unavailable" and not (RemoteCatalog.ServerReplantEnabled()) then
                 CONFIG.AutoReplant=desired
                 savePreferences()
                 setStatus(ok and "Game AutoReplant updated" or "Local auto-replant updated; capture a game setting change to sync it",COLORS.good)

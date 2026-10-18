@@ -20,11 +20,13 @@ setmetatable(root,{__index=function(t,key) if key=="CFrame" then return t.Positi
 local tweenCancelled=0
 local moves,stops=0,0
 local humanoid={Health=100,MoveTo=function(_,p) moves+=1 end,Move=function() stops+=1 end}
-local character={FindFirstChild=function() return root end,FindFirstChildOfClass=function() return humanoid end}
+local currentRoot,currentHumanoid=root,humanoid
+local character={FindFirstChild=function() return currentRoot end,FindFirstChildOfClass=function() return currentHumanoid end}
 local player={Character=character}
 local target={Parent=true,Position=v(20)}
 local moving=true
 local failPath,jump,stuck,cancel=false,false,false,false
+local replaceRoot,replaceHumanoid,respawn=false,false,false
 local function active() return moving end
 local function positionOf(obj) return obj.Position end
 local path={Status=1,ComputeAsync=function() end,GetWaypoints=function() return {{Position=v(0,0),Action=0},{Position=v(20,0),Action=jump and 2 or 0}} end}
@@ -37,22 +39,39 @@ local Navigation
 local task={wait=function(dt)
  time+=dt
  if cancel then moving=false;Navigation.Stop() end
+ if replaceRoot then currentRoot={Position=v(100,3)} end
+ if replaceHumanoid then currentHumanoid={Health=100} end
+ if respawn then player.Character={} end
  if not stuck then root.Position=v(root.Position.x+4,3) end
 end}
 Navigation=(function() ${source} end)()
 assert(Navigation.Approach(player,target,8,active,positionOf) and moves==2 and stops==1,'walk must reach collection range and release movement')
-local function reset() root.Position=v(0,3);humanoid.Jump=false;moving=true;failPath=false;jump=false;stuck=false;cancel=false;moves=0 end
+local function reset() root.Position=v(0,3);humanoid.Jump=false;moving=true;failPath=false;jump=false;stuck=false;cancel=false;moves=0;replaceRoot=false;replaceHumanoid=false;respawn=false;currentRoot=root;currentHumanoid=humanoid;player.Character=character end
 reset();assert(not Navigation.Approach(player,target,8,active,positionOf,'Normal') and moves==0,'Normal must not move toward distant targets')
 reset();root.Position=v(15);assert(Navigation.Approach(player,target,8,active,positionOf,'Normal') and moves==0,'Normal must allow in-range actions without movement')
 reset();failPath=true;assert(not Navigation.Approach(player,target,8,active,positionOf) and moves==0,'failed path must not walk directly across void')
 reset();jump=true;assert(Navigation.Approach(player,target,8,active,positionOf) and humanoid.Jump,'path jump must use ordinary Humanoid jump controls')
 reset();stuck=true;local before=time;assert(not Navigation.Approach(player,target,8,active,positionOf) and time-before<2,'stuck walking must time out')
 reset();cancel=true;assert(not Navigation.Approach(player,target,8,active,positionOf) and not Navigation.Humanoid,'Stop must cancel and release movement')
+reset();replaceRoot=true;before=time
+assert(not Navigation.Approach(player,target,8,active,positionOf) and time-before<.2 and not Navigation.Humanoid,'replacing the root within the same character must stop the old walk immediately')
+reset();replaceHumanoid=true;before=time
+assert(not Navigation.Approach(player,target,8,active,positionOf) and time-before<.2 and not Navigation.Humanoid,'replacing the humanoid within the same character must stop the old walk immediately')
+reset();respawn=true;before=time
+assert(not Navigation.Approach(player,target,8,active,positionOf) and time-before<.2 and not Navigation.Humanoid,'respawning must stop travel without moving the new character')
 reset();root.Position=v(15);assert(Navigation.Approach(player,target,8,active,positionOf) and moves==0,'in-range harvest must not calculate or walk a path')
 reset();assert(Navigation.Approach(player,target,8,active,positionOf,'Teleport') and moves==0,'teleport must arrive within interaction reach without walking')
 reset();assert(Navigation.Approach(player,target,8,active,positionOf,'Tween') and moves==0 and tweenCancelled>0 and not Navigation.Tween,'tween must arrive and clean up')
 reset();cancel=true;stuck=true;local cancelledBefore=tweenCancelled
 assert(not Navigation.Approach(player,target,8,active,positionOf,'Tween') and tweenCancelled>cancelledBefore and not Navigation.Tween,'Stop during tween must cancel travel and prevent action')
-return 'Navigation: approach, in-range fast path, blocked routes, ground-level waypoints and jumps, stuck timeout and cancellation passed'
+reset();replaceRoot=true;stuck=true;cancelledBefore=tweenCancelled
+-- Keep the tween pending so the root can be replaced during its first wait.
+local oldGetService=game.GetService
+game.GetService=function(self,name)
+ if name=='TweenService' then return {Create=function() return {Play=function() end,Cancel=function() tweenCancelled+=1 end} end} end
+ return oldGetService(self,name)
+end
+assert(not Navigation.Approach(player,target,8,active,positionOf,'Tween') and tweenCancelled>cancelledBefore and not Navigation.Tween and not Navigation.Humanoid,'replacing the root must cancel a tween targeting the detached part')
+return 'Navigation: approach, in-range fast path, blocked routes, ground-level waypoints and jumps, stuck timeout, replacement/respawn and cancellation passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'navigation',true)());}finally{state.destroy();}

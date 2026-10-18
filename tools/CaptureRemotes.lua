@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 20 and previous.Resume then
+if previous and previous.Version == 21 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 20, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 21, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -258,7 +258,7 @@ local function learnAutoReplant(remote, method, args)
     local body=args[1].wGquKmyB3mV2Cf
     if type(body)~="table" or body.name~="AutoReplant" or type(body.value)~="boolean" then return false end
     capture.AutoReplantBinding={Remote=remote,Method=method,Args=cloneArguments(args)}
-    return true
+    return true,body.value
 end
 function capture:SetAutoReplant(value)
     local binding=self.AutoReplantBinding
@@ -422,7 +422,12 @@ local function intercept(remote, ...)
             local args = table.pack(...)
             pcall(function()
                 if typeof(remote)=="Instance" and remote:IsA("RemoteFunction") then
-                    if capture.LearnWoodOnly and learnBlockHit(remote,method,args) and capture.WoodHitBinding then capture.LearnWoodOnly=false end
+                    if capture.LearnWoodOnly then
+                        local previousWood=capture.WoodHitBinding
+                        learnBlockHit(remote,method,args)
+                        local learnedWood=capture.WoodHitBinding
+                        if learnedWood and learnedWood~=previousWood and learnedWood.Remote and learnedWood.Remote.Parent then capture.LearnWoodOnly=false end
+                    end
                     if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
                     if not capture.LearnWoodOnly and not capture.LearnBaitOnly then capture:Stop() end
                 end
@@ -430,6 +435,7 @@ local function intercept(remote, ...)
         end
         return original(remote,...)
     end
+    local autoReplantValue
     if not capture.Stopped and (capture.Active or #capture.Records >= capture.MaxCalls)
         and (method == "InvokeServer" or method == "FireServer") then
         local args = table.pack(...)
@@ -437,7 +443,9 @@ local function intercept(remote, ...)
         pcall(function()
             local learned = false
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
-                learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args) or learnAutoReplant(remote, method, args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args)
+                if not learned then learned,autoReplantValue=learnAutoReplant(remote, method, args) end
+                learned = learned or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -464,6 +472,19 @@ local function intercept(remote, ...)
                 warn("[Reborn capture] 100-call limit reached. Press F9 to export.")
             end
         end)
+    end
+    if autoReplantValue~=nil then
+        -- Observing a setting request does not prove the server accepted it.
+        -- Snapshot its value before the original call can yield or mutate the packet.
+        -- Do not catch original errors, and retain every return (including nils).
+        local returned=table.pack(original(remote,...))
+        pcall(function()
+            local response=returned[1]
+            if response~=false and not (type(response)=="table" and response.success==false) then
+                capture.AutoReplantState=autoReplantValue
+            end
+        end)
+        return table.unpack(returned,1,returned.n)
     end
     return original(remote, ...)
 end

@@ -141,35 +141,42 @@ function AutoBuild.new(ctx)
             local ok,err=pcall(function()
                 for index,cell in ipairs(self.Cells) do
                     if not active() then return end
-                    local _,root=characterRoot()
-                    local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
-                    if type(reach)~="number" then reach=20 end
-                    while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
-                        status(string.format("Move within %d studs of block %d/%d, or press Stop.",reach,index,#self.Cells))
-                        scheduler.wait(.2);_,root=characterRoot()
-                    end
-                    if not active() then return end
-                    if occupied(cell.CFrame,self.BlockSize) then
+                    local existing=occupied(cell.CFrame,self.BlockSize)
+                    if existing then
                         skipped+=1
                     else
-                        status(string.format("Building %d/%d: %s",index,#self.Cells,cell.Material))
-                        local sent,reason=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
-                        if not active() then return end
-                        local confirmed=false
-                        if sent then
-                            local deadline=now()+1
-                            repeat
-                                if not active() then return end
-                                confirmed=occupied(cell.CFrame,self.BlockSize)
-                                if confirmed then break end
-                                scheduler.wait(.05)
-                            until now()>=deadline
+                        local _,root=characterRoot()
+                        local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
+                        if type(reach)~="number" then reach=20 end
+                        while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
+                            status(string.format("Move within %d studs of block %d/%d, or press Stop.",reach,index,#self.Cells))
+                            scheduler.wait(.2);_,root=characterRoot()
+                            if active() then existing=occupied(cell.CFrame,self.BlockSize) end
+                            if existing then break end
                         end
-                        if confirmed then placed+=1;streak=0
-                        else failed+=1;streak+=1 end
-                        if streak>=3 then
-                            status("Build paused after 3 failures: "..tostring(reason or "no block appeared")..". Check materials, support and island access.")
-                            return
+                        if not active() then return end
+                        if existing or occupied(cell.CFrame,self.BlockSize) then
+                            skipped+=1
+                        else
+                            status(string.format("Building %d/%d: %s",index,#self.Cells,cell.Material))
+                            local sent,reason=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
+                            if not active() then return end
+                            local confirmed=false
+                            if sent then
+                                local deadline=now()+1
+                                repeat
+                                    if not active() then return end
+                                    confirmed=occupied(cell.CFrame,self.BlockSize)
+                                    if confirmed then break end
+                                    scheduler.wait(.05)
+                                until now()>=deadline
+                            end
+                            if confirmed then placed+=1;streak=0
+                            else failed+=1;streak+=1 end
+                            if streak>=3 then
+                                status("Build paused after 3 failures: "..tostring(reason or "no block appeared")..". Check materials, support and island access.")
+                                return
+                            end
                         end
                     end
                     if cell.Preview then cell.Preview:Destroy();cell.Preview=nil end
@@ -241,11 +248,18 @@ function AutoBuild.new(ctx)
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240)
         field.BackgroundColor3=Color3.fromRGB(29,39,48);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
         inputs[key]=field
+        local committed=field.Text
         ctx.Track(field.FocusLost:Connect(function()
+            if self.Running then
+                field.Text=committed
+                status("Stop the build before changing its plan.")
+                return
+            end
             if numeric then
                 local limit=key=="Height" and 8 or 12
                 self[key]=math.clamp(math.floor(tonumber(field.Text) or self[key]),1,limit);field.Text=tostring(self[key])
             end
+            committed=field.Text
             invalidate()
         end))
     end
