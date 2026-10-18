@@ -18,8 +18,8 @@ local TweenInfo={new=function(duration) return duration end}
 local root={Position=v(0,3)}
 setmetatable(root,{__index=function(t,key) if key=="CFrame" then return t.Position end end,__newindex=function(t,key,value) if key=="CFrame" then rawset(t,"Position",value) else rawset(t,key,value) end end})
 local tweenCancelled=0
-local moves,stops=0,0
-local humanoid={Health=100,MoveTo=function(_,p) moves+=1 end,Move=function() stops+=1 end}
+local moves,stops,halts=0,0,0
+local humanoid={Health=100,MoveTo=function(_,p) if p==root.Position then halts+=1 else moves+=1 end end,Move=function() stops+=1 end}
 local currentRoot,currentHumanoid=root,humanoid
 local character={FindFirstChild=function() return currentRoot end,FindFirstChildOfClass=function() return currentHumanoid end}
 local player={Character=character}
@@ -46,6 +46,7 @@ local task={wait=function(dt)
 end}
 Navigation=(function() ${source} end)()
 assert(Navigation.Approach(player,target,8,active,positionOf) and moves==2 and stops==1,'walk must reach collection range and release movement')
+assert(halts==1,'finishing travel must clear the outstanding MoveTo destination')
 local function reset() root.Position=v(0,3);humanoid.Jump=false;moving=true;failPath=false;jump=false;stuck=false;cancel=false;moves=0;replaceRoot=false;replaceHumanoid=false;respawn=false;currentRoot=root;currentHumanoid=humanoid;player.Character=character end
 reset();assert(not Navigation.Approach(player,target,8,active,positionOf,'Normal') and moves==0,'Normal must not move toward distant targets')
 reset();root.Position=v(15);assert(Navigation.Approach(player,target,8,active,positionOf,'Normal') and moves==0,'Normal must allow in-range actions without movement')
@@ -72,6 +73,13 @@ game.GetService=function(self,name)
  return oldGetService(self,name)
 end
 assert(not Navigation.Approach(player,target,8,active,positionOf,'Tween') and tweenCancelled>cancelledBefore and not Navigation.Tween and not Navigation.Humanoid,'replacing the root must cancel a tween targeting the detached part')
+reset()
+Navigation.Humanoid=humanoid;Navigation.Root=root;Navigation.Owner='Wood'
+local gen=Navigation.Generation
+local previousHalts=halts
+assert(not Navigation.Stop('Chest') and Navigation.Generation==gen and Navigation.Humanoid==humanoid,'stopping chest travel must not cancel another navigation owner')
+Navigation.Owner='Chest'
+assert(Navigation.Stop('Chest') and Navigation.Generation==gen+1 and not Navigation.Humanoid and halts==previousHalts+1,'chest OFF must immediately clear the MoveTo destination and owner')
 return 'Navigation: approach, in-range fast path, blocked routes, ground-level waypoints and jumps, stuck timeout, replacement/respawn and cancellation passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'navigation',true)());}finally{state.destroy();}

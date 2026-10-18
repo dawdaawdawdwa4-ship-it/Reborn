@@ -298,12 +298,14 @@ end)()
  local navigation=RemoteCatalog.Navigation
  local travel,range=RemoteCatalog.ChestTravel,RemoteCatalog.ChestScanRange
  local approached,cancel=0,nil
- RemoteCatalog.Navigation={Approach=function(_,target,reach,active,position,mode)
+ RemoteCatalog.Navigation={Stop=function() end,Approach=function(_,target,reach,active,position,mode)
   approached+=1;cancel=active
   assert(target==chest and reach==12 and mode=='Walk','chest must walk into normal interaction reach')
   return true
  end}
  chest.Position=position(60)
+ assert(RemoteCatalog.ChestTravel=='Stay' and not RemoteCatalog.ApproachChest(recorder,function() return true end),'chest must default to Stay without walking')
+ RemoteCatalog.ChestTravelButton.Activated:Fire()
  assert(RemoteCatalog.ApproachChest(recorder,function() return true end) and approached==1,'chest within approach range must navigate closer')
  RemoteCatalog.ChestTravelButton.Activated:Fire()
  assert(RemoteCatalog.ChestTravel=='Stay' and not cancel(),'Stay must cancel the active chest walk')
@@ -340,6 +342,30 @@ end)()
  RemoteCatalog.StopChestLearning()
  assert(not stopped and RemoteCatalog.Recorder.LearnBaitOnly and not RemoteCatalog.Recorder.LearnChestOnly,'stopping chest learner must preserve bait learner')
  RemoteCatalog.Recorder=savedRecorder
+end)()
+ ;(function()
+ local original=player.Character
+ local frame={Position=Vector2.new(10,10)}
+ local root={CFrame=frame,Position=frame.Position,AssemblyLinearVelocity=Vector2.new(2,2),AssemblyAngularVelocity=Vector2.new(2,2)}
+ local humanoid={Health=100}
+ local character={FindFirstChild=function(_,name) return name=='HumanoidRootPart' and root end,FindFirstChildOfClass=function(_,class) return class=='Humanoid' and humanoid end}
+ root.Parent=character;player.Character=character
+ assert(airflowTabs.Teleport and pages.Teleport==RemoteCatalog.TeleportPage,'dedicated Teleport tab must exist')
+ RemoteCatalog.TeleportCards['Water hole'].Save.Activated:Fire()
+ assert(RemoteCatalog.WaterSpot.CFrame==frame and RemoteCatalog.TeleportCards['Water hole'].Label.Text~='Not saved','water save card must save the actual point')
+ root.CFrame={Position=Vector2.new(50,50)}
+ local away=root.CFrame
+ RemoteCatalog.TeleportCards['Water hole'].Teleport.Activated:Fire()
+ assert(root.CFrame==frame and not enabled and not baitEnabled and not RemoteCatalog.ChestAutoEnabled,'teleport card must return and pause gameplay')
+ RemoteCatalog.TeleportBackButton.Activated:Fire()
+ assert(root.CFrame==away,'Back control must restore pre-teleport position')
+ RemoteCatalog.TeleportCards['Island / home'].Save.Activated:Fire()
+ RemoteCatalog.TeleportCards['Custom spot'].Save.Activated:Fire()
+ assert(RemoteCatalog.GetTeleportSpot('Island / home') and RemoteCatalog.GetTeleportSpot('Custom spot'),'additional cards must save independent destinations')
+ RemoteCatalog.TeleportClearButton.Activated:Fire()
+ assert(not RemoteCatalog.WaterSpot and not RemoteCatalog.TeleportPrevious and next(RemoteCatalog.TeleportSpots)==nil,'Clear must remove every saved position')
+ assert(RemoteCatalog.TeleportCards['Water hole'].Label.Text=='Not saved','Clear must update displayed state')
+ player.Character=original
 end)()
 gui:Destroy();stepWorkers()
 assert(#connections==0,'cleanup must disconnect tracked listeners')

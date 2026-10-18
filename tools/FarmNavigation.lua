@@ -1,13 +1,21 @@
 -- Farm travel is idle until an active worker asks to approach a target.
 local Navigation={Generation=0}
-function Navigation.Stop()
-    Navigation.Generation+=1
-    if Navigation.Tween then Navigation.Tween:Cancel();Navigation.Tween=nil end
-    local humanoid=Navigation.Humanoid
-    Navigation.Humanoid=nil
-    if humanoid then pcall(function() humanoid:Move(Vector3.zero) end) end
+local function halt(humanoid,root)
+    if not humanoid then return end
+    -- Clear the outstanding MoveTo destination as well as current movement.
+    if root then pcall(function() humanoid:MoveTo(root.Position) end) end
+    pcall(function() humanoid:Move(Vector3.zero) end)
 end
-function Navigation.Approach(player,target,reach,active,positionOf,mode)
+function Navigation.Stop(owner)
+    if owner~=nil and Navigation.Owner~=owner then return false end
+    Navigation.Generation+=1
+    if Navigation.Tween then pcall(function() Navigation.Tween:Cancel() end);Navigation.Tween=nil end
+    local humanoid,root=Navigation.Humanoid,Navigation.Root
+    Navigation.Humanoid=nil;Navigation.Root=nil;Navigation.Owner=nil
+    halt(humanoid,root)
+    return true
+end
+function Navigation.Approach(player,target,reach,active,positionOf,mode,owner)
     local character=player.Character
     local humanoid=character and character:FindFirstChildOfClass("Humanoid")
     local root=character and character:FindFirstChild("HumanoidRootPart")
@@ -26,7 +34,9 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode)
     if not valid() then return false,"Travel stopped" end
     if near() then return true end
     if mode=="Normal" then return false,"Normal mode: move closer to the target" end
-    Navigation.Humanoid=humanoid
+    Navigation.Stop()
+    generation=Navigation.Generation
+    Navigation.Humanoid=humanoid;Navigation.Root=root;Navigation.Owner=owner
     local ok,result=pcall(function()
         local destination=positionOf(target)
         if not destination then return false end
@@ -80,9 +90,9 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode)
     -- A cancelled old path must not stop a newer worker's movement.
     if Navigation.Generation==generation and Navigation.Humanoid==humanoid then
         if Navigation.Tween then pcall(function() Navigation.Tween:Cancel() end);Navigation.Tween=nil end
-        pcall(function() humanoid:Move(Vector3.zero) end)
-        Navigation.Humanoid=nil
+        halt(humanoid,root)
+        Navigation.Humanoid=nil;Navigation.Root=nil;Navigation.Owner=nil
     end
-    return ok and result==true,ok and "Target not reached; skipping this target" or "Travel unavailable; skipping this target"
+    return ok and result==true and valid(),ok and "Target not reached; skipping this target" or "Travel unavailable; skipping this target"
 end
 return Navigation

@@ -5,7 +5,7 @@ const source=main.slice(main.indexOf('-- CHEST AUTO BEGIN'),main.indexOf('-- CHE
 const code=`
 local gui={Parent=true}
 local COLORS={on=1,off=2}
-local RemoteCatalog={ChestAutoButton={},ChestResultLabel={}}
+local RemoteCatalog={ChestAutoButton={},ChestResultLabel={},Navigation={Stop=function(owner) assert(owner=="Chest") end}}
 local worker
 local task={spawn=function(fn) worker=coroutine.create(fn);local ok,err=coroutine.resume(worker);assert(ok,err) end,wait=function(dt) coroutine.yield(dt) end}
 local inventory,chest,calls,readable=0,75,{},true

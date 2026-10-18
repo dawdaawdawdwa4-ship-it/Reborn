@@ -44,7 +44,7 @@ assert(#RemoteCatalog.Entries==143,'all captured remotes must be incorporated')
 RemoteCatalog.RefreshButton.Activated:Fire()
 assert(string.find(RemoteCatalog.Summary.Text,'143',1,true),'remote discovery summary missing')
 assert(gui.Parent==playerGui,'hub must use PlayerGui')
-assert(#hub.Tabs==9,'nine tabs must exist')
+assert(#hub.Tabs==10,'ten tabs must exist')
 assert(hub.Root.Visible and hub.Body.GroupTransparency==0,'hub intro must finish')
 assert(hub.CurrentTab==airflowTabs.Fishing,'Fishing must be initial tab')
 for name,page in pairs(pages) do
@@ -128,7 +128,7 @@ end
  assert(removed.Parent==nil and removedWindow._inPage==nil,'settleIn must not reparent a destroyed page')
  removedWindow:Destroy();flush()
 end)()
-return 'UI, nine tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
+return 'UI, ten tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
 `;
 for (const supported of [false,true]) {
  const hooks=`

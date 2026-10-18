@@ -1793,7 +1793,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-water-31",
+    Subtitle = "teleport-32",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -1859,6 +1859,7 @@ local woodPage = createPage("Wood Farm")
 local minePage = createPage("Mining")
 local buildPage = createPage("Auto Build")
 local movementPage = createPage("Movement")
+RemoteCatalog.TeleportPage = createPage("Teleport")
 local statsPage = createPage("Stats")
 local settingsPage = createPage("Settings")
 local remotesPage = createPage("Remotes")
@@ -2137,7 +2138,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-water-31",
+    return table.concat({"Reborn teleport-32",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2672,18 +2673,19 @@ RemoteCatalog.ChestWithdrawButton=button({Parent=harvestPage,Text="Withdraw carr
 RemoteCatalog.ChestAutoButton=button({Parent=harvestPage,Text="AUTO WITHDRAW MAX: OFF",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,542)})
 RemoteCatalog.ChestScanRange=120
-RemoteCatalog.ChestTravel="Walk"
+RemoteCatalog.ChestTravel="Stay"
 RemoteCatalog.ChestRangeButton=button({Parent=harvestPage,Text="Chest approach range: 120 studs",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,580)})
 track(RemoteCatalog.ChestRangeButton.Activated:Connect(function()
     RemoteCatalog.ChestScanRange=RemoteCatalog.ChestScanRange>=240 and 30 or RemoteCatalog.ChestScanRange*2
     RemoteCatalog.ChestRangeButton.Text="Chest approach range: "..RemoteCatalog.ChestScanRange.." studs"
 end))
-RemoteCatalog.ChestTravelButton=button({Parent=harvestPage,Text="Move to chest: Walk",TextSize=12,
+RemoteCatalog.ChestTravelButton=button({Parent=harvestPage,Text="Move to chest: Stay",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,618)})
 track(RemoteCatalog.ChestTravelButton.Activated:Connect(function()
     RemoteCatalog.ChestTravel=RemoteCatalog.ChestTravel=="Walk" and "Stay" or "Walk"
     RemoteCatalog.ChestTravelButton.Text="Move to chest: "..RemoteCatalog.ChestTravel
+    if RemoteCatalog.ChestTravel=="Stay" then RemoteCatalog.Navigation.Stop("Chest") end
 end))
 RemoteCatalog.ChestAmount=1
 RemoteCatalog.ChestAmountButton=button({Parent=harvestPage,Text="Withdraw amount: 1  ▾",TextSize=12,
@@ -2709,7 +2711,7 @@ end
 track(RemoteCatalog.ChestAmountButton.Activated:Connect(function()
     RemoteCatalog.ChestAmountMenu.Visible=not RemoteCatalog.ChestAmountMenu.Visible
 end))
-RemoteCatalog.ChestHint=label({Parent=harvestPage,Text="Learn once by withdrawing carrots manually. Uses that chest and slot. Auto Max collects repeated batches and walks closer in Walk mode. Manual amount starts at 1.",TextSize=12,Color=COLORS.muted,
+RemoteCatalog.ChestHint=label({Parent=harvestPage,Text="Learn chest once. Auto Max collects its carrot slot. Approach range controls Walk only; Stay requires being within 20 studs. Choose Walk explicitly to move closer.",TextSize=12,Color=COLORS.muted,
     Size=UDim2.new(1,-16,0,48),Position=UDim2.fromOffset(8,696)})
 RemoteCatalog.ChestHint.TextWrapped=true
 RemoteCatalog.ChestResultLabel=label({Parent=harvestPage,Text="No chest request sent yet.",TextSize=12,Color=COLORS.muted,
@@ -3115,27 +3117,50 @@ local biggerWindow=button({Parent=movementPage,Text="Larger window",Size=UDim2.n
 track(centerWindow.Activated:Connect(function() frame.Position=UDim2.fromScale(.5,.5);hub:_clampToScreen() end))
 track(biggerWindow.Activated:Connect(function() resizeHub(1.1) end))
 
-RemoteCatalog.WaterSpotLabels={}
-for _,entry in ipairs({{Page=fishingPage,Y=500},{Page=movementPage,Y=490}}) do
-    local save=button({Parent=entry.Page,Text="Save water-hole spot",TextSize=12,
-        Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,entry.Y)})
-    local teleport=button({Parent=entry.Page,Text="TP to water hole",TextSize=12,
-        Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,entry.Y)})
-    local hint=label({Parent=entry.Page,Text="Stand beside the water and save once. TP pauses automation and returns to that spot in this server.",TextSize=12,Color=COLORS.muted,
-        Size=UDim2.new(1,-16,0,48),Position=UDim2.fromOffset(8,entry.Y+42)})
+RemoteCatalog.TeleportCards={}
+for i,name in ipairs({"Water hole","Island / home","Custom spot"}) do
+    local y=(i-1)*128
+    pageHeading(RemoteCatalog.TeleportPage,string.upper(name),y)
+    local save=button({Parent=RemoteCatalog.TeleportPage,Text="Save current position",TextSize=12,
+        Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,y+28)})
+    local teleport=button({Parent=RemoteCatalog.TeleportPage,Text="Teleport",TextSize=12,
+        Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,y+28)})
+    local hint=label({Parent=RemoteCatalog.TeleportPage,Text="Not saved",TextSize=12,Color=COLORS.muted,
+        Size=UDim2.new(1,-16,0,40),Position=UDim2.fromOffset(8,y+70)})
     hint.TextWrapped=true
-    table.insert(RemoteCatalog.WaterSpotLabels,hint)
+    RemoteCatalog.TeleportCards[name]={Label=hint,Save=save,Teleport=teleport}
     track(save.Activated:Connect(function()
-        local ok,reason=RemoteCatalog.SaveWaterSpot()
-        for _,text in ipairs(RemoteCatalog.WaterSpotLabels) do text.Text=reason end
+        local ok,reason=RemoteCatalog.SaveTeleportSpot(name)
+        RemoteCatalog.TeleportStatus.Text=reason
+        RemoteCatalog.UpdateTeleportLabels()
         setStatus(reason,ok and COLORS.good or COLORS.warn)
     end))
     track(teleport.Activated:Connect(function()
-        local ok,reason=RemoteCatalog.TeleportWaterSpot()
-        for _,text in ipairs(RemoteCatalog.WaterSpotLabels) do text.Text=reason end
+        local ok,reason=RemoteCatalog.TeleportSavedSpot(name)
+        RemoteCatalog.TeleportStatus.Text=reason
+        RemoteCatalog.UpdateTeleportLabels()
         setStatus(reason,ok and COLORS.good or COLORS.warn)
     end))
 end
+RemoteCatalog.TeleportBackButton=button({Parent=RemoteCatalog.TeleportPage,Text="Return to previous position",TextSize=12,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,390)})
+track(RemoteCatalog.TeleportBackButton.Activated:Connect(function()
+    local ok,reason=RemoteCatalog.TeleportSavedSpot("Previous")
+    RemoteCatalog.TeleportStatus.Text=reason
+    RemoteCatalog.UpdateTeleportLabels()
+    setStatus(reason,ok and COLORS.good or COLORS.warn)
+end))
+RemoteCatalog.TeleportClearButton=button({Parent=RemoteCatalog.TeleportPage,Text="Clear saved positions",TextSize=12,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,434)})
+track(RemoteCatalog.TeleportClearButton.Activated:Connect(function()
+    RemoteCatalog.WaterSpot=nil;RemoteCatalog.TeleportSpots={};RemoteCatalog.TeleportPrevious=nil
+    RemoteCatalog.TeleportGeneration=(RemoteCatalog.TeleportGeneration or 0)+1
+    RemoteCatalog.TeleportStatus.Text="Saved positions cleared"
+    RemoteCatalog.UpdateTeleportLabels()
+end))
+RemoteCatalog.TeleportStatus=label({Parent=RemoteCatalog.TeleportPage,Text="Save a clear spot beside the water or on your island. Teleport pauses automation. Positions last for this script session and server.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,64),Position=UDim2.fromOffset(8,482)})
+RemoteCatalog.TeleportStatus.TextWrapped=true
 
 -- Captured remotes are visible here; this page never sends server requests.
 RemoteCatalog.Summary = label({ Parent = remotesPage, Text = "Remote discovery",
@@ -3346,6 +3371,7 @@ local function getTopFish()
 end
 
 local function updateBoard()
+    if RemoteCatalog.UpdateTeleportLabels then RemoteCatalog.UpdateTeleportLabels() end
     RemoteCatalog.BaitNativeLabel.Text=RemoteCatalog.BaitNativeStatus or "Food API: not checked yet"
     RemoteCatalog.UpdateCaptureUI()
 	local t = getActiveTime()
@@ -4025,14 +4051,22 @@ end
 RemoteCatalog.Navigation=(function()
 -- Farm travel is idle until an active worker asks to approach a target.
 local Navigation={Generation=0}
-function Navigation.Stop()
-    Navigation.Generation+=1
-    if Navigation.Tween then Navigation.Tween:Cancel();Navigation.Tween=nil end
-    local humanoid=Navigation.Humanoid
-    Navigation.Humanoid=nil
-    if humanoid then pcall(function() humanoid:Move(Vector3.zero) end) end
+local function halt(humanoid,root)
+    if not humanoid then return end
+    -- Clear the outstanding MoveTo destination as well as current movement.
+    if root then pcall(function() humanoid:MoveTo(root.Position) end) end
+    pcall(function() humanoid:Move(Vector3.zero) end)
 end
-function Navigation.Approach(player,target,reach,active,positionOf,mode)
+function Navigation.Stop(owner)
+    if owner~=nil and Navigation.Owner~=owner then return false end
+    Navigation.Generation+=1
+    if Navigation.Tween then pcall(function() Navigation.Tween:Cancel() end);Navigation.Tween=nil end
+    local humanoid,root=Navigation.Humanoid,Navigation.Root
+    Navigation.Humanoid=nil;Navigation.Root=nil;Navigation.Owner=nil
+    halt(humanoid,root)
+    return true
+end
+function Navigation.Approach(player,target,reach,active,positionOf,mode,owner)
     local character=player.Character
     local humanoid=character and character:FindFirstChildOfClass("Humanoid")
     local root=character and character:FindFirstChild("HumanoidRootPart")
@@ -4051,7 +4085,9 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode)
     if not valid() then return false,"Travel stopped" end
     if near() then return true end
     if mode=="Normal" then return false,"Normal mode: move closer to the target" end
-    Navigation.Humanoid=humanoid
+    Navigation.Stop()
+    generation=Navigation.Generation
+    Navigation.Humanoid=humanoid;Navigation.Root=root;Navigation.Owner=owner
     local ok,result=pcall(function()
         local destination=positionOf(target)
         if not destination then return false end
@@ -4105,10 +4141,10 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode)
     -- A cancelled old path must not stop a newer worker's movement.
     if Navigation.Generation==generation and Navigation.Humanoid==humanoid then
         if Navigation.Tween then pcall(function() Navigation.Tween:Cancel() end);Navigation.Tween=nil end
-        pcall(function() humanoid:Move(Vector3.zero) end)
-        Navigation.Humanoid=nil
+        halt(humanoid,root)
+        Navigation.Humanoid=nil;Navigation.Root=nil;Navigation.Owner=nil
     end
-    return ok and result==true,ok and "Target not reached; skipping this target" or "Travel unavailable; skipping this target"
+    return ok and result==true and valid(),ok and "Target not reached; skipping this target" or "Travel unavailable; skipping this target"
 end
 return Navigation
 end)()
@@ -4681,15 +4717,15 @@ function RemoteCatalog.ApproachChest(recorder,active)
     local position=getPartPosition(chest)
     if not root or not position then return false,"Waiting for your character and chest" end
     local distance=(position-root.Position).Magnitude
-    if distance<=15 then return true end
+    if distance<=20 then return true end
     if distance>RemoteCatalog.ChestScanRange then return false,"Chest is outside approach range; move closer or increase the range" end
-    if RemoteCatalog.ChestTravel~="Walk" then return false,"Stay mode: stand within 15 studs of the chest" end
+    if RemoteCatalog.ChestTravel~="Walk" then return false,"Stay mode: stand within 20 studs. Approach range controls walking only." end
     if harvestEnabled and CONFIG.HarvestWalk or woodEnabled and CONFIG.WoodTravelMode~="Normal" or mineEnabled then
         return false,"Pause other farming movement before walking to the chest"
     end
     return RemoteCatalog.Navigation.Approach(player,chest,12,function()
         return active() and RemoteCatalog.ChestTravel=="Walk" and recorder:CanUseChestBinding()
-    end,getPartPosition,"Walk")
+    end,getPartPosition,"Walk","Chest")
 end
 -- CHEST AUTO BEGIN
 function RemoteCatalog.CarrotCount()
@@ -4705,11 +4741,12 @@ function RemoteCatalog.CarrotCount()
 end
 function RemoteCatalog.ChestAutoMessage(text)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-water-31\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn teleport-32\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
 end
 function RemoteCatalog.SetChestAuto(state)
     if not state then
+        RemoteCatalog.Navigation.Stop("Chest")
         RemoteCatalog.ChestAutoEnabled=false
         RemoteCatalog.ChestAutoGeneration=(RemoteCatalog.ChestAutoGeneration or 0)+1
         if gui.Parent then
@@ -4829,7 +4866,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         RemoteCatalog.ChestWithdrawButton.Text="Withdraw carrots (learned chest)"
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-water-31\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn teleport-32\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Carrot withdrawal request sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)
@@ -4837,20 +4874,36 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
 end))
 
 -- WATER SPOT BEGIN
-function RemoteCatalog.SaveWaterSpot()
+function RemoteCatalog.GetTeleportSpot(name)
+    if name=="Water hole" then return RemoteCatalog.WaterSpot end
+    if name=="Previous" then return RemoteCatalog.TeleportPrevious end
+    return RemoteCatalog.TeleportSpots and RemoteCatalog.TeleportSpots[name]
+end
+function RemoteCatalog.SetTeleportSpot(name,point)
+    if name=="Water hole" then RemoteCatalog.WaterSpot=point
+    elseif name=="Previous" then RemoteCatalog.TeleportPrevious=point
+    else
+        RemoteCatalog.TeleportSpots=RemoteCatalog.TeleportSpots or {}
+        RemoteCatalog.TeleportSpots[name]=point
+    end
+end
+function RemoteCatalog.SaveTeleportSpot(name)
+    if name~="Water hole" and name~="Island / home" and name~="Custom spot" then return false,"Choose a saved destination" end
     local character=player.Character
     local root=character and character:FindFirstChild("HumanoidRootPart")
     local humanoid=character and character:FindFirstChildOfClass("Humanoid")
-    if not root or not root.Parent or not humanoid or humanoid.Health<=0 then return false,"Wait for your character before saving the water hole" end
+    if not root or not root.Parent or not humanoid or humanoid.Health<=0 then return false,"Wait for your character before saving a position" end
     if baitBusy or fishingInputBusy then return false,"Wait for the current tool input to finish" end
-    RemoteCatalog.WaterSpot={CFrame=root.CFrame,OwnerUserId=player.UserId,PlaceId=game.PlaceId,JobId=game.JobId}
-    return true,"Water-hole spot saved for this server"
+    RemoteCatalog.SetTeleportSpot(name,{CFrame=root.CFrame,OwnerUserId=player.UserId,PlaceId=game.PlaceId,JobId=game.JobId})
+    RemoteCatalog.TeleportGeneration=(RemoteCatalog.TeleportGeneration or 0)+1
+    return true,name.." saved for this server"
 end
-function RemoteCatalog.TeleportWaterSpot()
-    local spot=RemoteCatalog.WaterSpot
-    if not spot then return false,"Stand by the water and press Save water-hole spot first" end
+function RemoteCatalog.SaveWaterSpot() return RemoteCatalog.SaveTeleportSpot("Water hole") end
+function RemoteCatalog.TeleportSavedSpot(name)
+    local spot=RemoteCatalog.GetTeleportSpot(name)
+    if not spot then return false,name=="Previous" and "No previous teleport position yet" or "Save "..name.." first" end
     if spot.OwnerUserId~=player.UserId or spot.PlaceId~=game.PlaceId or spot.JobId~=game.JobId then
-        RemoteCatalog.WaterSpot=nil
+        RemoteCatalog.SetTeleportSpot(name,nil)
         return false,"Saved spot belongs to another account or server; save it again"
     end
     local character=player.Character
@@ -4859,7 +4912,7 @@ function RemoteCatalog.TeleportWaterSpot()
     if not root or not root.Parent or not humanoid or humanoid.Health<=0 then return false,"Wait for your character before teleporting" end
     if baitBusy or fishingInputBusy then return false,"Wait for the current tool input to finish before teleporting" end
     if root.Anchored then return false,"Your character cannot move right now" end
-    -- Cancel workers before changing location so they cannot move back or cast at the old spot.
+    local previous={CFrame=root.CFrame,OwnerUserId=player.UserId,PlaceId=game.PlaceId,JobId=game.JobId}
     RemoteCatalog.SetChestAuto(false)
     setEnabled(false);setBaitEnabled(false)
     setFarmMode("crop",false);setFarmMode("wood",false);setFarmMode("mine",false)
@@ -4871,9 +4924,53 @@ function RemoteCatalog.TeleportWaterSpot()
         root.AssemblyAngularVelocity=root.AssemblyAngularVelocity*0
     end)
     if not ok then return false,"Teleport failed: "..tostring(reason) end
-    return true,"Returned to saved water hole. Turn Fishing ON when ready."
+    RemoteCatalog.TeleportPrevious=previous
+    RemoteCatalog.TeleportGeneration=(RemoteCatalog.TeleportGeneration or 0)+1
+    local generation=RemoteCatalog.TeleportGeneration
+    RemoteCatalog.TeleportLastResult="Teleport requested; checking arrival. Automation is paused."
+    task.spawn(function()
+        local function current()
+            return gui.Parent~=nil and RemoteCatalog.TeleportGeneration==generation and player.Character==character
+                and character:FindFirstChild("HumanoidRootPart")==root and root.Parent~=nil
+        end
+        local checked,distance
+        for _,delay in ipairs({.25,.75,1}) do
+            task.wait(delay)
+            if not current() then return end
+            checked,distance=pcall(function() return (root.Position-spot.CFrame.Position).Magnitude end)
+            if not checked or distance>8 then break end
+        end
+        if not checked then
+            RemoteCatalog.TeleportLastResult="Teleport requested; position check unavailable. Automation is paused."
+        elseif distance>8 then
+            RemoteCatalog.TeleportLastResult="Teleport corrected or target not reached. Try walking closer; no automatic retry."
+        else
+            RemoteCatalog.TeleportLastResult="Arrived at "..name..". Automation is paused."
+        end
+        if RemoteCatalog.TeleportStatus then RemoteCatalog.TeleportStatus.Text=RemoteCatalog.TeleportLastResult end
+        setStatus(RemoteCatalog.TeleportLastResult,checked and distance<=8 and COLORS.good or COLORS.warn)
+    end)
+    return true,RemoteCatalog.TeleportLastResult
 end
+function RemoteCatalog.TeleportWaterSpot() return RemoteCatalog.TeleportSavedSpot("Water hole") end
 -- WATER SPOT END
+function RemoteCatalog.UpdateTeleportLabels()
+    local char=player.Character
+    local root=char and char:FindFirstChild("HumanoidRootPart")
+    for name,card in pairs(RemoteCatalog.TeleportCards) do
+        local spot=RemoteCatalog.GetTeleportSpot(name)
+        local valid=spot and spot.OwnerUserId==player.UserId and spot.PlaceId==game.PlaceId and spot.JobId==game.JobId
+        local text=valid and "Saved for this server" or "Not saved"
+        if valid and root then
+            local ok,distance=pcall(function() return (root.Position-spot.CFrame.Position).Magnitude end)
+            if ok then text=text.." · "..math.floor(distance).." studs away" end
+        end
+        card.Label.Text=text
+        card.Teleport.Text=valid and "Teleport" or "Save a position first"
+        card.Teleport.BackgroundColor3=valid and COLORS.on or COLORS.off
+    end
+end
+
 
 track(stopAllButton.Activated:Connect(function()
     RemoteCatalog.SetChestAuto(false)
