@@ -94,6 +94,40 @@ else
  RemoteCatalog.CaptureToggle.Activated:Fire()
  assert(not RemoteCatalog.Recorder and string.find(RemoteCatalog.CaptureStatus.Text,'unavailable',1,true),'missing hooks must not break UI')
 end
+;(function()
+ showTab('Wood Farm')
+ showTab('Mining')
+ flush()
+ assert(hub.CurrentTab==airflowTabs.Mining and hub._inPage==nil and hub._outPage==nil,'rapid tab switches must settle only the current generation')
+ -- Direct GUI destruction bypasses Window:Destroy and must also cancel callbacks.
+ showTab('Fishing')
+ local incoming,outgoing=hub._inPage,hub._outPage
+ gui:Destroy()
+ flush()
+ assert(incoming.Parent==nil and outgoing.Parent==nil,'delayed tab callbacks must not resurrect destroyed GUI pages')
+ hub:_settleIn();hub:_settleOut();hub:SelectTab(airflowTabs.Stats)
+ assert(hub.CurrentTab==airflowTabs.Fishing,'tab selection must ignore destroyed GUI')
+ local window=Airflow:Window({Title='Lifecycle test',Parent=playerGui,Loading={Enabled=false}})
+ local first=window:Tab({Title='First'})
+ local second=window:Tab({Title='Second'})
+ flush()
+ window:SelectTab(second)
+ local entering=window._inPage
+ window:Destroy()
+ assert(window._destroyed and window._inPage==nil and window._outPage==nil,'Window Destroy must invalidate transition state immediately')
+ flush()
+ assert(entering.Parent==nil,'Window Destroy must cancel pending tab settlement')
+ local removedWindow=Airflow:Window({Title='Removed page',Parent=playerGui,Loading={Enabled=false}})
+ local tab=removedWindow:Tab({Title='First'})
+ flush()
+ local nextTab=removedWindow:Tab({Title='Second'})
+ removedWindow:SelectTab(nextTab)
+ local removed=removedWindow._inPage
+ removed:Destroy()
+ flush()
+ assert(removed.Parent==nil and removedWindow._inPage==nil,'settleIn must not reparent a destroyed page')
+ removedWindow:Destroy();flush()
+end)()
 return 'UI, nine tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
 `;
 for (const supported of [false,true]) {

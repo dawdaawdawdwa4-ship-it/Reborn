@@ -78,6 +78,7 @@ function Instance.new(cls)
   __newindex=function(_,key,value)
    assert(key:sub(1,1)=='_' or allowed(cls,key)=='Property','invalid '..cls..'.'..key)
    if key=='Parent' then
+    assert(not data._dead or value==nil,'destroyed instance Parent is locked')
     if data.Parent then
      for i,c in ipairs(data.Parent._children) do if c==object then table.remove(data.Parent._children,i);break end end
      data.Parent.ChildRemoved:Fire(object)
