@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 25 and previous.Resume then
+if previous and previous.Version == 26 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 25, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 26, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -388,7 +388,7 @@ function capture:Bait(tool)
     if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
     return true, result
 end
--- Learn only an observed carrot withdrawal; never infer rotating envelope keys.
+-- Learn observed item withdrawals; never infer items or rotating envelope keys.
 local function learnChest(remote,method,args)
     if method~="InvokeServer" or type(args[1])~="table" then return false end
     local group=remote.Parent
@@ -397,14 +397,14 @@ local function learnChest(remote,method,args)
     for _,value in pairs(body) do
         if type(value)=="table" and value.action=="withdraw" then body=value;break end
     end
-    if body.action~="withdraw" or body.item~="carrotHarvested" or typeof(body.chest)~="Instance"
+    if body.action~="withdraw" or (type(body.item)~="string" or #body.item==0 or #body.item>128) or typeof(body.chest)~="Instance"
         or not (body.chest:IsA("Model") or body.chest:IsA("BasePart")) then return false end
     if type(body.slot)~="number" or body.slot<0 or body.slot%1~=0
         or type(body.amount)~="number" or body.amount<=0 or body.amount%1~=0 then return false end
     local owner=game:GetService("Players").LocalPlayer
     if not owner or not owner.Character then return false end
     local binding={Remote=remote,Method=method,Args=cloneArguments(args),Chest=body.chest,
-        Slot=body.slot,Amount=body.amount,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
+        Slot=body.slot,Amount=body.amount,Item=body.item,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
     capture.ChestBinding=binding
     local replaced=false
     for i,old in ipairs(capture.ChestBindings) do
@@ -441,7 +441,7 @@ function capture:MakeChestTarget(binding,chest,slot)
     return target
 end
 function capture:WithdrawCarrots(amount,binding)
-    if not self:CanUseChestBinding(binding) then return false,"Learn a carrot withdrawal on this character first" end
+    if not self:CanUseChestBinding(binding) then return false,"Learn an item withdrawal on this character first" end
     local b=binding or self.ChestBinding
     amount=amount==nil and b.Amount or amount
     if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount" end
@@ -453,7 +453,7 @@ function capture:WithdrawCarrots(amount,binding)
             if type(value)=="table" and value.chest==b.Chest and value.action=="withdraw" then body=value;break end
         end
     end
-    if body.chest~=b.Chest or body.action~="withdraw" or body.item~="carrotHarvested" then return false,"Learn this chest withdrawal again" end
+    if body.chest~=b.Chest or body.action~="withdraw" or body.item~=(b.Item or "carrotHarvested") then return false,"Learn this chest withdrawal again" end
     -- Apply the selected slot and count to the cloned body; retain the learned session envelope.
     body.amount=amount
     body.slot=b.Slot
@@ -461,6 +461,7 @@ function capture:WithdrawCarrots(amount,binding)
     if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     return true,result
 end
+capture.WithdrawItems=capture.WithdrawCarrots
 local function learnHarvest(remote, method, args)
     if args.n < 1 or type(args[1]) ~= "table" then return false end
     local packet = args[1]

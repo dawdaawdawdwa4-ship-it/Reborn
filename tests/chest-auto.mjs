@@ -151,7 +151,7 @@ for _,chest in ipairs(visits) do
  if chest==physicalB then leftA=true end
  assert(not leftA or chest~=physicalA,'Walk must not bounce back to a chest after each batch')
 end
-assert(inventory==30 and string.find(RemoteCatalog.ChestLastDetail,'Pass finished: 30 carrots',1,true),'completed pass must report the confirmed total')
+assert(inventory==30 and string.find(RemoteCatalog.ChestLastDetail,'Pass finished: 30 items',1,true),'completed pass must report the confirmed total')
 -- An unreachable current chest must release its preference so another can run.
 RemoteCatalog.ApproachChest=function(_,_,binding) return binding.Chest~=physicalA,'out of range' end
 slots={['A:0']=10,['A:1']=10,['B:0']=10};inventory=0
@@ -159,6 +159,24 @@ assert(RemoteCatalog.SetChestAuto(true))
 for i=1,100 do if coroutine.status(worker)=='suspended' then local ok,err=coroutine.resume(worker);assert(ok,err) end end
 assert(inventory==10 and RemoteCatalog.ChestAutoEnabled,'blocked Walk chest must not starve reachable targets')
 RemoteCatalog.SetChestAuto(false);drain()
+-- Mixed item collection must confirm each requested item independently.
+RemoteCatalog.ChestTravel='Stay';RemoteCatalog.ApproachChest=function() return true end
+local quantities={wood=0,stone=0,carrotHarvested=300}
+RemoteCatalog.OwnedTools=function() return {{Name='wood'},{Name='stone'},{Name='carrotHarvested'}} end
+RemoteCatalog.BaitCount=function(tool) return quantities[tool.Name] end
+RemoteCatalog.SelectedChestTargets=function() return {
+ {Recorder=recorder,Binding={Chest=physicalA,Item='wood',Slot=0,Amount=5}},
+ {Recorder=recorder,Binding={Chest=physicalA,Item='stone',Slot=1,Amount=3}}
+} end
+local stock={wood=7,stone=4}
+RemoteCatalog.WithdrawCarrots=function(amount,_,binding)
+ local item=binding.Item
+ if stock[item]<amount then return false,'insufficient' end
+ stock[item]-=amount;quantities[item]+=amount;return true
+end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(quantities.wood==7 and quantities.stone==4 and RemoteCatalog.ChestAutoTotal==11,'mixed items must be counted using their own inventory totals')
+assert(quantities.carrotHarvested==300,'unrelated carrot quantity must not affect the collected total')
 return 'Chest Auto Max: batches/remainder, inventory confirmation, range wait/resume, one worker, bounded no-progress, Stop/in-flight restart, errors/session/GUI cleanup passed'
 `;
 const state=await LuauState.createAsync();

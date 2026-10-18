@@ -435,6 +435,30 @@ end)()
  assert(not capture:MakeChestTarget(original,b,1),'another character must not reuse the capture');gamePlayer.Character=old
  capture:Stop()
 end)()
+;(function()
+ capture:Resume();capture.Active=false;capture.LearnChestOnly=true;capture.LearnChestMany=true
+ local chest={_type='Instance',Name='chestMediumIndustrialIO',Parent=game,IsA=function(_,kind) return kind=='Model' end}
+ local endpoint=remote('generalChestEndpoint');endpoint.Parent={Name='group',Parent={Name='out',Parent=game}}
+ local sent
+ endpoint.InvokeServer=function(_,...) sent=table.pack(...);return true end
+ for index,item in ipairs({'wood','stone','wheatHarvested'}) do
+  installedHook(endpoint,{context='live-generic',body={chest=chest,action='withdraw',slot=index,item=item,amount=10}},nil,'tail')
+  local binding=capture.ChestBinding
+  assert(binding.Item==item,'generic learner must retain exact observed item')
+  assert(capture:WithdrawItems(2,binding),'generic item replay must be available')
+  assert(sent[1].body.item==item and sent[1].body.amount==2 and sent[1].context=='live-generic' and sent.n==3 and sent[3]=='tail','generic replay lost item, envelope or trailing args')
+  local clone=capture:MakeChestTarget(binding,chest,12)
+  assert(clone.Item==item and capture:WithdrawItems(1,clone) and sent[1].body.item==item,'whole-slot target must preserve learned item')
+ end
+ local original=capture.ChestBinding
+ for _,invalid in ipairs({'',string.rep('x',129),42,false}) do
+  installedHook(endpoint,{body={chest=chest,action='withdraw',slot=3,item=invalid,amount=1}})
+  assert(capture.ChestBinding==original,'invalid item identifier must not replace current binding')
+ end
+ original.Item='not-observed'
+ sent=nil;assert(not capture:WithdrawItems(1,original) and not sent,'item metadata must match observed packet; never substitute arbitrary item')
+ capture:Stop()
+end)()
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
 const state=await LuauState.createAsync();

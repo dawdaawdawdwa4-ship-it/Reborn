@@ -14,12 +14,13 @@ local function getPlayerIsland() return island end
 local function getPartPosition(chest) return chest.Position end
 local rootX=0
 local player={Character={FindFirstChild=function() return {Position=pos(rootX)} end}}
-local template={Chest=a,Slot=1,Amount=30,ObservedAt=1}
+local template={Chest=a,Slot=1,Amount=30,ObservedAt=1,Item="carrotHarvested"}
+local learned={template}
 local valid=true
-local recorder={GetChestBindings=function() return {template} end,CanUseChestBinding=function() return valid end}
+local recorder={GetChestBindings=function() return learned end,CanUseChestBinding=function() return valid end}
 function recorder:MakeChestTarget(binding,chest,slot)
  if not valid or chest.Name~='chestMediumIndustrialIO' or slot<0 or slot>12 then return end
- return {Chest=chest,Slot=slot,Amount=binding.Amount,Generated=true,ObservedAt=binding.ObservedAt}
+ return {Chest=chest,Slot=slot,Amount=binding.Amount,Item=binding.Item,Generated=true,ObservedAt=binding.ObservedAt}
 end
 local RemoteCatalog={Recorder=recorder,ChestDiscover=true,ChestWhole=true,ChestScanRange=120}
 ${source}
@@ -48,6 +49,22 @@ RemoteCatalog.ChestDiscover=true;RemoteCatalog.ChestWhole=true;RemoteCatalog.Che
 local nearest=RemoteCatalog.SelectedChestTargets()
 assert(nearest[1].Binding.Chest==b and nearest[14].Binding.Chest==a,'Walk must list nearer physical chests first')
 for index=1,13 do assert(nearest[index].Binding.Slot==index-1,'equal-distance slots must retain their original order') end
+local wood={Chest=a,Slot=2,Amount=5,ObservedAt=2,Item='wood'}
+learned={template,wood};RemoteCatalog.ChestTravel='Stay'
+local mixed=RemoteCatalog.SelectedChestTargets()
+assert(#mixed==52,'whole mode must retain each learned item across both physical chests')
+local perItem={}
+for _,entry in ipairs(mixed) do perItem[entry.Binding.Item]=(perItem[entry.Binding.Item] or 0)+1 end
+assert(perItem.wood==26 and perItem.carrotHarvested==26,'item templates must not suppress each other during discovery')
+RemoteCatalog.ChestItem='wood'
+local filtered=RemoteCatalog.SelectedChestTargets()
+assert(#filtered==26,'individual item filter must select only that item across chests')
+for _,entry in ipairs(filtered) do assert(entry.Binding.Item=='wood','item filter leaked another item') end
+RemoteCatalog.ChestWhole=false
+assert(#RemoteCatalog.SelectedChestTargets()==2,'captured-slot mode must retain wood only, including discovered wood template')
+RemoteCatalog.ChestItem='unobservedItem'
+assert(#RemoteCatalog.SelectedChestTargets()==0,'unlearned items must not produce fabricated requests')
+RemoteCatalog.ChestItem=nil
 valid=false
 assert(#RemoteCatalog.ChestTargets()==0 and #RemoteCatalog.SelectedChestTargets()==0,'invalid session must prevent discovery and replay target generation')
 return 'Chest targets: matching owned discovery, range/type filtering, complete slot coverage, deduplication, individual/scope controls and expired-session guards passed'

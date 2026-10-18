@@ -393,6 +393,18 @@ end)()
  assert(RemoteCatalog.ChestBusy and #requestedBindings==1,'manual batch must be active before cancellation')
  RemoteCatalog.ChestWithdrawButton.Activated:Fire();stepWorkers()
  assert(#requestedBindings==1 and not RemoteCatalog.ChestBusy,'pressing manual collection again must cancel unsent requests')
+ -- General chest items live in their own dropdown, with inline layout and filtering.
+ a.Item='wood';b.Item='stone'
+ RemoteCatalog.ChestItemButton.Activated:Fire()
+ assert(RemoteCatalog.ChestItemMenu.Visible,'item dropdown must open on the dedicated Chests page')
+ assert(RemoteCatalog.ChestSelectButton.Position.Y.Offset>=RemoteCatalog.ChestItemMenu.Position.Y.Offset+RemoteCatalog.ChestItemMenu.Size.Y.Offset,'item dropdown must push later controls below itself')
+ for _,option in ipairs(RemoteCatalog.ChestItemMenu:GetChildren()) do if option.Text=='stone' then option.Activated:Fire() end end
+ assert(RemoteCatalog.ChestItem=='stone' and not RemoteCatalog.ChestItemMenu.Visible,'item choice must apply and close')
+ local selectedItems=RemoteCatalog.SelectedChestTargets()
+ assert(#selectedItems==1 and selectedItems[1].Binding==b,'actual UI item handler must filter to stone')
+ RemoteCatalog.ChestItemButton.Activated:Fire()
+ for _,option in ipairs(RemoteCatalog.ChestItemMenu:GetChildren()) do if option.Text=='All learned items' then option.Activated:Fire() end end
+ assert(not RemoteCatalog.ChestItem and #RemoteCatalog.SelectedChestTargets()==2,'All learned items must restore mixed collection')
  RemoteCatalog.Recorder=savedLocalRecorder;RemoteCatalog.ChestSelection=nil
  workspace.FindFirstChild,RemoteCatalog.LiveRecorder,player.Character=savedFind,savedLive,savedChar
  local savedRecorder=RemoteCatalog.Recorder
