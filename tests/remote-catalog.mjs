@@ -272,6 +272,29 @@ response=true
 assert(RemoteCatalog.CallHarvest(cropTarget) and requestedName=='CLIENT_HARVEST_CROP_REQUEST','native game require fallback must restore harvest endpoint')
 assert(RemoteCatalog.CallMine(actualBlock) and requestedName=='BLOCK_HIT_REQUEST','native game require fallback must restore wood/mining endpoint')
 require=gameRequire;getrenv=nil
+-- Bait can use the same typed game wrapper as harvest/mining, without captured session IDs.
+do
+ local nativeCalls,inputCalls=0,0
+ local result=true
+ local oldEndpoint,oldActivate=RemoteCatalog.GameEndpoint,RemoteCatalog.ActivateBait
+ RemoteCatalog.BaitNativeFailed=nil;RemoteCatalog.BaitNeedsRefresh=true
+ RemoteCatalog.GameEndpoint=function(name)
+  assert(name=='CLIENT_EAT_FOOD','bait must request the documented food endpoint')
+  return {CallServer=function(_,body)
+   nativeCalls+=1;assert(body.tool==bait and next(body,'tool')==nil,'food request must use the actual tool without copied context fields')
+   return result
+  end}
+ end
+ RemoteCatalog.ActivateBait=function() inputCalls+=1;return true end
+ assert(RemoteCatalog.CallBait(bait) and nativeCalls==1 and inputCalls==0 and RemoteCatalog.BaitTransport=='game food request','native food endpoint must work without a captured bait binding')
+ result={success=false}
+ assert(not RemoteCatalog.CallBait(bait) and nativeCalls==2 and inputCalls==0,'rejected native bait must not send another transport in the same attempt')
+ assert(RemoteCatalog.CallBait(bait) and nativeCalls==2 and inputCalls==1,'next attempt must fall back rather than retrying a rejected native route indefinitely')
+ RemoteCatalog.BaitNativeFailed=nil;result=true
+ assert(RemoteCatalog.CallBait(bait) and nativeCalls==3,'clearing retry state must allow the native route again')
+ RemoteCatalog.GameEndpoint,RemoteCatalog.ActivateBait=oldEndpoint,oldActivate
+ RemoteCatalog.BaitNativeFailed=nil
+end
 return '142 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();

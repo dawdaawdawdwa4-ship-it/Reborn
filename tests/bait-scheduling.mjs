@@ -73,9 +73,10 @@ do
  local attempts=0
  RemoteCatalog.WithBaitTool=function() attempts+=1;return false,'Bait use unconfirmed' end
  ${apply}
- RemoteCatalog.BaitTransport='host mouse bait click'
+ RemoteCatalog.BaitTransport='game food request'
  assert(not applyBait() and attempts==1,'first unconfirmed attempt must establish a count sample')
- assert(RemoteCatalog.BaitTryToolActivation,'unconfirmed mouse use must select the alternate method for the next retry')
+ assert(RemoteCatalog.BaitTryToolActivation,'unconfirmed native use must allow tool activation on the next retry')
+ assert(RemoteCatalog.BaitNativeFailed and RemoteCatalog.BaitNativeFailed.Tool==bait,'native success without consumption must block repeated unconfirmed food requests')
  quantity=15;recorder.BaitBinding={Target=bait}
  local confirmed,detail=applyBait()
  assert(confirmed and detail=='bait consumption confirmed' and attempts==1,'fresh captured use plus decreased quantity between retries must confirm without consuming more bait')

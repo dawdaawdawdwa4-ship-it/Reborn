@@ -311,6 +311,18 @@ local RemoteCatalog = (function()
         return recorder
     end
     function catalog.CallBait(tool, prepared)
+        -- The game's wrapper supplies the current session envelope for food use.
+        -- CLIENT_EAT_FOOD and its tool body are present in the supplied remote captures.
+        local failed=catalog.BaitNativeFailed
+        if not failed or failed.Character~=player.Character or failed.Tool~=tool then
+            local endpoint=catalog.GameEndpoint("CLIENT_EAT_FOOD")
+            if endpoint then
+                catalog.BaitTransport="game food request"
+                local ok,reason=catalog.SendEndpoint(endpoint,{tool=tool})
+                if not ok then catalog.BaitNativeFailed={Character=player.Character,Tool=tool} end
+                return ok,reason
+            end
+        end
         local recorder=catalog.AcceptFreshBaitBinding()
         if catalog.BaitNeedsRefresh and catalog.ActivateBait then
             catalog.BaitTransport="normal input (refreshing request)"
@@ -1709,7 +1721,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-fallback-19",
+    Subtitle = "bait-native-20",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2226,6 +2238,9 @@ local function applyBait()
             local recorder=RemoteCatalog.LiveRecorder("BaitBinding")
             RemoteCatalog.BaitFailedBinding=recorder and recorder.BaitBinding
             RemoteCatalog.BaitNeedsRefresh=true
+            if RemoteCatalog.BaitTransport=="game food request" then
+                RemoteCatalog.BaitNativeFailed={Character=character,Tool=baitTool}
+            end
             -- A successful mouse API call can still produce no game input on this host.
             -- Try one other normal activation method on the next scheduled attempt.
             RemoteCatalog.BaitTryToolActivation=RemoteCatalog.BaitTransport~="Tool:Activate"
@@ -2249,6 +2264,7 @@ end
 local function setBaitEnabled(state)
     if baitEnabled == state then return end
     RemoteCatalog.BaitPending=state
+    if state then RemoteCatalog.BaitNativeFailed=nil end
     RemoteCatalog.StartFishingOnBait=state
     baitEnabled = state
     baitCycleId += 1
