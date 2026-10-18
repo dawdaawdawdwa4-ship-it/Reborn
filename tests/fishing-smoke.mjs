@@ -13,12 +13,14 @@ local tool={Name='fishingRod'}
 local root={Position=vec(0,0,0),CFrame={LookVector=vec(0,0,-1)}}
 local player={Name='Test',UserId=7,Character={FindFirstChildOfClass=function() return tool end,FindFirstChild=function() return root end}}
 local events={}
+local mouseX,mouseY=0,0
 local failMove,failDown,failWait=false,false,false
 local game={}
 local VirtualInputManager={}
 function VirtualInputManager:SendMouseMoveEvent(x,y,target)
  assert(target==game,'input target missing')
  if failMove then error('blocked movement') end
+ mouseX,mouseY=x,y
  table.insert(events,{'move',time,x,y})
 end
 function VirtualInputManager:SendMouseButtonEvent(x,y,button,pressed,target)
@@ -46,8 +48,12 @@ ${helpers}
 assert(clickOnce('cast',1) and not down)
 assert(events[1][1]=='move' and events[2][1]=='down' and events[3][1]=='up','aim/press/release order incorrect')
 assert(events[3][2]-events[2][2]>=.35,'cast charge too short')
-events={};time=0
-assert(clickOnce('reel',1) and #events==2 and events[1][1]=='down' and events[2][2]-events[1][2]<.05,'reel must reuse aim without moving/charging')
+events={};time=0;mouseX,mouseY=100,100 -- User moved the mouse onto the hub after casting.
+assert(clickOnce('reel',1) and #events==3 and events[1][1]=='move' and events[2][1]=='down' and events[3][2]-events[2][2]<.05,'reel must restore saved aim before a short press')
+assert(events[1][3]==1200 and events[1][4]==600 and mouseX==1200 and mouseY==600,'reel must restore the cast coordinates after manual cursor movement')
+failMove=true;events={}
+assert(not clickOnce('reel',1) and #events==0,'blocked reel aiming must not send a blind press')
+failMove=false
 cancel=true;events={};time=0
 assert(not clickOnce('cast',1) and not down and events[#events][1]=='up','Stop must release cast')
 cancel=false;enabled=true;failWait=true;events={}

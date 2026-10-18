@@ -341,3 +341,5 @@ Build layout-12 bounds axe/mining dropdowns to a scrollable 180-pixel list with 
 Build harvest-range-13 skips crops already known to be unready before navigation and verifies actual crop interaction distance after navigation reports arrival. Stats now offers corner-display visibility and position recovery controls.
 
 Build cleanup-14 review: sidebar navigation and hiding the hub close crop, tool, travel and movement menus. Opening a supported menu closes the other menus. Manual grid planting is single-flight and checks its cancellation generation, GUI lifetime and character before every placement. Stop All cancels remaining grid placements; GUI destruction also invalidates the planting generation. The stats overlay's global input listener is disconnected through the hub's tracked cleanup.
+
+Build reel-aim-15 restores the saved cast cursor position before every reel, including when the user moved the cursor while waiting. Reel aiming stays short (10ms) and blocked mouse movement prevents a blind press. Auto Bait still waits until the existing bobber is gone before switching tools.

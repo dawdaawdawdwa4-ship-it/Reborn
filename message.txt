@@ -1673,7 +1673,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "cleanup-14",
+    Subtitle = "reel-aim-15",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3178,13 +3178,13 @@ local function clickOnce(action, myCycle)
         return false
     end
     -- Update the Mouse ray first; button events alone leave the aim over the UI.
-    if action ~= "reel" or not lastFishingAim then
-        local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
-        if not moved then return false end
-        task.wait(0.03)
-        if baitBusy or not running(myCycle) then return false end
-        lastFishingAim = {X=x,Y=y}
-    end
+    -- The user or another tool may have moved the cursor since the cast.
+    -- Restore the saved aim for every reel as well as every new cast.
+    local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
+    if not moved then return false end
+    task.wait(action == "reel" and .01 or .03)
+    if baitBusy or not running(myCycle) then return false end
+    lastFishingAim = {X=x,Y=y}
     fishingInputBusy = true
     local pressed = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0) end)
     local held = pcall(function()
