@@ -321,6 +321,7 @@ end)()
 
  RemoteCatalog.ChestAmountButton.Activated:Fire()
  assert(RemoteCatalog.ChestAmountMenu.Visible,'amount dropdown must open')
+ assert(RemoteCatalog.ChestRangeButton.Position.Y.Offset>=RemoteCatalog.ChestAmountMenu.Position.Y.Offset+RemoteCatalog.ChestAmountMenu.Size.Y.Offset,'amount dropdown must push settings below itself')
  for _,child in ipairs(RemoteCatalog.ChestAmountMenu:GetChildren()) do
   if child:IsA('TextButton') and child.Text=='5' then child.Activated:Fire() end
  end
@@ -346,6 +347,7 @@ end)()
  local requestedBindings={}
  recorder.WithdrawCarrots=function(_,amount,binding) table.insert(requestedBindings,binding);return true end
  RemoteCatalog.ChestSelectButton.Activated:Fire()
+ assert(RemoteCatalog.ChestAutoButton.Position.Y.Offset>=RemoteCatalog.ChestSelectMenu.Position.Y.Offset+RemoteCatalog.ChestSelectMenu.Size.Y.Offset,'chest selector must push collection controls below itself')
  local list=RemoteCatalog.ChestSelectMenu:GetChildren()[1]
  for _,option in ipairs(list:GetChildren()) do if string.find(option.Text,'#2',1,true) then option.Activated:Fire() end end
  assert(#RemoteCatalog.SelectedChestTargets()==1 and RemoteCatalog.SelectedChestTargets()[1].Binding==b,'selector must support an individual chest')
@@ -354,6 +356,9 @@ end)()
  list=RemoteCatalog.ChestSelectMenu:GetChildren()[1]
  for _,option in ipairs(list:GetChildren()) do if option.Text=='All learned chests' then option.Activated:Fire() end end
  assert(#RemoteCatalog.SelectedChestTargets()==2,'All must retain both chests')
+ RemoteCatalog.UpdateChestSelectionUI()
+ assert(RemoteCatalog.ChestStats.CHESTS.Text=='2' and RemoteCatalog.ChestStats.SLOTS.Text=='2','summary must show physical chest and slot counts separately')
+ assert(RemoteCatalog.ChestPage==pages.Chests and RemoteCatalog.ChestLearnButton.Parent==pages.Chests,'chest controls must live in their dedicated tab')
  requestedBindings={}
  RemoteCatalog.ChestWithdrawButton.Activated:Fire()
  assert(#requestedBindings==1 and RemoteCatalog.ChestBusy,'manual all-chest batch must be serialized')
