@@ -1793,7 +1793,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "spawn-33",
+    Subtitle = "teleport-labels-34",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2138,7 +2138,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn spawn-33",
+    return table.concat({"Reborn teleport-labels-34",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -4760,7 +4760,7 @@ function RemoteCatalog.CarrotCount()
 end
 function RemoteCatalog.ChestAutoMessage(text)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn spawn-33\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn teleport-labels-34\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
 end
 function RemoteCatalog.SetChestAuto(state)
@@ -4885,7 +4885,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         RemoteCatalog.ChestWithdrawButton.Text="Withdraw carrots (learned chest)"
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn spawn-33\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn teleport-labels-34\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Carrot withdrawal request sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)
@@ -4972,7 +4972,7 @@ function RemoteCatalog.TeleportSavedSpot(name)
     RemoteCatalog.TeleportPrevious=previous
     RemoteCatalog.TeleportGeneration=(RemoteCatalog.TeleportGeneration or 0)+1
     local generation=RemoteCatalog.TeleportGeneration
-    RemoteCatalog.TeleportLastResult="Teleport requested; checking arrival. Automation is paused."
+    RemoteCatalog.TeleportLastResult="Teleport to "..name.." requested; checking arrival. Automation is paused."
     task.spawn(function()
         local function current()
             return gui.Parent~=nil and RemoteCatalog.TeleportGeneration==generation and player.Character==character
@@ -5012,7 +5012,7 @@ function RemoteCatalog.UpdateTeleportLabels()
             if ok then text=text.." · "..math.floor(distance).." studs away" end
         end
         card.Label.Text=text
-        card.Teleport.Text=valid and "Teleport" or card.Preset and "Different place" or "Save a position first"
+        card.Teleport.Text=card.Preset and name or valid and "Teleport" or "Save a position first"
         card.Teleport.BackgroundColor3=valid and COLORS.on or COLORS.off
     end
 end

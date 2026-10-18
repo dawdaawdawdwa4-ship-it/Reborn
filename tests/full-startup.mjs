@@ -351,6 +351,10 @@ end)()
  local character={FindFirstChild=function(_,name) return name=='HumanoidRootPart' and root end,FindFirstChildOfClass=function(_,class) return class=='Humanoid' and humanoid end}
  root.Parent=character;player.Character=character
  assert(airflowTabs.Teleport and pages.Teleport==RemoteCatalog.TeleportPage,'dedicated Teleport tab must exist')
+ RemoteCatalog.UpdateTeleportLabels()
+ for name,card in pairs(RemoteCatalog.TeleportCards) do
+  if card.Preset then assert(card.Teleport.Text==name,'refresh must preserve destination name: '..name) end
+ end
  for name,preset in pairs(RemoteCatalog.TeleportPresets) do
   assert(RemoteCatalog.TeleportCards[name] and table.find(RemoteCatalog.TeleportPresetNames,name),'every preset must have a destination button: '..name)
   assert(not RemoteCatalog.TeleportCards[name].Save,'built-in destinations must not expose an overwrite button')
