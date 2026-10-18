@@ -393,18 +393,35 @@ end)()
  assert(RemoteCatalog.ChestBusy and #requestedBindings==1,'manual batch must be active before cancellation')
  RemoteCatalog.ChestWithdrawButton.Activated:Fire();stepWorkers()
  assert(#requestedBindings==1 and not RemoteCatalog.ChestBusy,'pressing manual collection again must cancel unsent requests')
- -- General chest items live in their own dropdown, with inline layout and filtering.
+ -- Item checklist supports independent multiple choices and an explicit Done action.
  a.Item='wood';b.Item='stone'
  RemoteCatalog.ChestItemButton.Activated:Fire()
  assert(RemoteCatalog.ChestItemMenu.Visible,'item dropdown must open on the dedicated Chests page')
  assert(RemoteCatalog.ChestSelectButton.Position.Y.Offset>=RemoteCatalog.ChestItemMenu.Position.Y.Offset+RemoteCatalog.ChestItemMenu.Size.Y.Offset,'item dropdown must push later controls below itself')
- for _,option in ipairs(RemoteCatalog.ChestItemMenu:GetChildren()) do if option.Text=='stone' then option.Activated:Fire() end end
- assert(RemoteCatalog.ChestItem=='stone' and not RemoteCatalog.ChestItemMenu.Visible,'item choice must apply and close')
+ local function chooseItem(name)
+  for _,option in ipairs(RemoteCatalog.ChestItemMenu:GetChildren()) do
+   if option.Text==name or option.Text=='✓ '..name then option.Activated:Fire();return end
+  end
+  error('missing checklist option '..name)
+ end
+ local previousGeneration=RemoteCatalog.ChestManualGeneration
+ chooseItem('stone')
+ assert(RemoteCatalog.ChestItems.stone and RemoteCatalog.ChestItemMenu.Visible,'item choice must stay open for multiple selection')
+ assert(RemoteCatalog.ChestManualGeneration>previousGeneration,'changing selected items must cancel pending manual requests')
  local selectedItems=RemoteCatalog.SelectedChestTargets()
  assert(#selectedItems==1 and selectedItems[1].Binding==b,'actual UI item handler must filter to stone')
- RemoteCatalog.ChestItemButton.Activated:Fire()
- for _,option in ipairs(RemoteCatalog.ChestItemMenu:GetChildren()) do if option.Text=='All learned items' then option.Activated:Fire() end end
- assert(not RemoteCatalog.ChestItem and #RemoteCatalog.SelectedChestTargets()==2,'All learned items must restore mixed collection')
+ chooseItem('wood')
+ assert(RemoteCatalog.ChestItems.wood and #RemoteCatalog.SelectedChestTargets()==2 and RemoteCatalog.ChestItemSelectionText()=='2 selected','two checked items must both be retained')
+ chooseItem('stone')
+ selectedItems=RemoteCatalog.SelectedChestTargets()
+ assert(#selectedItems==1 and selectedItems[1].Binding==a,'unchecking one item must preserve the other')
+ chooseItem('wood')
+ assert(#RemoteCatalog.SelectedChestTargets()==0 and RemoteCatalog.ChestItemSelectionText()=='None selected','unchecking the last item must not accidentally enable all items')
+ assert(not RemoteCatalog.SetChestAuto(true) and string.find(RemoteCatalog.ChestResultLabel.Text,'No items selected',1,true),'empty selection must explain why collection cannot start')
+ chooseItem('All learned items')
+ assert(not RemoteCatalog.ChestItems and #RemoteCatalog.SelectedChestTargets()==2,'All learned items must restore mixed collection')
+ chooseItem('Done')
+ assert(not RemoteCatalog.ChestItemMenu.Visible,'Done must close the item checklist')
  RemoteCatalog.Recorder=savedLocalRecorder;RemoteCatalog.ChestSelection=nil
  workspace.FindFirstChild,RemoteCatalog.LiveRecorder,player.Character=savedFind,savedLive,savedChar
  local savedRecorder=RemoteCatalog.Recorder

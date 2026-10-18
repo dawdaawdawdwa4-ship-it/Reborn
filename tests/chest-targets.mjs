@@ -62,6 +62,13 @@ assert(#filtered==26,'individual item filter must select only that item across c
 for _,entry in ipairs(filtered) do assert(entry.Binding.Item=='wood','item filter leaked another item') end
 RemoteCatalog.ChestWhole=false
 assert(#RemoteCatalog.SelectedChestTargets()==2,'captured-slot mode must retain wood only, including discovered wood template')
+RemoteCatalog.ChestItem=nil;RemoteCatalog.ChestItems={wood=true,carrotHarvested=true}
+assert(#RemoteCatalog.SelectedChestTargets()==4,'multiple selected items must both remain available in captured-slot mode')
+RemoteCatalog.ChestItems={wood=true}
+assert(#RemoteCatalog.SelectedChestTargets()==2,'multi-select must filter independently by item identifier')
+RemoteCatalog.ChestItems={}
+assert(#RemoteCatalog.SelectedChestTargets()==0,'empty checklist must not revert to all items')
+RemoteCatalog.ChestItems=nil
 RemoteCatalog.ChestItem='unobservedItem'
 assert(#RemoteCatalog.SelectedChestTargets()==0,'unlearned items must not produce fabricated requests')
 RemoteCatalog.ChestItem=nil

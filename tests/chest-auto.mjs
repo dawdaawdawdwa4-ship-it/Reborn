@@ -39,6 +39,12 @@ assert(RemoteCatalog.SetChestAuto(true) and worker==originalWorker,'double ON mu
 drain()
 assert(inventory==75 and chest==0 and RemoteCatalog.ChestAutoTotal==75 and not RemoteCatalog.ChestAutoEnabled,'Auto Max must collect full batches and the smaller remaining stack')
 assert(#calls<20 and calls[1]==30 and not RemoteCatalog.ChestBusy and not RemoteCatalog.ChestAutoWorker,'withdrawal must be bounded, serialized and clean up')
+local reduced=false
+for _,amount in ipairs(calls) do
+ if amount==15 then reduced=true end
+ if reduced then assert(amount<=15,'a successful smaller remainder batch must not reset to an oversized learned batch') end
+end
+assert(reduced,'remainder fixture must exercise a successful reduced batch')
 -- An accepted response without inventory movement must not imply transfer.
 calls={};inventory=0;RemoteCatalog.WithdrawCarrots=function(amount) table.insert(calls,amount);return true end
 assert(RemoteCatalog.SetChestAuto(true));drain()

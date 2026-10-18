@@ -1824,7 +1824,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-items-40",
+    Subtitle = "chest-selection-41",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2172,7 +2172,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-items-40",
+    return table.concat({"Reborn chest-selection-41",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2714,7 +2714,7 @@ end
 pageHeading(RemoteCatalog.ChestPage,"1  LEARN YOUR CHESTS",106)
 RemoteCatalog.ChestLearnButton=button({Parent=RemoteCatalog.ChestPage,Text="Start learning",TextSize=13,
     Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,130)})
-RemoteCatalog.ChestHint=label({Parent=RemoteCatalog.ChestPage,Text="Withdraw each wanted item once while learning, then stop. All learned items supports mixed contents. Whole chest scans matching 12-slot I/O chests.",TextSize=12,Color=COLORS.muted,
+RemoteCatalog.ChestHint=label({Parent=RemoteCatalog.ChestPage,Text="Learn each wanted item once. Choose several items below, then Done. Whole chest scans matching 12-slot I/O chests.",TextSize=12,Color=COLORS.muted,
     Size=UDim2.new(1,-16,0,32),Position=UDim2.fromOffset(8,172)})
 RemoteCatalog.ChestHint.TextWrapped=true
 pageHeading(RemoteCatalog.ChestPage,"2  SELECT & COLLECT",214)
@@ -2752,7 +2752,7 @@ RemoteCatalog.ChestAutoButton=button({Parent=RemoteCatalog.ChestPage,Text="AUTO 
 RemoteCatalog.ChestWithdrawButton=button({Parent=RemoteCatalog.ChestPage,Text="Learn chests first",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,376)})
 RemoteCatalog.ChestAmount=1
-RemoteCatalog.ChestAmountButton=button({Parent=RemoteCatalog.ChestPage,Text="Batch: 1  ▾",TextSize=13,
+RemoteCatalog.ChestAmountButton=button({Parent=RemoteCatalog.ChestPage,Text="Manual batch: 1  ▾",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,376)})
 RemoteCatalog.ChestAmountMenu=Instance.new("Frame")
 RemoteCatalog.ChestAmountMenu.Size=UDim2.new(.5,-9,0,160)
@@ -2768,7 +2768,7 @@ for i,value in ipairs({1,5,10,25,"Learned"}) do
     option.ZIndex=31
     track(option.Activated:Connect(function()
         RemoteCatalog.ChestAmount=value
-        RemoteCatalog.ChestAmountButton.Text="Batch: "..tostring(value).."  ▾"
+        RemoteCatalog.ChestAmountButton.Text="Manual batch: "..tostring(value).."  ▾"
         RemoteCatalog.ChestAmountMenu.Visible=false
         RemoteCatalog.LayoutChestControls()
     end))
@@ -4868,7 +4868,7 @@ function RemoteCatalog.SelectedChestTargets()
         local binding=entry.Binding
         local selected=RemoteCatalog.ChestSelection
         local item=binding.Item or "carrotHarvested"
-        if (not RemoteCatalog.ChestItem or RemoteCatalog.ChestItem==item) and (not selected or selected.Chest==binding.Chest and (RemoteCatalog.ChestWhole or selected.Slot==binding.Slot)) then
+        if (not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[item]) and (not RemoteCatalog.ChestItem or RemoteCatalog.ChestItem==item) and (not selected or selected.Chest==binding.Chest and (RemoteCatalog.ChestWhole or selected.Slot==binding.Slot)) then
             if RemoteCatalog.ChestWhole and entry.Recorder.MakeChestTarget and string.lower(binding.Chest.Name)=="chestmediumindustrialio" then
                 seen[binding.Chest]=seen[binding.Chest] or {}
                 if not seen[binding.Chest][item] then
@@ -4900,6 +4900,13 @@ function RemoteCatalog.SelectedChestTargets()
     return targets
 end
 -- CHEST TARGETS END
+function RemoteCatalog.ChestItemSelectionText()
+    if not RemoteCatalog.ChestItems then return "All learned" end
+    local items={}
+    for item,selected in pairs(RemoteCatalog.ChestItems) do if selected then table.insert(items,item) end end
+    table.sort(items)
+    return #items==0 and "None selected" or #items==1 and items[1] or #items.." selected"
+end
 function RemoteCatalog.ToggleChestItems()
     local menu=RemoteCatalog.ChestItemMenu
     if menu.Visible then menu.Visible=false;RemoteCatalog.LayoutChestControls();return end
@@ -4907,27 +4914,45 @@ function RemoteCatalog.ToggleChestItems()
     for _,connection in ipairs(RemoteCatalog.ChestItemConnections) do connection:Disconnect() end
     table.clear(RemoteCatalog.ChestItemConnections)
     for _,child in ipairs(menu:GetChildren()) do child:Destroy() end
-    local items,seen={},{}
+    local items,seen,options={},{},{}
     for _,entry in ipairs(RemoteCatalog.ChestTargets()) do
         local item=entry.Binding.Item or "carrotHarvested"
         if not seen[item] then seen[item]=true;table.insert(items,item) end
     end
     table.sort(items)
-    menu.Size=UDim2.new(1,-12,0,math.min(192,(#items+1)*32))
+    menu.Size=UDim2.new(1,-12,0,math.min(224,(#items+2)*32))
+    local function refresh()
+        for index,option in pairs(options) do
+            local item=items[index]
+            local selected=index==0 and not RemoteCatalog.ChestItems or index>0 and RemoteCatalog.ChestItems and RemoteCatalog.ChestItems[item]
+            option.Text=(selected and "✓ " or "")..(item or "All learned items")
+            option.BackgroundColor3=selected and COLORS.on or COLORS.off
+        end
+        RemoteCatalog.ChestItemButton.Text="Items: "..RemoteCatalog.ChestItemSelectionText().."  ▾"
+    end
     for index=0,#items do
         local item=items[index]
-        local option=button({Parent=menu,Text=item or "All learned items",TextSize=12,
+        local option=button({Parent=menu,Text="",TextSize=12,
             Size=UDim2.new(1,-8,0,30),Position=UDim2.fromOffset(2,index*32)})
-        option.ZIndex=41
+        option.ZIndex=41;options[index]=option
         table.insert(RemoteCatalog.ChestItemConnections,option.Activated:Connect(function()
             RemoteCatalog.SetChestAuto(false)
             RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
-            RemoteCatalog.ChestItem=item
-            RemoteCatalog.ChestItemButton.Text="Items: "..(item or "All learned").."  ▾"
-            menu.Visible=false;RemoteCatalog.LayoutChestControls();RemoteCatalog.UpdateChestSelectionUI()
+            RemoteCatalog.ChestItem=nil
+            if not item then RemoteCatalog.ChestItems=nil
+            else
+                RemoteCatalog.ChestItems=RemoteCatalog.ChestItems or {}
+                if RemoteCatalog.ChestItems[item] then RemoteCatalog.ChestItems[item]=nil else RemoteCatalog.ChestItems[item]=true end
+            end
+            refresh();RemoteCatalog.UpdateChestSelectionUI()
         end))
     end
-    menu.Visible=true;RemoteCatalog.LayoutChestControls()
+    local done=button({Parent=menu,Text="Done",TextSize=12,Size=UDim2.new(1,-8,0,30),Position=UDim2.fromOffset(2,(#items+1)*32)})
+    done.ZIndex=41
+    table.insert(RemoteCatalog.ChestItemConnections,done.Activated:Connect(function()
+        menu.Visible=false;RemoteCatalog.LayoutChestControls()
+    end))
+    refresh();menu.Visible=true;RemoteCatalog.LayoutChestControls()
 end
 function RemoteCatalog.ChestRequestReady(binding)
     local chest=binding and binding.Chest
@@ -5117,7 +5142,7 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-items-40\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-selection-41\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
 end
@@ -5146,7 +5171,7 @@ function RemoteCatalog.SetChestAuto(state)
         end
     end
     if #states==0 then
-        RemoteCatalog.ChestAutoMessage("Learn and select at least one valid item withdrawal first")
+        RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestItems and next(RemoteCatalog.ChestItems)==nil and "No items selected. Choose items or All learned items." or "Learn and select at least one valid item withdrawal first")
         return false
     end
     RemoteCatalog.ChestAutoGeneration=(RemoteCatalog.ChestAutoGeneration or 0)+1
@@ -5225,6 +5250,7 @@ function RemoteCatalog.SetChestAuto(state)
                 if sent and gained>0 then
                     RemoteCatalog.ChestAutoTotal+=gained
                     RemoteCatalog.ChestAutoMessage("Collected "..RemoteCatalog.ChestAutoTotal.." items · "..finished.."/"..#states.." checks finished\n"..target,COLORS.good)
+                    if not state.Probe then state.Maximum=math.min(state.Maximum,state.Amount) end
                     state.Amount=state.Maximum;state.NoProgress=0;state.Probe=false
                     task.wait(.6)
                 else
@@ -5276,7 +5302,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-items-40\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-selection-41\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Withdrawal requests sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)
