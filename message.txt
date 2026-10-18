@@ -1793,7 +1793,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "bait-food-input-30",
+    Subtitle = "chest-water-31",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2137,7 +2137,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn bait-food-input-30",
+    return table.concat({"Reborn chest-water-31",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -2669,12 +2669,28 @@ RemoteCatalog.ChestLearnButton=button({Parent=harvestPage,Text="Learn carrot che
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,466)})
 RemoteCatalog.ChestWithdrawButton=button({Parent=harvestPage,Text="Withdraw carrots (learn first)",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,504)})
+RemoteCatalog.ChestAutoButton=button({Parent=harvestPage,Text="AUTO WITHDRAW MAX: OFF",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,542)})
+RemoteCatalog.ChestScanRange=120
+RemoteCatalog.ChestTravel="Walk"
+RemoteCatalog.ChestRangeButton=button({Parent=harvestPage,Text="Chest approach range: 120 studs",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,580)})
+track(RemoteCatalog.ChestRangeButton.Activated:Connect(function()
+    RemoteCatalog.ChestScanRange=RemoteCatalog.ChestScanRange>=240 and 30 or RemoteCatalog.ChestScanRange*2
+    RemoteCatalog.ChestRangeButton.Text="Chest approach range: "..RemoteCatalog.ChestScanRange.." studs"
+end))
+RemoteCatalog.ChestTravelButton=button({Parent=harvestPage,Text="Move to chest: Walk",TextSize=12,
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,618)})
+track(RemoteCatalog.ChestTravelButton.Activated:Connect(function()
+    RemoteCatalog.ChestTravel=RemoteCatalog.ChestTravel=="Walk" and "Stay" or "Walk"
+    RemoteCatalog.ChestTravelButton.Text="Move to chest: "..RemoteCatalog.ChestTravel
+end))
 RemoteCatalog.ChestAmount=1
 RemoteCatalog.ChestAmountButton=button({Parent=harvestPage,Text="Withdraw amount: 1  ▾",TextSize=12,
-    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,542)})
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,656)})
 RemoteCatalog.ChestAmountMenu=Instance.new("Frame")
 RemoteCatalog.ChestAmountMenu.Size=UDim2.new(1,-12,0,160)
-RemoteCatalog.ChestAmountMenu.Position=UDim2.fromOffset(6,576)
+RemoteCatalog.ChestAmountMenu.Position=UDim2.fromOffset(6,690)
 RemoteCatalog.ChestAmountMenu.BackgroundColor3=COLORS.panel
 RemoteCatalog.ChestAmountMenu.BorderSizePixel=0
 RemoteCatalog.ChestAmountMenu.Parent=harvestPage
@@ -2693,14 +2709,14 @@ end
 track(RemoteCatalog.ChestAmountButton.Activated:Connect(function()
     RemoteCatalog.ChestAmountMenu.Visible=not RemoteCatalog.ChestAmountMenu.Visible
 end))
-RemoteCatalog.ChestHint=label({Parent=harvestPage,Text="Learn once by withdrawing carrots manually. Uses that chest and slot. Starts at 1 carrot; choose a larger amount when available.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,48),Position=UDim2.fromOffset(8,582)})
+RemoteCatalog.ChestHint=label({Parent=harvestPage,Text="Learn once by withdrawing carrots manually. Uses that chest and slot. Auto Max collects repeated batches and walks closer in Walk mode. Manual amount starts at 1.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,48),Position=UDim2.fromOffset(8,696)})
 RemoteCatalog.ChestHint.TextWrapped=true
 RemoteCatalog.ChestResultLabel=label({Parent=harvestPage,Text="No chest request sent yet.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,84),Position=UDim2.fromOffset(8,636)})
+    Size=UDim2.new(1,-16,0,84),Position=UDim2.fromOffset(8,750)})
 RemoteCatalog.ChestResultLabel.TextWrapped=true
 RemoteCatalog.ChestCopyButton=button({Parent=harvestPage,Text="Copy chest result",TextSize=12,
-    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,726)})
+    Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,840)})
 
 RemoteCatalog.HarvestWalkButton=button({Parent=harvestPage,Text=CONFIG.HarvestWalk and "AUTO MOVE: ON" or "AUTO MOVE: OFF",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,244),Bg=CONFIG.HarvestWalk and COLORS.on or COLORS.off})
@@ -3098,6 +3114,28 @@ local centerWindow=button({Parent=movementPage,Text="Center window",Size=UDim2.n
 local biggerWindow=button({Parent=movementPage,Text="Larger window",Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,438)})
 track(centerWindow.Activated:Connect(function() frame.Position=UDim2.fromScale(.5,.5);hub:_clampToScreen() end))
 track(biggerWindow.Activated:Connect(function() resizeHub(1.1) end))
+
+RemoteCatalog.WaterSpotLabels={}
+for _,entry in ipairs({{Page=fishingPage,Y=500},{Page=movementPage,Y=490}}) do
+    local save=button({Parent=entry.Page,Text="Save water-hole spot",TextSize=12,
+        Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,entry.Y)})
+    local teleport=button({Parent=entry.Page,Text="TP to water hole",TextSize=12,
+        Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,entry.Y)})
+    local hint=label({Parent=entry.Page,Text="Stand beside the water and save once. TP pauses automation and returns to that spot in this server.",TextSize=12,Color=COLORS.muted,
+        Size=UDim2.new(1,-16,0,48),Position=UDim2.fromOffset(8,entry.Y+42)})
+    hint.TextWrapped=true
+    table.insert(RemoteCatalog.WaterSpotLabels,hint)
+    track(save.Activated:Connect(function()
+        local ok,reason=RemoteCatalog.SaveWaterSpot()
+        for _,text in ipairs(RemoteCatalog.WaterSpotLabels) do text.Text=reason end
+        setStatus(reason,ok and COLORS.good or COLORS.warn)
+    end))
+    track(teleport.Activated:Connect(function()
+        local ok,reason=RemoteCatalog.TeleportWaterSpot()
+        for _,text in ipairs(RemoteCatalog.WaterSpotLabels) do text.Text=reason end
+        setStatus(reason,ok and COLORS.good or COLORS.warn)
+    end))
+end
 
 -- Captured remotes are visible here; this page never sends server requests.
 RemoteCatalog.Summary = label({ Parent = remotesPage, Text = "Remote discovery",
@@ -4572,6 +4610,7 @@ function RemoteCatalog.StopChestLearning()
     end
 end
 track(RemoteCatalog.ChestLearnButton.Activated:Connect(function()
+    if RemoteCatalog.SetChestAuto then RemoteCatalog.SetChestAuto(false) end
     local recorder=RemoteCatalog.Recorder
     if recorder and recorder.LearnChestOnly then
         RemoteCatalog.StopChestLearning()
@@ -4585,7 +4624,7 @@ track(RemoteCatalog.ChestLearnButton.Activated:Connect(function()
     setStatus("Withdraw carrots manually once, then use Withdraw carrots",COLORS.good)
     RemoteCatalog.UpdateCaptureUI()
 end))
-function RemoteCatalog.WithdrawCarrots()
+function RemoteCatalog.WithdrawCarrots(amount)
     local recorder=RemoteCatalog.LiveRecorder("ChestBinding")
     if not recorder or not recorder.CanUseChestBinding or not recorder:CanUseChestBinding() then
         return false,"Learn a carrot withdrawal on this character first"
@@ -4601,7 +4640,7 @@ function RemoteCatalog.WithdrawCarrots()
     if not root or not position or (position-root.Position).Magnitude>20 then
         return false,"Stand within 20 studs of the learned chest"
     end
-    return recorder:WithdrawCarrots(RemoteCatalog.ChestAmount=="Learned" and recorder.ChestBinding.Amount or RemoteCatalog.ChestAmount)
+    return recorder:WithdrawCarrots(amount or (RemoteCatalog.ChestAmount=="Learned" and recorder.ChestBinding.Amount or RemoteCatalog.ChestAmount))
 end
 function RemoteCatalog.ChestResultText(value)
     local seen={}
@@ -4630,8 +4669,157 @@ track(RemoteCatalog.ChestCopyButton.Activated:Connect(function()
     if type(copy)=="function" and pcall(copy,detail) then setStatus("Chest result copied",COLORS.good)
     else print(detail);setStatus("Chest result printed to console",COLORS.warn) end
 end))
+function RemoteCatalog.ApproachChest(recorder,active)
+    if not recorder:CanUseChestBinding() then return false,"Learn this chest again" end
+    local chest=recorder.ChestBinding.Chest
+    local island=getPlayerIsland()
+    local cursor=chest
+    while cursor and cursor~=island do cursor=cursor.Parent end
+    if not island or cursor~=island then return false,"The learned chest is not on your island" end
+    local char=player.Character
+    local root=char and char:FindFirstChild("HumanoidRootPart")
+    local position=getPartPosition(chest)
+    if not root or not position then return false,"Waiting for your character and chest" end
+    local distance=(position-root.Position).Magnitude
+    if distance<=15 then return true end
+    if distance>RemoteCatalog.ChestScanRange then return false,"Chest is outside approach range; move closer or increase the range" end
+    if RemoteCatalog.ChestTravel~="Walk" then return false,"Stay mode: stand within 15 studs of the chest" end
+    if harvestEnabled and CONFIG.HarvestWalk or woodEnabled and CONFIG.WoodTravelMode~="Normal" or mineEnabled then
+        return false,"Pause other farming movement before walking to the chest"
+    end
+    return RemoteCatalog.Navigation.Approach(player,chest,12,function()
+        return active() and RemoteCatalog.ChestTravel=="Walk" and recorder:CanUseChestBinding()
+    end,getPartPosition,"Walk")
+end
+-- CHEST AUTO BEGIN
+function RemoteCatalog.CarrotCount()
+    local total=0
+    for _,tool in ipairs(RemoteCatalog.OwnedTools()) do
+        if tool.Name=="carrotHarvested" then
+            local count=RemoteCatalog.BaitCount(tool)
+            if count==nil or count~=count or count==math.huge then return nil end
+            total+=count
+        end
+    end
+    return total
+end
+function RemoteCatalog.ChestAutoMessage(text)
+    if not gui.Parent then return end
+    RemoteCatalog.ChestLastDetail="Reborn chest-water-31\n"..text
+    RemoteCatalog.ChestResultLabel.Text=text
+end
+function RemoteCatalog.SetChestAuto(state)
+    if not state then
+        RemoteCatalog.ChestAutoEnabled=false
+        RemoteCatalog.ChestAutoGeneration=(RemoteCatalog.ChestAutoGeneration or 0)+1
+        if gui.Parent then
+            RemoteCatalog.ChestAutoButton.Text="AUTO WITHDRAW MAX: OFF"
+            RemoteCatalog.ChestAutoButton.BackgroundColor3=COLORS.off
+        end
+        return true
+    end
+    if RemoteCatalog.ChestAutoEnabled then return true end
+    if RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then
+        RemoteCatalog.ChestAutoMessage("Wait for the current chest request to finish")
+        return false
+    end
+    local recorder=RemoteCatalog.LiveRecorder("ChestBinding")
+    if not recorder or not recorder.CanUseChestBinding or not recorder:CanUseChestBinding() then
+        RemoteCatalog.ChestAutoMessage("Learn a carrot withdrawal on this character first")
+        return false
+    end
+    local binding=recorder.ChestBinding
+    local maximum=binding.Amount
+    if type(maximum)~="number" or maximum<1 or maximum%1~=0 or maximum>1000000 then
+        RemoteCatalog.ChestAutoMessage("Learn a valid chest stack amount first")
+        return false
+    end
+    RemoteCatalog.ChestAutoGeneration=(RemoteCatalog.ChestAutoGeneration or 0)+1
+    local generation=RemoteCatalog.ChestAutoGeneration
+    RemoteCatalog.ChestAutoWorker=generation
+    RemoteCatalog.ChestAutoEnabled=true
+    RemoteCatalog.ChestAutoTotal=0
+    RemoteCatalog.ChestAutoButton.Text="AUTO WITHDRAW MAX: ON"
+    RemoteCatalog.ChestAutoButton.BackgroundColor3=COLORS.on
+    task.spawn(function()
+        local ownsBusy=false
+        local function active()
+            return gui.Parent~=nil and RemoteCatalog.ChestAutoEnabled and RemoteCatalog.ChestAutoGeneration==generation
+        end
+        local ok,failure=pcall(function()
+            local amount=maximum
+            local noProgress=0
+            while active() do
+                if recorder.ChestBinding~=binding or not recorder:CanUseChestBinding() then
+                    RemoteCatalog.ChestAutoMessage("Chest session changed. Learn again before restarting.")
+                    break
+                end
+                local reached,reason=RemoteCatalog.ApproachChest(recorder,active)
+                if not active() then break end
+                if not reached then
+                    RemoteCatalog.ChestAutoMessage("Auto withdraw waiting: "..tostring(reason))
+                    task.wait(1)
+                    continue
+                end
+                local before=RemoteCatalog.CarrotCount()
+                if before==nil then
+                    RemoteCatalog.ChestAutoMessage("Cannot read carrot inventory count. Use the manual withdrawal button.")
+                    break
+                end
+                RemoteCatalog.ChestBusy=true;ownsBusy=true
+                local ran,sent,response=pcall(RemoteCatalog.WithdrawCarrots,amount)
+                if not active() then break end
+                if not ran then error(sent) end
+                local after=RemoteCatalog.CarrotCount()
+                -- Responses alone do not prove a transfer. Wait for inventory replication.
+                local elapsed=0
+                while sent and active() and after~=nil and after<=before and elapsed<2 do
+                    task.wait(.1);elapsed+=.1
+                    if not active() then break end
+                    after=RemoteCatalog.CarrotCount()
+                end
+                RemoteCatalog.ChestBusy=false;ownsBusy=false
+                if not active() then break end
+                if after==nil then
+                    RemoteCatalog.ChestAutoMessage("Carrot count became unreadable; automatic withdrawal stopped.")
+                    break
+                end
+                local gained=math.max(0,after-before)
+                if sent and gained>0 then
+                    RemoteCatalog.ChestAutoTotal+=gained
+                    RemoteCatalog.ChestAutoMessage("Auto withdraw: collected "..RemoteCatalog.ChestAutoTotal.." carrots from the learned slot")
+                    amount=maximum;noProgress=0
+                    task.wait(.6)
+                else
+                    local reason=RemoteCatalog.ChestResultText(response)
+                    RemoteCatalog.ChestAutoMessage("No inventory gain. Chest may be empty or inventory full. Response: "..reason)
+                    if amount>1 then
+                        amount=math.max(1,math.floor(amount/2))
+                        task.wait(.6)
+                    else
+                        noProgress+=1
+                        if noProgress>=3 then break end
+                        task.wait(3)
+                    end
+                end
+            end
+        end)
+        if ownsBusy then RemoteCatalog.ChestBusy=false end
+        RemoteCatalog.ChestAutoWorker=nil
+        if RemoteCatalog.ChestAutoGeneration==generation then
+            RemoteCatalog.SetChestAuto(false)
+            if not ok then RemoteCatalog.ChestAutoMessage("Auto withdraw stopped: "..RemoteCatalog.ChestResultText(failure)) end
+        end
+    end)
+    return true
+end
+-- CHEST AUTO END
+track(RemoteCatalog.ChestAutoButton.Activated:Connect(function()
+    RemoteCatalog.SetChestAuto(not RemoteCatalog.ChestAutoEnabled)
+end))
+
 track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
-    if RemoteCatalog.ChestBusy then return end
+    if RemoteCatalog.ChestBusy or RemoteCatalog.ChestAutoEnabled then return end
     RemoteCatalog.ChestBusy=true
     RemoteCatalog.ChestWithdrawButton.Text="Sending withdrawal…"
     task.spawn(function()
@@ -4641,14 +4829,54 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         RemoteCatalog.ChestWithdrawButton.Text="Withdraw carrots (learned chest)"
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn bait-food-input-30\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-water-31\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Carrot withdrawal request sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)
     end)
 end))
 
+-- WATER SPOT BEGIN
+function RemoteCatalog.SaveWaterSpot()
+    local character=player.Character
+    local root=character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not root.Parent or not humanoid or humanoid.Health<=0 then return false,"Wait for your character before saving the water hole" end
+    if baitBusy or fishingInputBusy then return false,"Wait for the current tool input to finish" end
+    RemoteCatalog.WaterSpot={CFrame=root.CFrame,OwnerUserId=player.UserId,PlaceId=game.PlaceId,JobId=game.JobId}
+    return true,"Water-hole spot saved for this server"
+end
+function RemoteCatalog.TeleportWaterSpot()
+    local spot=RemoteCatalog.WaterSpot
+    if not spot then return false,"Stand by the water and press Save water-hole spot first" end
+    if spot.OwnerUserId~=player.UserId or spot.PlaceId~=game.PlaceId or spot.JobId~=game.JobId then
+        RemoteCatalog.WaterSpot=nil
+        return false,"Saved spot belongs to another account or server; save it again"
+    end
+    local character=player.Character
+    local root=character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not root.Parent or not humanoid or humanoid.Health<=0 then return false,"Wait for your character before teleporting" end
+    if baitBusy or fishingInputBusy then return false,"Wait for the current tool input to finish before teleporting" end
+    if root.Anchored then return false,"Your character cannot move right now" end
+    -- Cancel workers before changing location so they cannot move back or cast at the old spot.
+    RemoteCatalog.SetChestAuto(false)
+    setEnabled(false);setBaitEnabled(false)
+    setFarmMode("crop",false);setFarmMode("wood",false);setFarmMode("mine",false)
+    buildController:Stop()
+    RemoteCatalog.Navigation.Stop()
+    local ok,reason=pcall(function()
+        root.CFrame=spot.CFrame
+        root.AssemblyLinearVelocity=root.AssemblyLinearVelocity*0
+        root.AssemblyAngularVelocity=root.AssemblyAngularVelocity*0
+    end)
+    if not ok then return false,"Teleport failed: "..tostring(reason) end
+    return true,"Returned to saved water hole. Turn Fishing ON when ready."
+end
+-- WATER SPOT END
+
 track(stopAllButton.Activated:Connect(function()
+    RemoteCatalog.SetChestAuto(false)
     RemoteCatalog.StopChestLearning()
     RemoteCatalog.AntiAFK:SetEnabled(false)
     RemoteCatalog.PlantGeneration=(RemoteCatalog.PlantGeneration or 0)+1
@@ -4908,6 +5136,7 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
+    RemoteCatalog.SetChestAuto(false)
     hub._destroyed=true
     hub._transitionGeneration=(hub._transitionGeneration or 0)+1
     hub._inPage=nil;hub._outPage=nil

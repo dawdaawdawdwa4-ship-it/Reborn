@@ -35,6 +35,7 @@ buildController.Buttons.Preview.Activated:Fire()
 assert(string.find(buildController.Status.Text,"spawn",1,true))
 assert(buildController.Preset=="Farm plots")
 assert(not RemoteCatalog.Recorder,'recorder must be off on actual full startup')
+assert(not RemoteCatalog.ChestAutoEnabled and not RemoteCatalog.ChestAutoWorker,'chest automation must be off at startup')
 assert(RemoteCatalog.AntiAFK.Enabled and RemoteCatalog.AntiAFK.Connection,'Anti AFK must start ON with an idle listener')
 local idleClicks=0
 services.VirtualUser={CaptureController=function() end,ClickButton2=function() idleClicks+=1 end}
@@ -294,6 +295,28 @@ end)()
  recorder.CanUseChestBinding=function() return false end
  assert(not RemoteCatalog.WithdrawCarrots() and sent==1,'stale chest binding must not send')
  chest.Parent=island;recorder.CanUseChestBinding=function() return true end
+ local navigation=RemoteCatalog.Navigation
+ local travel,range=RemoteCatalog.ChestTravel,RemoteCatalog.ChestScanRange
+ local approached,cancel=0,nil
+ RemoteCatalog.Navigation={Approach=function(_,target,reach,active,position,mode)
+  approached+=1;cancel=active
+  assert(target==chest and reach==12 and mode=='Walk','chest must walk into normal interaction reach')
+  return true
+ end}
+ chest.Position=position(60)
+ assert(RemoteCatalog.ApproachChest(recorder,function() return true end) and approached==1,'chest within approach range must navigate closer')
+ RemoteCatalog.ChestTravelButton.Activated:Fire()
+ assert(RemoteCatalog.ChestTravel=='Stay' and not cancel(),'Stay must cancel the active chest walk')
+ assert(not RemoteCatalog.ApproachChest(recorder,function() return true end) and approached==1,'Stay must not navigate')
+ RemoteCatalog.ChestTravelButton.Activated:Fire()
+ chest.Position=position(150)
+ assert(not RemoteCatalog.ApproachChest(recorder,function() return true end),'outside approach range must wait')
+ RemoteCatalog.ChestRangeButton.Activated:Fire()
+ assert(RemoteCatalog.ChestScanRange==240 and RemoteCatalog.ApproachChest(recorder,function() return true end),'range increase must permit a more distant approach')
+ chest.Position=position(5)
+ RemoteCatalog.Navigation=navigation
+ RemoteCatalog.ChestTravel,RemoteCatalog.ChestScanRange=travel,range
+
  RemoteCatalog.ChestAmountButton.Activated:Fire()
  assert(RemoteCatalog.ChestAmountMenu.Visible,'amount dropdown must open')
  for _,child in ipairs(RemoteCatalog.ChestAmountMenu:GetChildren()) do
