@@ -367,6 +367,32 @@ end)()
  requestedBindings={}
  RemoteCatalog.ChestWithdrawButton.Activated:Fire();stepWorkers()
  assert(#requestedBindings==2 and requestedBindings[1]==a and requestedBindings[2]==b and not RemoteCatalog.ChestBusy,'manual All must withdraw from both learned chests')
+ -- Manual collection must skip a distant chest as a group, keep nearby requests,
+ -- and offer cancellation through the same action button.
+ local savedTargets=RemoteCatalog.SelectedChestTargets
+ local savedReady=RemoteCatalog.ChestRequestReady
+ local farChecks=0
+ chest.Position=position(80)
+ RemoteCatalog.SelectedChestTargets=function()
+  local targets={}
+  for slot=0,12 do table.insert(targets,{Recorder=recorder,Binding={Chest=chest,Slot=slot,Amount=1}}) end
+  table.insert(targets,{Recorder=recorder,Binding=b})
+  return targets
+ end
+ RemoteCatalog.ChestRequestReady=function(binding)
+  if binding.Chest==chest then farChecks+=1 end
+  return savedReady(binding)
+ end
+ requestedBindings={}
+ RemoteCatalog.ChestWithdrawButton.Activated:Fire();stepWorkers()
+ assert(farChecks==1 and #requestedBindings==1 and requestedBindings[1]==b,'manual collection must preflight a distant physical chest once and continue nearby')
+ assert(string.find(RemoteCatalog.ChestResultLabel.Text,'Sent 1/14 requests; 13 skipped',1,true),'manual summary must distinguish sent requests and skipped slots')
+ RemoteCatalog.SelectedChestTargets=savedTargets;RemoteCatalog.ChestRequestReady=savedReady
+ chest.Position=position(5);requestedBindings={}
+ RemoteCatalog.ChestWithdrawButton.Activated:Fire()
+ assert(RemoteCatalog.ChestBusy and #requestedBindings==1,'manual batch must be active before cancellation')
+ RemoteCatalog.ChestWithdrawButton.Activated:Fire();stepWorkers()
+ assert(#requestedBindings==1 and not RemoteCatalog.ChestBusy,'pressing manual collection again must cancel unsent requests')
  RemoteCatalog.Recorder=savedLocalRecorder;RemoteCatalog.ChestSelection=nil
  workspace.FindFirstChild,RemoteCatalog.LiveRecorder,player.Character=savedFind,savedLive,savedChar
  local savedRecorder=RemoteCatalog.Recorder

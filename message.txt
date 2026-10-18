@@ -1823,7 +1823,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-routing-38",
+    Subtitle = "chest-manual-39",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2171,7 +2171,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-routing-38",
+    return table.concat({"Reborn chest-manual-39",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -4878,17 +4878,8 @@ function RemoteCatalog.SelectedChestTargets()
     return targets
 end
 -- CHEST TARGETS END
-function RemoteCatalog.WithdrawCarrots(amount,recorder,binding)
-    if not recorder then
-        local target=RemoteCatalog.SelectedChestTargets()[1]
-        recorder=target and target.Recorder
-        binding=target and target.Binding
-    end
-    if not recorder or not recorder.CanUseChestBinding or not recorder:CanUseChestBinding(binding) then
-        return false,"Learn a carrot withdrawal on this character first"
-    end
-    binding=binding or recorder.ChestBinding
-    local chest=binding.Chest
+function RemoteCatalog.ChestRequestReady(binding)
+    local chest=binding and binding.Chest
     local island=getPlayerIsland()
     local cursor=chest
     while cursor and cursor~=island do cursor=cursor.Parent end
@@ -4899,6 +4890,20 @@ function RemoteCatalog.WithdrawCarrots(amount,recorder,binding)
     if not root or not position or (position-root.Position).Magnitude>20 then
         return false,"Stand within 20 studs of the learned chest"
     end
+    return true
+end
+function RemoteCatalog.WithdrawCarrots(amount,recorder,binding)
+    if not recorder then
+        local target=RemoteCatalog.SelectedChestTargets()[1]
+        recorder=target and target.Recorder
+        binding=target and target.Binding
+    end
+    if not recorder or not recorder.CanUseChestBinding or not recorder:CanUseChestBinding(binding) then
+        return false,"Learn a carrot withdrawal on this character first"
+    end
+    binding=binding or recorder.ChestBinding
+    local ready,reason=RemoteCatalog.ChestRequestReady(binding)
+    if not ready then return false,reason end
     return recorder:WithdrawCarrots(amount or (RemoteCatalog.ChestAmount=="Learned" and binding.Amount or RemoteCatalog.ChestAmount),binding)
 end
 function RemoteCatalog.ChestResultText(value)
@@ -5021,17 +5026,31 @@ track(RemoteCatalog.ChestSelectButton.Activated:Connect(function()
 end))
 function RemoteCatalog.WithdrawSelectedCarrots(generation)
     local targets=RemoteCatalog.SelectedChestTargets()
-    local results={}
-    local any=false
+    local details,checked={},{}
+    local sent,skipped=0,0
     for i,entry in ipairs(targets) do
         if not gui.Parent or generation and RemoteCatalog.ChestManualGeneration~=generation then break end
-        local ran,ok,result=pcall(RemoteCatalog.WithdrawCarrots,nil,entry.Recorder,entry.Binding)
-        if not ran then ok,result=false,ok end
-        any=any or ok
-        table.insert(results,"#"..i..": "..(ok and "request sent" or RemoteCatalog.ChestResultText(result)))
-        if i<#targets then task.wait(.6) end
+        local chest=entry.Binding.Chest
+        if not checked[chest] then
+            local ready,reason=RemoteCatalog.ChestRequestReady(entry.Binding)
+            checked[chest]={Ready=ready,Reason=reason}
+        end
+        local ready=checked[chest]
+        local ran,ok,result=true,false,ready.Reason
+        if ready.Ready then
+            ran,ok,result=pcall(RemoteCatalog.WithdrawCarrots,nil,entry.Recorder,entry.Binding)
+            if not ran then ok,result=false,ok end
+        end
+        if ok then sent+=1 else skipped+=1 end
+        if #details<4 and (ready.Ready or not ready.Reported) then
+            table.insert(details,"Check "..i..": "..(ok and "request sent" or RemoteCatalog.ChestResultText(result)))
+        end
+        ready.Reported=true
+        RemoteCatalog.ChestWithdrawButton.Text="Stop · "..i.."/"..#targets
+        if ready.Ready and i<#targets then task.wait(.6) end
     end
-    return any,#results>0 and table.concat(results,"; ") or "Learn at least one chest first"
+    if #targets==0 then return false,"Learn at least one chest first" end
+    return sent>0,"Sent "..sent.."/"..#targets.." requests; "..skipped.." skipped or rejected. Check inventory. "..table.concat(details,"; ")
 end
 -- CHEST AUTO BEGIN
 function RemoteCatalog.CarrotCount()
@@ -5047,7 +5066,7 @@ function RemoteCatalog.CarrotCount()
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-routing-38\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-manual-39\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
 end
@@ -5188,11 +5207,16 @@ track(RemoteCatalog.ChestAutoButton.Activated:Connect(function()
 end))
 
 track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
-    if RemoteCatalog.ChestBusy or RemoteCatalog.ChestAutoEnabled then return end
+    if RemoteCatalog.ChestAutoEnabled then return end
+    if RemoteCatalog.ChestBusy then
+        RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
+        RemoteCatalog.ChestWithdrawButton.Text="Stopping…"
+        return
+    end
     RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
     local generation=RemoteCatalog.ChestManualGeneration
     RemoteCatalog.ChestBusy=true
-    RemoteCatalog.ChestWithdrawButton.Text="Sending withdrawal…"
+    RemoteCatalog.ChestWithdrawButton.Text="Stop collection"
     task.spawn(function()
         local ran,ok,reason=pcall(RemoteCatalog.WithdrawSelectedCarrots,generation)
         RemoteCatalog.ChestBusy=false
@@ -5201,7 +5225,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-routing-38\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-manual-39\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Carrot withdrawal request sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)

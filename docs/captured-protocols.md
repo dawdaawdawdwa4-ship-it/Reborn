@@ -158,3 +158,7 @@ Recorder v25 can clone a valid observed carrot withdrawal onto another `chestMed
 ### Chest routing and pass feedback (chest-routing-38)
 
 Walk stably orders initial targets by distance and pins scheduling to the current physical chest until its pending slots finish. Failed approaches clear the preference so another target can run. Stay retains round-robin scheduling. The ON button reports completed checks; normal completion reports confirmed inventory gain and retains the last response, without claiming skipped or unconfirmed slots were empty. Tests cover nearest-first ordering, stable slot order, no return trips between batches, blocked-target isolation, and completion totals.
+
+### Manual collection preflight and cancellation (chest-manual-39)
+
+Manual batches cache an ownership/proximity preflight per physical chest for the duration of one pass. Blocked containers skip their remaining slots without individual RPCs or per-slot waits; every actual replay still checks ownership and distance again. Slot-level rejection does not skip other slots in an otherwise reachable chest. Pressing the manual button while busy invalidates its generation, preventing remaining requests after any in-flight response. Summaries distinguish sent requests from skipped/rejected checks and retain at most four response details. Full-startup tests exercise a 13-slot distant chest followed by a reachable chest, summary counts, and cancellation through the real manual button.
