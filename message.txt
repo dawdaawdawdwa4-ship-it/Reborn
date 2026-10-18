@@ -1823,7 +1823,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "whole-chest-37",
+    Subtitle = "chest-routing-38",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2171,7 +2171,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn whole-chest-37",
+    return table.concat({"Reborn chest-routing-38",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -4861,6 +4861,20 @@ function RemoteCatalog.SelectedChestTargets()
             end
         end
     end
+    if RemoteCatalog.ChestTravel=="Walk" then
+        local char=player.Character
+        local root=char and char:FindFirstChild("HumanoidRootPart")
+        if root then
+            local order={}
+            for index,entry in ipairs(targets) do order[entry]=index end
+            table.sort(targets,function(a,b)
+                local ap,bp=getPartPosition(a.Binding.Chest),getPartPosition(b.Binding.Chest)
+                local ad=ap and (ap-root.Position).Magnitude or math.huge
+                local bd=bp and (bp-root.Position).Magnitude or math.huge
+                return ad<bd or ad==bd and order[a]<order[b]
+            end)
+        end
+    end
     return targets
 end
 -- CHEST TARGETS END
@@ -5033,7 +5047,7 @@ function RemoteCatalog.CarrotCount()
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn whole-chest-37\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-routing-38\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
 end
@@ -5074,31 +5088,47 @@ function RemoteCatalog.SetChestAuto(state)
     RemoteCatalog.ChestAutoButton.BackgroundColor3=COLORS.on
     task.spawn(function()
         local ownsBusy=false
+        local completed=false
         local function active()
             return gui.Parent~=nil and RemoteCatalog.ChestAutoEnabled and RemoteCatalog.ChestAutoGeneration==generation
         end
         local ok,failure=pcall(function()
             local index=0
+            local currentChest=nil
+            local chestNumbers,chestCount={},0
+            for _,state in ipairs(states) do
+                local chest=state.Binding.Chest
+                if chest and not chestNumbers[chest] then chestCount+=1;chestNumbers[chest]=chestCount end
+            end
             while active() do
-                local pending=false
-                for _,state in ipairs(states) do if not state.Done then pending=true;break end end
-                if not pending then break end
+                local finished=0
+                for _,state in ipairs(states) do if state.Done then finished+=1 end end
+                RemoteCatalog.ChestAutoButton.Text="AUTO WITHDRAW: ON · "..finished.."/"..#states.." checks"
+                if finished==#states then completed=true;break end
                 index=index%#states+1
+                if RemoteCatalog.ChestTravel=="Walk" and currentChest then
+                    for candidate,state in ipairs(states) do
+                        if not state.Done and state.Binding.Chest==currentChest then index=candidate;break end
+                    end
+                end
                 local state=states[index]
                 if state.Done then continue end
                 local recorder,binding=state.Recorder,state.Binding
+                local target="Chest #"..tostring(chestNumbers[binding.Chest] or index).." · slot "..tostring(binding.Slot or "?")
                 if not recorder:CanUseChestBinding(binding) then
                     state.Done=true
-                    RemoteCatalog.ChestAutoMessage("Skipping chest #"..index..": its session or chest is no longer valid")
+                    RemoteCatalog.ChestAutoMessage("Skipping "..target..": its session or chest is no longer valid")
                     continue
                 end
                 local reached,reason=RemoteCatalog.ApproachChest(recorder,active,binding)
                 if not active() then break end
                 if not reached then
-                    RemoteCatalog.ChestAutoMessage("Chest #"..index.." waiting: "..tostring(reason))
+                    currentChest=nil
+                    RemoteCatalog.ChestAutoMessage(target.." waiting: "..tostring(reason))
                     task.wait(1)
                     continue
                 end
+                currentChest=binding.Chest
                 local before=RemoteCatalog.CarrotCount()
                 if before==nil then
                     RemoteCatalog.ChestAutoMessage("Cannot read carrot inventory count. Use manual withdrawal.")
@@ -5124,11 +5154,11 @@ function RemoteCatalog.SetChestAuto(state)
                 local gained=math.max(0,after-before)
                 if sent and gained>0 then
                     RemoteCatalog.ChestAutoTotal+=gained
-                    RemoteCatalog.ChestAutoMessage("Collected "..RemoteCatalog.ChestAutoTotal.." carrots from selected chests",COLORS.good)
+                    RemoteCatalog.ChestAutoMessage("Collected "..RemoteCatalog.ChestAutoTotal.." carrots · "..finished.."/"..#states.." checks finished\n"..target,COLORS.good)
                     state.Amount=state.Maximum;state.NoProgress=0;state.Probe=false
                     task.wait(.6)
                 else
-                    RemoteCatalog.ChestAutoMessage("Chest #"..index..": no inventory gain. "..RemoteCatalog.ChestResultText(response))
+                    RemoteCatalog.ChestAutoMessage(target..": no inventory gain. "..RemoteCatalog.ChestResultText(response))
                     if state.Probe then
                         state.Done=true
                         task.wait(.2)
@@ -5146,7 +5176,8 @@ function RemoteCatalog.SetChestAuto(state)
         RemoteCatalog.ChestAutoWorker=nil
         if RemoteCatalog.ChestAutoGeneration==generation then
             RemoteCatalog.SetChestAuto(false)
-            if not ok then RemoteCatalog.ChestAutoMessage("Auto withdraw stopped: "..RemoteCatalog.ChestResultText(failure)) end
+            if not ok then RemoteCatalog.ChestAutoMessage("Auto withdraw stopped: "..RemoteCatalog.ChestResultText(failure))
+            elseif completed then RemoteCatalog.ChestAutoMessage("Pass finished: "..RemoteCatalog.ChestAutoTotal.." carrots collected. All "..#states.." selected slot checks finished; empty or unconfirmed slots were skipped.\nLast result: "..tostring(RemoteCatalog.ChestResultLabel.Text),COLORS.good) end
         end
     end)
     return true
@@ -5170,7 +5201,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn whole-chest-37\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-routing-38\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
         setStatus(ran and ok and "Carrot withdrawal request sent; check inventory" or "Chest rejected the request. See the result below or copy it.",ran and ok and COLORS.good or COLORS.warn)

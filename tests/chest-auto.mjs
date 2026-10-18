@@ -129,6 +129,36 @@ assert(RemoteCatalog.SetChestAuto(true));drain()
 assert(inventory==83 and RemoteCatalog.ChestAutoTotal==83,'whole-chest mode must drain every nonempty carrot slot including both index boundaries')
 for _,remaining in pairs(slots) do assert(remaining==0,'a carrot stack was left behind') end
 assert(requests['A:1']==1 and requests['B:0']==1,'empty probe slots must be skipped without repeated retries')
+-- Walk mode must drain all slots in one physical chest before travelling again.
+local physicalA,physicalB={},{}
+local routed={
+ {Recorder=recorder,Binding={Chest=physicalA,Slot=0,Amount=5,Key='A:0'}},
+ {Recorder=recorder,Binding={Chest=physicalA,Slot=1,Amount=5,Key='A:1'}},
+ {Recorder=recorder,Binding={Chest=physicalB,Slot=0,Amount=5,Key='B:0'}},
+}
+RemoteCatalog.ChestTravel='Walk'
+RemoteCatalog.SelectedChestTargets=function() return routed end
+slots={['A:0']=10,['A:1']=10,['B:0']=10};inventory=0
+local visits={}
+RemoteCatalog.WithdrawCarrots=function(amount,_,binding)
+ table.insert(visits,binding.Chest)
+ if slots[binding.Key]<amount then return false,'empty' end
+ slots[binding.Key]-=amount;inventory+=amount;return true
+end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+local leftA=false
+for _,chest in ipairs(visits) do
+ if chest==physicalB then leftA=true end
+ assert(not leftA or chest~=physicalA,'Walk must not bounce back to a chest after each batch')
+end
+assert(inventory==30 and string.find(RemoteCatalog.ChestLastDetail,'Pass finished: 30 carrots',1,true),'completed pass must report the confirmed total')
+-- An unreachable current chest must release its preference so another can run.
+RemoteCatalog.ApproachChest=function(_,_,binding) return binding.Chest~=physicalA,'out of range' end
+slots={['A:0']=10,['A:1']=10,['B:0']=10};inventory=0
+assert(RemoteCatalog.SetChestAuto(true))
+for i=1,100 do if coroutine.status(worker)=='suspended' then local ok,err=coroutine.resume(worker);assert(ok,err) end end
+assert(inventory==10 and RemoteCatalog.ChestAutoEnabled,'blocked Walk chest must not starve reachable targets')
+RemoteCatalog.SetChestAuto(false);drain()
 return 'Chest Auto Max: batches/remainder, inventory confirmation, range wait/resume, one worker, bounded no-progress, Stop/in-flight restart, errors/session/GUI cleanup passed'
 `;
 const state=await LuauState.createAsync();

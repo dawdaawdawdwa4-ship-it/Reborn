@@ -12,7 +12,8 @@ local blocks={GetChildren=function() return {a,b,far,unrelated} end}
 local island={FindFirstChild=function(_,name) return name=='Blocks' and blocks end}
 local function getPlayerIsland() return island end
 local function getPartPosition(chest) return chest.Position end
-local player={Character={FindFirstChild=function() return {Position=pos(0)} end}}
+local rootX=0
+local player={Character={FindFirstChild=function() return {Position=pos(rootX)} end}}
 local template={Chest=a,Slot=1,Amount=30,ObservedAt=1}
 local valid=true
 local recorder={GetChestBindings=function() return {template} end,CanUseChestBinding=function() return valid end}
@@ -43,6 +44,10 @@ RemoteCatalog.ChestSelection=nil;RemoteCatalog.ChestDiscover=false
 assert(#RemoteCatalog.ChestTargets()==1 and #RemoteCatalog.SelectedChestTargets()==13,'learned-only scope must exclude discovered chests')
 RemoteCatalog.ChestWhole=false
 assert(#RemoteCatalog.SelectedChestTargets()==1 and RemoteCatalog.SelectedChestTargets()[1].Binding==template,'learned-slot mode must preserve the exact captured slot')
+RemoteCatalog.ChestDiscover=true;RemoteCatalog.ChestWhole=true;RemoteCatalog.ChestTravel='Walk';rootX=10
+local nearest=RemoteCatalog.SelectedChestTargets()
+assert(nearest[1].Binding.Chest==b and nearest[14].Binding.Chest==a,'Walk must list nearer physical chests first')
+for index=1,13 do assert(nearest[index].Binding.Slot==index-1,'equal-distance slots must retain their original order') end
 valid=false
 assert(#RemoteCatalog.ChestTargets()==0 and #RemoteCatalog.SelectedChestTargets()==0,'invalid session must prevent discovery and replay target generation')
 return 'Chest targets: matching owned discovery, range/type filtering, complete slot coverage, deduplication, individual/scope controls and expired-session guards passed'
