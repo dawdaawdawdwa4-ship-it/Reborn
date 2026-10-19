@@ -91,6 +91,11 @@ flush()
  HttpService.JSONEncode,HttpService.JSONDecode=encode,decode
  end)()
 
+buildController.Buttons.Rotate.Activated:Fire()
+assert(buildController.Rotation==90 and not buildController.Cells,'rotation before Preview must retain the existing settings behavior')
+buildController.Buttons.Center.Activated:Fire()
+assert(string.find(buildController.Status.Text,'Preview a blueprint',1,true) and not buildController.Running,'Center button must require a preview and never start a build')
+buildController.Rotation=0
 buildController.Buttons.Preview.Activated:Fire()
 assert(string.find(buildController.Status.Text,"spawn",1,true))
 assert(buildController.Preset=="Farm plots")
@@ -675,7 +680,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-layers-48',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn blueprint-position-49',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()

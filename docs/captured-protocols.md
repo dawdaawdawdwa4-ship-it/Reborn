@@ -233,3 +233,12 @@ worker. Read-only material checks use the same filter. Start still applies
 normal reach, occupied-cell skipping and placement confirmation. Selection is
 locked through active and cancelled in-flight worker cleanup. Save preview
 continues to serialize every planned cell, including unselected layers.
+
+### Preview positioning (blueprint-position-49)
+
+In-place rotation and centering only transform local preview/queued CFrames. No
+requests, saved-file fields or session envelopes are added. Centering translates
+in whole horizontal block steps; rotation composes full CFrames around the
+preview anchor. Actual placement still requires Start and the existing reach,
+occupancy and confirmation path. Spatial controls retain worker guards through
+in-flight cancellation cleanup.

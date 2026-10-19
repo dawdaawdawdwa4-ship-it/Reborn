@@ -636,3 +636,35 @@ Mock tests cover the actual selector control, preview fading, selected material
 counts, lower/upper-layer dispatch, stop/in-flight guards, resume totals, full
 blueprint saving and reset to All. Existing v41–v47 regressions remain covered.
 Live Roblox rendering, structural support and server acceptance are unverified.
+
+### In-place rotation and preview centering (v49)
+
+With a preview visible, **Rotate** now turns the complete working layout 90°
+about its current anchor. It updates the actual queued CFrames and ghost parts
+without reloading the blueprint, clearing material edits or changing the layer
+filter. Before the first preview, Rotate retains its earlier behavior of choosing
+the next preview's rotation. Offsets are converted to the rotated axes so the
+visible anchor and offset controls stay consistent.
+
+**Center in front** requires a preview and a current character. It moves the full
+footprint horizontally in whole-block grid steps, aligning its center with the
+character's nearest cardinal facing direction and leaving a front gap based on
+footprint depth. Odd/even footprint widths can produce a center difference up to
+half a grid step. Height, block orientation, selected layer and unsaved material
+edits are retained. Use Move blueprint's up/down controls to adjust height. This
+operation does not resample ground at the destination, move the character or
+guarantee that every target is within reach.
+
+Both actions move unselected layers along with selected ones, preserve existing
+material Undo, and invalidate stale build checks. They do not save files, change
+placed blocks or start building. Existing saved slots remain untouched. Reset
+blueprint offset still returns to the rotated base anchor. A fresh Preview
+continues to recompute its base from the current character and ground, as before.
+
+In-place rotation, centering, movement and preview regeneration wait for active
+or cancelled in-flight build workers to finish. Mock tests cover four-turn
+round trips, offset reconstruction, changed character facing, grid alignment,
+height/orientation retention, ghost updates, layer selection, real unsaved edits
+and Undo, missing characters, request/file isolation and in-flight guards. Full
+v41–v48 regressions remain covered; live Roblox rendering and placement remain
+unverified.

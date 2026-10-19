@@ -319,6 +319,58 @@ assert(layered:CycleLayer() and layered.LayerIndex==3 and #layered:SelectedCells
 assert(layered:CycleLayer() and not layered.LayerIndex and #layered:SelectedCells()==4,'layer selector must cycle back to the complete layout')
 layered:ClearPreview()
 assert(not layered.LayerIndex and not layered:CycleLayer(),'clearing the plan must reset layer selection and require a new preview')
+-- In-place rotations preserve the anchor, selected layer and unsaved edits.
+local spatial=A.new(ctx)
+spatial.Anchor=frame(10,2,20);spatial.BaseAnchor=frame(7,2,20);spatial.BlockSize=3;spatial.OffsetX=1
+spatial.Cells={
+ {CFrame=spatial.Anchor*frame(3,0,-3),LayerY=0,Material='grass',Preview={}},
+ {CFrame=spatial.Anchor*frame(-3,3,-6,math.pi/2),LayerY=3,Material='stone',Preview={}}}
+spatial.SavedPlan=A.Validate(stored);spatial.Library[1]=A.Validate(stored)
+assert(spatial:ReplaceMaterial('grass','stone'),'spatial fixture must retain a real unsaved material edit')
+local undo49,slot49,cells49=spatial.MaterialUndo,spatial.Library[1],spatial.Cells
+local first49,second49=spatial.Cells[1].CFrame,spatial.Cells[2].CFrame
+local writes49,requests49=writes47,requests
+assert(spatial:CycleLayer() and spatial.LayerIndex==1)
+spatial.BuildReport='Old check'
+assert(spatial:RotatePreview())
+local rotated49=spatial.Cells[1].CFrame.Position
+assert(math.abs(rotated49.X-7)<.001 and math.abs(rotated49.Z-17)<.001 and spatial.Anchor.Position.X==10 and spatial.Anchor.Position.Z==20,'rotation must turn cells around the existing anchor without moving the anchor')
+assert(spatial.OffsetX==0 and spatial.OffsetZ==-1 and spatial.Rotation==90,'rotation must convert offsets into the new preview axes')
+assert(spatial.Cells[1].Preview.CFrame==spatial.Cells[1].CFrame and spatial.LayerIndex==1 and spatial.PlanDirty and spatial.MaterialUndo==undo49 and not spatial.BuildReport,'rotation must update ghosts, retain edits/layers/Undo and invalidate preflight')
+for i=1,3 do assert(spatial:RotatePreview()) end
+assert(spatial.Rotation==0 and spatial.OffsetX==1 and spatial.OffsetZ==0,'four turns must restore rotation and offset settings')
+for index,original in ipairs({first49,second49}) do
+ local current=spatial.Cells[index].CFrame
+ assert(math.abs(current.Position.X-original.Position.X)<.001 and math.abs(current.Position.Y-original.Position.Y)<.001 and math.abs(current.Position.Z-original.Position.Z)<.001 and math.abs(math.sin(current.yaw-original.yaw))<.001,'four rotations must restore positions and orientations')
+end
+-- Centering translates the full layout on grid steps without rotating or changing height.
+root.CFrame=CFrame.new(0,3,0);root.Position=root.CFrame.Position
+assert(spatial:CenterPreview())
+for index,original in ipairs({first49,second49}) do
+ local current=spatial.Cells[index].CFrame
+ local dx=(current.Position.X-original.Position.X)/3
+ local dz=(current.Position.Z-original.Position.Z)/3
+ assert(math.abs(dx-math.round(dx))<.001 and math.abs(dz-math.round(dz))<.001 and current.Position.Y==original.Position.Y,'centering must move only in whole horizontal block steps')
+ assert(current.Position.Z<0 and math.abs(math.sin(current.yaw-original.yaw))<.001,'centering must place all cells in front while preserving their orientation')
+end
+local midpoint=(spatial.Cells[1].CFrame.Position.X+spatial.Cells[2].CFrame.Position.X)/2
+assert(math.abs(midpoint)<=1.5,'centering must align the full footprint within half a grid step')
+local anchor49=spatial.BaseAnchor*frame(spatial.OffsetX*3,spatial.OffsetY*3,-spatial.OffsetZ*3)
+assert(math.abs(anchor49.Position.X-spatial.Anchor.Position.X)<.001 and math.abs(anchor49.Position.Z-spatial.Anchor.Position.Z)<.001,'centered offsets must reconstruct the visible anchor')
+root.CFrame=CFrame.new(0,3,0,math.pi/2);root.Position=root.CFrame.Position
+assert(spatial:CenterPreview() and spatial.Cells[1].CFrame.Position.X<0 and spatial.Cells[2].CFrame.Position.X<0,'centering must follow a different snapped character facing')
+assert(spatial.Cells==cells49 and spatial.Library[1]==slot49 and spatial.MaterialUndo==undo49 and spatial.LayerIndex==1 and writes47==writes49 and requests==requests49,'spatial editing must preserve working data and saved slots without files or placement requests')
+local frozen49=spatial.Cells[1].CFrame
+spatial.WorkerToken=123
+assert(not spatial:RotatePreview() and not spatial:CenterPreview() and not spatial:Move(1,0,0) and not spatial:Preview() and spatial.Cells[1].CFrame==frozen49,'active or cancelled in-flight workers must lock all spatial edits')
+spatial.WorkerToken=nil
+local savedCharacter49=ctx.Player.Character;ctx.Player.Character=nil
+assert(not spatial:CenterPreview() and spatial.Cells[1].CFrame==frozen49,'a missing character must not move the preview')
+ctx.Player.Character=savedCharacter49
+assert(spatial:Move(-spatial.OffsetX,-spatial.OffsetY,-spatial.OffsetZ))
+assert(spatial.OffsetX==0 and spatial.OffsetY==0 and spatial.OffsetZ==0 and math.abs(spatial.Anchor.Position.X-spatial.BaseAnchor.Position.X)<.001 and math.abs(spatial.Anchor.Position.Z-spatial.BaseAnchor.Position.Z)<.001,'Reset offset must still return to the rotated base after centering')
+local undoPosition49=spatial.Cells[1].CFrame
+assert(spatial:UndoMaterial() and spatial.Cells[1].Material=='grass' and spatial.Cells[1].CFrame==undoPosition49,'material Undo must still work after rotation, centering and offset reset without moving the preview')
 return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

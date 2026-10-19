@@ -87,7 +87,7 @@ function AutoBuild.new(ctx)
     end
     function self:ClearPreview()
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
-        self.Cells=nil;self.BuildReport=nil;self.LayerIndex=nil
+        self.Cells=nil;self.BuildReport=nil;self.LayerIndex=nil;self.BaseAnchor=nil
         if buttons.Layer then buttons.Layer.Text="Build: All layers" end
         if self.MaterialSummary then self.MaterialSummary.Text="Preview or load a blueprint to see its material counts." end
     end
@@ -172,7 +172,7 @@ function AutoBuild.new(ctx)
         return true
     end
     function self:Preview()
-        if self.Running then status("Stop the build before changing its plan.");return false end
+        if self.Running or self.WorkerToken then status("Wait for the build worker before changing its plan.");return false end
         self:ClearPreview()
         local char,root=characterRoot()
         if not root then status("Wait for your character to spawn.");return false end
@@ -192,6 +192,7 @@ function AutoBuild.new(ctx)
         local look=root.CFrame.LookVector
         local yaw=math.round(math.atan2(-look.X,-look.Z)/(math.pi/2))*(math.pi/2)+math.rad(self.Rotation)
         local anchor=CFrame.new(math.round(root.Position.X/size)*size,math.round((ground.Position.Y-size/2)/size)*size,math.round(root.Position.Z/size)*size)*CFrame.Angles(0,yaw,0)
+        self.BaseAnchor=anchor
         anchor=anchor*CFrame.new(self.OffsetX*size,self.OffsetY*size,-self.OffsetZ*size)
         self.Anchor=anchor
         local definitions=game:GetService("ReplicatedStorage"):FindFirstChild("Blocks")
@@ -222,10 +223,7 @@ function AutoBuild.new(ctx)
         status(string.format("Preview: %s, %d blocks. Blue = build/beds; gold = paths.",self.Preset,#self.Cells))
         return true
     end
-    function self:Move(dx,dy,dz)
-        if self.Running then status("Stop the build before moving its blueprint.");return false end
-        if not self.Cells and not self:Preview() then return false end
-        local anchor=self.Anchor*CFrame.new(dx*self.BlockSize,dy*self.BlockSize,-dz*self.BlockSize)
+    local function transformPreview(anchor)
         local delta=anchor*self.Anchor:Inverse()
         for _,cell in ipairs(self.Cells) do
             cell.CFrame=delta*cell.CFrame
@@ -233,9 +231,59 @@ function AutoBuild.new(ctx)
         end
         self.Anchor=anchor;self.BuildReport=nil
         self:UpdateMaterials(self:SelectedCells())
-        self.OffsetX+=dx;self.OffsetY+=dy;self.OffsetZ+=dz
+    end
+    local function updateOffsetLabel()
         self.MoveLabel.Text=string.format("Offset: right %d / up %d / forward %d blocks",self.OffsetX,self.OffsetY,self.OffsetZ)
+    end
+    function self:Move(dx,dy,dz)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before moving its blueprint.");return false end
+        if not self.Cells and not self:Preview() then return false end
+        transformPreview(self.Anchor*CFrame.new(dx*self.BlockSize,dy*self.BlockSize,-dz*self.BlockSize))
+        self.OffsetX+=dx;self.OffsetY+=dy;self.OffsetZ+=dz
+        updateOffsetLabel()
         status("Blueprint moved. Start builds the visible preview positions.")
+        return true
+    end
+    function self:RotatePreview()
+        if self.Running or self.WorkerToken then status("Wait for the build worker before rotating its blueprint.");return false end
+        if not self.Cells then status("Preview a blueprint before rotating it in place.");return false end
+        local turn=CFrame.Angles(0,math.pi/2,0)
+        local base=self.BaseAnchor or self.Anchor*CFrame.new(-self.OffsetX*self.BlockSize,-self.OffsetY*self.BlockSize,self.OffsetZ*self.BlockSize)
+        self.BaseAnchor=base*turn
+        transformPreview(self.Anchor*turn)
+        self.OffsetX,self.OffsetZ=self.OffsetZ,-self.OffsetX
+        self.Rotation=(self.Rotation+90)%360;buttons.Rotate.Text="Rotate: "..self.Rotation.."°"
+        updateOffsetLabel()
+        status("Preview rotated 90° around its anchor. Layers and unsaved material edits are retained; saved slots are unchanged.")
+        return true
+    end
+    function self:CenterPreview()
+        if self.Running or self.WorkerToken then status("Wait for the build worker before positioning its blueprint.");return false end
+        if not self.Cells or #self.Cells==0 then status("Preview a blueprint before centering it.");return false end
+        local _,root=characterRoot()
+        if not root then status("Wait for your character before centering the preview.");return false end
+        local minX,maxX,minZ,maxZ=math.huge,-math.huge,math.huge,-math.huge
+        for _,cell in ipairs(self.Cells) do
+            local p=cell.CFrame.Position
+            minX=math.min(minX,p.X);maxX=math.max(maxX,p.X);minZ=math.min(minZ,p.Z);maxZ=math.max(maxZ,p.Z)
+        end
+        local look=root.CFrame.LookVector
+        local yaw=math.round(math.atan2(-look.X,-look.Z)/(math.pi/2))*(math.pi/2)
+        local dirX,dirZ=math.round(-math.sin(yaw)),math.round(-math.cos(yaw))
+        local size=self.BlockSize
+        local halfDepth=(math.abs(dirX)*(maxX-minX)+math.abs(dirZ)*(maxZ-minZ))/2
+        local distance=(math.ceil(halfDepth/size)+2)*size
+        local targetX=math.round(root.Position.X/size)*size+dirX*distance
+        local targetZ=math.round(root.Position.Z/size)*size+dirZ*distance
+        local dx=math.round((targetX-(minX+maxX)/2)/size)*size
+        local dz=math.round((targetZ-(minZ+maxZ)/2)/size)*size
+        local base=self.BaseAnchor or self.Anchor*CFrame.new(-self.OffsetX*size,-self.OffsetY*size,self.OffsetZ*size)
+        self.BaseAnchor=base
+        transformPreview(CFrame.new(dx,0,dz)*self.Anchor)
+        local offset=base:ToObjectSpace(self.Anchor).Position
+        self.OffsetX=math.round(offset.X/size);self.OffsetY=math.round(offset.Y/size);self.OffsetZ=math.round(-offset.Z/size)
+        updateOffsetLabel()
+        status("Full preview centered in front of your facing direction on grid steps. Height, orientation and layer selection are retained. Check reach before building.")
         return true
     end
     function self:Start()
@@ -599,10 +647,12 @@ function AutoBuild.new(ctx)
     input("Width","Width (blocks)",self.Width,214,true)
     input("Length","Length / stair steps (blocks)",self.Length,276,true)
     input("Height","Wall height (blocks)",self.Height,338,true)
-    button("Rotate","Rotate: 0°",0,406,1,function()
-        if self.Running then return end
-        self.Rotation=(self.Rotation+90)%360;buttons.Rotate.Text="Rotate: "..self.Rotation.."°";invalidate()
+    button("Rotate","Rotate: 0°",0,406,.5,function()
+        if self.Running or self.WorkerToken then return end
+        if self.Cells then self:RotatePreview()
+        else self.Rotation=(self.Rotation+90)%360;buttons.Rotate.Text="Rotate: "..self.Rotation.."°";invalidate() end
     end)
+    button("Center","Center in front",.5,406,.5,function() self:CenterPreview() end)
     buttons.Layer=ctx.Button({Parent=ctx.Parent,Text="Build: All layers",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,446)})
     ctx.Track(buttons.Layer.Activated:Connect(function() self:CycleLayer() end))
     button("Preview","Preview",0,446,.5,function() self:Preview() end)
