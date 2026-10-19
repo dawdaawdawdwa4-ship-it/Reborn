@@ -30,7 +30,7 @@ local function reset()
  if worker and coroutine.status(worker)~='dead' then RemoteCatalog.SetCraftEnabled(false);drain() end
  inventory=0;calls={};valid=true;pending=false;bench.Parent=island;distance=0
  behavior=function(amount) inventory+=amount;return true end
- RemoteCatalog.CraftMode="Top up stock";RemoteCatalog.CraftBatch=100;RemoteCatalog.CraftTarget=100;RemoteCatalog.ChestBusy=false;RemoteCatalog.ChestAutoWorker=nil
+ RemoteCatalog.CraftItem="bait";RemoteCatalog.CraftMode="Top up stock";RemoteCatalog.CraftBatch=100;RemoteCatalog.CraftTarget=100;RemoteCatalog.ChestBusy=false;RemoteCatalog.ChestAutoWorker=nil
 end
 assert(not RemoteCatalog.CraftEnabled and #calls==0 and RemoteCatalog.CraftMode=='Make amount','craft must start OFF with Make amount selected')
 -- Reported regression: already owning 3770 must not block making 100 more.
@@ -56,10 +56,10 @@ assert(inventory==5000 and #calls==13 and calls[13]==30,'Top up stock must suppo
 for _,amount in ipairs(calls) do assert(amount<=100) end
 reset();RemoteCatalog.CraftMode='Make amount';inventory=3770;valid=false
 local report=RemoteCatalog.CraftDiagnosticReport()
-assert(string.find(report,'Craft request ready: false',1,true) and string.find(report,'Press Learn bait craft',1,true) and #calls==0,'craft report must distinguish missing craft binding from a bait-use binding without sending')
+assert(string.find(report,'Craft request ready: false',1,true) and string.find(report,'Press Learn recipe',1,true) and #calls==0,'craft report must distinguish missing craft binding from a bait-use binding without sending')
 valid=true
 report=RemoteCatalog.CraftDiagnosticReport()
-assert(string.find(report,'Craft request ready: true',1,true) and string.find(report,'Bait inventory: 3770',1,true),'craft report must use actual crafting readiness and stock')
+assert(string.find(report,'Craft request ready: true',1,true) and string.find(report,'Item inventory: 3770',1,true),'craft report must use actual crafting readiness and stock')
 reset();RemoteCatalog.CraftBatch=101
 assert(not RemoteCatalog.SetCraftEnabled(true) and #calls==0,'invalid batches above one hundred must never send')
 reset();RemoteCatalog.CraftMode='unknown'
@@ -114,10 +114,61 @@ assert(RemoteCatalog.SetCraftEnabled(true) and #calls==1)
 RemoteCatalog.SetCraftEnabled(false)
 assert(not RemoteCatalog.SetCraftEnabled(true),'in-flight stop/restart cannot overlap requests')
 drain();assert(#calls==1 and not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftEnabled and string.find(RemoteCatalog.CraftInfo.Text,'cleanup complete',1,true),'cancelled request must finish with a clear OFF status')
+-- Generic recipes keep inventory, observed bench and request envelope isolated.
+reset()
+local oldBait=recorder.CraftBinding
+oldBait.Item='bait'
+local other={Item='testRecipe',Workbench=bench}
+recorder.CraftBindings={bait=oldBait,testRecipe=other}
+local inventoryReads={}
+local oldCount=RemoteCatalog.CarrotCount
+RemoteCatalog.CarrotCount=function(item) table.insert(inventoryReads,item);return inventory end
+recorder.CraftItem=function(_,amount,binding) assert(binding==other and amount<=100);table.insert(calls,amount);inventory+=amount;return true end
+RemoteCatalog.CraftItem='testRecipe';RemoteCatalog.CraftTarget=250
+assert(RemoteCatalog.SetCraftEnabled(true))
+RemoteCatalog.CraftItem='bait';recorder.CraftBindings.testRecipe={Item='testRecipe',Workbench={}}
+drain()
+assert(inventory==250 and #calls==3 and calls[3]==50,'recipe and binding must remain fixed for the active run')
+for _,item in ipairs(inventoryReads) do assert(item=='testRecipe','must confirm only the selected recipe inventory') end
+RemoteCatalog.CraftItem='unknown'
+assert(not RemoteCatalog.SetCraftEnabled(true),'unlearned recipes must never be synthesized')
+recorder.CraftItem=nil;recorder.CraftBindings=nil;RemoteCatalog.CarrotCount=oldCount
+reset()
+local externalBinding={Item='testRecipe',Workbench=bench,Remote={Parent=true},Valid=true}
+local external={CraftBinding={Item='stale',Remote={Parent=nil}},CraftBindings={testRecipe=externalBinding},CanUseCraftBinding=function(_,binding) return binding.Valid==true end,CraftItem=function() return true end}
+getgenv=function() return {RebornCapture=external} end
+RemoteCatalog.CraftItem='testRecipe'
+local found,selected=RemoteCatalog.CraftRecorder()
+assert(found==external and selected==externalBinding,'valid independent recipe must remain discoverable when another recipe remote has expired')
+assert(table.find(RemoteCatalog.CraftRecipes(),'testRecipe'),'dynamic recipe list must include usable external recordings')
+getgenv=nil
+reset();RemoteCatalog.CraftMode='Continuous';inventory=3770
+assert(RemoteCatalog.SetCraftEnabled(true))
+for _=1,40 do step() end
+assert(#calls>=3 and RemoteCatalog.CraftEnabled,'Continuous must keep crafting past the finite amount or inventory target')
+local requests=#calls
+RemoteCatalog.SetCraftEnabled(false);drain()
+assert(#calls==requests and not RemoteCatalog.CraftWorker,'Stop must cancel Continuous without a later request')
+reset();RemoteCatalog.CraftMode='Continuous';behavior=function(amount) if #calls>2 then return false,{error='MISSING_MATERIALS'} end;inventory+=amount;return true end
+assert(RemoteCatalog.SetCraftEnabled(true));drain()
+assert(#calls==3 and not RemoteCatalog.CraftEnabled,'Continuous must stop when materials run out rather than retrying indefinitely')
+reset()
+local savedBinding=recorder.CraftBinding
+RemoteCatalog.StartCapture=function() return recorder end
+recorder.Stopped=false
+assert(RemoteCatalog.BeginCraftLearning())
+local justLearned={Item='testRecipe',Workbench=bench}
+recorder.CraftBinding=justLearned;recorder.CraftBindings={testRecipe=justLearned}
+recorder.LearnCraftOnly=false;recorder.Stopped=true
+recorder.CraftItem=function(_,amount,binding) assert(binding==justLearned);table.insert(calls,amount);inventory+=amount;return true end
+RemoteCatalog.CraftMode='Make amount'
+assert(RemoteCatalog.SetCraftEnabled(true));drain()
+assert(RemoteCatalog.CraftItem=='testRecipe' and #calls==1 and inventory==100,'Start immediately after learning must use the newly observed recipe without waiting for a UI tick')
+recorder.CraftBinding=savedBinding;recorder.CraftBindings=nil;recorder.CraftItem=nil;RemoteCatalog.StartCapture=nil
 reset();behavior=function(amount) coroutine.yield('replicating');inventory+=amount;return true end
 assert(RemoteCatalog.SetCraftEnabled(true));gui.Parent=nil;drain()
 assert(#calls==1 and not RemoteCatalog.CraftWorker,'GUI removal must finish without another request')
-return 'Auto Craft Bait: Make amount at 3770 stock, 100/request cap, top-up, batch repeat, cooldown bounds, inventory confirmation, range, ownership, stale context, cancellation and concurrency passed'
+return 'Auto Craft: learned recipe isolation, Continuous, Make amount at 3770 stock, 100/request cap, top-up, batch repeat, cooldown bounds, inventory confirmation, range, ownership, stale context, cancellation and concurrency passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'craft-bait',true)());}

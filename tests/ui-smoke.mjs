@@ -20,6 +20,7 @@ if(!prefix.includes('showTab("Fishing")')) throw new Error('UI construction boun
 const controls=source.slice(source.indexOf('setEnabled = function(state)'),source.indexOf('setHarvestEnabled = function(state)'));
 const farmBindings=source.slice(source.indexOf('track(harvestToggle.Activated'),source.indexOf('track(cropSelect.Activated'));
 const fishBindings=source.slice(source.indexOf('track(toggle.Activated'),source.indexOf('for modeName, modeButton'));
+const craft=source.slice(source.indexOf('-- CRAFT BAIT BEGIN'),source.indexOf('-- CRAFT BAIT UI END'));
 const wiring=`
 RemoteCatalog.Navigation={Stop=function() end}
 local cycleId,harvestCycleId=0,0
@@ -44,7 +45,7 @@ assert(#RemoteCatalog.Entries==146,'all captured remotes must be incorporated')
 RemoteCatalog.RefreshButton.Activated:Fire()
 assert(string.find(RemoteCatalog.Summary.Text,'146',1,true),'remote discovery summary missing')
 assert(gui.Parent==playerGui,'hub must use PlayerGui')
-assert(#hub.Tabs==11,'eleven tabs must exist')
+assert(#hub.Tabs==12,'twelve tabs must exist')
 assert(hub.Root.Visible and hub.Body.GroupTransparency==0,'hub intro must finish')
 assert(hub.CurrentTab==airflowTabs.Fishing,'Fishing must be initial tab')
 for name,page in pairs(pages) do
@@ -128,7 +129,7 @@ end
  assert(removed.Parent==nil and removedWindow._inPage==nil,'settleIn must not reparent a destroyed page')
  removedWindow:Destroy();flush()
 end)()
-return 'UI, eleven tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
+return 'UI, twelve tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
 `;
 for (const supported of [false,true]) {
  const hooks=`
@@ -143,7 +144,7 @@ if CAPTURE_SUPPORTED then
  getnamecallmethod=function() return 'InvokeServer' end
 end
 `;
- try { console.log(await state.loadstring(setup+'\n'+hooks+'\nlocal function runUI()\n'+prefix+'\n'+wiring+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); }
+ try { console.log(await state.loadstring(setup+'\n'+hooks+'\nlocal function runUI()\n'+prefix+'\n'+craft+'\n'+wiring+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); }
  catch(error) {console.error(String(error));process.exitCode=1;}
 }
 state.destroy();

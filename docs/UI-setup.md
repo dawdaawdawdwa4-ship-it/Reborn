@@ -23,14 +23,14 @@ npm --prefix tests test
 ```
 
 The test compiles the hub, both src scripts, and the recorder and constructs the full Farming Hub UI using
-Roblox mocks. It checks that all eleven tabs have content, switches tabs, closes and
+Roblox mocks. It checks that all twelve tabs have content, switches tabs, closes and
 reopens the hub, and exercises resize/reset. The reduced Roblox API name fixture
 comes from MaximumADHD/Roblox-Client-Tracker's `roblox/API-Dump.json`, retrieved
 2026-10-17; the mock rejects invalid initialization properties and property signals.
 Mocks do not validate actual rendering, input routing, or server interactions.
 
 In Roblox Studio, put the contents of `message.txt` into a LocalScript under
-StarterPlayerScripts in your own experience. Verify that the eleven tabs render,
+StarterPlayerScripts in your own experience. Verify that the twelve tabs render,
 scrolling/clicking does not drag the hub, dragging the header works, the corner
 handle resizes, RightControl and the floating button reopen the closed window,
 and Settings > Reset view restores its original size and centered position.
@@ -1497,3 +1497,49 @@ Validation: `npm --prefix tests test` includes the 3,770-stock regression,
 500 crafted via five requests of 100, a smaller final batch, top-up to 5,000,
 configuration frozen mid-run, the distinct diagnostics, and layout/menu locks.
 The full suite passes. Live v68 Roblox crafting/rendering remains unverified.
+
+### General Auto Craft workspace (v69)
+
+**Crafting** is now its own tab (twelve tabs total). It replaces Fishing's craft
+section; bait application and its manual-use learner stay in Fishing. Crafting
+starts OFF with Recipe **bait**, **Make amount**, batch 100 and amount 100.
+
+Click **Learn recipe**, manually craft the desired item once at your own
+workbench, then choose its name in **Recipe**. The learner sends no extra
+request. A completed learning action selects the new recipe without starting
+automation. Learn another recipe to add it to the current-session picker. Recipes
+use their own complete observed request and workbench. This supports recipes
+with the observed `toolName` / `workbenchBlock` / `amount` request shape; it does
+not invent a request for an unlearned item or infer recipe costs/output. The
+crafted inventory item's exact name must match `toolName`, and its quantity must
+be readable. Other request shapes or unobservable output remain unsupported.
+
+Choose a run mode:
+
+- **Make amount**: make the chosen number of additional confirmed items.
+- **Top up stock**: stop when the selected item's total inventory meets its target.
+- **Continuous**: repeat the selected batch until Stop, an error or unconfirmed
+  output. The unused amount control is disabled. Successful crafts use materials.
+
+Requests remain capped at 100. Each batch waits for confirmed growth of the
+selected item; replies without inventory gain stop. The recipe, captured
+workbench, batch and mode stay fixed for the run, even if another manual craft
+is observed. Requests are serialized with chest collection. Existing ownership,
+20-stud local reach, stale-character/server checks, bounded `TOO_FAST` retries,
+Stop All and GUI cleanup still apply. Stop cannot recall an in-flight request.
+A finite run must be started again to make another finite amount. Use Continuous
+to keep making the same recipe without restarting between completed batches.
+
+The recipe dropdown refreshes its list when opened and disconnects replaced
+option callbacks. The same inline dropdown helper preserves layout, exclusive
+opening, Escape/close behavior and cleanup for other controls. Changing a recipe
+or mode does not send a craft. **Copy craft diagnostics** includes the selected
+recipe and mode; it omits learned session context. Recorder v30 retains v29 bait
+bindings during upgrade. Recipe bindings stay in memory for the current account,
+character and server; there is no recipe file import/export in this version.
+
+Validation: `npm --prefix tests test` includes the full suite, generic recipe and
+workbench isolation, bait compatibility/migration, selected-item confirmation,
+Continuous Stop/material failure, recipe selection and dynamic callback cleanup,
+12-tab startup, plus existing build/plow/chest/fishing regressions. Live Roblox
+crafting, menu rendering and recipe compatibility remain unverified.

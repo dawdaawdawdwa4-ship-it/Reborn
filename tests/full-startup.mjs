@@ -848,7 +848,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn craft-amount-68',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn auto-craft-69',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1361,8 +1361,28 @@ end)()
  local r=RemoteCatalog
  assert(not r.CraftEnabled and not r.CraftWorker and r.CraftBatch==100 and r.CraftTarget==100,'craft startup must be OFF with batch/target 100')
  assert(r.CraftMode=='Make amount','craft default must make extra bait independently of stock')
- assert(r.LearnBaitButton.Position.Y.Offset+r.LearnBaitButton.Size.Y.Offset<r.CraftHeading.Position.Y.Offset,'craft heading must not cover the manual bait-use learning button')
- assert(r.CraftHeading.Position.Y.Offset+r.CraftHeading.Size.Y.Offset<r.CraftModeButton.Position.Y.Offset,'craft mode must be below its heading')
+ assert(#hub.Tabs==12 and r.CraftPage.Parent.Name~='Fishing','Crafting must be an independent twelfth tab')
+ local oldRecorder=r.Recorder
+ local bench={Parent=true}
+ local learnedRecipes={CraftBinding={Item='bait',Remote={Parent=true},Workbench=bench},CraftBindings={testRecipe={Item='testRecipe',Workbench=bench}},CanUseCraftBinding=function() return true end,CraftItem=function() error('picker must never craft') end}
+ r.Recorder=learnedRecipes
+ r.CraftRecipeButton.Activated:Fire()
+ assert(r.CraftRecipeMenu.Menu.Visible and #r.CraftRecipeMenu.Options==2,'recipe dropdown must discover learned recipe names dynamically')
+ local previousOption=r.CraftRecipeMenu.Options[2]
+ previousOption.Activated:Fire()
+ assert(r.CraftItem=='testRecipe' and not r.CraftEnabled and not r.CraftRecipeMenu.Menu.Visible,'selecting another recipe must not start crafting')
+ r.CraftRecipeButton.Activated:Fire()
+ r.CraftRecipeMenu.Options[1].Activated:Fire()
+ previousOption.Activated:Fire()
+ assert(r.CraftItem=='bait','replaced dynamic menu options must disconnect their old callbacks')
+ r.CraftModeButton.Activated:Fire();r.CraftModeMenu.Options[3].Activated:Fire()
+ assert(r.CraftMode=='Continuous' and string.find(r.CraftInfo.Text,'until Stop',1,true),'Continuous choice must explain its stopping rule without starting a worker')
+ r.CraftTargetButton.Activated:Fire();assert(not r.CraftTargetMenu.Menu.Visible and not r.CraftTargetButton.Active,'Continuous must disable its unused amount control')
+ r.CraftModeButton.Activated:Fire();r.CraftModeMenu.Options[1].Activated:Fire()
+ r.Recorder=oldRecorder
+
+ assert(r.CraftHeading.Parent==r.CraftPage and r.LearnBaitButton.Parent~=r.CraftPage,'crafting must have its own page separate from bait-use learning')
+ assert(r.CraftHeading.Position.Y.Offset+r.CraftHeading.Size.Y.Offset<r.CraftRecipeButton.Position.Y.Offset and r.CraftRecipeButton.Position.Y.Offset+r.CraftRecipeButton.Size.Y.Offset<r.CraftModeButton.Position.Y.Offset,'recipe and mode controls must be below the heading without overlap')
  local originalModeY=r.CraftLearnButton.Position.Y.Offset
  for _=1,3 do
   r.CraftModeButton.Activated:Fire()
@@ -1395,6 +1415,7 @@ end)()
  r.CraftWorker=67;r.CraftBatchButton.Activated:Fire()
  assert(not r.CraftBatchMenu.Menu.Visible,'active craft must lock dropdowns')
  r.CraftModeButton.Activated:Fire();assert(not r.CraftModeMenu.Menu.Visible,'active craft must lock mode dropdown')
+ r.CraftRecipeButton.Activated:Fire();assert(not r.CraftRecipeMenu.Menu.Visible,'active craft must lock recipe dropdown')
  r.CraftWorker=nil
  local start,recorder=r.StartCapture,r.Recorder
  local learned={Active=false,LearnBaitOnly=true,Stop=function(self) self.Stopped=true end}
@@ -1413,8 +1434,24 @@ end)()
  r.SetChestAuto(false);assert(not r.ChestReachWaiting,'Stop clears deferred reach status')
  end)()
 
+;(function()
+ local r=RemoteCatalog
+ local start,recorder=r.StartCapture,r.Recorder
+ local fake={Stopped=false,Active=false,CanUseCraftBinding=function() return true end,Stop=function(self) self.Stopped=true;self.LearnCraftOnly=false end}
+ r.StartCapture=function() return fake end
+ assert(r.BeginCraftLearning() and r.CraftLearning and fake.LearnCraftOnly)
+ fake.CraftBinding={Item='testRecipe',Workbench={Parent=true},Remote={Parent=true}}
+ fake.LearnCraftOnly=false;fake.Stopped=true
+ r.RefreshCraftUI()
+ assert(r.CraftItem=='testRecipe' and not r.CraftLearning and string.find(r.CraftInfo.Text,'Learned recipe: testRecipe',1,true) and not r.CraftEnabled,'completed learning must select the new recipe and explain Start without crafting automatically')
+ r.StopCraftLearning();r.StartCapture,r.Recorder=start,recorder;r.CraftItem='bait';r.RefreshCraftUI()
+ end)()
+
+local lastRecipeOption=RemoteCatalog.CraftRecipeMenu.Options[1]
 RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
+RemoteCatalog.CraftItem="cleanup-sentinel";lastRecipeOption.Activated:Fire()
+assert(RemoteCatalog.CraftItem=="cleanup-sentinel","GUI cleanup must disconnect dynamic recipe option callbacks")
 assert(not RemoteCatalog.StopTimerDeadline,'destroying the hub must clear its timer')
 assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'

@@ -640,3 +640,31 @@ The new craft report is read-only, distinguishes craft binding/learning from
 bait-use binding/learning, and omits captured session context. Regression tests
 verify the high-stock scenario, request caps, final remainder and both goal
 semantics. Live server acceptance remains unverified.
+
+### Learned recipe catalog and Continuous mode (auto-craft-69)
+
+Recorder v30 generalizes the existing observed crafting shape. A live
+RemoteFunction invocation on the known craft endpoint, or beneath `out` with
+that same payload shape, can teach a nonempty `toolName` (up to 128 bytes), a
+live Model/BasePart `workbenchBlock`, and integer `amount` 1–100. The learner
+retains one latest binding per exact recipe name in `CraftBindings`. Learning
+another recipe does not rewrite the former recipe's item, workbench or envelope.
+No new endpoint/catalog entry is added (146 endpoints).
+
+`CraftItem(amount, binding)` clones the selected recipe's observed arguments and
+changes only `amount`. It checks the captured account, character, server, remote
+and workbench. The legacy `CraftBait` helper selects the bait binding explicitly,
+even after another recipe was learned. Upgrading a v29 recorder migrates its
+existing bait template into the recipe catalog without changing its envelope.
+The application checks own-island membership/reach and confirms inventory growth
+under that selected `toolName`; an unobservable or differently named output
+stops instead of inventing a successful craft. A new recipe/workbench cannot be
+substituted into a running operation.
+
+Continuous mode changes only local scheduling. It repeats successful confirmed
+batches, each capped at 100, until Stop or the existing bounded failure policy.
+It does not skip server rejection, material requirements, output confirmation or
+normal access/range checks. Other recipe shapes, output ratios and server costs
+are not established by the supplied bait capture. Tests use synthetic second
+recipe captures to validate isolation; live non-bait compatibility remains
+unverified.

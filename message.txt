@@ -499,17 +499,18 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 29 and previous.Resume then
+if previous and previous.Version == 30 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 29, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 30, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
+    capture.CraftBindings = previous.CraftBindings
     capture.CraftBinding = previous.CraftBinding
     capture.BaitBinding = previous.BaitBinding
     capture.PlacementBinding = previous.PlacementBinding
@@ -526,6 +527,7 @@ if previous then
     capture.Active = #capture.Records < capture.MaxCalls
 end
 capture.ChestBindings=capture.ChestBindings or {}
+capture.CraftBindings=capture.CraftBindings or {}
 local exactNames = {
     tIFPj2BFAwqodE = true, -- Bait crafting; learn the live envelope and workbench.
     FiAxD3JcLWBD6I = true, -- Supplied potatoSalad chest withdrawal; learn its live envelope.
@@ -909,40 +911,54 @@ local function craftBody(packet)
         if type(value)=="table" and value.workbenchBlock~=nil then return value end
     end
 end
-local function learnCraftBait(remote,method,args)
+local function learnCraft(remote,method,args)
     if method~="InvokeServer" then return false end
     local group=remote.Parent
     if remote.Name~="tIFPj2BFAwqodE" and (not group or not group.Parent or group.Parent.Name~="out") then return false end
     local body=craftBody(args[1])
-    if not body or body.toolName~="bait" or type(body.amount)~="number" or body.amount<1 or body.amount>100 or body.amount%1~=0 then return false end
+    if not body or type(body.toolName)~="string" or #body.toolName<1 or #body.toolName>128 or type(body.amount)~="number" or body.amount<1 or body.amount>100 or body.amount%1~=0 then return false end
     local bench=body.workbenchBlock
-    if typeof(bench)~="Instance" or not bench.Parent or bench.Name~="workbench2" or not (bench:IsA("Model") or bench:IsA("BasePart")) then return false end
+    if typeof(bench)~="Instance" or not bench.Parent or not (bench:IsA("Model") or bench:IsA("BasePart")) then return false end
     local owner=game:GetService("Players").LocalPlayer
     if not owner or not owner.Character then return false end
-    capture.CraftBinding={Remote=remote,Method=method,Args=cloneArguments(args),Workbench=bench,
+    capture.CraftBinding={Remote=remote,Method=method,Args=cloneArguments(args),Workbench=bench,Item=body.toolName,
         OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
+    capture.CraftBindings[body.toolName]=capture.CraftBinding
     return true
 end
-function capture:CanUseCraftBinding()
-    local binding=self.CraftBinding
+function capture:CanUseCraftBinding(binding)
+    binding=binding or self.CraftBinding
     local owner=game:GetService("Players").LocalPlayer
     return binding~=nil and binding.Remote~=nil and binding.Remote.Parent~=nil and binding.Workbench~=nil
         and binding.Workbench.Parent~=nil and owner~=nil and owner.Character~=nil
         and binding.OwnerCharacter==owner.Character and binding.OwnerUserId==owner.UserId and binding.JobId==game.JobId
 end
-function capture:CraftBait(amount)
-    if not self:CanUseCraftBinding() then return false,"Learn bait crafting again on this character/server" end
+function capture:CraftItem(amount,binding)
+    binding=binding or self.CraftBinding
+    if not self:CanUseCraftBinding(binding) then return false,"Learn this recipe again on this character/server" end
     if type(amount)~="number" or amount<1 or amount>100 or amount%1~=0 then return false,"Craft batch must be 1–100" end
-    local binding=self.CraftBinding
     local ok,result=pcall(function()
         local args=cloneArguments(binding.Args)
         local body=craftBody(args[1])
-        assert(body and body.toolName=="bait" and body.workbenchBlock==binding.Workbench,"Invalid craft template")
+        assert(body and body.toolName==binding.Item and body.workbenchBlock==binding.Workbench,"Invalid craft template")
         body.amount=amount
         return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
     end)
     if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     return true,result
+end
+-- Keep v29 bait requests usable after an upgrade, without guessing a new recipe.
+if capture.CraftBinding and capture.CraftBinding.Args then
+    local body=craftBody(capture.CraftBinding.Args[1])
+    if body and type(body.toolName)=="string" then
+        capture.CraftBinding.Item=body.toolName
+        if not capture.CraftBindings[body.toolName] then capture.CraftBindings[body.toolName]=capture.CraftBinding end
+    end
+end
+function capture:CraftBait(amount)
+    local binding=self.CraftBindings.bait
+    if not binding then return false,"Learn bait crafting first" end
+    return self:CraftItem(amount,binding)
 end
 local function learnBait(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
@@ -1094,7 +1110,7 @@ local function intercept(remote, ...)
             local args = table.pack(...)
             pcall(function()
                 if typeof(remote)=="Instance" and remote:IsA("RemoteFunction") then
-                    if capture.LearnCraftOnly and learnCraftBait(remote,method,args) then capture.LearnCraftOnly=false end
+                    if capture.LearnCraftOnly and learnCraft(remote,method,args) then capture.LearnCraftOnly=false end
                     if capture.LearnPlowOnly and learnPlow(remote,method,args) then capture.LearnPlowOnly=false end
                     if capture.LearnWoodOnly then
                         local previousWood=capture.WoodHitBinding
@@ -1120,7 +1136,7 @@ local function intercept(remote, ...)
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
                 learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args)
                 if not learned then learned,autoReplantValue=learnAutoReplant(remote, method, args) end
-                learned = learned or learnCraftBait(remote,method,args) or learnPlow(remote,method,args) or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learned or learnCraft(remote,method,args) or learnPlow(remote,method,args) or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -2906,7 +2922,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "craft-amount-68",
+    Subtitle = "auto-craft-69",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2960,6 +2976,7 @@ function RemoteCatalog.ChoiceDropdown(page,anchor,options,settings)
     function self:Open()
         if settings.Locked and settings.Locked() then return false end
         RemoteCatalog.CloseMenus()
+        if settings.GetOptions then self:SetOptions(settings.GetOptions()) end
         local y=anchor.Position.Y.Offset+anchor.Size.Y.Offset+6
         menu.Position=UDim2.fromOffset(6,y)
         for _,child in ipairs(page:GetChildren()) do
@@ -2972,15 +2989,35 @@ function RemoteCatalog.ChoiceDropdown(page,anchor,options,settings)
         if settings.Layout then settings.Layout() end
         return true
     end
-    for i,value in ipairs(options) do
-        local option=button({Parent=menu,Text=tostring(value),Size=UDim2.new(1,-16,0,38),Position=UDim2.fromOffset(6,6+(i-1)*40)})
-        option.TextXAlignment=Enum.TextXAlignment.Left;option.ZIndex=26
-        self.Options[i]=option
-        track(option.Activated:Connect(function()
-            if settings.Locked and settings.Locked() then self:Close();return end
-            settings.Set(value);self:Close()
-        end))
+    self.OptionConnections={}
+    function self:DisconnectOptions()
+        for _,connection in ipairs(self.OptionConnections) do connection:Disconnect() end
+        self.OptionConnections={}
     end
+    track({Disconnect=function() self:DisconnectOptions() end})
+    function self:SetOptions(values)
+        self:Close()
+        self:DisconnectOptions()
+        for _,option in ipairs(self.Options) do option:Destroy() end
+        self.Options={};options=table.clone(values)
+        menu.Size=UDim2.new(1,-12,0,math.min(#options*40+12,212))
+        menu.CanvasSize=UDim2.fromOffset(0,#options*40+12)
+        for i,value in ipairs(options) do
+            local option=button({Parent=menu,Text=tostring(value),Size=UDim2.new(1,-16,0,38),Position=UDim2.fromOffset(6,6+(i-1)*40)})
+            option.TextXAlignment=Enum.TextXAlignment.Left;option.ZIndex=26
+            self.Options[i]=option
+            table.insert(self.OptionConnections,option.Activated:Connect(function()
+                if settings.Locked and settings.Locked() then self:Close();return end
+                settings.Set(value);self:Close()
+            end))
+        end
+        self:Refresh()
+    end
+    track(menu.Destroying:Connect(function()
+        for _,connection in ipairs(self.OptionConnections) do connection:Disconnect() end
+        self.OptionConnections={}
+    end))
+    self:SetOptions(options)
     track(anchor.Activated:Connect(function() if menu.Visible then self:Close() else self:Open() end end))
     table.insert(RemoteCatalog.MenuClosers,function() self:Close() end)
     RemoteCatalog.RegisterMenuRegion(anchor,menu)
@@ -3034,6 +3071,7 @@ end
 local fishingPage = createPage("Fishing")
 local harvestPage = createPage("Harvest")
 RemoteCatalog.ChestPage = createPage("Chests")
+RemoteCatalog.CraftPage = createPage("Crafting")
 local woodPage = createPage("Wood Farm")
 local minePage = createPage("Mining")
 local buildPage = createPage("Auto Build")
@@ -3373,8 +3411,8 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn craft-amount-68",
-        "Report scope: bait use. For crafting, use Copy craft diagnostics.",
+    return table.concat({"Reborn auto-craft-69",
+        "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -4912,7 +4950,7 @@ function RemoteCatalog.UpdateCaptureUI()
         if RemoteCatalog.RequestId(name) then table.insert(learned, RemoteCatalog.VerifiedRequests[name]) end
     end
     if recorder.HarvestBinding then table.insert(learned, "crop harvest") end
-    if recorder.CraftBinding then table.insert(learned, "bait crafting") end
+    if recorder.CraftBinding then table.insert(learned, "item crafting") end
     if recorder.BaitBinding then table.insert(learned, "bait (current remote)") end
     if recorder.PlacementBinding then table.insert(learned, "placement (current remote)") end
     if recorder.PlowBinding then table.insert(learned, "hoe / plow") end
@@ -5090,7 +5128,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn craft-amount-68", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn auto-craft-69", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -7048,7 +7086,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn craft-amount-68\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn auto-craft-69\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -7556,7 +7594,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn craft-amount-68\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn auto-craft-69\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -7565,6 +7603,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
 end))
 
 -- CRAFT BAIT BEGIN
+RemoteCatalog.CraftItem="bait"
 RemoteCatalog.CraftMode="Make amount"
 RemoteCatalog.CraftBatch=100
 RemoteCatalog.CraftTarget=100
@@ -7575,10 +7614,25 @@ function RemoteCatalog.RefreshCraftUI()
     if not gui.Parent or not RemoteCatalog.CraftToggle then return end
     RemoteCatalog.CraftToggle.Text=RemoteCatalog.CraftEnabled and "STOP CRAFTING" or RemoteCatalog.CraftWorker and "FINISHING REQUEST…" or "START CRAFTING"
     RemoteCatalog.CraftToggle.BackgroundColor3=RemoteCatalog.CraftEnabled and COLORS.on or COLORS.off
+    if RemoteCatalog.CraftTargetButton then
+        RemoteCatalog.CraftTargetButton.Active=RemoteCatalog.CraftWorker==nil and RemoteCatalog.CraftMode~="Continuous"
+        RemoteCatalog.CraftTargetButton.TextColor3=RemoteCatalog.CraftMode=="Continuous" and COLORS.muted or COLORS.text
+    end
     local recorder=RemoteCatalog.Recorder
-    RemoteCatalog.CraftLearnButton.Text=recorder and recorder.LearnCraftOnly and "Cancel craft learning" or "Learn bait craft"
+    RemoteCatalog.CraftLearnButton.Text=recorder and recorder.LearnCraftOnly and "Cancel recipe learning" or "Learn recipe"
+    if RemoteCatalog.CraftLearning and not (recorder and not recorder.Stopped and recorder.LearnCraftOnly) then
+        RemoteCatalog.CraftLearning=false
+        local binding=recorder and recorder.CraftBinding
+        if binding and binding~=RemoteCatalog.CraftLearningBefore and recorder:CanUseCraftBinding(binding) and not RemoteCatalog.CraftWorker then
+            RemoteCatalog.CloseMenus()
+            RemoteCatalog.CraftItem=binding.Item or "bait"
+            RemoteCatalog.CraftMessage("Learned recipe: "..RemoteCatalog.CraftItem..". Choose a run mode, then Start crafting. Uses your materials.")
+        end
+    end
+    if RemoteCatalog.CraftRecipeMenu then RemoteCatalog.CraftRecipeMenu:Refresh() end
 end
 function RemoteCatalog.StopCraftLearning()
+    RemoteCatalog.CraftLearning=false
     local recorder=RemoteCatalog.Recorder
     if recorder and recorder.LearnCraftOnly then
         recorder.LearnCraftOnly=false
@@ -7593,19 +7647,49 @@ function RemoteCatalog.BeginCraftLearning()
     if not ok or not recorder then RemoteCatalog.CraftMessage("This host cannot learn craft requests.");return false end
     RemoteCatalog.Recorder=recorder
     recorder.LearnCraftOnly=true;recorder.Active=false
+    RemoteCatalog.CraftLearning=true;RemoteCatalog.CraftLearningBefore=recorder.CraftBinding
     RemoteCatalog.RefreshCraftUI()
-    RemoteCatalog.CraftMessage("Craft bait once manually at your own workbench2, then press Start crafting. Learning sends no extra requests.")
+    RemoteCatalog.CraftMessage("Craft the item once manually at your own workbench, then choose it in Recipe. Learning sends no extra requests.")
     return true
 end
+function RemoteCatalog.CraftRecorders()
+    local list={}
+    if RemoteCatalog.Recorder then table.insert(list,RemoteCatalog.Recorder) end
+    local other=RemoteCatalog.LiveRecorder("CraftBinding")
+    if other and other~=RemoteCatalog.Recorder then table.insert(list,other) end
+    local ok,existing=pcall(function() return (type(getgenv)=="function" and getgenv() or _G).RebornCapture end)
+    if ok and existing and not table.find(list,existing) then table.insert(list,existing) end
+    return list
+end
+function RemoteCatalog.CraftRecipes()
+    local names,seen={"bait"},{bait=true}
+    for _,recorder in ipairs(RemoteCatalog.CraftRecorders()) do
+        for name,binding in pairs(recorder.CraftBindings or {}) do
+            if type(recorder.CanUseCraftBinding)=="function" and not seen[name] and recorder:CanUseCraftBinding(binding) then seen[name]=true;table.insert(names,name) end
+        end
+        local binding=recorder.CraftBinding
+        local name=binding and (binding.Item or "bait")
+        if name and type(recorder.CanUseCraftBinding)=="function" and not seen[name] and recorder:CanUseCraftBinding(binding) then seen[name]=true;table.insert(names,name) end
+    end
+    table.sort(names)
+    return names
+end
 function RemoteCatalog.CraftRecorder()
-    local recorder=RemoteCatalog.LiveRecorder("CraftBinding")
-    if recorder and type(recorder.CanUseCraftBinding)=="function" and type(recorder.CraftBait)=="function" and recorder:CanUseCraftBinding() then return recorder end
+    local selected,chosen
+    for _,recorder in ipairs(RemoteCatalog.CraftRecorders()) do
+        local binding=recorder.CraftBindings and recorder.CraftBindings[RemoteCatalog.CraftItem]
+        if not binding and recorder.CraftBinding and (recorder.CraftBinding.Item or "bait")==RemoteCatalog.CraftItem then binding=recorder.CraftBinding end
+        if binding and type(recorder.CanUseCraftBinding)=="function" and recorder:CanUseCraftBinding(binding)
+            and (type(recorder.CraftItem)=="function" or RemoteCatalog.CraftItem=="bait" and type(recorder.CraftBait)=="function")
+            and (not chosen or (binding.ObservedAt or 0)>(chosen.ObservedAt or 0)) then selected,chosen=recorder,binding end
+    end
+    return selected,chosen
 end
 function RemoteCatalog.CraftReachable(bench)
     local island=getPlayerIsland()
     local cursor=bench
     while cursor and cursor~=island do cursor=cursor.Parent end
-    if not island or cursor~=island then return false,"Use a workbench2 on your own island." end
+    if not island or cursor~=island then return false,"Use the learned workbench on your own island." end
     local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local position=getPartPosition(bench)
     if not root or not position or (root.Position-position).Magnitude>20 then return false,"Waiting · stand within 20 studs of the learned workbench. Crafting stays ON." end
@@ -7616,15 +7700,20 @@ function RemoteCatalog.SetCraftEnabled(state)
         RemoteCatalog.CraftEnabled=false
         RemoteCatalog.CraftGeneration=(RemoteCatalog.CraftGeneration or 0)+1
         RemoteCatalog.RefreshCraftUI()
-        RemoteCatalog.CraftMessage(RemoteCatalog.CraftWorker and "Stopped · waiting for the in-flight request to finish." or "Crafting OFF. Choose Make amount or Top up stock, set the amount, then Start.")
+        RemoteCatalog.CraftMessage(RemoteCatalog.CraftWorker and "Stopped · waiting for the in-flight request to finish." or "Crafting OFF. Choose a learned recipe and run mode, then Start.")
         return true
     end
+    -- Settle completed learning before choosing the recipe for a new run.
+    RemoteCatalog.RefreshCraftUI()
     if RemoteCatalog.CraftEnabled then return true end
     if RemoteCatalog.CraftWorker then RemoteCatalog.CraftMessage("Wait for the current craft request to finish before restarting.");return false end
-    if not RemoteCatalog.CraftRecorder() then RemoteCatalog.CraftMessage("Learn bait craft with this character/server first.");return false end
+    local runRecorder,runBinding=RemoteCatalog.CraftRecorder()
+    if not runRecorder then RemoteCatalog.CraftMessage("Learn this recipe with this character/server first, then select it in Recipe.");return false end
+    local item=RemoteCatalog.CraftItem
     local batch,target,mode=RemoteCatalog.CraftBatch,RemoteCatalog.CraftTarget,RemoteCatalog.CraftMode
-    if (mode~="Make amount" and mode~="Top up stock") or (batch~=25 and batch~=50 and batch~=100) or not table.find({100,250,500,1000,2500,5000,10000},target) then RemoteCatalog.CraftMessage("Choose a valid craft mode, batch and amount.");return false end
+    if (mode~="Make amount" and mode~="Top up stock" and mode~="Continuous") or (batch~=25 and batch~=50 and batch~=100) or not table.find({100,250,500,1000,2500,5000,10000},target) then RemoteCatalog.CraftMessage("Choose a valid craft mode, batch and amount.");return false end
     local makeAmount=mode=="Make amount"
+    local continuous=mode=="Continuous"
     RemoteCatalog.StopCraftLearning()
     RemoteCatalog.CloseMenus()
     RemoteCatalog.CraftGeneration=(RemoteCatalog.CraftGeneration or 0)+1
@@ -7641,30 +7730,30 @@ function RemoteCatalog.SetCraftEnabled(state)
         local confirmed,retries=0,0
         local ok,failure=pcall(function()
             while active() do
-                local recorder=RemoteCatalog.CraftRecorder()
-                if not recorder then outcome="Craft context changed · learn bait craft again.";return end
+                local recorder,binding=runRecorder,runBinding
+                if not recorder:CanUseCraftBinding(binding) then outcome="Craft context changed · learn this recipe again.";return end
                 if RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then
                     RemoteCatalog.CraftMessage("Waiting · finish chest collection before crafting.")
                     if not waitFor(.5) then return end
                     continue
                 end
-                local binding=recorder.CraftBinding
                 local reachable,reason=RemoteCatalog.CraftReachable(binding.Workbench)
                 if not reachable then RemoteCatalog.CraftMessage(reason);if not waitFor(1) then return end;continue end
-                local before=RemoteCatalog.WaitChestInventory("bait",active)
+                local before=RemoteCatalog.WaitChestInventory(item,active)
                 if not active() then return end
-                if before==nil then outcome="Bait quantity is unreadable · no craft sent.";return end
-                if (makeAmount and confirmed>=target) or (not makeAmount and before>=target) then
-                    outcome=makeAmount and ("Made +"..confirmed.." bait this run · inventory "..before) or ("Stock target reached · "..before.." / "..target.." bait. Choose Make amount to craft extra bait.")
+                if before==nil then outcome="Item quantity is unreadable · no craft sent.";return end
+                if not continuous and ((makeAmount and confirmed>=target) or (not makeAmount and before>=target)) then
+                    outcome=makeAmount and ("Made +"..confirmed.." "..item.." this run · inventory "..before) or ("Stock target reached · "..before.." / "..target.." "..item..". Choose Make amount to craft extra items.")
                     return
                 end
                 -- Quantity replication may yield: recheck the actor, binding and reach immediately before sending.
-                if not recorder:CanUseCraftBinding() or recorder.CraftBinding~=binding then continue end
+                if not recorder:CanUseCraftBinding(binding) then outcome="Craft context changed · learn this recipe again.";return end
                 reachable,reason=RemoteCatalog.CraftReachable(binding.Workbench)
                 if not reachable then RemoteCatalog.CraftMessage(reason);if not waitFor(1) then return end;continue end
-                local amount=math.min(batch,makeAmount and target-confirmed or target-before)
-                RemoteCatalog.CraftMessage("Crafting "..amount.." · "..mode.." · +"..confirmed.." confirmed"..(makeAmount and (" / "..target.." extra") or (" · stock "..before.." / "..target)))
-                local sent,response=recorder:CraftBait(amount)
+                local amount=math.min(100,batch,continuous and batch or makeAmount and target-confirmed or target-before)
+                RemoteCatalog.CraftMessage("Crafting "..amount.." "..item.." · "..mode.." · +"..confirmed.." confirmed"..(continuous and " · until Stop" or makeAmount and (" / "..target.." extra") or (" · stock "..before.." / "..target)))
+                local sent,response
+                if recorder.CraftItem then sent,response=recorder:CraftItem(amount,binding) else sent,response=recorder:CraftBait(amount) end
                 if not active() then return end
                 if not sent and RemoteCatalog.ChestTooFast(response) then
                     retries+=1
@@ -7674,13 +7763,13 @@ function RemoteCatalog.SetCraftEnabled(state)
                     continue
                 end
                 if not sent then outcome="Craft rejected · check materials/workbench. "..RemoteCatalog.ChestResultText(response);return end
-                local after=RemoteCatalog.WaitChestInventory("bait",active,before)
+                local after=RemoteCatalog.WaitChestInventory(item,active,before)
                 if not active() then return end
-                if not after or after<=before then outcome="No confirmed bait gain · stopped. Check materials and quantity metadata.";return end
+                if not after or after<=before then outcome="No confirmed item gain · stopped. Check materials and quantity metadata.";return end
                 confirmed+=after-before;retries=0
                 RemoteCatalog.CraftMessage("+"..confirmed.." confirmed · "..mode.." · inventory "..after)
-                if (makeAmount and confirmed>=target) or (not makeAmount and after>=target) then
-                    outcome=makeAmount and ("Made +"..confirmed.." bait this run · inventory "..after) or ("Stock target reached · "..after.." / "..target.." bait; +"..confirmed.." confirmed this run.")
+                if not continuous and ((makeAmount and confirmed>=target) or (not makeAmount and after>=target)) then
+                    outcome=makeAmount and ("Made +"..confirmed.." "..item.." this run · inventory "..after) or ("Stock target reached · "..after.." / "..target.." "..item.."; +"..confirmed.." confirmed this run.")
                     return
                 end
                 if not waitFor(.5) then return end
@@ -7698,29 +7787,31 @@ function RemoteCatalog.SetCraftEnabled(state)
     return true
 end
 function RemoteCatalog.CraftPlanText()
+    if RemoteCatalog.CraftMode=="Continuous" then return "OFF · Repeatedly craft "..RemoteCatalog.CraftItem..", up to "..RemoteCatalog.CraftBatch.." per request until Stop or a failure. Uses your materials." end
     if RemoteCatalog.CraftMode=="Make amount" then
-        return "OFF · Make "..RemoteCatalog.CraftTarget.." extra bait, up to "..RemoteCatalog.CraftBatch.." per batch. Existing stock does not limit this run. Uses your materials."
+        return "OFF · Make "..RemoteCatalog.CraftTarget.." extra "..RemoteCatalog.CraftItem..", up to "..RemoteCatalog.CraftBatch.." per batch. Existing stock does not limit this run. Uses your materials."
     end
-    local count=RemoteCatalog.CarrotCount("bait")
-    if count and count>=RemoteCatalog.CraftTarget then return "OFF · Stock target already met ("..count.." / "..RemoteCatalog.CraftTarget.."). Choose Make amount to craft extra bait." end
-    return "OFF · Top up stock to "..RemoteCatalog.CraftTarget.." bait, up to "..RemoteCatalog.CraftBatch.." per batch. Uses your materials."
+    local count=RemoteCatalog.CarrotCount(RemoteCatalog.CraftItem)
+    if count and count>=RemoteCatalog.CraftTarget then return "OFF · Stock target already met ("..count.." / "..RemoteCatalog.CraftTarget.."). Choose Make amount to craft extra items." end
+    return "OFF · Top up stock to "..RemoteCatalog.CraftTarget.." "..RemoteCatalog.CraftItem..", up to "..RemoteCatalog.CraftBatch.." per batch. Uses your materials."
 end
 function RemoteCatalog.CraftDiagnosticReport()
-    local count=RemoteCatalog.CarrotCount("bait")
+    local count=RemoteCatalog.CarrotCount(RemoteCatalog.CraftItem)
     local recorder=RemoteCatalog.CraftRecorder()
     local learning=RemoteCatalog.Recorder and not RemoteCatalog.Recorder.Stopped and RemoteCatalog.Recorder.LearnCraftOnly==true
     local action
     if RemoteCatalog.CraftWorker then action=RemoteCatalog.CraftEnabled and "Running; see last status" or "Waiting for current request cleanup"
-    elseif RemoteCatalog.CraftMode=="Top up stock" and count and count>=RemoteCatalog.CraftTarget then action="Stock target already met. Choose Make amount to craft extra bait."
-    elseif learning then action="Craft bait once manually at your own workbench2 (not Use bait), then press Start crafting."
-    elseif not recorder then action="Press Learn bait craft, then craft bait manually once at your own workbench2."
+    elseif RemoteCatalog.CraftMode=="Top up stock" and count and count>=RemoteCatalog.CraftTarget then action="Stock target already met. Choose Make amount to craft extra items."
+    elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
+    elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn craft-amount-68 · Craft diagnostics",
+    return table.concat({"Reborn auto-craft-69 · Craft diagnostics",
+        "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
         "Per-request limit: 100",
-        "Amount / stock target: "..tostring(RemoteCatalog.CraftTarget),
-        "Bait inventory: "..tostring(count or "unreadable"),
+        "Amount / stock target: "..(RemoteCatalog.CraftMode=="Continuous" and "not used (until Stop)" or tostring(RemoteCatalog.CraftTarget)),
+        "Item inventory: "..tostring(count or "unreadable"),
         "Craft request ready: "..tostring(recorder~=nil),
         "Craft learner: "..tostring(learning==true),
         "Auto Craft: "..tostring(RemoteCatalog.CraftEnabled==true),
@@ -7730,18 +7821,20 @@ function RemoteCatalog.CraftDiagnosticReport()
 end
 -- CRAFT BAIT END
 -- CRAFT BAIT UI BEGIN
-RemoteCatalog.CraftHeading=pageHeading(fishingPage,"AUTO CRAFT BAIT · OWN WORKBENCH",510)
-RemoteCatalog.CraftModeButton=button({Parent=fishingPage,Text="Craft: Make amount",TextSize=12,Size=UDim2.new(1,-12,0,36),Position=UDim2.fromOffset(6,538)})
-RemoteCatalog.CraftLearnButton=button({Parent=fishingPage,Text="Learn bait craft",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,582)})
-RemoteCatalog.CraftToggle=button({Parent=fishingPage,Text="START CRAFTING",TextSize=12,Bg=COLORS.off,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,582)})
-RemoteCatalog.CraftBatchButton=button({Parent=fishingPage,Text="Batch: 100",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,626)})
-RemoteCatalog.CraftTargetButton=button({Parent=fishingPage,Text="Amount: 100",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,626)})
-RemoteCatalog.CraftInfo=label({Parent=fishingPage,Text="OFF · Learn a manual bait craft first. Uses your materials.",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,76),Position=UDim2.fromOffset(8,670)})
+RemoteCatalog.CraftHeading=pageHeading(RemoteCatalog.CraftPage,"AUTO CRAFT · LEARNED RECIPES",6)
+RemoteCatalog.CraftRecipeButton=button({Parent=RemoteCatalog.CraftPage,Text="Recipe: bait",TextSize=12,Size=UDim2.new(1,-12,0,36),Position=UDim2.fromOffset(6,50)})
+RemoteCatalog.CraftModeButton=button({Parent=RemoteCatalog.CraftPage,Text="Craft: Make amount",TextSize=12,Size=UDim2.new(1,-12,0,36),Position=UDim2.fromOffset(6,94)})
+RemoteCatalog.CraftLearnButton=button({Parent=RemoteCatalog.CraftPage,Text="Learn recipe",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,138)})
+RemoteCatalog.CraftToggle=button({Parent=RemoteCatalog.CraftPage,Text="START CRAFTING",TextSize=12,Bg=COLORS.off,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,138)})
+RemoteCatalog.CraftBatchButton=button({Parent=RemoteCatalog.CraftPage,Text="Batch: 100",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,182)})
+RemoteCatalog.CraftTargetButton=button({Parent=RemoteCatalog.CraftPage,Text="Amount: 100",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,182)})
+RemoteCatalog.CraftInfo=label({Parent=RemoteCatalog.CraftPage,Text="OFF · Learn a manual craft first. Uses your materials.",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,76),Position=UDim2.fromOffset(8,226)})
 RemoteCatalog.CraftInfo.TextWrapped=true
-RemoteCatalog.CraftDiagnosticButton=button({Parent=fishingPage,Text="Copy craft diagnostics",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,754)})
-RemoteCatalog.CraftModeMenu=RemoteCatalog.ChoiceDropdown(fishingPage,RemoteCatalog.CraftModeButton,{"Make amount","Top up stock"},{Name="CraftModeDropdown",Title="Craft",Get=function() return RemoteCatalog.CraftMode end,Set=function(value) RemoteCatalog.CraftMode=value;RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText()) end,Locked=function() return RemoteCatalog.CraftWorker~=nil end})
-RemoteCatalog.CraftBatchMenu=RemoteCatalog.ChoiceDropdown(fishingPage,RemoteCatalog.CraftBatchButton,{25,50,100},{Name="CraftBatchDropdown",Title="Batch",Get=function() return RemoteCatalog.CraftBatch end,Set=function(value) RemoteCatalog.CraftBatch=value;RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText()) end,Locked=function() return RemoteCatalog.CraftWorker~=nil end})
-RemoteCatalog.CraftTargetMenu=RemoteCatalog.ChoiceDropdown(fishingPage,RemoteCatalog.CraftTargetButton,{100,250,500,1000,2500,5000,10000},{Name="CraftTargetDropdown",Title="Amount",Get=function() return RemoteCatalog.CraftTarget end,Set=function(value) RemoteCatalog.CraftTarget=value;RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText()) end,Locked=function() return RemoteCatalog.CraftWorker~=nil end})
+RemoteCatalog.CraftDiagnosticButton=button({Parent=RemoteCatalog.CraftPage,Text="Copy craft diagnostics",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,310)})
+RemoteCatalog.CraftRecipeMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.CraftPage,RemoteCatalog.CraftRecipeButton,{"bait"},{Name="CraftRecipeDropdown",Title="Recipe",Get=function() return RemoteCatalog.CraftItem end,GetOptions=RemoteCatalog.CraftRecipes,Set=function(value) RemoteCatalog.CraftItem=value;RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText()) end,Locked=function() return RemoteCatalog.CraftWorker~=nil end})
+RemoteCatalog.CraftModeMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.CraftPage,RemoteCatalog.CraftModeButton,{"Make amount","Top up stock","Continuous"},{Name="CraftModeDropdown",Title="Craft",Get=function() return RemoteCatalog.CraftMode end,Set=function(value) RemoteCatalog.CraftMode=value;RemoteCatalog.RefreshCraftUI();RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText()) end,Locked=function() return RemoteCatalog.CraftWorker~=nil end})
+RemoteCatalog.CraftBatchMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.CraftPage,RemoteCatalog.CraftBatchButton,{25,50,100},{Name="CraftBatchDropdown",Title="Batch",Get=function() return RemoteCatalog.CraftBatch end,Set=function(value) RemoteCatalog.CraftBatch=value;RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText()) end,Locked=function() return RemoteCatalog.CraftWorker~=nil end})
+RemoteCatalog.CraftTargetMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.CraftPage,RemoteCatalog.CraftTargetButton,{100,250,500,1000,2500,5000,10000},{Name="CraftTargetDropdown",Title="Amount",Get=function() return RemoteCatalog.CraftTarget end,Set=function(value) RemoteCatalog.CraftTarget=value;RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText()) end,Locked=function() return RemoteCatalog.CraftWorker~=nil or RemoteCatalog.CraftMode=="Continuous" end})
 track(RemoteCatalog.CraftLearnButton.Activated:Connect(RemoteCatalog.BeginCraftLearning))
 track(RemoteCatalog.CraftToggle.Activated:Connect(function() RemoteCatalog.SetCraftEnabled(not RemoteCatalog.CraftEnabled) end))
 track(RemoteCatalog.CraftDiagnosticButton.Activated:Connect(function()

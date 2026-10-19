@@ -563,8 +563,8 @@ end)()
  endpoint.InvokeServer=function(_,...) requests+=1;replay=table.pack(...);return {success=true} end
  capture.Active=false;capture.LearnCraftOnly=true;capture.LearnBaitOnly=true
  local records=#capture.Records;local forwarded=#calls
- installedHook(endpoint,{ptT2graQXL5nZ4='unrelated',FrOcxUDTzCT48d={toolName='stone',workbenchBlock=bench,amount=100}})
- assert(capture.LearnCraftOnly and not capture.CraftBinding,'quiet craft learner must ignore other recipes')
+ installedHook(endpoint,{ptT2graQXL5nZ4='unrelated',FrOcxUDTzCT48d={toolName='',workbenchBlock=bench,amount=100}})
+ assert(capture.LearnCraftOnly and not capture.CraftBinding,'quiet craft learner must ignore malformed recipe names')
  installedHook(endpoint,packet,nil,'tail',nil)
  assert(#calls==forwarded+2 and #capture.Records==records and requests==0,'learning forwards originals once and never sends extra calls or logs')
  assert(capture.CraftBinding and capture.CraftBinding.Workbench==bench and not capture.LearnCraftOnly and capture.LearnBaitOnly and not capture.Stopped,'craft learning must coexist with another learner')
@@ -572,6 +572,19 @@ end)()
  assert(replay.n==4 and replay[2]==nil and replay[3]=='tail' and replay[4]==nil,'craft argument arity/tail must be preserved')
  assert(replay[1].ptT2graQXL5nZ4=='live-craft-context' and replay[1].FrOcxUDTzCT48d.workbenchBlock==bench and replay[1].FrOcxUDTzCT48d.toolName=='bait' and replay[1].FrOcxUDTzCT48d.amount==25 and replay[1].FrOcxUDTzCT48d.extra=='retain','craft must retain exact live context and change only amount')
  assert(packet.FrOcxUDTzCT48d.amount==100,'craft replay must never mutate the observed template')
+ local baitBinding=capture.CraftBinding
+ local secondBench={_type='Instance',Name='observedWorkbench',Parent=game,IsA=function(_,cls) return cls=='Model' end}
+ capture.LearnCraftOnly=true
+ installedHook(endpoint,{context='second-recipe-context',body={toolName='testRecipe',workbenchBlock=secondBench,amount=1}})
+ local secondBinding=capture.CraftBinding
+ assert(secondBinding.Item=='testRecipe' and capture.CraftBindings.bait==baitBinding and capture.CraftBindings.testRecipe==secondBinding,'learning another recipe must retain independent bait and recipe envelopes')
+ assert(capture:CraftItem(50,secondBinding) and replay[1].body.toolName=='testRecipe' and replay[1].body.workbenchBlock==secondBench and replay[1].context=='second-recipe-context' and replay[1].body.amount==50,'generic crafting must retain the exact selected recipe and bench')
+ assert(capture:CraftBait(25) and replay[1].FrOcxUDTzCT48d.toolName=='bait','legacy CraftBait must never switch to the latest other recipe')
+ local beforeInvalid=requests
+ assert(not capture:CraftItem(101,secondBinding) and requests==beforeInvalid,'generic craft cannot exceed one hundred')
+ secondBench.Parent=nil;assert(not capture:CraftItem(1,secondBinding) and capture:CanUseCraftBinding(baitBinding),'removing another recipe bench must invalidate only that recipe')
+ capture.CraftBinding=baitBinding
+
  for _,amount in ipairs({0,-1,101,1.5,math.huge,0/0,'100'}) do assert(not capture:CraftBait(amount)) end
  local count=requests
  local character=gamePlayer.Character;gamePlayer.Character={};assert(not capture:CraftBait(100));gamePlayer.Character=character
@@ -583,6 +596,16 @@ end)()
  for _,response in ipairs({false,{success=false,error='TOO_FAST'}}) do endpoint.InvokeServer=function() return response end;assert(not capture:CraftBait(100)) end
  endpoint.InvokeServer=function() error('request failed') end;assert(not capture:CraftBait(100),'craft transport errors must remain failures')
  capture.LearnCraftOnly=true;capture:Stop();assert(not capture.LearnCraftOnly,'Stop must cancel craft learning')
+ end)()
+;(function()
+ local old=environment.RebornCapture
+ old.Version=29;old.CraftBindings=nil;old.CraftBinding.Item=nil
+ old.CraftBinding.Remote.InvokeServer=function() return true end
+ runRecorder()
+ local upgraded=environment.RebornCapture
+ assert(upgraded~=old and upgraded.Version==30 and upgraded.CraftBindings.bait==upgraded.CraftBinding and upgraded.CraftBinding.Item=='bait','v29 upgrade must retain the exact bait binding in the new recipe catalog')
+ assert(upgraded:CraftBait(100),'migrated bait request must remain usable for this same character/server')
+ upgraded:Stop()
  end)()
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
