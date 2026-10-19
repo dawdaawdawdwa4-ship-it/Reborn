@@ -3,7 +3,7 @@ import {LuauState} from 'luau-web';
 const source=fs.readFileSync(new URL('../tools/AutoBuild.lua',import.meta.url),'utf8');
 const checks=`
 local A=(function() ${source} end)()
-for _,case in ipairs({{'Farm plots',5,6,3,30},{'Platform',4,3,2,12},{'Wall',4,3,2,8},{'Stairs',2,4,1,20}}) do
+for _,case in ipairs({{'Farm plots',5,6,3,30},{'Platform',4,3,2,12},{'Wall',4,3,2,8},{'Stairs',2,4,1,20},{'Room',5,6,3,82},{'Bridge',5,6,3,42},{'Fence',5,6,3,54}}) do
  local plan=A.Plan(case[1],case[2],case[3],case[4]);assert(#plan==case[5])
  local seen={};local previous=-1
  for _,cell in ipairs(plan) do
@@ -17,6 +17,25 @@ assert(not pcall(A.Plan,'Wall',0,1,1),'invalid dimensions must fail')
 local paths=0
 for _,c in ipairs(A.Plan('Farm plots',5,6,1)) do if c.role=='path' then paths+=1 end end
 assert(paths==6,'farm needs one path column per three columns')
+do
+ local function has(plan,x,y,z) for _,c in ipairs(plan) do if c.x==x and c.y==y and c.z==z then return true end end return false end
+ local room=A.Plan('Room',3,3,2)
+ assert(has(room,0,0,1) and not has(room,0,1,1) and not has(room,0,2,1),'rooms need a floor and two-block front doorway')
+ assert(not has(room,0,1,2) and has(room,-1,1,2),'rooms must have hollow interiors and perimeter walls')
+ local bridge=A.Plan('Bridge',3,4,1)
+ assert(has(bridge,0,1,2) and has(bridge,-1,2,2) and has(bridge,1,2,2) and not has(bridge,0,2,2),'bridges need a continuous deck and clear middle between rails')
+ local fence=A.Plan('Fence',3,3,2)
+ assert(not has(fence,0,1,2) and has(fence,0,1,1) and has(fence,-1,2,2),'fences must retain their perimeter and open interior')
+ for _,preset in ipairs({'Room','Fence'}) do
+  assert(not pcall(A.Plan,preset,2,3,1) and not pcall(A.Plan,preset,12,12,8),'hollow presets must reject undersized or oversized layouts')
+ end
+ assert(not pcall(A.Plan,'Bridge',2,4,1))
+ local input={Version=1,Items={'grass','stone'}};local names=A.ValidateFavorites(input);names[1]='soil'
+ assert(input.Items[1]=='grass','favorite validation must copy data')
+ for _,bad in ipairs({{Version=2,Items={}},{Version=1,Items={'grass','grass'}},{Version=1,Items={' grass'}},{Version=1,Items={''}},{Version=1,Items={[1]='grass',[3]='stone'}},{Version=1,Items={'1','2','3','4','5','6','7','8','9'}}}) do
+  assert(not pcall(A.ValidateFavorites,bad),'malformed favorites must be rejected')
+ end
+end
 local function signal()
  local callbacks={}
  return {Connect=function(_,callback) table.insert(callbacks,callback);return {} end,
@@ -408,6 +427,113 @@ assert(compact:ToggleSection('Library') and compact.Buttons.Load.Visible and com
 assert(compact:ToggleSection('Materials') and compact.Inputs.ReplaceFrom.Visible,'editing expansion must reveal material fields')
 for _,key in ipairs({'Library','Settings','Materials'}) do assert(compact:ToggleSection(key)) end
 assert(compact.LayoutHeight==compactHeight50 and not compact:ToggleSection('missing') and not compact.Running,'collapsing must restore exact layout height without starting gameplay')
+-- Favorites use bounded independent data and real field commit handlers.
+do
+ local originalRead,originalWrite=ctx.ReadFavorites,ctx.WriteFavorites
+ local disk={Version=1,Items={'grass','stone'}};local writes=0
+ ctx.ReadFavorites=function() return disk end
+ ctx.WriteFavorites=function(data) disk=data;writes+=1;return true end
+ local f=A.new(ctx);local previous=requests
+ assert(#f.Favorites==2 and f.FavoriteButtons.Material.Text=='★ Saved','valid file favorites must load at startup')
+ f.Buttons.UseFavoriteMaterial.Activated:Fire()
+ assert(f.Inputs.Material.Text=='stone' and not f.Cells,'favorite selection must commit the chosen name and invalidate the old preview')
+ f.Running=true;f.Inputs.Material.Text='grass';f.Inputs.Material.FocusLost:Fire()
+ assert(f.Inputs.Material.Text=='stone','programmatic favorite selection must update the guarded field value')
+ assert(not f:UseFavorite('Material'));f.Running=false
+ f.WorkerToken=8;assert(not f:UseFavorite('Path'));f.WorkerToken=nil
+ f.SavedPlan=valid();assert(not f:UseFavorite('Material'));f.SavedPlan=nil
+ f.Buttons.FavoriteMaterial.Activated:Fire()
+ assert(#f.Favorites==1 and f.Favorites[1]=='grass' and writes==1 and #disk.Items==1,'star must toggle and save a favorite without changing the plan')
+ disk.Items[1]='soil';assert(f.Favorites[1]=='grass','file snapshots must not alias live favorites')
+ disk={Version=1,Items={'grass','grass'}}
+ assert(not f:LoadFavorites() and f.Favorites[1]=='grass','invalid file data must preserve session favorites')
+ ctx.WriteFavorites=function() error('disk failed') end
+ f.Inputs.Material.Text='stone';assert(f:ToggleFavorite('Material') and #f.Favorites==2 and string.find(f.Status.Text,'Session only',1,true),'failed writes must retain session favorites')
+ f.Favorites={'1','2','3','4','5','6','7','8'};f.Inputs.Material.Text='ninth'
+ assert(not f:ToggleFavorite('Material') and #f.Favorites==8,'favorite capacity must be enforced')
+ assert(not f:ToggleFavorite('missing') and not f:UseFavorite('missing') and requests==previous,'preferences must never send placements')
+ ctx.ReadFavorites,ctx.WriteFavorites=originalRead,originalWrite
+end
+-- Removing blueprint cells is local, reversible and reflected in saves/queues.
+do
+ local e=A.new(ctx);local savedWrites=writes47;local previous=requests
+ e.Anchor=frame(12,6,9);e.BaseAnchor=e.Anchor;e.BlockSize=3
+ e.Cells={
+  {CFrame=e.Anchor*frame(0,0,-3),LayerY=0,Material='grass',Preview=control()},
+  {CFrame=e.Anchor*frame(3,0,-3),LayerY=0,Material='stone',Preview=control()},
+  {CFrame=e.Anchor*frame(0,3,-3),LayerY=3,Material='grass',Preview=control()}}
+ local removedGhost=e.Cells[1].Preview;local surviving=e.Cells[2].CFrame
+ e.BuildReport='Old check'
+ assert(e:RemoveBlocks(' grass ',false) and #e.Cells==1 and #e.SavedPlan.Cells==1,'generated previews must support named block removal')
+ assert(removedGhost.Destroyed and e.Cells[1].CFrame==surviving and e.PlanDirty and not e.BuildReport and not e.LayerIndex,'removal must destroy only excluded ghosts, preserve remaining positions and clear stale checks/layers')
+ assert(writes47==savedWrites and requests==previous and not e.Library[1],'editing must not save or place implicitly')
+ assert(not e:RemoveBlocks('stone',false) and #e.Cells==1,'removal must retain at least one block')
+ assert(e:Move(1,0,0) and e:RotatePreview(),'removal Undo must survive spatial edits')
+ local anchor=e.Anchor
+ assert(e:UndoMaterial() and #e.Cells==3 and not e.PlanDirty,'Undo must restore removed cells and previous dirty state')
+ for _,cell in ipairs(e.Cells) do
+  local cf=anchor:ToObjectSpace(cell.CFrame)
+  assert(math.abs(cf.Position.Z+3)<.001 and (math.abs(cf.Position.Y)<.001 or math.abs(cf.Position.Y-3)<.001),'restored blocks must follow the current translated/rotated anchor')
+ end
+ assert(not e:RemoveBlocks(nil,true),'All layers must never imply whole-plan deletion')
+ assert(e:CycleLayer() and e:RemoveBlocks(nil,true) and #e.Cells==1 and e.Cells[1].LayerY==3,'layer removal must remove only the selected height')
+ assert(not e.LayerIndex and e:UndoMaterial() and #e.Cells==3,'layer removal Undo must restore all layers')
+ e.WorkerToken=77
+ assert(not e:RemoveBlocks('grass',false) and not e:ReplaceMaterial('grass','stone') and not e:UndoMaterial(),'worker ownership must lock all block edits')
+ e.WorkerToken=nil
+ assert(e:RemoveBlocks('grass',false) and e:SavePreview() and #disk[1].Cells==1 and not e.MaterialUndo,'saving must commit exactly the surviving cells and clear Undo')
+ local slot=e.Library[1]
+ assert(e:ReplaceMaterial('stone','grass') and e.Library[1]==slot and slot.Cells[1].Material=='stone','replacement after removal must preserve saved snapshots')
+ e:ClearPreview();assert(e:UndoMaterial() and e.SavedPlan.Cells[1].Material=='stone' and not e.Cells,'Undo after clearing must restore data without creating a preview')
+ local plain=A.new(ctx);plain.Anchor=frame(0,0,0);plain.BlockSize=3
+ plain.Cells={{CFrame=frame(0,0,-3),LayerY=0,Material='grass',Preview=control()},{CFrame=frame(0,0,-6),LayerY=0,Material='stone',Preview=control()}}
+ assert(plain:ReplaceMaterial('grass','stone') and plain:UndoMaterial() and plain.Cells[1].Material=='grass' and plain.Cells[2].Material=='stone','generated preview replacement Undo must retain cell/material correspondence even when validation sorts cells differently')
+ -- Only surviving cells can enter the placement worker.
+ assert(plain:RemoveBlocks('grass',false))
+ local oldPlace=ctx.Place
+ ctx.Place=function(body) requests+=1;occupied[body.cframe.Position]=true;assert(body.blockType=='stone');return true end
+ occupied={};root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+ previous=requests;plain:Start();while coroutine.status(worker)~='dead' do step() end
+ assert(requests==previous+1 and plain.Progress.Total==1 and plain.Progress.Placed==1,'removed cells must not be sent by Start')
+ ctx.Place=oldPlace
+end
+-- Build history records observed outcomes only and remains independent of live progress.
+do
+ local h=A.new(ctx);local oldPlace,oldCopy=ctx.Place,ctx.CopyReport
+ local copied
+ ctx.CopyReport=function(report) copied=report end
+ assert(not h:ShowHistory() and #h.History==0)
+ h.Cells=cells(2);h.BlockSize=3;occupied={}
+ ctx.Place=function(body) requests+=1;occupied[body.cframe.Position]=true;return true end
+ h:Start();while coroutine.status(worker)~='dead' do step() end
+ local result=h.History[1]
+ assert(result.State=='Finished' and result.Placed==2 and result.Skipped==0 and result.Total==2 and result.Elapsed>0,'finished history must capture confirmed counts and elapsed time')
+ h.Progress.Placed=99;h:Stop()
+ assert(result.Placed==2 and result.State=='Finished','history must not alias mutable progress or later Stop calls')
+ h.Buttons.CopyHistory.Activated:Fire()
+ assert(copied and string.find(copied,'2 confirmed',1,true) and not h.Running,'copy result must select the latest snapshot without starting work')
+ ctx.Place=function(body) requests+=1;coroutine.yield();occupied[body.cframe.Position]=true;return true end
+ h.Cells=cells(2);occupied={};h:Start();h:Stop()
+ assert(#h.History==1 and not h:Start(),'in-flight cancellation must not publish a result before cleanup or overlap workers')
+ step()
+ assert(#h.History==2 and h.History[1].State=='Stopped' and h.History[1].Placed==0,'late placement returns after Stop must remain unconfirmed in history')
+ ctx.Place=function() requests+=1;return true end
+ h.Cells=cells(4);occupied={};h:Start();while coroutine.status(worker)~='dead' do step() end
+ assert(h.History[1].State=='Paused after failures' and h.History[1].Failed==3 and h.History[1].Placed==0,'accepted but unobserved placements must be failures in history')
+ ctx.Place=function() error('placement failed') end
+ h.Cells=cells(1);occupied={};h:Start()
+ assert(h.History[1].State=='Error' and h.History[1].Placed==0,'worker errors must record their outcome and release ownership')
+ ctx.Place=function(body) requests+=1;occupied[body.cframe.Position]=true;return true end
+ for i=1,6 do
+  occupied={};h.Preset='Run '..i;h.Cells=cells(1);h:Start();while coroutine.status(worker)~='dead' do step() end
+ end
+ assert(#h.History==5 and h.History[1].Name=='Run 6' and h.History[5].Name=='Run 2' and not h.HistoryReport,'history must retain only the latest five snapshots and invalidate stale selection')
+ for i=1,5 do h.Buttons.History.Activated:Fire() end
+ assert(h.HistoryIndex==5 and string.find(h.HistoryReport,'Run 2',1,true))
+ h.Buttons.History.Activated:Fire();assert(h.HistoryIndex==1,'history browsing must wrap newest first')
+ assert(h:ToggleSection('History') and h.Buttons.History.Visible and h:ToggleSection('History') and not h.Buttons.History.Visible and h.LayoutHeight<650,'history must use its own collapsed section and preserve compact defaults')
+ ctx.Place,ctx.CopyReport=oldPlace,oldCopy
+end
 return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

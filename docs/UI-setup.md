@@ -701,3 +701,68 @@ section expansion/collapse, exact layout round trips, explicit canvas size, tab
 intro visibility, shared menu cleanup, marker refresh, unknown data, selected
 layers, color restoration and absence of placement/file side effects. Full
 v41–v49 regressions remain covered. Live Roblox rendering remains unverified.
+
+### Blueprint block tools, favorites and results (v51)
+
+**Blueprint block editing** now edits generated previews as well as loaded
+layouts. Open the section, enter an existing material in the first field and a
+replacement in the second, then choose **Replace material**. Replacement applies
+to every matching block in the full working blueprint, including unselected
+layers. The replacement name must exist in the game's block definitions.
+
+**Remove named blocks** removes every block matching the first field across the
+full blueprint. To remove one horizontal layer instead, preview the layout,
+choose a single layer with **Build: Layer …**, then press **Remove selected
+layer**. All layers is not a removal target. Removal must leave at least one
+block; Clear preview can hide the entire preview. Removing cells updates ghosts,
+material totals and the actual build queue, resets the layer filter to All, and
+invalidates old checks. The remaining cells keep their positions and rotations.
+
+**Undo last edit** restores one replacement or removal, including the previous
+unsaved state. Removal Undo restores the complete previous layout at the current
+preview anchor, even after moving or rotating it. It resets layer selection to
+All. Undo after Clear restores the working data without recreating a preview.
+Saving commits only surviving cells and clears Undo. Edits never change saved
+slots until Save preview; active and stopped in-flight workers lock editing.
+These tools edit blueprints before building. Start retains its existing occupied
+cell skipping and placement confirmation behavior.
+
+The preset menu now uses two columns and includes:
+
+| Preset | Shape | Dimensions |
+| --- | --- | --- |
+| Room | Floor, hollow walls, open roof, one-block-wide front doorway up to two blocks tall | Width/length at least 3; Height controls walls |
+| Bridge | Continuous raised deck with one-block-high rails on both sides | Width at least 3; Length controls span; Height is unused |
+| Fence | Closed rectangular wall perimeter with an open interior | Width/length at least 3; Height controls walls |
+
+Existing Farm plots, Platform, Wall and Stairs shapes retain their behavior.
+All plans remain capped at 300 blocks and build from bottom to top. Large
+room/fence dimensions can exceed the cap and require reducing dimensions. The
+presets do not add foundations, structural support, inventories or seed planting.
+
+In **Build settings**, the star beside the build/path material toggles that name
+in a shared list of up to eight favorites. **Next ★** selects the next favorite
+through the field's normal commit handler. Selection waits for worker cleanup;
+loaded/edited layouts continue to use the block editor for material changes.
+Favorites use `RebornBuildFavorites_<UserId>.json` when file APIs work, otherwise
+remain session-only. Files use `{Version=1, Items={...}}`, at most 4096 encoded
+bytes; invalid data is ignored without replacing session preferences. Names are
+preferences, not proof of item ownership or valid block definitions.
+
+**Recent build results** starts collapsed. View next build result cycles the last
+five worker outcomes newest first; Copy build result copies the selected result
+or selects the newest. Results contain the blueprint name, layer selection,
+selected/full totals, observed placements, occupied skips, failed attempts,
+unprocessed cells and elapsed worker time. They are session-only plain-data
+snapshots, separate from live progress and blueprint files. Stop publishes its
+result after in-flight cleanup; late returns are not retroactively confirmed.
+Error and failure-pause outcomes are retained as well. Results do not store live
+instances, request bodies or session envelopes.
+
+Tests cover preset geometry/limits, generated and saved blueprint edits, local
+file isolation, removal Undo after transforms, survivor-only placement, field
+commits and favorite persistence failures/validation, actual UI callbacks and
+host filenames, cancellation/error/failure history, immutable results and the
+five-run limit. The full suite retains v41 and later regression coverage. Live
+Roblox/Studio rendering, server acceptance and structural support remain
+unverified.

@@ -20,6 +20,25 @@ function AutoBuild.Plan(preset, width, length, height)
         for z=0,length-1 do
             for y=1,z+1 do for x=0,width-1 do add(x,y,z) end end
         end
+    elseif preset == "Room" then
+        assert(width>=3 and length>=3,"Rooms need width and length of at least 3")
+        for z=0,length-1 do for x=0,width-1 do add(x,0,z) end end
+        for y=1,height do for z=0,length-1 do for x=0,width-1 do
+            local edge=x==0 or x==width-1 or z==0 or z==length-1
+            local doorway=z==0 and x==math.floor(width/2) and y<=2
+            if edge and not doorway then add(x,y,z) end
+        end end end
+    elseif preset == "Bridge" then
+        assert(width>=3,"Bridges need width of at least 3 for a walkway and rails")
+        for z=0,length-1 do
+            for x=0,width-1 do add(x,1,z) end
+            add(0,2,z);add(width-1,2,z)
+        end
+    elseif preset == "Fence" then
+        assert(width>=3 and length>=3,"Fences need width and length of at least 3")
+        for y=1,height do for z=0,length-1 do for x=0,width-1 do
+            if x==0 or x==width-1 or z==0 or z==length-1 then add(x,y,z) end
+        end end end
     else error("Unknown blueprint") end
     table.sort(cells,function(a,b)
         if a.y ~= b.y then return a.y < b.y end
@@ -74,9 +93,24 @@ function AutoBuild.Validate(data)
     end)
     return result
 end
+function AutoBuild.ValidateFavorites(data)
+    assert(type(data)=="table" and data.Version==1 and type(data.Items)=="table" and #data.Items<=8,"Invalid favorites data")
+    local result,seen,count={},{},0
+    for index in pairs(data.Items) do
+        assert(type(index)=="number" and index%1==0 and index>=1 and index<=#data.Items,"Invalid favorite list")
+        count+=1
+    end
+    assert(count==#data.Items,"Favorite list contains gaps")
+    for _,name in ipairs(data.Items) do
+        assert(type(name)=="string" and #name>0 and #name<=128 and not name:find("[%c]") and name:match("^%s*(.-)%s*$")==name and not seen[name],"Invalid favorite material")
+        seen[name]=true;table.insert(result,name)
+    end
+    return result
+end
 function AutoBuild.new(ctx)
     local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
-    local inputs,buttons={},{}
+    local inputs,buttons,commits={},{},{}
+    self.Favorites={};self.History={}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
     local now=ctx.Now or os.clock
@@ -215,6 +249,15 @@ function AutoBuild.new(ctx)
         status("Selected "..#selected.." of "..#self.Cells.." blocks. Faint preview blocks are excluded. Save preview still saves the full layout.")
         return true
     end
+    local function makeGhost(cf,material,layerY,size,path)
+        local part=Instance.new("Part")
+        part.Name="PlannedBlock";part.Anchored=true;part.CanCollide=false;part.CanTouch=false;part.CanQuery=false
+        part.Size=Vector3.new(size-.15,size-.15,size-.15);part.CFrame=cf
+        part.Transparency=.65;part.Material=Enum.Material.ForceField
+        part.Color=path and Color3.fromRGB(210,180,100) or Color3.fromRGB(100,160,255)
+        part.Parent=self.PreviewFolder
+        return {CFrame=cf,Material=material,Preview=part,PreviewColor=part.Color,LayerY=layerY}
+    end
     function self:Preview()
         if self.Running or self.WorkerToken then status("Wait for the build worker before changing its plan.");return false end
         self:ClearPreview()
@@ -254,13 +297,8 @@ function AutoBuild.new(ctx)
         self.Cells={}
         for _,cell in ipairs(self.SavedPlan and plan.Cells or plan) do
             local cf=anchor*(self.SavedPlan and CFrame.new(table.unpack(cell.Components)) or CFrame.new(cell.x*size,cell.y*size,-cell.z*size))
-            local part=Instance.new("Part")
-            part.Name="PlannedBlock";part.Anchored=true;part.CanCollide=false;part.CanTouch=false;part.CanQuery=false
-            part.Size=Vector3.new(size-.15,size-.15,size-.15);part.CFrame=cf
-            part.Transparency=.65;part.Material=Enum.Material.ForceField
-            part.Color=cell.role=="path" and Color3.fromRGB(210,180,100) or Color3.fromRGB(100,160,255)
-            part.Parent=folder
-            table.insert(self.Cells,{CFrame=cf,Material=self.SavedPlan and cell.Material or cell.role=="path" and pathMaterial or material,Preview=part,PreviewColor=part.Color,LayerY=self.SavedPlan and cell.Components[2] or cell.y*size})
+            local name=self.SavedPlan and cell.Material or cell.role=="path" and pathMaterial or material
+            table.insert(self.Cells,makeGhost(cf,name,self.SavedPlan and cell.Components[2] or cell.y*size,size,cell.role=="path"))
         end
         self.BlockSize=size
         self:UpdateMaterials(self:SelectedCells())
@@ -332,6 +370,25 @@ function AutoBuild.new(ctx)
         status("Full preview centered in front of your facing direction on grid steps. Height, orientation and layer selection are retained. Check reach before building.")
         return true
     end
+    function self:ShowHistory()
+        if #self.History==0 then self.HistoryLabel.Text="No completed or stopped builds this session.";return false end
+        self.HistoryIndex=(self.HistoryIndex or 0)%#self.History+1
+        local run=self.History[self.HistoryIndex]
+        self.HistoryReport=string.format("Reborn build result %d/%d (newest first)\n%s · %s\n%s · %d selected / %d total planned\n%d confirmed · %d occupied/skipped · %d failed\n%d unprocessed · %.1fs elapsed",
+            self.HistoryIndex,#self.History,run.Name,run.State,run.Layer,run.Total,run.WholeTotal,run.Placed,run.Skipped,run.Failed,
+            math.max(0,run.Total-run.Placed-run.Skipped-run.Failed),run.Elapsed)
+        self.HistoryLabel.Text=self.HistoryReport
+        return self.HistoryReport
+    end
+    local function recordBuild(progress,meta)
+        local state=progress.State
+        if state=="Building" or state=="Waiting for reach" then state="Stopped" end
+        table.insert(self.History,1,{Name=meta.Name,Layer=meta.Layer,WholeTotal=meta.WholeTotal,Total=progress.Total,
+            Placed=progress.Placed,Skipped=progress.Skipped,Failed=progress.Failed,State=state,Elapsed=math.max(0,now()-meta.Started)})
+        while #self.History>5 do table.remove(self.History) end
+        self.HistoryIndex=0;self.HistoryReport=nil
+        if ctx.Alive() then self.HistoryLabel.Text="Latest build recorded. View results to inspect the last "..#self.History.." runs (session only)." end
+    end
     function self:Start()
         if self.Running then return false end
         if self.WorkerToken then status("Wait for the previous build request to finish before resuming.");return false end
@@ -342,6 +399,8 @@ function AutoBuild.new(ctx)
         local token=self.Token
         self.WorkerToken=token
         self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building"}
+        local progress=self.Progress
+        local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now()}
         self.Running=true;buttons.Start.Text="Building…"
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
@@ -404,7 +463,47 @@ function AutoBuild.new(ctx)
                 self.Running=false;buttons.Start.Text="Start build"
                 if not ok then self.Progress.State="Error";status("Build stopped: "..tostring(err)) end
             end
+            recordBuild(progress,meta)
         end)
+    end
+    function self:RefreshFavorites()
+        for key,control in pairs(self.FavoriteButtons or {}) do
+            local name=inputs[key].Text:match("^%s*(.-)%s*$")
+            control.Text=table.find(self.Favorites,name) and "★ Saved" or "☆ Save"
+        end
+    end
+    function self:LoadFavorites()
+        if not ctx.ReadFavorites then return false end
+        local ran,data=pcall(ctx.ReadFavorites)
+        if not ran or data==nil then return false end
+        local valid,items=pcall(AutoBuild.ValidateFavorites,data)
+        if not valid then return false end
+        self.Favorites=items;self:RefreshFavorites();return true
+    end
+    function self:ToggleFavorite(key)
+        if key~="Material" and key~="Path" then return false end
+        local name=inputs[key].Text:match("^%s*(.-)%s*$")
+        if #name==0 or #name>128 or name:find("[%c]") then status("Enter a block name of 1–128 bytes first.");return false end
+        local index=table.find(self.Favorites,name)
+        if not index and #self.Favorites>=8 then status("Eight favorites are already saved. Remove one with its star first.");return false end
+        local updated=table.clone(self.Favorites)
+        if index then table.remove(updated,index) else table.insert(updated,name) end
+        self.Favorites=updated;self:RefreshFavorites()
+        local persisted=false
+        if ctx.WriteFavorites then local ok,result=pcall(ctx.WriteFavorites,{Version=1,Items=table.clone(updated)});persisted=ok and result==true end
+        status((index and "Removed " or "Favorited ")..name..". "..(persisted and "Saved to file." or "Session only; favorite file saving is unavailable or failed."))
+        return true
+    end
+    function self:UseFavorite(key)
+        if key~="Material" and key~="Path" then return false end
+        if self.Running or self.WorkerToken then status("Wait for the build worker before changing materials.");return false end
+        if self.SavedPlan then status("Choose a generated blueprint to use favorites; loaded layouts use Replace material.");return false end
+        if #self.Favorites==0 then status("Save a material with its star before cycling favorites.");return false end
+        local index=table.find(self.Favorites,inputs[key].Text) or 0
+        inputs[key].Text=self.Favorites[index%#self.Favorites+1]
+        commits[key]()
+        status("Selected favorite "..inputs[key].Text..". Preview the updated generated plan.")
+        return true
     end
     function self:UpdateMaterials(cells)
         local counts,names={},{}
@@ -515,40 +614,109 @@ function AutoBuild.new(ctx)
         if not data then status("Select a valid saved source slot before copying it.");return false end
         return self:StoreBlueprint(data,target)
     end
+    local function workingPlan()
+        if self.SavedPlan then return AutoBuild.Validate(self.SavedPlan) end
+        assert(self.Cells and self.Anchor,"Preview or load a blueprint before editing blocks.")
+        local data={Version=1,Name=inputs.Name.Text,BlockSize=self.BlockSize,Cells={}}
+        for _,cell in ipairs(self.Cells) do
+            table.insert(data.Cells,{Material=cell.Material,Components={self.Anchor:ToObjectSpace(cell.CFrame):GetComponents()}})
+        end
+        return AutoBuild.Validate(data)
+    end
+    local function markEdited()
+        self.PlanDirty=true;self.BuildReport=nil
+        self.Preset="Saved: "..self.SavedPlan.Name.." *";buttons.Preset.Text=self.Preset.."  ▼"
+        self:UpdateMaterials(self.Cells and self:SelectedCells() or self.SavedPlan.Cells)
+    end
+    function self:RemoveBlocks(material,selectedLayer)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before removing blueprint blocks.");return false end
+        local ok,original=pcall(workingPlan)
+        if not ok then status(original);return false end
+        material=type(material)=="string" and material:match("^%s*(.-)%s*$") or ""
+        local height
+        if selectedLayer then
+            local heights=self:Layers();height=self.LayerIndex and heights and heights[self.LayerIndex]
+            if not height then status("Choose one layer with the Build layer control before removing it.");return false end
+        elseif material=="" or #material>128 then status("Enter an existing block name in the first edit field.");return false end
+        local function matches(name,y)
+            return selectedLayer and math.round(y*1000)/1000==height or not selectedLayer and name==material
+        end
+        local copy=AutoBuild.Validate(original);local remaining={}
+        for _,cell in ipairs(copy.Cells) do
+            if not matches(cell.Material,cell.Components[2]) then table.insert(remaining,cell) end
+        end
+        local removed=#copy.Cells-#remaining
+        if removed==0 then status("No matching blocks in the working blueprint.");return false end
+        if #remaining==0 then status("Keep at least one blueprint block. Use Clear preview to hide the whole plan.");return false end
+        copy.Cells=remaining
+        self.MaterialUndo={Plan=original,Dirty=self.PlanDirty,Removal=true}
+        self.SavedPlan=copy
+        if self.Cells then
+            local kept={}
+            for _,cell in ipairs(self.Cells) do
+                local y=cell.LayerY or self.Anchor:ToObjectSpace(cell.CFrame).Position.Y
+                if matches(cell.Material,y) then
+                    if cell.Preview then cell.Preview:Destroy() end
+                else table.insert(kept,cell) end
+            end
+            self.Cells=kept
+        end
+        self.LayerIndex=nil;buttons.Layer.Text="Build: All layers"
+        for _,cell in ipairs(self.Cells or {}) do if cell.Preview then cell.Preview.Transparency=.65 end end
+        markEdited();self:RefreshReach()
+        status("Removed "..removed.." blueprint blocks. Undo restores this edit; Save preview updates the selected slot.")
+        return true,removed
+    end
     function self:ReplaceMaterial(from,to)
         if self.Running or self.WorkerToken then status("Wait for the build worker before replacing materials.");return false end
-        if not self.SavedPlan then status("Load a saved blueprint before replacing its materials.");return false end
         from=type(from)=="string" and from:match("^%s*(.-)%s*$") or ""
         to=type(to)=="string" and to:match("^%s*(.-)%s*$") or ""
         if from=="" or to=="" or #from>128 or #to>128 or from==to then status("Enter different source and replacement block names.");return false end
         local definitions=ctx.BlockDefinitions and ctx.BlockDefinitions()
         if not definitions or not definitions:FindFirstChild(to) then status("Replacement block is unknown or definitions are unavailable.");return false end
-        local copy=AutoBuild.Validate(self.SavedPlan)
+        local ok,original=pcall(workingPlan)
+        if not ok then status(original);return false end
+        local copy=AutoBuild.Validate(original)
         local changed=0
         for _,cell in ipairs(copy.Cells) do
             if cell.Material==from then cell.Material=to;changed+=1 end
         end
         if changed==0 then status("No blocks named "..from.." in the loaded blueprint.");return false end
-        self.MaterialUndo={Plan=AutoBuild.Validate(self.SavedPlan),Dirty=self.PlanDirty}
-        self.SavedPlan=copy;self.PlanDirty=true;self.BuildReport=nil
+        local materials={}
+        for _,cell in ipairs(self.Cells or {}) do materials[cell]=cell.Material end
+        self.MaterialUndo={Plan=original,Dirty=self.PlanDirty,CellList=self.Cells,Materials=materials}
+        self.SavedPlan=copy
         if self.Cells then
             for _,cell in ipairs(self.Cells) do if cell.Material==from then cell.Material=to end end
         end
-        self.Preset="Saved: "..copy.Name.." *";buttons.Preset.Text=self.Preset.."  ▼"
-        self:UpdateMaterials(self.Cells and self:SelectedCells() or copy.Cells)
+        markEdited()
         status("Changed "..changed.." blocks in the working blueprint. Saved slots are unchanged; Preview then Save preview to keep this edit.")
         return true,changed
     end
     function self:UndoMaterial()
         if self.Running or self.WorkerToken then status("Wait for the build worker before undoing material edits.");return false end
         if not self.MaterialUndo then status("No material edit to undo.");return false end
-        self.SavedPlan=self.MaterialUndo.Plan;self.PlanDirty=self.MaterialUndo.Dirty;self.MaterialUndo=nil;self.BuildReport=nil
+        local undo=self.MaterialUndo
+        self.SavedPlan=undo.Plan;self.PlanDirty=undo.Dirty;self.MaterialUndo=nil;self.BuildReport=nil
         if self.Cells then
-            for index,cell in ipairs(self.Cells) do cell.Material=self.SavedPlan.Cells[index].Material end
+            if undo.Removal then
+                for _,cell in ipairs(self.Cells) do if cell.Preview then cell.Preview:Destroy() end end
+                if not self.PreviewFolder then
+                    self.PreviewFolder=Instance.new("Folder");self.PreviewFolder.Name="RebornBuildPreview";self.PreviewFolder.Parent=space
+                end
+                self.Cells={}
+                for _,cell in ipairs(self.SavedPlan.Cells) do
+                    table.insert(self.Cells,makeGhost(self.Anchor*CFrame.new(table.unpack(cell.Components)),cell.Material,cell.Components[2],self.BlockSize))
+                end
+                self.LayerIndex=nil;buttons.Layer.Text="Build: All layers"
+            else
+                for index,cell in ipairs(self.Cells) do cell.Material=undo.CellList==self.Cells and undo.Materials[cell] or self.SavedPlan.Cells[index].Material end
+            end
         end
         self.Preset="Saved: "..self.SavedPlan.Name..(self.PlanDirty and " *" or "");buttons.Preset.Text=self.Preset.."  ▼"
         self:UpdateMaterials(self.Cells and self:SelectedCells() or self.SavedPlan.Cells)
-        status("Last material edit undone. No saved slot or placed block was changed.")
+        self:RefreshReach()
+        status("Last blueprint edit undone. No saved slot or placed block was changed.")
         return true
     end
     function self:SavePreview()
@@ -631,8 +799,8 @@ function AutoBuild.new(ctx)
     local function invalidate()
         if not self.Running then self:ClearPreview();status("Settings changed. Preview the new plan.") end
     end
-    label("Build farm beds and paths, platforms, walls or solid stairs.",4,36)
-    local presets={"Farm plots","Platform","Wall","Stairs"}
+    label("Build farms, platforms, walls, stairs, rooms, bridges and fences.",4,36)
+    local presets={"Farm plots","Platform","Wall","Stairs","Room","Bridge","Fence"}
     local presetMenu=Instance.new("Frame")
     presetMenu.Name="BlueprintOptions";presetMenu.Size=UDim2.new(1,-12,0,144);presetMenu.Position=UDim2.fromOffset(6,84)
     presetMenu.BackgroundColor3=Color3.fromRGB(29,39,48);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
@@ -671,7 +839,7 @@ function AutoBuild.new(ctx)
             or "Reach markers OFF. Original preview colors restored.")
     end))
     for index,preset in ipairs(presets) do
-        local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(index-1)*36)})
+        local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(.5,-4,0,34),Position=UDim2.new((index-1)%2*.5,2,0,math.floor((index-1)/2)*36)})
         option.ZIndex=36
         ctx.Track(option.Activated:Connect(function()
             if self.Running then return end
@@ -686,7 +854,7 @@ function AutoBuild.new(ctx)
         field.BackgroundColor3=Color3.fromRGB(29,39,48);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
         inputs[key]=field;register(field,y+24,30,0,6,nil,true)
         local committed=field.Text
-        ctx.Track(field.FocusLost:Connect(function()
+        local function commit()
             if self.Running or self.SavedPlan then
                 field.Text=committed
                 status(self.SavedPlan and "Saved layouts keep their materials and shape. Choose a built-in blueprint to edit them." or "Stop the build before changing its plan.")
@@ -697,14 +865,23 @@ function AutoBuild.new(ctx)
                 self[key]=math.clamp(math.floor(tonumber(field.Text) or self[key]),1,limit);field.Text=tostring(self[key])
             end
             committed=field.Text
-            invalidate()
-        end))
+            invalidate();self:RefreshFavorites()
+        end
+        commits[key]=commit;ctx.Track(field.FocusLost:Connect(commit))
     end
     input("Material","Bed/build block name (for example grass, soil or stone)","grass",90)
     input("Path","Farm path block name","stone",152)
     input("Width","Width (blocks)",self.Width,214,true)
     input("Length","Length / stair steps (blocks)",self.Length,276,true)
-    input("Height","Wall height (blocks)",self.Height,338,true)
+    input("Height","Wall / room / fence height (blocks)",self.Height,338,true)
+    self.FavoriteButtons={}
+    for index,key in ipairs({"Material","Path"}) do
+        local y=index==1 and 114 or 176
+        inputs[key].Size=UDim2.new(.5,-12,0,30)
+        self.FavoriteButtons[key]=button("Favorite"..key,"☆ Save",.5,y,.25,function() self:ToggleFavorite(key) end)
+        button("UseFavorite"..key,"Next ★",.75,y,.25,function() self:UseFavorite(key) end)
+    end
+    self:LoadFavorites();self:RefreshFavorites()
     button("Rotate","Rotate: 0°",0,406,.5,function()
         if self.Running or self.WorkerToken then return end
         if self.Cells then self:RotatePreview()
@@ -771,12 +948,28 @@ function AutoBuild.new(ctx)
     end
     button("Replace","Replace material",0,1618,.5,function() self:ReplaceMaterial(inputs.ReplaceFrom.Text,inputs.ReplaceTo.Text) end)
     button("UndoMaterial","Undo last edit",.5,1618,.5,function() self:UndoMaterial() end)
-    local replaceHint=label("Applies to the loaded working blueprint and its preview. The saved slot is kept until Save preview. Existing placed blocks are not replaced; Start still skips occupied cells.",1660,84)
+    button("RemoveMaterial","Remove named blocks",0,1660,.5,function() self:RemoveBlocks(inputs.ReplaceFrom.Text,false) end)
+    button("RemoveLayer","Remove selected layer",.5,1660,.5,function() self:RemoveBlocks(nil,true) end)
+    local replaceHint=label("Edit a loaded or visible blueprint. The first field selects the material to replace/remove. Layer removal needs one selected layer. Undo keeps one edit; Save preview commits the layout.",1700,84)
     replaceHint.TextWrapped=true
+    button("History","View next build result",0,1828,.5,function() self:ShowHistory() end)
+    button("CopyHistory","Copy build result",.5,1828,.5,function()
+        if not self.HistoryReport and not self:ShowHistory() then return end
+        if ctx.CopyReport then ctx.CopyReport(self.HistoryReport) else status("Report copying is unavailable.") end
+    end)
+    local historyView=Instance.new("ScrollingFrame")
+    historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(1872))
+    historyView.BackgroundTransparency=1;historyView.BorderSizePixel=0;historyView.ScrollBarThickness=5
+    historyView.CanvasSize=UDim2.new();historyView.AutomaticCanvasSize=Enum.AutomaticSize.Y;historyView.Parent=ctx.Parent
+    register(historyView,layoutY(1872),216)
+    self.HistoryLabel=ctx.Label({Parent=historyView,Text="No builds recorded this session.",TextSize=12,
+        Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
+    self.HistoryLabel.TextWrapped=true;self.HistoryLabel.AutomaticSize=Enum.AutomaticSize.Y;self.HistoryLabel.TextTruncate=Enum.TextTruncate.None
     self.Sections={
         {Key="Settings",Title="Build settings",Header=90,Start=90,Finish=392,Expanded=40,Collapsed=-262,Open=false},
         {Key="Library",Title="Saved blueprints & checks",Header=768,Start=808,Finish=1572,Expanded=0,Collapsed=-764,Open=false},
-        {Key="Materials",Title="Material editing",Header=1580,Start=1620,Finish=1788,Expanded=0,Collapsed=-168,Open=false},
+        {Key="Materials",Title="Blueprint block editing",Header=1580,Start=1620,Finish=1828,Expanded=0,Collapsed=-208,Open=false},
+        {Key="History",Title="Recent build results",Header=1832,Start=1872,Finish=2144,Expanded=0,Collapsed=-272,Open=false},
     }
     self.SectionButtons={}
     function self:CloseMenus() presetMenu.Visible=false;moveMenu.Visible=false end

@@ -57,6 +57,36 @@ flush()
  ;(function()
  local originalWrite,originalRead=writefile,readfile
  local encode,decode=HttpService.JSONEncode,HttpService.JSONDecode
+ local file,encoded,snapshot
+ HttpService.JSONEncode=function(_,data) snapshot=data;return 'favorites-json' end
+ HttpService.JSONDecode=function(_,value) assert(value=='favorites-json');return snapshot end
+ writefile=function(name,value) file=name;encoded=value end
+ readfile=function(name) assert(name==file);return encoded end
+ buildController.Buttons.FavoriteMaterial.Activated:Fire()
+ assert(file=='RebornBuildFavorites_7.json' and snapshot.Version==1 and snapshot.Items[1]=='grass','favorite stars must use the account-specific host file adapter')
+ buildController.Favorites={}
+ assert(buildController:LoadFavorites() and buildController.Favorites[1]=='grass','favorite host read adapter must decode validated data')
+ buildController.Buttons.FavoritePath.Activated:Fire()
+ assert(#buildController.Favorites==2 and snapshot.Items[2]=='stone','build/path controls must share the material favorite list')
+ buildController.Buttons.UseFavoriteMaterial.Activated:Fire()
+ assert(buildController.Inputs.Material.Text=='stone' and not buildController.Running,'favorite cycling must select through the actual UI without building')
+ readfile=function() return string.rep('x',4097) end
+ assert(not buildController:LoadFavorites() and #buildController.Favorites==2,'oversized favorite files must be rejected without losing session data')
+ buildController.Inputs.Material.Text='grass';buildController.Inputs.Material.FocusLost:Fire()
+ buildController.Favorites={};buildController:RefreshFavorites()
+ writefile,readfile=originalWrite,originalRead
+ HttpService.JSONEncode,HttpService.JSONDecode=encode,decode
+ local options=buildPage:FindFirstChild('BlueprintOptions');local choices={}
+ for _,child in ipairs(options:GetChildren()) do if child:IsA('TextButton') then choices[child.Text]=child end end
+ for _,name in ipairs({'Room','Bridge','Fence'}) do
+  assert(choices[name],'new presets must be available in the actual menu')
+  choices[name].Activated:Fire();assert(buildController.Preset==name and not buildController.Running)
+ end
+ choices['Farm plots'].Activated:Fire()
+ end)()
+ ;(function()
+ local originalWrite,originalRead=writefile,readfile
+ local encode,decode=HttpService.JSONEncode,HttpService.JSONDecode
  local path,encoded,snapshot
  HttpService.JSONEncode=function(_,data) snapshot=data;return 'blueprint-json' end
  HttpService.JSONDecode=function(_,value) assert(value=='blueprint-json');return snapshot end
@@ -83,6 +113,22 @@ flush()
  assert(buildController.SavedPlan.Cells[1].Material=='stone' and buildController.Library[1].Cells[1].Material=='grass','Replace button must isolate the working layout from the saved slot')
  buildController.Buttons.UndoMaterial.Activated:Fire()
  assert(buildController.SavedPlan.Cells[1].Material=='grass' and not buildController.MaterialUndo,'Undo button must restore the prior working material')
+ local originalPlan=buildController.SavedPlan
+ buildController.SavedPlan={Version=1,Name='Edit test',BlockSize=3,Cells={
+  {Material='grass',Components={0,0,0,1,0,0,0,1,0,0,0,1}},
+  {Material='stone',Components={0,3,0,1,0,0,0,1,0,0,0,1}}}}
+ buildController.Buttons.RemoveMaterial.Activated:Fire()
+ assert(#buildController.SavedPlan.Cells==1 and buildController.SavedPlan.Cells[1].Material=='stone' and buildController.Library[1].Cells[1].Material=='grass','Remove named blocks button must change only the working blueprint')
+ buildController.Buttons.UndoMaterial.Activated:Fire()
+ assert(#buildController.SavedPlan.Cells==2,'actual Undo must restore removed blueprint cells without requiring a preview')
+ buildController.Cells={{LayerY=0,Material='grass'},{LayerY=3,Material='stone'}}
+ buildController.LayerIndex=1
+ buildController.Buttons.RemoveLayer.Activated:Fire()
+ assert(#buildController.Cells==1 and buildController.Cells[1].LayerY==3 and not buildController.LayerIndex,'Remove layer button must remove the selected height and reset selection')
+ buildController.Cells=nil
+ buildController.Buttons.UndoMaterial.Activated:Fire()
+ assert(#buildController.SavedPlan.Cells==2 and not buildController.Running,'removal Undo must never start building')
+ buildController.SavedPlan=originalPlan;buildController.PlanDirty=false
  ReplicatedStorage.FindFirstChild=findDefinitions
 
  buildController.Buttons.Check.Activated:Fire()
@@ -93,6 +139,15 @@ flush()
  buildController.BuildReport='Read-only build check'
  buildController.Buttons.CopyCheck.Activated:Fire()
  assert(copied=='Read-only build check' and not buildController.Running,'copy build check must use the host clipboard without starting a build')
+ buildController.History={{Name='Bridge',Layer='All layers',WholeTotal=10,Total=10,Placed=4,Skipped=2,Failed=1,State='Stopped',Elapsed=2.5}}
+ buildController.HistoryIndex=0
+ buildController.SectionButtons.History.Activated:Fire()
+ assert(buildController.Buttons.History.Visible,'build history must expand through its actual section control')
+ buildController.Buttons.History.Activated:Fire()
+ buildController.Buttons.CopyHistory.Activated:Fire()
+ assert(string.find(copied,'Bridge',1,true) and string.find(copied,'3 unprocessed',1,true),'history buttons must display and copy the selected plain-data result')
+ buildController.SectionButtons.History.Activated:Fire()
+ buildController.History={};buildController.HistoryIndex=0;buildController.HistoryReport=nil
  setclipboard=oldCopy
  assert(not buildController.LayerIndex and buildController.Buttons.Layer.Text=='Build: All layers','layer filter must default to the complete plan')
  assert(buildController.Buttons.Layer.Position.Y.Offset+buildController.Buttons.Layer.Size.Y.Offset<=buildController.Buttons.Preview.Position.Y.Offset,'layer control must fit above the build actions')
@@ -703,7 +758,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-workspace-50',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn blueprint-tools-51',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()

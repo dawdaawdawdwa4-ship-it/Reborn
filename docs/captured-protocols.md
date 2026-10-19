@@ -251,3 +251,19 @@ using the same CLIENT_REACH configuration and 20-stud fallback used by the
 builder. Unknown data stays explicitly unknown. No material, occupancy, support
 or server-acceptance claim is inferred from a marker color. All actual placement
 continues through the existing guarded Start workflow.
+
+### Blueprint tools and build results (blueprint-tools-51)
+
+New Room/Bridge/Fence plans and blueprint-only block removal/replacement add no
+remote formats. Named removal operates on the full working layout; layer
+removal requires an explicitly selected preview layer. Surviving cells alone
+feed the unchanged Start workflow. Undo, preview editing and favorites do not
+send placement or demolition requests. Saved layouts keep the version-1 schema.
+
+Material favorites use a separate bounded account-specific local JSON file,
+validated before loading, with session fallback when file APIs fail. Build
+history keeps up to five session-only count/outcome snapshots. Only observations
+confirmed before cancellation are counted; in-flight cleanup precedes recording.
+No request payloads, live instances, session identifiers or new server fields are
+persisted by either feature. Actual placement still uses normal reach,
+occupied-cell checks, single-worker ownership and observed block confirmation.
