@@ -2922,7 +2922,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "conveyor-guard-70",
+    Subtitle = "craft-queue-71",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3411,7 +3411,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn conveyor-guard-70",
+    return table.concat({"Reborn craft-queue-71",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5139,7 +5139,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn conveyor-guard-70", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn craft-queue-71", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -7111,7 +7111,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn conveyor-guard-70\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn craft-queue-71\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -7619,7 +7619,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn conveyor-guard-70\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn craft-queue-71\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -7632,8 +7632,12 @@ RemoteCatalog.CraftItem="bait"
 RemoteCatalog.CraftMode="Make amount"
 RemoteCatalog.CraftBatch=100
 RemoteCatalog.CraftTarget=100
+RemoteCatalog.CraftQueue={}
+RemoteCatalog.CraftQueueRunning=false
 function RemoteCatalog.CraftMessage(text)
+    if RemoteCatalog.CraftQueueRunning and RemoteCatalog.CraftQueueIndex then text="Queue "..RemoteCatalog.CraftQueueIndex.." / "..RemoteCatalog.CraftQueueRunSize.." · "..text end
     if gui.Parent and RemoteCatalog.CraftInfo then RemoteCatalog.CraftInfo.Text=text end
+    if RemoteCatalog.RefreshCraftQueue then RemoteCatalog.RefreshCraftQueue() end
 end
 function RemoteCatalog.RefreshCraftUI()
     if not gui.Parent or not RemoteCatalog.CraftToggle then return end
@@ -7655,6 +7659,7 @@ function RemoteCatalog.RefreshCraftUI()
         end
     end
     if RemoteCatalog.CraftRecipeMenu then RemoteCatalog.CraftRecipeMenu:Refresh() end
+    if RemoteCatalog.RefreshCraftQueue then RemoteCatalog.RefreshCraftQueue() end
 end
 function RemoteCatalog.StopCraftLearning()
     RemoteCatalog.CraftLearning=false
@@ -7699,13 +7704,14 @@ function RemoteCatalog.CraftRecipes()
     table.sort(names)
     return names
 end
-function RemoteCatalog.CraftRecorder()
+function RemoteCatalog.CraftRecorder(item)
+    item=item or RemoteCatalog.CraftItem
     local selected,chosen
     for _,recorder in ipairs(RemoteCatalog.CraftRecorders()) do
-        local binding=recorder.CraftBindings and recorder.CraftBindings[RemoteCatalog.CraftItem]
-        if not binding and recorder.CraftBinding and (recorder.CraftBinding.Item or "bait")==RemoteCatalog.CraftItem then binding=recorder.CraftBinding end
+        local binding=recorder.CraftBindings and recorder.CraftBindings[item]
+        if not binding and recorder.CraftBinding and (recorder.CraftBinding.Item or "bait")==item then binding=recorder.CraftBinding end
         if binding and type(recorder.CanUseCraftBinding)=="function" and recorder:CanUseCraftBinding(binding)
-            and (type(recorder.CraftItem)=="function" or RemoteCatalog.CraftItem=="bait" and type(recorder.CraftBait)=="function")
+            and (type(recorder.CraftItem)=="function" or item=="bait" and type(recorder.CraftBait)=="function")
             and (not chosen or (binding.ObservedAt or 0)>(chosen.ObservedAt or 0)) then selected,chosen=recorder,binding end
     end
     return selected,chosen
@@ -7720,7 +7726,62 @@ function RemoteCatalog.CraftReachable(bench)
     if not root or not position or (root.Position-position).Magnitude>20 then return false,"Waiting · stand within 20 studs of the learned workbench. Crafting stays ON." end
     return true
 end
-function RemoteCatalog.SetCraftEnabled(state)
+function RemoteCatalog.MakeCraftJob(item,mode,batch,target,allowContinuous)
+    if type(item)~="string" or #item==0 or #item>128 or (mode~="Make amount" and mode~="Top up stock" and not (allowContinuous and mode=="Continuous"))
+        or (batch~=25 and batch~=50 and batch~=100) or not table.find({100,250,500,1000,2500,5000,10000},target) then
+        return nil,"Choose a valid recipe, finite mode, batch and amount. Continuous is available for single-recipe runs."
+    end
+    local recorder,binding=RemoteCatalog.CraftRecorder(item)
+    if not recorder then return nil,"Learn "..item.." on this character/server first, then choose it in Recipe." end
+    return {Item=item,Mode=mode,Batch=batch,Target=target,Recorder=recorder,Binding=binding}
+end
+function RemoteCatalog.CraftQueueText()
+    local lines={"QUEUE · "..#RemoteCatalog.CraftQueue.." / 8 jobs"}
+    if #RemoteCatalog.CraftQueue==0 then table.insert(lines,"Choose a recipe, Make amount or Top up stock, then Add to queue. Each request remains capped at 100.") end
+    for index,job in ipairs(RemoteCatalog.CraftQueue) do
+        local marker=RemoteCatalog.CraftQueueRunning and index==RemoteCatalog.CraftQueueIndex and "▶ " or index<=(RemoteCatalog.CraftQueueDone or 0) and "✓ " or ""
+        if type(job)=="table" then
+            table.insert(lines,marker..index..". "..tostring(job.Item).." · "..tostring(job.Mode).." "..tostring(job.Target).." · batch "..tostring(job.Batch))
+        else table.insert(lines,index..". Invalid job; clear the queue.") end
+    end
+    return table.concat(lines,"\n")
+end
+function RemoteCatalog.RefreshCraftQueue()
+    if not gui.Parent then return end
+    if RemoteCatalog.CraftQueueLabel then RemoteCatalog.CraftQueueLabel.Text=RemoteCatalog.CraftQueueText() end
+    local busy=RemoteCatalog.CraftWorker~=nil
+    for _,name in ipairs({"CraftQueueAddButton","CraftQueueRemoveButton","CraftQueueClearButton"}) do
+        local control=RemoteCatalog[name]
+        if control then
+            local available=not busy and (name~="CraftQueueAddButton" or RemoteCatalog.CraftMode~="Continuous")
+            control.Active=available;control.Selectable=available;control.TextColor3=available and COLORS.text or COLORS.muted
+        end
+    end
+    if RemoteCatalog.CraftQueueRunButton then
+        RemoteCatalog.CraftQueueRunButton.Text=RemoteCatalog.CraftQueueRunning and (RemoteCatalog.CraftEnabled and "STOP QUEUE" or "FINISHING…") or "RUN QUEUE"
+        RemoteCatalog.CraftQueueRunButton.Active=not busy or (RemoteCatalog.CraftQueueRunning==true and RemoteCatalog.CraftEnabled==true)
+        RemoteCatalog.CraftQueueRunButton.Selectable=RemoteCatalog.CraftQueueRunButton.Active
+    end
+end
+function RemoteCatalog.AddCraftQueueJob()
+    if RemoteCatalog.CraftWorker then RemoteCatalog.CraftMessage("Stop crafting and wait for cleanup before editing the queue.");return false end
+    RemoteCatalog.RefreshCraftUI()
+    if #RemoteCatalog.CraftQueue>=8 then RemoteCatalog.CraftMessage("Queue is full: remove a job or clear the queue first.");return false end
+    local job,reason=RemoteCatalog.MakeCraftJob(RemoteCatalog.CraftItem,RemoteCatalog.CraftMode,RemoteCatalog.CraftBatch,RemoteCatalog.CraftTarget,false)
+    if not job then RemoteCatalog.CraftMessage(reason);return false end
+    table.insert(RemoteCatalog.CraftQueue,{Item=job.Item,Mode=job.Mode,Batch=job.Batch,Target=job.Target})
+    RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0;RemoteCatalog.CraftQueueIndex=nil
+    RemoteCatalog.CraftMessage("Added "..job.Item.." to queue. Run Queue starts from the first job and uses your materials.")
+    return true
+end
+function RemoteCatalog.EditCraftQueue(clear)
+    if RemoteCatalog.CraftWorker then RemoteCatalog.CraftMessage("Stop crafting and wait for cleanup before editing the queue.");return false end
+    if clear then RemoteCatalog.CraftQueue={} else table.remove(RemoteCatalog.CraftQueue) end
+    RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0;RemoteCatalog.CraftQueueIndex=nil
+    RemoteCatalog.CraftMessage(clear and "Queue cleared. No crafting started." or "Last queue job removed. No crafting started.")
+    return true
+end
+function RemoteCatalog.SetCraftEnabled(state,queued)
     if not state then
         RemoteCatalog.CraftEnabled=false
         RemoteCatalog.CraftGeneration=(RemoteCatalog.CraftGeneration or 0)+1
@@ -7732,18 +7793,28 @@ function RemoteCatalog.SetCraftEnabled(state)
     RemoteCatalog.RefreshCraftUI()
     if RemoteCatalog.CraftEnabled then return true end
     if RemoteCatalog.CraftWorker then RemoteCatalog.CraftMessage("Wait for the current craft request to finish before restarting.");return false end
-    local runRecorder,runBinding=RemoteCatalog.CraftRecorder()
-    if not runRecorder then RemoteCatalog.CraftMessage("Learn this recipe with this character/server first, then select it in Recipe.");return false end
-    local item=RemoteCatalog.CraftItem
-    local batch,target,mode=RemoteCatalog.CraftBatch,RemoteCatalog.CraftTarget,RemoteCatalog.CraftMode
-    if (mode~="Make amount" and mode~="Top up stock" and mode~="Continuous") or (batch~=25 and batch~=50 and batch~=100) or not table.find({100,250,500,1000,2500,5000,10000},target) then RemoteCatalog.CraftMessage("Choose a valid craft mode, batch and amount.");return false end
-    local makeAmount=mode=="Make amount"
-    local continuous=mode=="Continuous"
+    local requested=queued and RemoteCatalog.CraftQueue or {{Item=RemoteCatalog.CraftItem,Mode=RemoteCatalog.CraftMode,Batch=RemoteCatalog.CraftBatch,Target=RemoteCatalog.CraftTarget}}
+    if type(requested)~="table" or #requested==0 or #requested>8 then RemoteCatalog.CraftMessage("Add 1–8 finite jobs before running the queue.");return false end
+    local requestedCount=0
+    for key in pairs(requested) do
+        requestedCount+=1
+        if type(key)~="number" or key%1~=0 or key<1 or key>#requested then RemoteCatalog.CraftMessage("Queue entries must be a consecutive list.");return false end
+    end
+    if requestedCount~=#requested then RemoteCatalog.CraftMessage("Queue entries must be a consecutive list.");return false end
+    local jobs={}
+    for index,entry in ipairs(requested) do
+        if type(entry)~="table" then RemoteCatalog.CraftMessage("Invalid queue job "..index);return false end
+        local job,reason=RemoteCatalog.MakeCraftJob(entry.Item,entry.Mode,entry.Batch,entry.Target,not queued)
+        if not job then RemoteCatalog.CraftMessage((queued and "Queue job "..index..": " or "")..reason);return false end
+        table.insert(jobs,job)
+    end
     RemoteCatalog.StopCraftLearning()
     RemoteCatalog.CloseMenus()
     RemoteCatalog.CraftGeneration=(RemoteCatalog.CraftGeneration or 0)+1
     local generation=RemoteCatalog.CraftGeneration
     RemoteCatalog.CraftWorker=generation;RemoteCatalog.CraftEnabled=true
+    RemoteCatalog.CraftQueueRunning=queued==true;RemoteCatalog.CraftQueueRunSize=#jobs
+    RemoteCatalog.CraftQueueIndex=nil;RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0
     RemoteCatalog.RefreshCraftUI()
     task.spawn(function()
         local function active() return gui.Parent~=nil and RemoteCatalog.CraftEnabled and RemoteCatalog.CraftGeneration==generation end
@@ -7752,58 +7823,78 @@ function RemoteCatalog.SetCraftEnabled(state)
             return active()
         end
         local outcome="Stopped."
-        local confirmed,retries=0,0
         local ok,failure=pcall(function()
-            while active() do
-                local recorder,binding=runRecorder,runBinding
-                if not recorder:CanUseCraftBinding(binding) then outcome="Craft context changed · learn this recipe again.";return end
-                if RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then
-                    RemoteCatalog.CraftMessage("Waiting · finish chest collection before crafting.")
-                    if not waitFor(.5) then return end
-                    continue
-                end
-                local reachable,reason=RemoteCatalog.CraftReachable(binding.Workbench)
-                if not reachable then RemoteCatalog.CraftMessage(reason);if not waitFor(1) then return end;continue end
-                local before=RemoteCatalog.WaitChestInventory(item,active)
+            for index,job in ipairs(jobs) do
                 if not active() then return end
-                if before==nil then outcome="Item quantity is unreadable · no craft sent.";return end
-                if not continuous and ((makeAmount and confirmed>=target) or (not makeAmount and before>=target)) then
-                    outcome=makeAmount and ("Made +"..confirmed.." "..item.." this run · inventory "..before) or ("Stock target reached · "..before.." / "..target.." "..item..". Choose Make amount to craft extra items.")
-                    return
+                local item,batch,target,mode=job.Item,job.Batch,job.Target,job.Mode
+                local runRecorder,runBinding=job.Recorder,job.Binding
+                local makeAmount,continuous=mode=="Make amount",mode=="Continuous"
+                local confirmed,retries=0,0
+                local completed=false
+                if queued then RemoteCatalog.CraftQueueIndex=index;RemoteCatalog.CraftQueueActiveItem=item;RemoteCatalog.RefreshCraftQueue() end
+                local function runRecipe()
+                    while active() do
+                        local recorder,binding=runRecorder,runBinding
+                        if not recorder:CanUseCraftBinding(binding) then outcome="Craft context changed · learn this recipe again.";return end
+                        if RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then
+                            RemoteCatalog.CraftMessage("Waiting · finish chest collection before crafting.")
+                            if not waitFor(.5) then return end
+                            continue
+                        end
+                        local reachable,reason=RemoteCatalog.CraftReachable(binding.Workbench)
+                        if not reachable then RemoteCatalog.CraftMessage(reason);if not waitFor(1) then return end;continue end
+                        local before=RemoteCatalog.WaitChestInventory(item,active)
+                        if not active() then return end
+                        if before==nil then outcome="Item quantity is unreadable · no craft sent.";return end
+                        if not continuous and ((makeAmount and confirmed>=target) or (not makeAmount and before>=target)) then
+                            outcome=makeAmount and ("Made +"..confirmed.." "..item.." this run · inventory "..before) or ("Stock target reached · "..before.." / "..target.." "..item..". Choose Make amount to craft extra items.")
+                            completed=true;return
+                        end
+                        -- Quantity replication may yield: recheck the actor, binding and reach immediately before sending.
+                        if not recorder:CanUseCraftBinding(binding) then outcome="Craft context changed · learn this recipe again.";return end
+                        reachable,reason=RemoteCatalog.CraftReachable(binding.Workbench)
+                        if not reachable then RemoteCatalog.CraftMessage(reason);if not waitFor(1) then return end;continue end
+                        local amount=math.min(100,batch,continuous and batch or makeAmount and target-confirmed or target-before)
+                        RemoteCatalog.CraftMessage("Crafting "..amount.." "..item.." · "..mode.." · +"..confirmed.." confirmed"..(continuous and " · until Stop" or makeAmount and (" / "..target.." extra") or (" · stock "..before.." / "..target)))
+                        local sent,response
+                        if recorder.CraftItem then sent,response=recorder:CraftItem(amount,binding) else sent,response=recorder:CraftBait(amount) end
+                        if not active() then return end
+                        if not sent and RemoteCatalog.ChestTooFast(response) then
+                            retries+=1
+                            if retries>5 then outcome="Server cooldown persisted · stopped after 5 retries.";return end
+                            RemoteCatalog.CraftMessage("Server cooldown · retrying batch "..amount.." ("..retries.."/5)")
+                            if not waitFor(math.min(4,.5*2^(retries-1))) then return end
+                            continue
+                        end
+                        if not sent then outcome="Craft rejected · check materials/workbench. "..RemoteCatalog.ChestResultText(response);return end
+                        local after=RemoteCatalog.WaitChestInventory(item,active,before)
+                        if not active() then return end
+                        if not after or after<=before then outcome="No confirmed item gain · stopped. Check materials and quantity metadata.";return end
+                        confirmed+=after-before;retries=0
+                        if queued then RemoteCatalog.CraftQueueTotal+=after-before end
+                        RemoteCatalog.CraftMessage("+"..confirmed.." confirmed · "..mode.." · inventory "..after)
+                        if not continuous and ((makeAmount and confirmed>=target) or (not makeAmount and after>=target)) then
+                            outcome=makeAmount and ("Made +"..confirmed.." "..item.." this run · inventory "..after) or ("Stock target reached · "..after.." / "..target.." "..item.."; +"..confirmed.." confirmed this run.")
+                            completed=true;return
+                        end
+                        if not waitFor(.5) then return end
+                    end
+
                 end
-                -- Quantity replication may yield: recheck the actor, binding and reach immediately before sending.
-                if not recorder:CanUseCraftBinding(binding) then outcome="Craft context changed · learn this recipe again.";return end
-                reachable,reason=RemoteCatalog.CraftReachable(binding.Workbench)
-                if not reachable then RemoteCatalog.CraftMessage(reason);if not waitFor(1) then return end;continue end
-                local amount=math.min(100,batch,continuous and batch or makeAmount and target-confirmed or target-before)
-                RemoteCatalog.CraftMessage("Crafting "..amount.." "..item.." · "..mode.." · +"..confirmed.." confirmed"..(continuous and " · until Stop" or makeAmount and (" / "..target.." extra") or (" · stock "..before.." / "..target)))
-                local sent,response
-                if recorder.CraftItem then sent,response=recorder:CraftItem(amount,binding) else sent,response=recorder:CraftBait(amount) end
-                if not active() then return end
-                if not sent and RemoteCatalog.ChestTooFast(response) then
-                    retries+=1
-                    if retries>5 then outcome="Server cooldown persisted · stopped after 5 retries.";return end
-                    RemoteCatalog.CraftMessage("Server cooldown · retrying batch "..amount.." ("..retries.."/5)")
-                    if not waitFor(math.min(4,.5*2^(retries-1))) then return end
-                    continue
-                end
-                if not sent then outcome="Craft rejected · check materials/workbench. "..RemoteCatalog.ChestResultText(response);return end
-                local after=RemoteCatalog.WaitChestInventory(item,active,before)
-                if not active() then return end
-                if not after or after<=before then outcome="No confirmed item gain · stopped. Check materials and quantity metadata.";return end
-                confirmed+=after-before;retries=0
-                RemoteCatalog.CraftMessage("+"..confirmed.." confirmed · "..mode.." · inventory "..after)
-                if not continuous and ((makeAmount and confirmed>=target) or (not makeAmount and after>=target)) then
-                    outcome=makeAmount and ("Made +"..confirmed.." "..item.." this run · inventory "..after) or ("Stock target reached · "..after.." / "..target.." "..item.."; +"..confirmed.." confirmed this run.")
-                    return
-                end
-                if not waitFor(.5) then return end
+                runRecipe()
+                if not completed or not active() then return end
+                if queued then RemoteCatalog.CraftQueueDone=index;RemoteCatalog.RefreshCraftQueue() end
+                if index<#jobs and not waitFor(.5) then return end
             end
+            if queued then outcome="Queue finished · "..#jobs.." jobs · +"..RemoteCatalog.CraftQueueTotal.." confirmed items. Queue kept; Run Queue repeats from the first job." end
         end)
         RemoteCatalog.CraftWorker=nil
+        if not ok then outcome="Craft stopped: "..tostring(failure) end
+        if queued and (RemoteCatalog.CraftQueueDone or 0)<#jobs then outcome="Queue stopped at job "..tostring(RemoteCatalog.CraftQueueIndex or 1).." / "..#jobs.." · "..tostring(RemoteCatalog.CraftQueueActiveItem or "unknown").." · "..outcome end
+        RemoteCatalog.CraftQueueRunning=false;RemoteCatalog.CraftQueueActiveItem=nil
         if RemoteCatalog.CraftGeneration==generation then
             RemoteCatalog.CraftEnabled=false
-            RemoteCatalog.CraftMessage(ok and outcome or "Craft stopped: "..tostring(failure))
+            RemoteCatalog.CraftMessage(outcome)
         elseif not RemoteCatalog.CraftEnabled then
             RemoteCatalog.CraftMessage("Crafting OFF · cleanup complete. Check inventory before restarting.")
         end
@@ -7830,7 +7921,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn conveyor-guard-70 · Craft diagnostics",
+    return table.concat({"Reborn craft-queue-71 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -7841,6 +7932,8 @@ function RemoteCatalog.CraftDiagnosticReport()
         "Craft learner: "..tostring(learning==true),
         "Auto Craft: "..tostring(RemoteCatalog.CraftEnabled==true),
         "Worker active: "..tostring(RemoteCatalog.CraftWorker~=nil),
+        "Queue: "..#RemoteCatalog.CraftQueue.." jobs; "..tostring(RemoteCatalog.CraftQueueDone or 0).." finished; "..tostring(RemoteCatalog.CraftQueueTotal or 0).." confirmed items",
+        "Active queue recipe: "..tostring(RemoteCatalog.CraftQueueActiveItem or "none"),
         "Last craft status: "..tostring(RemoteCatalog.CraftInfo and RemoteCatalog.CraftInfo.Text or "not started"),
         "Next step: "..action},"\n")
 end
@@ -7867,6 +7960,24 @@ track(RemoteCatalog.CraftDiagnosticButton.Activated:Connect(function()
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft diagnostics copied",COLORS.good)
     else print(report);setStatus("Craft diagnostics printed to the console",COLORS.warn) end
+end))
+pageHeading(RemoteCatalog.CraftPage,"CRAFTING QUEUE · FINITE JOBS",354)
+RemoteCatalog.CraftQueueAddButton=button({Parent=RemoteCatalog.CraftPage,Text="Add to queue",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,382)})
+RemoteCatalog.CraftQueueRunButton=button({Parent=RemoteCatalog.CraftPage,Text="RUN QUEUE",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,382)})
+RemoteCatalog.CraftQueueRemoveButton=button({Parent=RemoteCatalog.CraftPage,Text="Remove last job",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,426)})
+RemoteCatalog.CraftQueueClearButton=button({Parent=RemoteCatalog.CraftPage,Text="Clear queue",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,426)})
+RemoteCatalog.CraftQueueView=Instance.new("ScrollingFrame")
+RemoteCatalog.CraftQueueView.Size=UDim2.new(1,-12,0,128);RemoteCatalog.CraftQueueView.Position=UDim2.fromOffset(6,470)
+RemoteCatalog.CraftQueueView.BackgroundColor3=COLORS.panel;RemoteCatalog.CraftQueueView.BorderSizePixel=0
+RemoteCatalog.CraftQueueView.CanvasSize=UDim2.new();RemoteCatalog.CraftQueueView.AutomaticCanvasSize=Enum.AutomaticSize.Y
+RemoteCatalog.CraftQueueView.ScrollBarThickness=5;RemoteCatalog.CraftQueueView.ScrollingDirection=Enum.ScrollingDirection.Y;RemoteCatalog.CraftQueueView.Parent=RemoteCatalog.CraftPage
+RemoteCatalog.CraftQueueLabel=label({Parent=RemoteCatalog.CraftQueueView,Text="Queue empty",TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-20,0,24),Position=UDim2.fromOffset(8,6)})
+RemoteCatalog.CraftQueueLabel.TextWrapped=true;RemoteCatalog.CraftQueueLabel.AutomaticSize=Enum.AutomaticSize.Y;RemoteCatalog.CraftQueueLabel.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.CraftQueueLabel.TextTruncate=Enum.TextTruncate.None
+track(RemoteCatalog.CraftQueueAddButton.Activated:Connect(RemoteCatalog.AddCraftQueueJob))
+track(RemoteCatalog.CraftQueueRemoveButton.Activated:Connect(function() RemoteCatalog.EditCraftQueue(false) end))
+track(RemoteCatalog.CraftQueueClearButton.Activated:Connect(function() RemoteCatalog.EditCraftQueue(true) end))
+track(RemoteCatalog.CraftQueueRunButton.Activated:Connect(function()
+    if RemoteCatalog.CraftQueueRunning and RemoteCatalog.CraftEnabled then RemoteCatalog.SetCraftEnabled(false) else RemoteCatalog.SetCraftEnabled(true,true) end
 end))
 RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText())
 -- CRAFT BAIT UI END

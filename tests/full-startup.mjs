@@ -851,7 +851,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn conveyor-guard-70',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn craft-queue-71',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1486,6 +1486,43 @@ end)()
  local itemY=r.ChestItemButton.Position.Y.Offset
  for _=1,3 do r.ChestProfilesButton.Activated:Fire();r.ChestProfilesButton.Activated:Fire() end
  assert(r.ChestProfilesButton.Position.Y.Offset==profileY and r.ChestItemButton.Position.Y.Offset==itemY,'profile expansion must preserve the new protection row without drift')
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ local lookup,count,reach=r.CraftRecorder,r.CarrotCount,r.CraftReachable
+ local item,mode,batch,target=r.CraftItem,r.CraftMode,r.CraftBatch,r.CraftTarget
+ local stock,trace={},{}
+ local bindings={bait={Item='bait',Workbench={}},testRecipe={Item='testRecipe',Workbench={}}}
+ local recorder={CanUseCraftBinding=function() return true end,CraftItem=function(_,amount,binding) table.insert(trace,binding.Item);stock[binding.Item]=(stock[binding.Item] or 0)+amount;return true end}
+ r.CraftRecorder=function(name) return recorder,bindings[name or r.CraftItem] end
+ r.CarrotCount=function(name) return stock[name] or 0 end;r.CraftReachable=function() return true end
+ r.CraftQueue={};r.CraftItem='bait';r.CraftMode='Make amount';r.CraftBatch=100;r.CraftTarget=100
+ r.CraftQueueAddButton.Activated:Fire()
+ r.CraftItem='testRecipe';r.CraftQueueAddButton.Activated:Fire()
+ assert(#r.CraftQueue==2 and #trace==0 and string.find(r.CraftQueueLabel.Text,'testRecipe',1,true),'real Add to queue controls must describe both recipes without crafting')
+ r.CraftMode='Continuous';r.RefreshCraftUI()
+ assert(not r.CraftQueueAddButton.Active,'Continuous must disable Add to queue')
+ r.CraftQueueAddButton.Activated:Fire();assert(#r.CraftQueue==2,'handler must reject infinite jobs even if fired on an inactive button')
+ r.CraftMode='Make amount';r.RefreshCraftUI()
+ local y=r.CraftQueueAddButton.Position.Y.Offset
+ r.CraftModeButton.Activated:Fire();assert(r.CraftQueueAddButton.Position.Y.Offset>y,'inline mode menu must push queue controls down')
+ r.CraftModeButton.Activated:Fire();assert(r.CraftQueueAddButton.Position.Y.Offset==y,'closing dropdown must restore queue layout')
+ r.CraftQueueRunButton.Activated:Fire()
+ assert(r.CraftQueueRunning and r.CraftQueueDone==1 and #trace==1 and trace[1]=='bait' and r.CraftQueueRunButton.Text=='STOP QUEUE','Run Queue must execute the first job with one worker and expose Stop')
+ assert(not r.CraftQueueAddButton.Active and not r.CraftQueueClearButton.Active,'active queue must lock editing')
+ r.CraftQueueClearButton.Activated:Fire();assert(#r.CraftQueue==2,'Clear handler must not mutate the active queue')
+ local report=r.CraftDiagnosticReport()
+ assert(string.find(report,'Queue: 2 jobs; 1 finished',1,true),'copy diagnostics must expose actual queue progress')
+ stopAllButton.Activated:Fire();stepWorkers()
+ assert(not r.CraftWorker and not r.CraftQueueRunning and #trace==1 and #r.CraftQueue==2,'Stop All must cancel the remaining jobs while keeping the configured queue')
+ r.CraftQueueRunButton.Activated:Fire();assert(#trace==2)
+ r.CraftQueueRunButton.Activated:Fire();stepWorkers()
+ assert(not r.CraftQueueRunning and not r.CraftWorker and #trace==2,'real Stop Queue button must prevent the next recipe')
+ r.CraftQueueRemoveButton.Activated:Fire();assert(#r.CraftQueue==1)
+ r.CraftQueueClearButton.Activated:Fire();assert(#r.CraftQueue==0 and string.find(r.CraftQueueLabel.Text,'0 / 8',1,true))
+ r.CraftRecorder,r.CarrotCount,r.CraftReachable=lookup,count,reach
+ r.CraftItem,r.CraftMode,r.CraftBatch,r.CraftTarget=item,mode,batch,target;r.RefreshCraftUI()
  end)()
 
 local lastRecipeOption=RemoteCatalog.CraftRecipeMenu.Options[1]

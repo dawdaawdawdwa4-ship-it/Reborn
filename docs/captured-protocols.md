@@ -685,3 +685,27 @@ Catalog size remains 146 and recorder v30 is unchanged. Tests cover mixed regula
 and protected chests, all-protected selections, repeat queue construction,
 preflight rejection, Include and profile-load isolation. It is a type-based
 exclusion, not inferred conveyor topology; live behavior remains unverified.
+
+### Sequential crafting jobs (craft-queue-71)
+
+v71 changes local scheduling/UI only. It adds up to eight finite crafting jobs,
+each with an explicit learned recipe name, mode, batch and amount/target. At Run
+Queue, the application resolves and validates every job's binding before sending
+anything, then freezes those references for one sequential worker. The displayed
+configured queue stores no captured argument list, remote or token and is not
+persisted. Recorder v30 and the catalog of 146 endpoints are unchanged.
+
+Each job uses its own exact recorded crafting envelope/workbench and confirms
+only growth of that recipe's inventory item. Per-request amounts remain 1–100;
+a final partial batch can be smaller than the selected batch. The queue advances
+only when a finite job's confirmed goal is met. Failure stops remaining jobs;
+TOO_FAST retains its existing bounded retry policy on the same active recipe.
+Stop invalidates the single worker generation and prevents later jobs from
+starting. An in-flight request still needs to finish before cleanup/restart.
+
+Make amount, Top up stock and single-recipe Continuous are unchanged. Continuous
+is excluded from finite queues. Tests cover recipe order, original binding and
+settings remaining fixed, complete preflight, capped quantities, failure/Stop
+isolation and the existing build/plow/chest/fishing regressions. No server cost,
+output ratio, dependency graph or live queue compatibility is inferred; live
+Roblox operation remains unverified.

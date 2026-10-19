@@ -1574,3 +1574,49 @@ supplied capture. Validation covers default protection, Include compatibility,
 regular/mixed scopes, discovered/whole/repeat queues, final preflight, actionable
 empty plans, profile behavior and UI locks/layout. `npm --prefix tests test`
 passes. Live Roblox conveyor operation remains unverified.
+
+### Ordered crafting queue (v71)
+
+Crafting now includes **Add to queue**, **Run Queue / Stop Queue**, **Remove last
+job** and **Clear queue**, plus a scrollable list with current/completed job
+markers. Select a learned recipe, **Make amount** or **Top up stock**, amount and
+batch, then click Add to queue. Repeat for other recipes and press Run Queue.
+Adding or changing a plan never starts crafting. The queue starts empty and OFF;
+no existing preferences are applied automatically. Single-recipe Start crafting
+and Continuous keep their v70 behavior independently of the configured queue.
+
+A queue holds up to eight finite jobs. Each stores its own recipe name, mode,
+amount/target and 25/50/100 batch. Continuous cannot be queued because it would
+prevent later jobs from running. Before the first request, all jobs must have
+valid current-account/character/server bindings. Each run freezes the jobs and
+captured workbenches, uses one worker, and finishes one job before advancing.
+Per-request quantity is still at most 100, including a smaller final batch.
+Inventory confirmation remains specific to the active recipe. Already-met
+Top up stock jobs advance without sending a request. Duplicate Make amount jobs
+each make their configured additional amount.
+
+The queue stops at the failed job on server rejection, unreadable/unconfirmed
+inventory, expired context or the existing bounded cooldown limit; it does not
+silently skip it and spend materials on later jobs. TOO_FAST retries the same
+recipe and batch. An out-of-reach workbench waits with the queue ON; move within
+20 studs of that learned workbench. The queue does not walk or infer recipe
+materials/dependencies. Subsequent jobs can use materials produced by earlier
+ones only through the game's normal crafting rules.
+
+Stop crafting, Stop Queue, Stop All and GUI removal cancel remaining work. They
+cannot recall an in-flight RPC; cleanup must finish before restart or edits.
+Queue editing and recipe/mode controls lock while the worker runs. Completed or
+stopped configured queues remain available in memory: Run Queue always starts
+at the first job, not from partial progress, and may consume materials again.
+Removing/clearing jobs resets the displayed run totals. Queue diagnostics include
+completed jobs, confirmed positive inventory gains and the active queued recipe.
+The list is session-only; configured jobs store no binding, session token or
+remote path, and there is no queue persistence/import in this release.
+
+Validation: `npm --prefix tests test` includes new queue regressions for order,
+partial batches, independent recipe counts, repeated/top-up jobs, whole-queue
+preflight, frozen settings/bindings, Stop/in-flight restart, material/no-gain/
+cooldown failure, workbench range, malformed/capped queues and GUI cleanup. The
+real UI tests exercise Add/Run/Stop/Clear, Stop All, edit locks, diagnostics and
+inline dropdown layout. Conveyor Skip remains the startup default. Live v71
+Roblox behavior remains unverified.
