@@ -575,3 +575,36 @@ Regression tests cover in-flight stop/restart, settled-block skipping, unreadabl
 inventory counts, occupied-cell deductions, reach checks, copy controls and slot
 inspection without placement. Existing v41–v45 regressions remain covered. Live
 Roblox rendering and server behavior remain unverified.
+
+### Blueprint material editing, rename and copy (v47)
+
+Load a saved blueprint, then use **Existing block name** and **Replacement block
+name** under Auto Build > Replace material. **Replace material** changes all
+matching cells in the working blueprint, keeping CFrames and preview position
+unchanged. The replacement must exist in the game's block definitions. An
+asterisk marks unsaved edits, material counts refresh and the previous build
+check is invalidated. Existing placed blocks are not modified: builds still
+skip occupied cells. Materials, reach and server permissions remain required.
+
+The saved source slot and its file stay unchanged until **Save preview**. If no
+preview exists yet, Preview first. **Undo last edit** restores the immediately
+previous material state without changing geometry or saved slots. Only one edit
+is retained for Undo; loading a different plan, choosing a generated preset or
+saving the working preview clears it. Saving a generated preset retains its
+existing behavior.
+
+**Rename selected slot** uses the blueprint name field to rename only the saved
+slot. Names are trimmed and must remain 1–48 bytes. The current preview is kept.
+**Copy target** selects a destination slot; **Copy selected slot → target**
+overwrites that explicit destination with an independent validated snapshot.
+Copying to the source slot is refused. Copy uses the saved slot rather than any
+unsaved working material edit. It leaves source selection and preview position
+unchanged. Both operations use the existing account-specific file adapter and
+report Session only if persistence fails.
+
+Material edits, Undo, rename, copy and slot writes wait for active or cancelled
+in-flight build workers to finish. None starts a build or sends placement
+requests. Regression tests exercise actual controls, source/destination isolation,
+invalid targets/names, unknown materials, full rotation preservation, Undo state,
+preflight invalidation and in-flight guards. Live Roblox behavior remains
+unverified.

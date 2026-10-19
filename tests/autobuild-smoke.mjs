@@ -249,6 +249,42 @@ assert(browser:StoreBlueprint(valid())) -- file writer still fails; the newest s
 summary=browser:RefreshLibrary(true)
 assert(browser.Library[1].Name=='Test' and string.find(summary,'Session only',1,true),'refresh must preserve a newer session-only save over older disk data')
 assert(requests==before,'slot browsing must never place blocks')
+-- Material edits are isolated from saved slots and preserve preview transforms.
+local disk,writes47={},0
+ctx.WriteBlueprint=function(slot,data) disk[slot]=A.Validate(data);writes47+=1;return true end
+local editor=A.new(ctx)
+assert(editor:StoreBlueprint(stored) and editor:LoadBlueprint())
+editor.Anchor=frame(0,0,0);editor.BlockSize=3
+editor.Cells={{CFrame=frame(0,0,0),Material='grass'},{CFrame=frame(3,3,0,math.pi/2),Material='stone'}}
+local source47=editor.Library[1]
+local position47=editor.Cells[2].CFrame
+editor.BuildReport='Old check'
+local changed47,count47=editor:ReplaceMaterial(' grass ','stone')
+assert(changed47 and count47==1 and editor.SavedPlan.Cells[1].Material=='stone' and editor.Cells[1].Material=='stone','replacement must apply only to matching blocks in the working layout')
+assert(editor.Library[1]==source47 and source47.Cells[1].Material=='grass' and disk[1].Cells[1].Material=='grass','material editing must not overwrite the original memory or disk slot')
+assert(editor.Cells[2].CFrame==position47 and editor.PlanDirty and not editor.BuildReport,'material edits must preserve preview transforms and invalidate preflight')
+local work47=editor.SavedPlan
+assert(not editor:ReplaceMaterial('stone','unknown') and editor.SavedPlan==work47,'unknown replacements must leave the working layout intact')
+assert(not editor:ReplaceMaterial('missing','grass') and editor.SavedPlan==work47,'a missing source material must not create an edit')
+assert(editor:UndoMaterial() and editor.Cells[1].Material=='grass' and not editor.PlanDirty and editor.Cells[2].CFrame==position47,'Undo must restore the preceding materials and clean/dirty state without moving cells')
+assert(not editor:UndoMaterial(),'only the latest material edit is retained for Undo')
+assert(editor:ReplaceMaterial('grass','stone') and editor:SavePreview())
+assert(disk[1].Cells[1].Material=='stone' and not editor.PlanDirty and not editor.MaterialUndo,'Save preview must commit the working material change and clear Undo')
+-- Rename and copy operate on validated slot snapshots, not the working preview.
+local preview47=editor.Cells
+assert(editor:RenameSlot('  Budget House  ') and editor.Library[1].Name=='Budget House' and disk[1].Name=='Budget House','rename must trim and persist the blueprint name')
+local renamed47=editor.Library[1]
+assert(not editor:RenameSlot('   ') and editor.Library[1]==renamed47,'invalid names must preserve existing saved data')
+assert(not editor:CopySlot(1) and not editor:CopySlot(nil) and not editor:CopySlot(6),'copy must reject the source and invalid destination slots')
+editor.Library[2]=valid()
+assert(editor:CopySlot(2) and editor.Slot==1 and editor.Library[2].Name=='Budget House' and editor.Cells==preview47,'copy must overwrite only the explicit destination and preserve source selection/preview')
+assert(editor.Library[1]~=editor.Library[2] and editor.Library[1].Cells[1]~=editor.Library[2].Cells[1],'copied slots must not alias source data')
+assert(math.abs(disk[2].Cells[2].Components[6]-1)<.001,'slot copies must retain saved block rotations')
+local guard47=writes47
+editor.WorkerToken=99
+assert(not editor:ReplaceMaterial('stone','grass') and not editor:RenameSlot('No') and not editor:CopySlot(3) and not editor:StoreBlueprint(valid()),'in-flight worker ownership must guard edits and writes after Stop')
+assert(writes47==guard47,'blocked edits must not write files')
+editor.WorkerToken=nil
 return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

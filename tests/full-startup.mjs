@@ -46,6 +46,22 @@ flush()
  assert(buildController.SavedPlan and buildController.SavedPlan.Name=='House' and not buildController.Running and not buildController.Cells,'Load button must validate disk data without starting a build')
  buildController.Buttons.Inspect.Activated:Fire()
  assert(string.find(buildController.LibrarySummary.Text,'House',1,true),'slot browser must display the saved layout name')
+ buildController.Inputs.Name.Text='Cabin'
+ buildController.Buttons.Rename.Activated:Fire()
+ assert(buildController.Library[1].Name=='Cabin','Rename button must use the blueprint name field')
+ buildController.Buttons.CopySlot.Activated:Fire()
+ assert(buildController.Library[2].Name=='Cabin' and buildController.Slot==1 and path=='RebornBlueprint_7_2.json','Copy button must persist the explicit target without switching the source slot')
+ local findDefinitions=ReplicatedStorage.FindFirstChild
+ ReplicatedStorage.FindFirstChild=function(_,name)
+  if name=='Blocks' then return {FindFirstChild=function(_,material) return (material=='grass' or material=='stone') and {} end} end
+ end
+ buildController.Inputs.ReplaceFrom.Text='grass';buildController.Inputs.ReplaceTo.Text='stone'
+ buildController.Buttons.Replace.Activated:Fire()
+ assert(buildController.SavedPlan.Cells[1].Material=='stone' and buildController.Library[1].Cells[1].Material=='grass','Replace button must isolate the working layout from the saved slot')
+ buildController.Buttons.UndoMaterial.Activated:Fire()
+ assert(buildController.SavedPlan.Cells[1].Material=='grass' and not buildController.MaterialUndo,'Undo button must restore the prior working material')
+ ReplicatedStorage.FindFirstChild=findDefinitions
+
  buildController.Buttons.Check.Activated:Fire()
  assert(string.find(buildController.Status.Text,'Preview at the intended position',1,true),'preflight must request a preview rather than starting one implicitly')
  local oldCopy=setclipboard
@@ -648,7 +664,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-checks-46',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn blueprint-editing-47',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()

@@ -216,3 +216,11 @@ its ownership token after Stop until an in-flight call returns; restarting waits
 for cleanup. Resumed passes use the existing request and confirmation path and
 recheck occupied cells before normal-reach placement. Slot inspection reads only
 local validated blueprint data and never starts a build.
+
+### Blueprint editing (blueprint-editing-47)
+
+Material replacement edits a validated working copy's block names while retaining
+its relative CFrames; it does not change saved files until Save preview. Rename
+and copy use the same local JSON schema and fixed account/slot filenames. No new
+remote requests or session fields are introduced. Placement still occurs only
+through Start and the existing reach, occupancy and confirmation checks.

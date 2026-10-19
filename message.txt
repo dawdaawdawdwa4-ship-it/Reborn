@@ -1480,18 +1480,21 @@ function AutoBuild.new(ctx)
         if self.MaterialSummary then self.MaterialSummary.Text=table.concat(lines,"\n") end
         return counts
     end
-    function self:StoreBlueprint(data)
+    function self:StoreBlueprint(data,slot)
+        if self.Running or self.WorkerToken then status("Wait for the build worker to finish before changing saved slots.");return false end
+        if slot==nil then slot=self.Slot end
+        if type(slot)~="number" or slot%1~=0 or slot<1 or slot>5 then status("Choose a slot from 1 to 5.");return false end
         local ok,copy=pcall(AutoBuild.Validate,data)
         if not ok then status(copy);return false end
-        self.Library[self.Slot]=copy
+        self.Library[slot]=copy
         local persisted=false
         if ctx.WriteBlueprint then
-            local ran,result=pcall(ctx.WriteBlueprint,self.Slot,copy)
+            local ran,result=pcall(ctx.WriteBlueprint,slot,copy)
             persisted=ran and result==true
         end
-        self.Persistence[self.Slot]=persisted and "File + session" or "Session only"
+        self.Persistence[slot]=persisted and "File + session" or "Session only"
         self:RefreshLibrary(false)
-        status("Saved slot "..self.Slot..": "..copy.Name.." ("..#copy.Cells.." blocks). "..(persisted and "Saved to file." or "Session only; file saving is unavailable or failed."))
+        status("Saved slot "..slot..": "..copy.Name.." ("..#copy.Cells.." blocks). "..(persisted and "Saved to file." or "Session only; file saving is unavailable or failed."))
         return true
     end
     function self:InspectSlot(slot)
@@ -1553,6 +1556,58 @@ function AutoBuild.new(ctx)
         status("Build check ready. No blocks were placed. Refresh after inventory or world changes.")
         return {Remaining=total,Occupied=skipped,Reachable=reachable,Materials=pending}
     end
+    function self:RenameSlot(name)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before renaming a slot.");return false end
+        local data=self:InspectSlot(self.Slot)
+        if not data then status("Load or save a valid selected slot before renaming it.");return false end
+        local copy=AutoBuild.Validate(data)
+        copy.Name=type(name)=="string" and name:match("^%s*(.-)%s*$") or ""
+        return self:StoreBlueprint(copy)
+    end
+    function self:CopySlot(target)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before copying a slot.");return false end
+        if type(target)~="number" or target%1~=0 or target<1 or target>5 then status("Choose a copy target from 1 to 5.");return false end
+        if target==self.Slot then status("Choose a copy target different from the source slot.");return false end
+        local data=self:InspectSlot(self.Slot)
+        if not data then status("Select a valid saved source slot before copying it.");return false end
+        return self:StoreBlueprint(data,target)
+    end
+    function self:ReplaceMaterial(from,to)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before replacing materials.");return false end
+        if not self.SavedPlan then status("Load a saved blueprint before replacing its materials.");return false end
+        from=type(from)=="string" and from:match("^%s*(.-)%s*$") or ""
+        to=type(to)=="string" and to:match("^%s*(.-)%s*$") or ""
+        if from=="" or to=="" or #from>128 or #to>128 or from==to then status("Enter different source and replacement block names.");return false end
+        local definitions=ctx.BlockDefinitions and ctx.BlockDefinitions()
+        if not definitions or not definitions:FindFirstChild(to) then status("Replacement block is unknown or definitions are unavailable.");return false end
+        local copy=AutoBuild.Validate(self.SavedPlan)
+        local changed=0
+        for _,cell in ipairs(copy.Cells) do
+            if cell.Material==from then cell.Material=to;changed+=1 end
+        end
+        if changed==0 then status("No blocks named "..from.." in the loaded blueprint.");return false end
+        self.MaterialUndo={Plan=AutoBuild.Validate(self.SavedPlan),Dirty=self.PlanDirty}
+        self.SavedPlan=copy;self.PlanDirty=true;self.BuildReport=nil
+        if self.Cells then
+            for _,cell in ipairs(self.Cells) do if cell.Material==from then cell.Material=to end end
+        end
+        self.Preset="Saved: "..copy.Name.." *";buttons.Preset.Text=self.Preset.."  ▼"
+        self:UpdateMaterials(self.Cells or copy.Cells)
+        status("Changed "..changed.." blocks in the working blueprint. Saved slots are unchanged; Preview then Save preview to keep this edit.")
+        return true,changed
+    end
+    function self:UndoMaterial()
+        if self.Running or self.WorkerToken then status("Wait for the build worker before undoing material edits.");return false end
+        if not self.MaterialUndo then status("No material edit to undo.");return false end
+        self.SavedPlan=self.MaterialUndo.Plan;self.PlanDirty=self.MaterialUndo.Dirty;self.MaterialUndo=nil;self.BuildReport=nil
+        if self.Cells then
+            for index,cell in ipairs(self.Cells) do cell.Material=self.SavedPlan.Cells[index].Material end
+        end
+        self.Preset="Saved: "..self.SavedPlan.Name..(self.PlanDirty and " *" or "");buttons.Preset.Text=self.Preset.."  ▼"
+        self:UpdateMaterials(self.Cells or self.SavedPlan.Cells)
+        status("Last material edit undone. No saved slot or placed block was changed.")
+        return true
+    end
     function self:SavePreview()
         if self.Running then status("Stop the build before saving a blueprint.");return false end
         if not self.Cells or not self.Anchor then status("Preview a build before saving it.");return false end
@@ -1560,7 +1615,12 @@ function AutoBuild.new(ctx)
         for _,cell in ipairs(self.Cells) do
             table.insert(data.Cells,{Material=cell.Material,Components={self.Anchor:ToObjectSpace(cell.CFrame):GetComponents()}})
         end
-        return self:StoreBlueprint(data)
+        local saved=self:StoreBlueprint(data)
+        if saved and self.SavedPlan then
+            self.SavedPlan=self.Library[self.Slot];self.PlanDirty=false;self.MaterialUndo=nil
+            self.Preset="Saved: "..self.SavedPlan.Name;buttons.Preset.Text=self.Preset.."  ▼"
+        end
+        return saved
     end
     function self:LoadBlueprint()
         if self.Running then status("Stop the build before loading a blueprint.");return false end
@@ -1573,7 +1633,7 @@ function AutoBuild.new(ctx)
         if not ok then status("Cannot load slot "..self.Slot..": "..tostring(copy));return false end
         self:ClearPreview()
         if not self.Library[self.Slot] then self.Persistence[self.Slot]="Loaded from file" end
-        self.Library[self.Slot]=copy;self.SavedPlan=copy
+        self.Library[self.Slot]=copy;self.SavedPlan=copy;self.PlanDirty=false;self.MaterialUndo=nil
         self:RefreshLibrary(false)
         self.Preset="Saved: "..copy.Name;buttons.Preset.Text=self.Preset.."  ▼"
         inputs.Name.Text=copy.Name
@@ -1659,7 +1719,7 @@ function AutoBuild.new(ctx)
         option.ZIndex=36
         ctx.Track(option.Activated:Connect(function()
             if self.Running then return end
-            self.SavedPlan=nil
+            self.SavedPlan=nil;self.PlanDirty=false;self.MaterialUndo=nil
             self.Preset=preset;buttons.Preset.Text=preset.."  ▼";presetMenu.Visible=false;invalidate()
         end))
     end
@@ -1733,6 +1793,26 @@ function AutoBuild.new(ctx)
     button("Inspect","Refresh saved slots",0,1168,1,function() self:RefreshLibrary(true) end)
     self.LibrarySummary=label("Saved slots have not been inspected. Press Refresh saved slots to read them.",1208,156)
     self.LibrarySummary.TextWrapped=true
+    button("Rename","Rename selected slot",0,1376,.5,function() self:RenameSlot(inputs.Name.Text) end)
+    self.CopyTarget=2
+    button("CopyTarget","Copy target: 2 / 5",.5,1376,.5,function()
+        if self.Running or self.WorkerToken then return end
+        self.CopyTarget=self.CopyTarget%5+1;buttons.CopyTarget.Text="Copy target: "..self.CopyTarget.." / 5"
+    end)
+    button("CopySlot","Copy selected slot → target (overwrites target)",0,1416,1,function() self:CopySlot(self.CopyTarget) end)
+    local copyHint=label("Rename uses the blueprint name field. Copy changes only the target slot; the current preview stays where it is. Choose the destination before copying.",1456,72)
+    copyHint.TextWrapped=true
+    label("REPLACE MATERIAL IN LOADED BLUEPRINT",1536,34)
+    for index,key in ipairs({"ReplaceFrom","ReplaceTo"}) do
+        local field=Instance.new("TextBox");field.Name=key;field.Text="";field.PlaceholderText=index==1 and "Existing block name" or "Replacement block name"
+        field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240);field.BackgroundColor3=Color3.fromRGB(29,39,48)
+        field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,1578);field.Parent=ctx.Parent
+        inputs[key]=field
+    end
+    button("Replace","Replace material",0,1618,.5,function() self:ReplaceMaterial(inputs.ReplaceFrom.Text,inputs.ReplaceTo.Text) end)
+    button("UndoMaterial","Undo last edit",.5,1618,.5,function() self:UndoMaterial() end)
+    local replaceHint=label("Applies to the loaded working blueprint and its preview. The saved slot is kept until Save preview. Existing placed blocks are not replaced; Start still skips occupied cells.",1660,84)
+    replaceHint.TextWrapped=true
     self.Buttons=buttons;self.Inputs=inputs
     return self
 end
@@ -2076,7 +2156,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "build-checks-46",
+    Subtitle = "blueprint-editing-47",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2444,7 +2524,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-checks-46",
+    return table.concat({"Reborn blueprint-editing-47",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -3961,7 +4041,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-checks-46", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn blueprint-editing-47", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -5694,7 +5774,7 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-checks-46\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn blueprint-editing-47\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -5888,7 +5968,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-checks-46\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn blueprint-editing-47\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
