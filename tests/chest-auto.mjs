@@ -663,6 +663,8 @@ do
   options=settings;clock=0;qty=0;stock=settings.Stock or 10000;trace={};lastRequest=-100;firstReject=settings.RejectFirst;usable=true
   binding.Probe=settings.Probe
   RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestCooldown=nil
+  RemoteCatalog.ChestClock=function() return clock end
+  RemoteCatalog.ChestRequestAt=nil;RemoteCatalog.ChestRateFloor=nil;RemoteCatalog.ChestRateCeiling=nil;RemoteCatalog.ChestRateAccepted=0;RemoteCatalog.ChestRateSuccesses=0
   RemoteCatalog.ChestAutoBatch=settings.Fixed or 'Max';RemoteCatalog.ChestSpeed='Standard';RemoteCatalog.ChestRepeat=false
   RemoteCatalog.ChestGoal=settings.Goal;RemoteCatalog.ChestStockTarget=settings.Target
   RemoteCatalog.SelectedChestTargets=function() return {{Recorder=owner,Binding=binding}} end
@@ -674,6 +676,7 @@ do
    local rejected=options.AlwaysFast or firstReject or options.Interval and clock-lastRequest<options.Interval-1e-6
    firstReject=false;lastRequest=clock
    table.insert(trace,{Amount=amount,At=clock,Rate=rejected})
+   if options.Latency then task.wait(options.Latency) end
    if rejected then return false,{success=false,error='TOO_FAST'} end
    if options.RejectAbove and amount>options.RejectAbove then return false,{success=false,error='AMOUNT_TOO_LARGE'} end
    if amount>stock then return false,{success=false,error='INSUFFICIENT_ITEMS'} end
@@ -689,10 +692,10 @@ do
  assert(not RemoteCatalog.ChestTooFast(cyclic) and not RemoteCatalog.ChestTooFast({success=false,error='NOT_ENOUGH_ITEMS'}),'only the known rate error may trigger same-batch pacing retries')
  prepare({Goal=930,Interval=.8})
  assert(RemoteCatalog.SetChestAuto(true));drain()
- assert(qty==930 and RemoteCatalog.ChestAutoTotal==930 and #trace==7 and RemoteCatalog.ChestRateDelay==.8,'Max must grow full transfers while recovering an accepted request pace')
+ assert(qty==930 and RemoteCatalog.ChestAutoTotal==930 and #trace==8 and math.abs(RemoteCatalog.ChestRateDelay-1)<1e-6,'Max must grow full transfers while returning to its known working request pace: qty='..qty..' calls='..#trace..' delay='..tostring(RemoteCatalog.ChestRateDelay))
  assert(trace[1].Amount==30 and trace[2].Rate and trace[2].Amount==60 and trace[3].Rate and trace[3].Amount==60 and trace[4].Amount==60,'TOO_FAST must retry the exact growth batch instead of halving it')
- assert(trace[5].Amount==120 and trace[6].Amount==240 and trace[7].Amount==480,'confirmed Max batches must continue growing on the same stack')
- for i=4,#trace do assert(not trace[i].Rate and trace[i].At-trace[i-1].At>=.8-1e-6,'learned pacing must still respect the simulated server interval') end
+ assert(trace[5].Amount==120 and trace[6].Amount==240 and trace[7].Amount==480 and trace[8].Amount==480,'confirmed Max batches must continue growing on the same stack')
+ for i=4,#trace do if not trace[i].Rate then assert(trace[i].At-trace[i-1].At>=.8-1e-6,'accepted requests must respect the simulated server interval') end end
  prepare({Goal=2930})
  assert(RemoteCatalog.SetChestAuto(true));drain()
  assert(qty==2930 and #trace==8 and trace[7].Amount==1000 and trace[8].Amount==40,'adaptive Max must cap at 1000 and obey the remaining cumulative goal')
@@ -738,8 +741,59 @@ do
  assert(not RemoteCatalog.ChestAutoWorker and qty==1800 and #trace<75 and RemoteCatalog.ChestRateDelay<1,'stable responses must gradually recover a transient four-second delay without losing transfers')
  assert(math.abs(trace[2].At-trace[1].At-4)<1e-6 and math.abs(trace[4].At-trace[3].At-3.2)<1e-6,'pacing must decrease by twenty percent only after three valid server responses')
  for _,request in ipairs(trace) do assert(request.Amount==30,'recovery must retain the full batch even if the faster probe meets TOO_FAST again') end
+ -- Converge near a slower server limit instead of repeatedly jumping back to four seconds.
+ prepare({Goal=1800,Fixed=30,Interval=2.8})
+ assert(RemoteCatalog.SetChestAuto(true))
+ for _=1,5000 do if not RemoteCatalog.ChestAutoWorker then break end;pump(1) end
+ assert(not RemoteCatalog.ChestAutoWorker and qty==1800 and RemoteCatalog.ChestAutoTotal==1800,'stable pacing must complete the same full-stack goal against a slower server')
+ local initial=false;local retries=0
+ for i,request in ipairs(trace) do
+  assert(request.Amount==30,'steady-server probing must retain the configured full batch')
+  if not request.Rate and i>1 then
+   assert(request.At-trace[i-1].At>=2.8-1e-6)
+   if RemoteCatalog.ChestRateCeiling then initial=true end
+  elseif request.Rate then retries+=1 end
+ end
+ assert(initial and retries<18 and RemoteCatalog.ChestRateDelay>=2.8 and RemoteCatalog.ChestRateDelay<=3.1,'bounded probing must settle close to the known accepted server interval')
+ -- OFF/ON must retain learned server spacing before the next run's first call.
+ prepare({Goal=60,Fixed=30,Interval=2.8})
+ RemoteCatalog.ChestRateDelay=3
+ assert(RemoteCatalog.SetChestAuto(true) and qty==30 and #trace==1)
+ RemoteCatalog.SetChestAuto(false);drain()
+ RemoteCatalog.ChestGoal=30
+ assert(RemoteCatalog.SetChestAuto(true) and #trace==1 and RemoteCatalog.ChestCooldownKind=='pace','an immediate restart must wait the remaining accepted interval before resending')
+ for _=1,1000 do if not RemoteCatalog.ChestAutoWorker then break end;pump(1) end
+ assert(not RemoteCatalog.ChestAutoWorker and qty==60 and #trace==2 and not trace[2].Rate and trace[2].At-trace[1].At>=3-1e-6,'restart pacing must avoid a new TOO_FAST burst and retain exact confirmed totals')
+ -- A failed faster probe reuses the working interval; it need not double to four seconds.
+ RemoteCatalog.ChestRateDelay=2.5;RemoteCatalog.ChestRateFloor=2;RemoteCatalog.ChestRateCeiling=3
+ assert(RemoteCatalog.ChestBackoff(2.5)==3 and RemoteCatalog.ChestRateFloor==2.5,'TOO_FAST below a known working interval must retry that working interval')
+ RemoteCatalog.ChestRateDelay=3;RemoteCatalog.ChestRateSuccesses=0;RemoteCatalog.ChestRateAccepted=0
+ for _=1,3 do RemoteCatalog.ObserveChestPace(true,nil,.1,3) end
+ assert(RemoteCatalog.ChestRateDelay==2.75,'recovery must bisect the rejected/accepted bracket')
+ RemoteCatalog.ChestBackoff(2.75)
+ for _=1,3 do RemoteCatalog.ObserveChestPace(true,nil,.1,3) end
+ assert(RemoteCatalog.ChestRateDelay==3,'a narrow bracket must hold its working interval rather than continually overshooting')
+ for _=1,9 do RemoteCatalog.ObserveChestPace(true,nil,.1,3) end
+ assert(not RemoteCatalog.ChestRateFloor and RemoteCatalog.ChestRateDelay<3,'a stale rejection bound must expire after sustained acceptance so changing server load can recover')
+ RemoteCatalog.ChestRateDelay=2;RemoteCatalog.ChestRateFloor=.5;RemoteCatalog.ChestRateCeiling=1
+ assert(RemoteCatalog.ChestBackoff(1.2)==4 and not RemoteCatalog.ChestRateCeiling,'a rejection above the previous working interval must invalidate that old bound and back off')
+ -- Request/confirmation time counts toward the interval rather than adding another full pause.
+ prepare({Goal=300,Fixed=30,Interval=.8,Latency=.3})
+ assert(RemoteCatalog.SetChestAuto(true))
+ for _=1,3000 do if not RemoteCatalog.ChestAutoWorker then break end;pump(1) end
+ assert(not RemoteCatalog.ChestAutoWorker and qty==300,'latency-aware pacing must still complete exact-item confirmation and goals')
+ local closeGap=false
+ for i=2,#trace do
+  if not trace[i].Rate then
+   local gap=trace[i].At-trace[i-1].At
+   assert(gap>=.8-1e-6,'network work must not shorten the actual interval below the simulated server limit')
+   if gap<=1.001 then closeGap=true end
+  end
+ end
+ assert(closeGap and clock<14,'accepted request spacing must subtract request work instead of waiting the whole interval again')
  -- Accepted protocol replies, including empty checks, are pacing evidence.
  RemoteCatalog.ChestRateDelay=4;RemoteCatalog.ChestRateSuccesses=0
+ RemoteCatalog.ChestRateFloor=nil;RemoteCatalog.ChestRateCeiling=nil;RemoteCatalog.ChestRateAccepted=0
  RemoteCatalog.ObserveChestPace(false,'Stand within 20 studs',.25)
  RemoteCatalog.ObserveChestPace(false,nil,.25)
  assert(RemoteCatalog.ChestRateDelay==4 and RemoteCatalog.ChestRateSuccesses==0,'local/transport errors must never suggest that a shorter server interval is accepted')
@@ -751,7 +805,7 @@ do
  RemoteCatalog.ChestRateDelay=.26;RemoteCatalog.ChestRateSuccesses=0
  for _=1,30 do RemoteCatalog.ObserveChestPace(true,nil,.25) end
  assert(RemoteCatalog.ChestRateDelay==.25,'recovery must never go below the selected base pace')
- task.wait=oldWait;RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestRateSuccesses=0;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil
+ task.wait=oldWait;RemoteCatalog.ChestClock=nil;RemoteCatalog.ChestRequestAt=nil;RemoteCatalog.ChestRateFloor=nil;RemoteCatalog.ChestRateCeiling=nil;RemoteCatalog.ChestRateAccepted=0;RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestRateSuccesses=0;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil
 end
 return 'Chest Auto Max: adaptive/full-stack batches, TOO_FAST pacing, repeat/top-up, pause/resume, goals, confirmation, remainders, Stop and cleanup passed'
 `;

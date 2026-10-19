@@ -848,7 +848,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn paced-chests-64',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn stable-chests-65',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1283,13 +1283,25 @@ end)()
  r.SelectedChestTargets=function() return {{Binding={Chest=c}},{Binding={Chest=c}},{Binding={Chest=c}}} end
  r.ChestRequestReady=function() return true end
  r.WithdrawCarrots=function() calls+=1;return true end
- r.ChestRateDelay=4;r.ChestRateSuccesses=0
+ r.ChestRateDelay=4;r.ChestRateSuccesses=0;r.ChestRateAccepted=0;r.ChestRateFloor=nil;r.ChestRateCeiling=nil;r.ChestRequestAt=nil
+ local originalWait,originalClock=task.wait,r.ChestClock
+ local manualClock=0
+ r.ChestClock=function() return manualClock end
+ task.wait=function(dt) manualClock+=dt;return originalWait(dt) end
  local co=coroutine.create(function() return r.WithdrawSelectedCarrots(r.ChestManualGeneration) end)
  assert(coroutine.resume(co) and calls==1 and r.ChestCooldownKind=='pace','manual accepted-request spacing must use the normal pacing label')
  for _=1,200 do if coroutine.status(co)=='dead' then break end;local ok,e=coroutine.resume(co);assert(ok,e) end
  assert(coroutine.status(co)=='dead' and calls==3 and r.ChestRateDelay==3.2 and not r.ChestCooldown and not r.ChestCooldownKind,'three accepted manual responses must recover pacing and clean up the indicator')
  r.SelectedChestTargets,r.ChestRequestReady,r.WithdrawCarrots=selectedTargets,ready,withdraw
- r.ChestRateDelay=nil;r.ChestRateSuccesses=0;r.RefreshChestActions()
+ task.wait=originalWait;r.ChestClock=originalClock;r.ChestRequestAt=nil
+ r.ChestRateDelay=nil;r.ChestRateSuccesses=0;r.ChestRateAccepted=0;r.ChestRateFloor=nil;r.ChestRateCeiling=nil;r.RefreshChestActions()
+ -- The recorded fixed batch stays selected, with totals visible during normal pacing.
+ local batch,total=r.ChestAutoBatch,r.ChestAutoTotal
+ r.ChestAutoBatch=30;r.ChestAutoTotal=60;r.ChestAutoEnabled=true;r.ChestAutoWorker=650
+ r.ChestCooldown='2.0s';r.ChestCooldownKind='pace';r.RefreshChestActions()
+ assert(r.ChestAutoBatch==30 and string.find(status.Text,'60 collected',1,true) and string.find(status.Text,'Request pace',1,true),'pacing must preserve a fixed thirty-item selection and show confirmed totals while waiting')
+ r.ChestAutoEnabled=false;r.ChestAutoWorker=nil;r.ChestCooldown=nil;r.ChestCooldownKind=nil
+ r.ChestAutoBatch=batch;r.ChestAutoTotal=total;r.RefreshChestActions()
  end)()
 
 ;(function()

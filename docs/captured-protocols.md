@@ -536,3 +536,25 @@ never starts collection and leaves whole-chest coverage available as an explicit
 choice. No remote, payload, catalog (145 entries), recorder v28 or persisted
 profile schema changes. Mock pacing, retry, amount, target/UI and complete
 regression checks pass; live v64 acceptance remains unverified.
+
+
+### Stable server interval estimation (stable-chests-65)
+
+The new v64 recordings show successful 30-item batches with renewed multi-second
+cooldowns. V65 replaces repeated fixed-percentage probing with measured accepted
+and rejected request-start intervals. It can reuse a known accepted interval on
+`TOO_FAST`, bisect a wider rejected/accepted bracket, and hold a narrow working
+bracket. Rejected accepted-bounds are invalidated, while stale rejection bounds
+expire after twelve non-throttled replies. Unknown/new limits retain the four-
+second backoff bound and five-consecutive-rejection stop.
+
+Adaptive waiting subtracts request/confirmation work and checks the remaining
+interval before an immediate new run can resend. Pause, Stop, current bindings,
+ownership, reach, exact inventory confirmation and amount/goal/top-up limits
+remain. Timing state is shared by manual/automatic chest workers during this
+script session and is never persisted or sent in packets. Fixed batch and scan
+preferences remain unchanged. The catalog stays at 145 entries and recorder v28.
+
+Mock stable/changing-limit, latency, restart, full-batch, manual/UI and complete
+regression checks pass. Actual Roblox request timing and throughput of v65 must
+still be verified live.

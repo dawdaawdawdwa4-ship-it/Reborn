@@ -1333,3 +1333,43 @@ limit, renewed throttling without shrinking batches, the selected base-pace floo
 non-throttled empty replies versus local/transport errors, shared manual recovery,
 countdown labels/cleanup, exact slot/filter preservation and actual preset/profile
 layout controls. The full regression suite passes. Live v64 remains unverified.
+
+
+### Stable accepted pacing and latency-aware waits (v65)
+
+The two supplied v64 clips show Pace Fast, fixed Auto batch 30, Whole chest OFF,
+25 selected checks, and totals progressing from 30 to 60 while ordinary pacing
+switches back to a multi-second server cooldown. V64's fixed 20-percent speed
+probe could repeatedly cross the server's accepted interval and double the wait.
+
+V65 measures actual time between request attempts. It retains both the largest
+observed rejected interval and the smallest accepted interval. After three
+non-throttled replies, recovery probes between those bounds. When the bounds
+are within 0.1 seconds or 10 percent of the working interval, it holds that
+working interval. A new `TOO_FAST` below a still-valid accepted bound retries
+that known interval instead of automatically doubling to four seconds. If the
+server rejects the old accepted interval too, it is discarded and the existing
+bounded exponential backoff applies. Old rejection bounds expire after twelve
+accepted replies so temporary load does not permanently pin a slower interval.
+These are local estimates, not a discovered or guaranteed Roblox server limit.
+
+Request/confirmation work counts toward an adaptive interval: the worker waits
+only the remaining time rather than adding a full extra interval after the
+reply. The already learned interval is also checked before a new run's first
+request, including immediate OFF/ON and manual/auto transitions. No concurrent
+request worker is introduced. Pause still freezes an entered countdown; Stop,
+GUI removal, stale bindings and unreadable inventory retain their guards.
+Local validation/transport errors cannot establish a working interval.
+
+Fixed 30, Max, manual batch, item and scan choices are unchanged. Waiting status
+now keeps confirmed collected totals visible. Collection progress says **slots
+finished**: a slot stays current while its stack is being drained, so zero
+finished slots does not mean that zero items were collected. Fast slot setup and
+whole-chest coverage remain explicit choices. Rate timing/bounds are runtime
+state only; no profile or recorder/catalog change.
+
+Mock tests cover a 2.8-second server threshold, returning directly to a known
+working interval, holding a narrow bracket, changed/stale server bounds, request
+latency counting toward spacing, immediate restart pacing, full-batch preservation,
+goals, manual collection and visible totals. The full regression suite passes.
+Live v65 throughput and server acceptance remain unverified.
