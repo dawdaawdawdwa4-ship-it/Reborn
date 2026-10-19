@@ -130,6 +130,7 @@ function AutoBuild.new(ctx)
     local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons,commits={},{},{}
     self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
+    self.Backups={};self.BackupPersistence={}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
     local now=ctx.Now or os.clock
@@ -457,6 +458,7 @@ function AutoBuild.new(ctx)
         if ctx.Alive() then self.HistoryLabel.Text="Latest build recorded. View results to inspect the last "..#self.History.." runs (session only)." end
     end
     function self:Start()
+        if ctx.BuildBlocked then local reason=ctx.BuildBlocked();if reason then status(reason);return false end end
         if self.Running then return false end
         if self.WorkerToken then status("Wait for the previous build request to finish before resuming.");return false end
         if not self.Cells and not self:Preview() then return end
@@ -589,21 +591,56 @@ function AutoBuild.new(ctx)
         if self.MaterialSummary then self.MaterialSummary.Text=table.concat(lines,"\n") end
         return counts
     end
+    function self:InspectBackup(slot)
+        if type(slot)~="number" or slot%1~=0 or slot<1 or slot>5 then return nil,"Invalid backup slot" end
+        if self.Backups[slot] then return self.Backups[slot],self.BackupPersistence[slot] or "Session only" end
+        local function unavailable(reason) self.BackupPersistence[slot]=reason;return nil,reason end
+        if not ctx.ReadBlueprintBackup then return unavailable("No backup file access") end
+        local ran,data=pcall(ctx.ReadBlueprintBackup,slot)
+        if not ran then return unavailable("Backup file unavailable") end
+        if data==nil then return unavailable("No backup saved") end
+        local valid,copy=pcall(AutoBuild.Validate,data)
+        if not valid then return unavailable("Invalid backup file") end
+        self.Backups[slot]=copy;self.BackupPersistence[slot]="Loaded from file"
+        return copy,"Loaded from file"
+    end
+    function self:RefreshBackup(readFile)
+        local data,source=self.Backups[self.Slot],self.BackupPersistence[self.Slot] or "Not inspected; Refresh saved slots to check"
+        if readFile then data,source=self:InspectBackup(self.Slot) end
+        if self.BackupSummary then self.BackupSummary.Text="BACKUP · slot "..self.Slot..": "..(data and (data.Name.." · "..#data.Cells.." blocks · "..source) or source) end
+    end
+    local function sameBlueprint(a,b)
+        if a.Name~=b.Name or a.BlockSize~=b.BlockSize or #a.Cells~=#b.Cells then return false end
+        for index,cell in ipairs(a.Cells) do
+            local other=b.Cells[index]
+            if cell.Material~=other.Material then return false end
+            for i=1,12 do if cell.Components[i]~=other.Components[i] then return false end end
+        end
+        return true
+    end
     function self:StoreBlueprint(data,slot)
         if self.Running or self.WorkerToken then status("Wait for the build worker to finish before changing saved slots.");return false end
         if slot==nil then slot=self.Slot end
         if type(slot)~="number" or slot%1~=0 or slot<1 or slot>5 then status("Choose a slot from 1 to 5.");return false end
         local ok,copy=pcall(AutoBuild.Validate,data)
         if not ok then status(copy);return false end
+        local previous=self:InspectSlot(slot)
+        if previous then
+            local valid,original=pcall(AutoBuild.Validate,previous)
+            if valid and not sameBlueprint(original,copy) then
+                self.Backups[slot]=original;self.BackupPersistence[slot]="Session only"
+            end
+        end
         self.Library[slot]=copy
         local persisted=false
         if ctx.WriteBlueprint then
-            local ran,result=pcall(ctx.WriteBlueprint,slot,copy)
+            local ran,result=pcall(ctx.WriteBlueprint,slot,copy,self.Backups[slot] and AutoBuild.Validate(self.Backups[slot]) or nil)
             persisted=ran and result==true
         end
         self.Persistence[slot]=persisted and "File + session" or "Session only"
+        if persisted and self.Backups[slot] then self.BackupPersistence[slot]="File + session" end
         self:RefreshLibrary(false)
-        status("Saved slot "..slot..": "..copy.Name.." ("..#copy.Cells.." blocks). "..(persisted and "Saved to file." or "Session only; file saving is unavailable or failed."))
+        status("Saved slot "..slot..": "..copy.Name.." ("..#copy.Cells.." blocks). "..(persisted and "Saved to file." or "Session only; file/backup saving is unavailable or failed. Existing disk data was not replaced if backup saving failed."))
         return true
     end
     function self:InspectSlot(slot)
@@ -630,6 +667,7 @@ function AutoBuild.new(ctx)
         if self.LibrarySummary then self.LibrarySummary.Text=table.concat(lines,"\n") end
         local selected=self.Library[self.Slot]
         buttons.Slot.Text="Slot "..self.Slot.." / 5"..(selected and (": "..selected.Name) or "")
+        self:RefreshBackup(readFiles)
         return table.concat(lines,"\n")
     end
     function self:CheckMaterials()
@@ -683,6 +721,16 @@ function AutoBuild.new(ctx)
         if not data then status("Select a valid saved source slot before copying it.");return false end
         return self:StoreBlueprint(data,target)
     end
+    function self:RestoreBackup()
+        if self.Running or self.WorkerToken then status("Wait for the build worker before restoring a saved slot.");return false end
+        local backup,reason=self:InspectBackup(self.Slot)
+        if not backup then status("Cannot restore backup: "..tostring(reason));return false end
+        local ok,copy=pcall(AutoBuild.Validate,backup)
+        if not ok then status("Invalid backup: "..tostring(copy));return false end
+        if not self:StoreBlueprint(copy) then return false end
+        status("Restored "..copy.Name.." to slot "..self.Slot.." ("..self.Persistence[self.Slot].."). Load selected slot to use it; the current working preview is retained.")
+        return true
+    end
     local function positionKey(c)
         return string.format("%d,%d,%d",math.round(c[1]*1000),math.round(c[2]*1000),math.round(c[3]*1000))
     end
@@ -694,6 +742,35 @@ function AutoBuild.new(ctx)
             table.insert(data.Cells,{Material=cell.Material,Components={self.Anchor:ToObjectSpace(cell.CFrame):GetComponents()}})
         end
         return AutoBuild.Validate(data)
+    end
+    function self:ExportBlueprint(savedSlot)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before exporting a blueprint.");return false end
+        local ok,data
+        if savedSlot then
+            local stored=self:InspectSlot(self.Slot)
+            ok,data=pcall(AutoBuild.Validate,stored)
+        else ok,data=pcall(workingPlan) end
+        if not ok then status("Cannot export: "..tostring(data));return false end
+        if not ctx.EncodeBlueprint then status("Blueprint JSON encoding is unavailable.");return false end
+        local encoded,text=pcall(ctx.EncodeBlueprint,data)
+        if not encoded or type(text)~="string" or #text==0 or #text>1000000 then status("Blueprint export failed or exceeds the text limit.");return false end
+        inputs.Transfer.Text=text
+        local copied=false
+        if ctx.CopyBlueprint then local ran,result=pcall(ctx.CopyBlueprint,text);copied=ran and result==true end
+        status("Exported "..data.Name.." · "..#data.Cells.." blocks. "..(copied and "Copied to clipboard; JSON is also in the transfer field." or "Select and copy the JSON in the transfer field; clipboard copying is unavailable."))
+        return text
+    end
+    function self:ImportBlueprint(text)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before importing a blueprint.");return false end
+        if type(text)~="string" or #text==0 or #text>1000000 then status("Paste blueprint JSON of 1–1,000,000 bytes first.");return false end
+        if not ctx.DecodeBlueprint then status("Blueprint JSON decoding is unavailable.");return false end
+        local decoded,data=pcall(ctx.DecodeBlueprint,text)
+        if not decoded then status("Invalid blueprint JSON. The working layout and saved slots were retained.");return false end
+        local valid,copy=pcall(AutoBuild.Validate,data)
+        if not valid then status("Import rejected: "..tostring(copy));return false end
+        self:UseWorkingBlueprint(copy,true)
+        status("Imported "..copy.Name.." · "..#copy.Cells.." blocks into the working layout. Preview to check materials and positioning, then Save preview to keep it. Saved slots were retained.")
+        return true
     end
     local function markEdited()
         self.PlanDirty=true;self.BuildReport=nil
@@ -855,8 +932,16 @@ function AutoBuild.new(ctx)
         end
         return saved
     end
+    function self:UseWorkingBlueprint(copy,dirty)
+        self:ClearPreview();self.SavedPlan=AutoBuild.Validate(copy);self.PlanDirty=dirty;self:ClearEdits()
+        self.Preset="Saved: "..copy.Name..(dirty and " *" or "");buttons.Preset.Text=self.Preset.."  ▼"
+        inputs.Name.Text=copy.Name
+        self.OffsetX,self.OffsetY,self.OffsetZ=0,0,0
+        self.Rotation=0;buttons.Rotate.Text="Rotate: 0°"
+        self:UpdateMaterials(self.SavedPlan.Cells)
+    end
     function self:LoadBlueprint()
-        if self.Running then status("Stop the build before loading a blueprint.");return false end
+        if self.Running or self.WorkerToken then status("Wait for the build worker before loading a blueprint.");return false end
         local data=self.Library[self.Slot]
         if not data and ctx.ReadBlueprint then
             local ran,result=pcall(ctx.ReadBlueprint,self.Slot)
@@ -864,15 +949,9 @@ function AutoBuild.new(ctx)
         end
         local ok,copy=pcall(AutoBuild.Validate,data)
         if not ok then status("Cannot load slot "..self.Slot..": "..tostring(copy));return false end
-        self:ClearPreview()
         if not self.Library[self.Slot] then self.Persistence[self.Slot]="Loaded from file" end
-        self.Library[self.Slot]=copy;self.SavedPlan=copy;self.PlanDirty=false;self:ClearEdits()
-        self:RefreshLibrary(false)
-        self.Preset="Saved: "..copy.Name;buttons.Preset.Text=self.Preset.."  ▼"
-        inputs.Name.Text=copy.Name
-        self.OffsetX,self.OffsetY,self.OffsetZ=0,0,0
-        self.Rotation=0;buttons.Rotate.Text="Rotate: 0°"
-        self:UpdateMaterials(copy.Cells)
+        self.Library[self.Slot]=AutoBuild.Validate(copy)
+        self:UseWorkingBlueprint(copy,false);self:RefreshLibrary(false)
         status("Loaded "..copy.Name..". Preview at your current position, adjust offset/rotation, then Start. Materials and permissions are still required.")
         return true
     end
@@ -1062,43 +1141,58 @@ function AutoBuild.new(ctx)
     button("CopySlot","Copy selected slot → target (overwrites target)",0,1416,1,function() self:CopySlot(self.CopyTarget) end)
     local copyHint=label("Rename uses the blueprint name field. Copy changes only the target slot; the current preview stays where it is. Choose the destination before copying.",1456,72)
     copyHint.TextWrapped=true
+    self.BackupSummary=label("Backup not inspected. Refresh saved slots to check the selected slot.",1540,52)
+    self.BackupSummary.TextWrapped=true
+    button("RestoreBackup","Restore backup → slot",0,1600,.5,function() self:RestoreBackup() end)
+    button("ExportSaved","Export saved slot",.5,1600,.5,function() self:ExportBlueprint(true) end)
+    local transfer=Instance.new("TextBox")
+    transfer.Name="BlueprintTransfer";transfer.Text="";transfer.PlaceholderText="Paste blueprint JSON to import, or export a layout here."
+    transfer.MultiLine=true;transfer.ClearTextOnFocus=false;transfer.TextSize=11;transfer.TextWrapped=true
+    transfer.TextXAlignment=Enum.TextXAlignment.Left;transfer.TextYAlignment=Enum.TextYAlignment.Top
+    transfer.TextColor3=Color3.fromRGB(226,232,240);transfer.BackgroundColor3=Color3.fromRGB(29,39,48)
+    transfer.Size=UDim2.new(1,-12,0,104);transfer.Position=UDim2.fromOffset(6,layoutY(1640));transfer.Parent=ctx.Parent
+    inputs.Transfer=transfer;register(transfer,layoutY(1640),104,0,6,nil,true)
+    button("ExportWorking","Export working layout",0,1752,.5,function() self:ExportBlueprint(false) end)
+    button("Import","Import to working layout",.5,1752,.5,function() self:ImportBlueprint(inputs.Transfer.Text) end)
+    local transferHint=label("Overwrite keeps one prior valid version per slot. Restore changes the saved slot; Load uses it. Import replaces only the working layout. Preview and Save to keep an import. Export includes the full layout, including unselected layers.",1796,88)
+    transferHint.TextWrapped=true
     for index,key in ipairs({"ReplaceFrom","ReplaceTo"}) do
         local field=Instance.new("TextBox");field.Name=key;field.Text="";field.PlaceholderText=index==1 and "Existing block name" or "Replacement block name"
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240);field.BackgroundColor3=Color3.fromRGB(29,39,48)
-        field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,layoutY(1578));field.Parent=ctx.Parent
-        inputs[key]=field;register(field,layoutY(1578),32,(index-1)*.5,6,nil,true)
+        field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,layoutY(1942));field.Parent=ctx.Parent
+        inputs[key]=field;register(field,layoutY(1942),32,(index-1)*.5,6,nil,true)
     end
-    button("Replace","Replace material",0,1618,.5,function() self:ReplaceMaterial(inputs.ReplaceFrom.Text,inputs.ReplaceTo.Text) end)
-    button("UndoMaterial","Undo (0)",.5,1618,.25,function() self:UndoMaterial() end)
-    button("Redo","Redo (0)",.75,1618,.25,function() self:RedoEdit() end)
-    button("RemoveMaterial","Remove named blocks",0,1660,.5,function() self:RemoveBlocks(inputs.ReplaceFrom.Text,false) end)
-    button("RemoveLayer","Remove selected layer",.5,1660,.5,function() self:RemoveBlocks(nil,true) end)
-    button("Pick","Pick block: OFF",0,1700,.5,function() self:SetPicking(not self.Picking) end)
-    button("NextBlock","Next block",.5,1700,.5,function() self:NextBlock() end)
-    self.SelectionLabel=label("No preview block selected. Enable Pick block, then click/tap a ghost outside the hub, or use Next block.",1740,48)
+    button("Replace","Replace material",0,1982,.5,function() self:ReplaceMaterial(inputs.ReplaceFrom.Text,inputs.ReplaceTo.Text) end)
+    button("UndoMaterial","Undo (0)",.5,1982,.25,function() self:UndoMaterial() end)
+    button("Redo","Redo (0)",.75,1982,.25,function() self:RedoEdit() end)
+    button("RemoveMaterial","Remove named blocks",0,2024,.5,function() self:RemoveBlocks(inputs.ReplaceFrom.Text,false) end)
+    button("RemoveLayer","Remove selected layer",.5,2024,.5,function() self:RemoveBlocks(nil,true) end)
+    button("Pick","Pick block: OFF",0,2064,.5,function() self:SetPicking(not self.Picking) end)
+    button("NextBlock","Next block",.5,2064,.5,function() self:NextBlock() end)
+    self.SelectionLabel=label("No preview block selected. Enable Pick block, then click/tap a ghost outside the hub, or use Next block.",2104,48)
     self.SelectionLabel.TextWrapped=true
-    button("RemoveSelected","Remove selected",0,1796,.5,function() self:RemoveSelected() end)
-    button("ReplaceSelected","Replace selected",.5,1796,.5,function() self:ReplaceSelected(inputs.ReplaceTo.Text) end)
-    local replaceHint=label("Named edits affect all matching blocks. Selected edits affect one highlighted ghost. Undo/Redo keeps up to 20 edits. Save preview commits the layout and clears edit history.",1836,84)
+    button("RemoveSelected","Remove selected",0,2160,.5,function() self:RemoveSelected() end)
+    button("ReplaceSelected","Replace selected",.5,2160,.5,function() self:ReplaceSelected(inputs.ReplaceTo.Text) end)
+    local replaceHint=label("Named edits affect all matching blocks. Selected edits affect one highlighted ghost. Undo/Redo keeps up to 20 edits. Save preview commits the layout and clears edit history.",2200,84)
     replaceHint.TextWrapped=true
-    button("History","View next build result",0,1964,.5,function() self:ShowHistory() end)
-    button("CopyHistory","Copy build result",.5,1964,.5,function()
+    button("History","View next build result",0,2328,.5,function() self:ShowHistory() end)
+    button("CopyHistory","Copy build result",.5,2328,.5,function()
         if not self.HistoryReport and not self:ShowHistory() then return end
         if ctx.CopyReport then ctx.CopyReport(self.HistoryReport) else status("Report copying is unavailable.") end
     end)
     local historyView=Instance.new("ScrollingFrame")
-    historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(2008))
+    historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(2372))
     historyView.BackgroundTransparency=1;historyView.BorderSizePixel=0;historyView.ScrollBarThickness=5
     historyView.CanvasSize=UDim2.new();historyView.AutomaticCanvasSize=Enum.AutomaticSize.Y;historyView.Parent=ctx.Parent
-    register(historyView,layoutY(2008),216)
+    register(historyView,layoutY(2372),216)
     self.HistoryLabel=ctx.Label({Parent=historyView,Text="No builds recorded this session.",TextSize=12,
         Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
     self.HistoryLabel.TextWrapped=true;self.HistoryLabel.AutomaticSize=Enum.AutomaticSize.Y;self.HistoryLabel.TextTruncate=Enum.TextTruncate.None
     self.Sections={
         {Key="Settings",Title="Build settings",Header=90,Start=90,Finish=392,Expanded=40,Collapsed=-262,Open=false},
-        {Key="Library",Title="Saved blueprints & checks",Header=768,Start=808,Finish=1572,Expanded=0,Collapsed=-764,Open=false},
-        {Key="Materials",Title="Blueprint block editing",Header=1580,Start=1620,Finish=1964,Expanded=0,Collapsed=-344,Open=false},
-        {Key="History",Title="Recent build results",Header=1968,Start=2008,Finish=2280,Expanded=0,Collapsed=-272,Open=false},
+        {Key="Library",Title="Saved blueprints & checks",Header=768,Start=808,Finish=1936,Expanded=0,Collapsed=-1128,Open=false},
+        {Key="Materials",Title="Blueprint block editing",Header=1944,Start=1984,Finish=2328,Expanded=0,Collapsed=-344,Open=false},
+        {Key="History",Title="Recent build results",Header=2332,Start=2372,Finish=2644,Expanded=0,Collapsed=-272,Open=false},
     }
     self.SectionButtons={}
     function self:CloseMenus()

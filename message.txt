@@ -1333,6 +1333,7 @@ function AutoBuild.new(ctx)
     local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons,commits={},{},{}
     self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
+    self.Backups={};self.BackupPersistence={}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
     local now=ctx.Now or os.clock
@@ -1660,6 +1661,7 @@ function AutoBuild.new(ctx)
         if ctx.Alive() then self.HistoryLabel.Text="Latest build recorded. View results to inspect the last "..#self.History.." runs (session only)." end
     end
     function self:Start()
+        if ctx.BuildBlocked then local reason=ctx.BuildBlocked();if reason then status(reason);return false end end
         if self.Running then return false end
         if self.WorkerToken then status("Wait for the previous build request to finish before resuming.");return false end
         if not self.Cells and not self:Preview() then return end
@@ -1792,21 +1794,56 @@ function AutoBuild.new(ctx)
         if self.MaterialSummary then self.MaterialSummary.Text=table.concat(lines,"\n") end
         return counts
     end
+    function self:InspectBackup(slot)
+        if type(slot)~="number" or slot%1~=0 or slot<1 or slot>5 then return nil,"Invalid backup slot" end
+        if self.Backups[slot] then return self.Backups[slot],self.BackupPersistence[slot] or "Session only" end
+        local function unavailable(reason) self.BackupPersistence[slot]=reason;return nil,reason end
+        if not ctx.ReadBlueprintBackup then return unavailable("No backup file access") end
+        local ran,data=pcall(ctx.ReadBlueprintBackup,slot)
+        if not ran then return unavailable("Backup file unavailable") end
+        if data==nil then return unavailable("No backup saved") end
+        local valid,copy=pcall(AutoBuild.Validate,data)
+        if not valid then return unavailable("Invalid backup file") end
+        self.Backups[slot]=copy;self.BackupPersistence[slot]="Loaded from file"
+        return copy,"Loaded from file"
+    end
+    function self:RefreshBackup(readFile)
+        local data,source=self.Backups[self.Slot],self.BackupPersistence[self.Slot] or "Not inspected; Refresh saved slots to check"
+        if readFile then data,source=self:InspectBackup(self.Slot) end
+        if self.BackupSummary then self.BackupSummary.Text="BACKUP · slot "..self.Slot..": "..(data and (data.Name.." · "..#data.Cells.." blocks · "..source) or source) end
+    end
+    local function sameBlueprint(a,b)
+        if a.Name~=b.Name or a.BlockSize~=b.BlockSize or #a.Cells~=#b.Cells then return false end
+        for index,cell in ipairs(a.Cells) do
+            local other=b.Cells[index]
+            if cell.Material~=other.Material then return false end
+            for i=1,12 do if cell.Components[i]~=other.Components[i] then return false end end
+        end
+        return true
+    end
     function self:StoreBlueprint(data,slot)
         if self.Running or self.WorkerToken then status("Wait for the build worker to finish before changing saved slots.");return false end
         if slot==nil then slot=self.Slot end
         if type(slot)~="number" or slot%1~=0 or slot<1 or slot>5 then status("Choose a slot from 1 to 5.");return false end
         local ok,copy=pcall(AutoBuild.Validate,data)
         if not ok then status(copy);return false end
+        local previous=self:InspectSlot(slot)
+        if previous then
+            local valid,original=pcall(AutoBuild.Validate,previous)
+            if valid and not sameBlueprint(original,copy) then
+                self.Backups[slot]=original;self.BackupPersistence[slot]="Session only"
+            end
+        end
         self.Library[slot]=copy
         local persisted=false
         if ctx.WriteBlueprint then
-            local ran,result=pcall(ctx.WriteBlueprint,slot,copy)
+            local ran,result=pcall(ctx.WriteBlueprint,slot,copy,self.Backups[slot] and AutoBuild.Validate(self.Backups[slot]) or nil)
             persisted=ran and result==true
         end
         self.Persistence[slot]=persisted and "File + session" or "Session only"
+        if persisted and self.Backups[slot] then self.BackupPersistence[slot]="File + session" end
         self:RefreshLibrary(false)
-        status("Saved slot "..slot..": "..copy.Name.." ("..#copy.Cells.." blocks). "..(persisted and "Saved to file." or "Session only; file saving is unavailable or failed."))
+        status("Saved slot "..slot..": "..copy.Name.." ("..#copy.Cells.." blocks). "..(persisted and "Saved to file." or "Session only; file/backup saving is unavailable or failed. Existing disk data was not replaced if backup saving failed."))
         return true
     end
     function self:InspectSlot(slot)
@@ -1833,6 +1870,7 @@ function AutoBuild.new(ctx)
         if self.LibrarySummary then self.LibrarySummary.Text=table.concat(lines,"\n") end
         local selected=self.Library[self.Slot]
         buttons.Slot.Text="Slot "..self.Slot.." / 5"..(selected and (": "..selected.Name) or "")
+        self:RefreshBackup(readFiles)
         return table.concat(lines,"\n")
     end
     function self:CheckMaterials()
@@ -1886,6 +1924,16 @@ function AutoBuild.new(ctx)
         if not data then status("Select a valid saved source slot before copying it.");return false end
         return self:StoreBlueprint(data,target)
     end
+    function self:RestoreBackup()
+        if self.Running or self.WorkerToken then status("Wait for the build worker before restoring a saved slot.");return false end
+        local backup,reason=self:InspectBackup(self.Slot)
+        if not backup then status("Cannot restore backup: "..tostring(reason));return false end
+        local ok,copy=pcall(AutoBuild.Validate,backup)
+        if not ok then status("Invalid backup: "..tostring(copy));return false end
+        if not self:StoreBlueprint(copy) then return false end
+        status("Restored "..copy.Name.." to slot "..self.Slot.." ("..self.Persistence[self.Slot].."). Load selected slot to use it; the current working preview is retained.")
+        return true
+    end
     local function positionKey(c)
         return string.format("%d,%d,%d",math.round(c[1]*1000),math.round(c[2]*1000),math.round(c[3]*1000))
     end
@@ -1897,6 +1945,35 @@ function AutoBuild.new(ctx)
             table.insert(data.Cells,{Material=cell.Material,Components={self.Anchor:ToObjectSpace(cell.CFrame):GetComponents()}})
         end
         return AutoBuild.Validate(data)
+    end
+    function self:ExportBlueprint(savedSlot)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before exporting a blueprint.");return false end
+        local ok,data
+        if savedSlot then
+            local stored=self:InspectSlot(self.Slot)
+            ok,data=pcall(AutoBuild.Validate,stored)
+        else ok,data=pcall(workingPlan) end
+        if not ok then status("Cannot export: "..tostring(data));return false end
+        if not ctx.EncodeBlueprint then status("Blueprint JSON encoding is unavailable.");return false end
+        local encoded,text=pcall(ctx.EncodeBlueprint,data)
+        if not encoded or type(text)~="string" or #text==0 or #text>1000000 then status("Blueprint export failed or exceeds the text limit.");return false end
+        inputs.Transfer.Text=text
+        local copied=false
+        if ctx.CopyBlueprint then local ran,result=pcall(ctx.CopyBlueprint,text);copied=ran and result==true end
+        status("Exported "..data.Name.." · "..#data.Cells.." blocks. "..(copied and "Copied to clipboard; JSON is also in the transfer field." or "Select and copy the JSON in the transfer field; clipboard copying is unavailable."))
+        return text
+    end
+    function self:ImportBlueprint(text)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before importing a blueprint.");return false end
+        if type(text)~="string" or #text==0 or #text>1000000 then status("Paste blueprint JSON of 1–1,000,000 bytes first.");return false end
+        if not ctx.DecodeBlueprint then status("Blueprint JSON decoding is unavailable.");return false end
+        local decoded,data=pcall(ctx.DecodeBlueprint,text)
+        if not decoded then status("Invalid blueprint JSON. The working layout and saved slots were retained.");return false end
+        local valid,copy=pcall(AutoBuild.Validate,data)
+        if not valid then status("Import rejected: "..tostring(copy));return false end
+        self:UseWorkingBlueprint(copy,true)
+        status("Imported "..copy.Name.." · "..#copy.Cells.." blocks into the working layout. Preview to check materials and positioning, then Save preview to keep it. Saved slots were retained.")
+        return true
     end
     local function markEdited()
         self.PlanDirty=true;self.BuildReport=nil
@@ -2058,8 +2135,16 @@ function AutoBuild.new(ctx)
         end
         return saved
     end
+    function self:UseWorkingBlueprint(copy,dirty)
+        self:ClearPreview();self.SavedPlan=AutoBuild.Validate(copy);self.PlanDirty=dirty;self:ClearEdits()
+        self.Preset="Saved: "..copy.Name..(dirty and " *" or "");buttons.Preset.Text=self.Preset.."  ▼"
+        inputs.Name.Text=copy.Name
+        self.OffsetX,self.OffsetY,self.OffsetZ=0,0,0
+        self.Rotation=0;buttons.Rotate.Text="Rotate: 0°"
+        self:UpdateMaterials(self.SavedPlan.Cells)
+    end
     function self:LoadBlueprint()
-        if self.Running then status("Stop the build before loading a blueprint.");return false end
+        if self.Running or self.WorkerToken then status("Wait for the build worker before loading a blueprint.");return false end
         local data=self.Library[self.Slot]
         if not data and ctx.ReadBlueprint then
             local ran,result=pcall(ctx.ReadBlueprint,self.Slot)
@@ -2067,15 +2152,9 @@ function AutoBuild.new(ctx)
         end
         local ok,copy=pcall(AutoBuild.Validate,data)
         if not ok then status("Cannot load slot "..self.Slot..": "..tostring(copy));return false end
-        self:ClearPreview()
         if not self.Library[self.Slot] then self.Persistence[self.Slot]="Loaded from file" end
-        self.Library[self.Slot]=copy;self.SavedPlan=copy;self.PlanDirty=false;self:ClearEdits()
-        self:RefreshLibrary(false)
-        self.Preset="Saved: "..copy.Name;buttons.Preset.Text=self.Preset.."  ▼"
-        inputs.Name.Text=copy.Name
-        self.OffsetX,self.OffsetY,self.OffsetZ=0,0,0
-        self.Rotation=0;buttons.Rotate.Text="Rotate: 0°"
-        self:UpdateMaterials(copy.Cells)
+        self.Library[self.Slot]=AutoBuild.Validate(copy)
+        self:UseWorkingBlueprint(copy,false);self:RefreshLibrary(false)
         status("Loaded "..copy.Name..". Preview at your current position, adjust offset/rotation, then Start. Materials and permissions are still required.")
         return true
     end
@@ -2265,43 +2344,58 @@ function AutoBuild.new(ctx)
     button("CopySlot","Copy selected slot → target (overwrites target)",0,1416,1,function() self:CopySlot(self.CopyTarget) end)
     local copyHint=label("Rename uses the blueprint name field. Copy changes only the target slot; the current preview stays where it is. Choose the destination before copying.",1456,72)
     copyHint.TextWrapped=true
+    self.BackupSummary=label("Backup not inspected. Refresh saved slots to check the selected slot.",1540,52)
+    self.BackupSummary.TextWrapped=true
+    button("RestoreBackup","Restore backup → slot",0,1600,.5,function() self:RestoreBackup() end)
+    button("ExportSaved","Export saved slot",.5,1600,.5,function() self:ExportBlueprint(true) end)
+    local transfer=Instance.new("TextBox")
+    transfer.Name="BlueprintTransfer";transfer.Text="";transfer.PlaceholderText="Paste blueprint JSON to import, or export a layout here."
+    transfer.MultiLine=true;transfer.ClearTextOnFocus=false;transfer.TextSize=11;transfer.TextWrapped=true
+    transfer.TextXAlignment=Enum.TextXAlignment.Left;transfer.TextYAlignment=Enum.TextYAlignment.Top
+    transfer.TextColor3=Color3.fromRGB(226,232,240);transfer.BackgroundColor3=Color3.fromRGB(29,39,48)
+    transfer.Size=UDim2.new(1,-12,0,104);transfer.Position=UDim2.fromOffset(6,layoutY(1640));transfer.Parent=ctx.Parent
+    inputs.Transfer=transfer;register(transfer,layoutY(1640),104,0,6,nil,true)
+    button("ExportWorking","Export working layout",0,1752,.5,function() self:ExportBlueprint(false) end)
+    button("Import","Import to working layout",.5,1752,.5,function() self:ImportBlueprint(inputs.Transfer.Text) end)
+    local transferHint=label("Overwrite keeps one prior valid version per slot. Restore changes the saved slot; Load uses it. Import replaces only the working layout. Preview and Save to keep an import. Export includes the full layout, including unselected layers.",1796,88)
+    transferHint.TextWrapped=true
     for index,key in ipairs({"ReplaceFrom","ReplaceTo"}) do
         local field=Instance.new("TextBox");field.Name=key;field.Text="";field.PlaceholderText=index==1 and "Existing block name" or "Replacement block name"
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240);field.BackgroundColor3=Color3.fromRGB(29,39,48)
-        field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,layoutY(1578));field.Parent=ctx.Parent
-        inputs[key]=field;register(field,layoutY(1578),32,(index-1)*.5,6,nil,true)
+        field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,layoutY(1942));field.Parent=ctx.Parent
+        inputs[key]=field;register(field,layoutY(1942),32,(index-1)*.5,6,nil,true)
     end
-    button("Replace","Replace material",0,1618,.5,function() self:ReplaceMaterial(inputs.ReplaceFrom.Text,inputs.ReplaceTo.Text) end)
-    button("UndoMaterial","Undo (0)",.5,1618,.25,function() self:UndoMaterial() end)
-    button("Redo","Redo (0)",.75,1618,.25,function() self:RedoEdit() end)
-    button("RemoveMaterial","Remove named blocks",0,1660,.5,function() self:RemoveBlocks(inputs.ReplaceFrom.Text,false) end)
-    button("RemoveLayer","Remove selected layer",.5,1660,.5,function() self:RemoveBlocks(nil,true) end)
-    button("Pick","Pick block: OFF",0,1700,.5,function() self:SetPicking(not self.Picking) end)
-    button("NextBlock","Next block",.5,1700,.5,function() self:NextBlock() end)
-    self.SelectionLabel=label("No preview block selected. Enable Pick block, then click/tap a ghost outside the hub, or use Next block.",1740,48)
+    button("Replace","Replace material",0,1982,.5,function() self:ReplaceMaterial(inputs.ReplaceFrom.Text,inputs.ReplaceTo.Text) end)
+    button("UndoMaterial","Undo (0)",.5,1982,.25,function() self:UndoMaterial() end)
+    button("Redo","Redo (0)",.75,1982,.25,function() self:RedoEdit() end)
+    button("RemoveMaterial","Remove named blocks",0,2024,.5,function() self:RemoveBlocks(inputs.ReplaceFrom.Text,false) end)
+    button("RemoveLayer","Remove selected layer",.5,2024,.5,function() self:RemoveBlocks(nil,true) end)
+    button("Pick","Pick block: OFF",0,2064,.5,function() self:SetPicking(not self.Picking) end)
+    button("NextBlock","Next block",.5,2064,.5,function() self:NextBlock() end)
+    self.SelectionLabel=label("No preview block selected. Enable Pick block, then click/tap a ghost outside the hub, or use Next block.",2104,48)
     self.SelectionLabel.TextWrapped=true
-    button("RemoveSelected","Remove selected",0,1796,.5,function() self:RemoveSelected() end)
-    button("ReplaceSelected","Replace selected",.5,1796,.5,function() self:ReplaceSelected(inputs.ReplaceTo.Text) end)
-    local replaceHint=label("Named edits affect all matching blocks. Selected edits affect one highlighted ghost. Undo/Redo keeps up to 20 edits. Save preview commits the layout and clears edit history.",1836,84)
+    button("RemoveSelected","Remove selected",0,2160,.5,function() self:RemoveSelected() end)
+    button("ReplaceSelected","Replace selected",.5,2160,.5,function() self:ReplaceSelected(inputs.ReplaceTo.Text) end)
+    local replaceHint=label("Named edits affect all matching blocks. Selected edits affect one highlighted ghost. Undo/Redo keeps up to 20 edits. Save preview commits the layout and clears edit history.",2200,84)
     replaceHint.TextWrapped=true
-    button("History","View next build result",0,1964,.5,function() self:ShowHistory() end)
-    button("CopyHistory","Copy build result",.5,1964,.5,function()
+    button("History","View next build result",0,2328,.5,function() self:ShowHistory() end)
+    button("CopyHistory","Copy build result",.5,2328,.5,function()
         if not self.HistoryReport and not self:ShowHistory() then return end
         if ctx.CopyReport then ctx.CopyReport(self.HistoryReport) else status("Report copying is unavailable.") end
     end)
     local historyView=Instance.new("ScrollingFrame")
-    historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(2008))
+    historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(2372))
     historyView.BackgroundTransparency=1;historyView.BorderSizePixel=0;historyView.ScrollBarThickness=5
     historyView.CanvasSize=UDim2.new();historyView.AutomaticCanvasSize=Enum.AutomaticSize.Y;historyView.Parent=ctx.Parent
-    register(historyView,layoutY(2008),216)
+    register(historyView,layoutY(2372),216)
     self.HistoryLabel=ctx.Label({Parent=historyView,Text="No builds recorded this session.",TextSize=12,
         Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
     self.HistoryLabel.TextWrapped=true;self.HistoryLabel.AutomaticSize=Enum.AutomaticSize.Y;self.HistoryLabel.TextTruncate=Enum.TextTruncate.None
     self.Sections={
         {Key="Settings",Title="Build settings",Header=90,Start=90,Finish=392,Expanded=40,Collapsed=-262,Open=false},
-        {Key="Library",Title="Saved blueprints & checks",Header=768,Start=808,Finish=1572,Expanded=0,Collapsed=-764,Open=false},
-        {Key="Materials",Title="Blueprint block editing",Header=1580,Start=1620,Finish=1964,Expanded=0,Collapsed=-344,Open=false},
-        {Key="History",Title="Recent build results",Header=1968,Start=2008,Finish=2280,Expanded=0,Collapsed=-272,Open=false},
+        {Key="Library",Title="Saved blueprints & checks",Header=768,Start=808,Finish=1936,Expanded=0,Collapsed=-1128,Open=false},
+        {Key="Materials",Title="Blueprint block editing",Header=1944,Start=1984,Finish=2328,Expanded=0,Collapsed=-344,Open=false},
+        {Key="History",Title="Recent build results",Header=2332,Start=2372,Finish=2644,Expanded=0,Collapsed=-272,Open=false},
     }
     self.SectionButtons={}
     function self:CloseMenus()
@@ -2697,7 +2791,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-profiles-53",
+    Subtitle = "blueprint-plow-54",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2775,6 +2869,7 @@ local buildController = AutoBuild.new({
     Alive = function() return gui.Parent ~= nil end,
     GameModule = RemoteCatalog.GameModule,
     Place = RemoteCatalog.CallPlacement,
+    BuildBlocked = function() return RemoteCatalog.PlowWorker and "Wait for Auto Plow input cleanup before building." end,
     RegisterMenuCloser = function(close) table.insert(RemoteCatalog.MenuClosers,close) end,
     RegisterPicker = function(pick) RemoteCatalog.BuildPicker=pick end,
     ItemCount = function(item) return RemoteCatalog.CarrotCount and RemoteCatalog.CarrotCount(item) end,
@@ -2798,9 +2893,29 @@ local buildController = AutoBuild.new({
         if type(encoded)~="string" or #encoded>1000000 then error("Invalid blueprint file size") end
         return HttpService:JSONDecode(encoded)
     end,
-    WriteBlueprint = function(slot,data)
+    ReadBlueprintBackup = function(slot)
+        if type(readfile)~="function" then return nil end
+        local encoded=readfile("RebornBlueprint_"..tostring(player.UserId).."_"..slot.."_backup.json")
+        if type(encoded)~="string" or #encoded>1000000 then error("Invalid blueprint backup file size") end
+        return HttpService:JSONDecode(encoded)
+    end,
+    EncodeBlueprint = function(data) return HttpService:JSONEncode(data) end,
+    DecodeBlueprint = function(text) return HttpService:JSONDecode(text) end,
+    CopyBlueprint = function(text)
+        local copy=setclipboard or toclipboard
+        if type(copy)~="function" then return false end
+        local ok,result=pcall(copy,text);return ok and result~=false
+    end,
+    WriteBlueprint = function(slot,data,previous)
         if type(writefile)~="function" then return false end
-        writefile("RebornBlueprint_"..tostring(player.UserId).."_"..slot..".json",HttpService:JSONEncode(data))
+        local encoded=HttpService:JSONEncode(data)
+        if type(encoded)~="string" or #encoded>1000000 then error("Invalid blueprint file size") end
+        if previous then
+            local backup=HttpService:JSONEncode(previous)
+            if type(backup)~="string" or #backup>1000000 then error("Invalid blueprint backup file size") end
+            assert(writefile("RebornBlueprint_"..tostring(player.UserId).."_"..slot.."_backup.json",backup)~=false,"Blueprint backup write failed")
+        end
+        assert(writefile("RebornBlueprint_"..tostring(player.UserId).."_"..slot..".json",encoded)~=false,"Blueprint write failed")
         return true
     end,
 })
@@ -3080,7 +3195,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-profiles-53",
+    return table.concat({"Reborn blueprint-plow-54",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -3428,6 +3543,7 @@ local function applyBait()
 end
 
 local function setBaitEnabled(state)
+    if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);setStatus("Wait for Auto Plow input cleanup, then start this mode",COLORS.warn);return end
     if baitEnabled == state then
         if not state and RemoteCatalog.StopBaitLearning then RemoteCatalog.StopBaitLearning() end
         return
@@ -4662,11 +4778,12 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn chest-profiles-53", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn blueprint-plow-54", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
         "Modes: Fishing "..(enabled and "ON" or "OFF")..", Bait "..(baitEnabled and "ON" or "OFF")..", Harvest "..(harvestEnabled and "ON" or "OFF")..", Wood "..(woodEnabled and "ON" or "OFF")..", Mining "..(mineEnabled and "ON" or "OFF")}
+    if RemoteCatalog.PlowConfirmed~=nil then table.insert(text,"Plow run: "..(RemoteCatalog.PlowEnabled and "ON" or RemoteCatalog.PlowWorker and "stopping" or "OFF").." · "..RemoteCatalog.PlowConfirmed.." observed soil · "..RemoteCatalog.PlowFailed.." failed") end
     local build=buildController.Progress
     if build then table.insert(text,"Build run: "..build.State.." · "..build.Placed.." confirmed · "..build.Skipped.." skipped · "..build.Failed.." failed · "..build.Total.." planned") end
     for _,mode in ipairs({"fishing","crop","wood","mine"}) do
@@ -5551,10 +5668,12 @@ local function resourceInputHit(target)
         elseif hostMouse then if down then mouse1press() else mouse1release() end
         else VirtualInputManager:SendMouseButtonEvent(x, y, 0, down, game, 0) end
     end
+    RemoteCatalog.ResourceInputBusy=true
     local pressed = pcall(input, true)
     local held = pcall(function() if pressed then task.wait(category == "crop" and 0.1 or 0.06) end end)
     -- Always release even if Stop, UI cleanup or an input error happened during the press.
     local released = pcall(input, false)
+    RemoteCatalog.ResourceInputBusy=false
     if not pressed or not held or not released then return false, "Tool input unavailable in this environment" end
     return active(), hostMouse and "Host mouse tool input" or "Normal tool input"
 end
@@ -5858,6 +5977,7 @@ end
 -- Controls
 --------------------------------------------------------------------
 setEnabled = function(state)
+    if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);setStatus("Wait for Auto Plow input cleanup, then start this mode",COLORS.warn);return end
     RemoteCatalog.StartFishingOnBait=false
 	if state == enabled then
 		return
@@ -5907,6 +6027,7 @@ local function refreshFarmButtons()
 end
 
 local function setFarmMode(mode, state)
+    if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);setStatus("Wait for Auto Plow input cleanup, then start this mode",COLORS.warn);return end
     -- Resolve the requested mode explicitly. The old chained `and/or`
     -- expression could read another mode's state when this mode was off.
     local current
@@ -6529,7 +6650,7 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-profiles-53\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn blueprint-plow-54\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -6548,6 +6669,7 @@ function RemoteCatalog.RecordChestRun(outcome,total,items,goal)
     if RemoteCatalog.ChestHistoryButton then RemoteCatalog.ChestHistoryButton.Text="Previous runs ("..#history..")" end
 end
 function RemoteCatalog.SetChestAuto(state)
+    if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);RemoteCatalog.ChestAutoMessage("Wait for Auto Plow input cleanup");return false end
     if not state then
         RemoteCatalog.Navigation.Stop("Chest")
         RemoteCatalog.ChestAutoEnabled=false
@@ -6726,7 +6848,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-profiles-53\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn blueprint-plow-54\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -6861,7 +6983,174 @@ function RemoteCatalog.UpdateTeleportLabels()
 end
 
 
+-- AUTO PLOW BEGIN
+RemoteCatalog.PlowEnabled=false
+RemoteCatalog.PlowGeneration=0
+RemoteCatalog.PlowRadius=15
+function RemoteCatalog.PlowMessage(text)
+    if gui.Parent and RemoteCatalog.PlowInfo then RemoteCatalog.PlowInfo.Text=text end
+end
+function RemoteCatalog.PlowOtherBusy()
+    return enabled or baitEnabled or baitBusy or harvestEnabled or woodEnabled or mineEnabled or RemoteCatalog.Planting
+        or RemoteCatalog.FishingMouseInput or RemoteCatalog.BaitMouseInput or RemoteCatalog.ResourceInputBusy
+        or buildController.Running or buildController.WorkerToken or buildController.Picking
+        or RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy
+end
+function RemoteCatalog.PlowSurface(block,blocks,root)
+    if not root or block.Parent~=blocks or not block:IsA("BasePart") or (block.Name~="grass" and block.Name~="dirt") then return nil end
+    if block.CFrame.UpVector.Y<.99 or (block.Position-root.Position).Magnitude>RemoteCatalog.PlowRadius then return nil end
+    local point=block.Position+Vector3.new(0,block.Size.Y/2-.03,0)
+    local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude
+    local ignore={block}
+    if player.Character then table.insert(ignore,player.Character) end
+    if buildController.PreviewFolder then table.insert(ignore,buildController.PreviewFolder) end
+    params.FilterDescendantsInstances=ignore
+    if workspace:Raycast(point+Vector3.new(0,.08,0),Vector3.new(0,3,0),params) then return nil end
+    return point
+end
+function RemoteCatalog.ScanPlowArea()
+    local blocks=RemoteCatalog.BuildIslandBlocks()
+    local char=player.Character;local root=char and char:FindFirstChild("HumanoidRootPart")
+    if not blocks or not root then RemoteCatalog.PlowMessage("Stand on your own island with a character before scanning.");return nil end
+    local targets={}
+    for _,block in ipairs(blocks:GetChildren()) do
+        if RemoteCatalog.PlowSurface(block,blocks,root) then table.insert(targets,{Block=block,Position=block.Position,Distance=(block.Position-root.Position).Magnitude}) end
+    end
+    table.sort(targets,function(a,b) return a.Distance<b.Distance end)
+    local total=#targets
+    while #targets>100 do table.remove(targets) end
+    RemoteCatalog.PlowMessage("Scan: "..total.." exposed grass/dirt blocks within "..RemoteCatalog.PlowRadius.." studs; at most 100 per pass. Equip/own a hoe, face the area and leave it clear of the hub. Scan sends no input.")
+    return targets,blocks,char
+end
+function RemoteCatalog.PlowSoilAt(blocks,position)
+    for _,block in ipairs(blocks:GetChildren()) do
+        if block:IsA("BasePart") and block.Name=="soil" and (block.Position-position).Magnitude<.3 then return true end
+    end
+    return false
+end
+function RemoteCatalog.PlowClick(block,blocks,tool,active)
+    if not active() then return false,"Plowing stopped" end
+    local char=player.Character;local root=char and char:FindFirstChild("HumanoidRootPart")
+    if not root or tool.Parent~=char or char:FindFirstChildOfClass("Tool")~=tool then return false,"Keep the hoe equipped" end
+    local position=RemoteCatalog.PlowSurface(block,blocks,root)
+    if not position then return false,"Block is covered, changed or outside the selected area" end
+    local reach=RemoteCatalog.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
+    if type(reach)~="number" or reach~=reach or reach<=0 or reach==math.huge then reach=20 end
+    if (position-root.Position).Magnitude>reach then return false,"Move within normal hoe reach" end
+    local focused,field=pcall(function() return UserInputService:GetFocusedTextBox() end)
+    if not focused or field then return false,"Close chat or finish editing first" end
+    local camera=workspace.CurrentCamera
+    if not camera then return false,"Camera unavailable" end
+    local point,visible=camera:WorldToScreenPoint(position)
+    if not visible or point.Z<=0 then return false,"Face the target blocks" end
+    local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude
+    local ignore={char};if buildController.PreviewFolder then table.insert(ignore,buildController.PreviewFolder) end
+    params.FilterDescendantsInstances=ignore
+    local hit=workspace:Raycast(camera.CFrame.Position,position-camera.CFrame.Position,params)
+    if not hit or hit.Instance~=block then return false,"Target is obstructed or not queryable" end
+    if hub.Root.Visible then
+        local p,size=hub.Root.AbsolutePosition,hub.Root.AbsoluteSize
+        if point.X>=p.X and point.X<=p.X+size.X and point.Y>=p.Y and point.Y<=p.Y+size.Y then return false,"Move the hub away from the target" end
+    end
+    local checked,objects=pcall(function() return playerGui:GetGuiObjectsAtPosition(point.X,point.Y) end)
+    if not checked then return false,"Cannot verify clear game input" end
+    for _,object in ipairs(objects) do if object:IsA("GuiButton") or object:IsA("TextBox") then return false,"Target overlaps on-screen controls" end end
+    local host=type(mousemoveabs)=="function" and type(mouse1press)=="function" and type(mouse1release)=="function"
+    local moved=pcall(function() if host then mousemoveabs(point.X,point.Y) else VirtualInputManager:SendMouseMoveEvent(point.X,point.Y,game) end end)
+    if not moved then return false,"Tool input unavailable" end
+    task.wait(.03)
+    if not active() or tool.Parent~=char or char:FindFirstChildOfClass("Tool")~=tool or not RemoteCatalog.PlowSurface(block,blocks,root) then return false,"Plow target/tool changed" end
+    local focusOK,currentField=pcall(function() return UserInputService:GetFocusedTextBox() end)
+    if not focusOK or currentField then return false,"Chat or text editing opened" end
+    local function input(down)
+        if host then if down then mouse1press() else mouse1release() end
+        else VirtualInputManager:SendMouseButtonEvent(point.X,point.Y,0,down,game,0) end
+    end
+    local pressed=pcall(input,true)
+    local held=pcall(function() if pressed then task.wait(.06) end end)
+    local released=pcall(input,false)
+    if not pressed or not held or not released then return false,"Hoe input failed" end
+    return active(),"Hoe click sent"
+end
+function RemoteCatalog.SetPlowEnabled(state)
+    if not state then
+        RemoteCatalog.PlowEnabled=false;RemoteCatalog.PlowGeneration+=1
+        if RemoteCatalog.PlowButton then RemoteCatalog.PlowButton.Text="AUTO PLOW: OFF";RemoteCatalog.PlowButton.BackgroundColor3=COLORS.off end
+        RemoteCatalog.PlowMessage("Plowing stopped. Input release is attempted before another run can start.")
+        return true
+    end
+    if RemoteCatalog.PlowEnabled then return true end
+    if RemoteCatalog.PlowWorker then RemoteCatalog.PlowMessage("Wait for the previous hoe input to finish.");return false end
+    if RemoteCatalog.PlowOtherBusy() then RemoteCatalog.PlowMessage("Stop other automation and blueprint picking before Auto Plow.");return false end
+    local targets,blocks,char=RemoteCatalog.ScanPlowArea()
+    if not targets or #targets==0 then return false end
+    local previous=char:FindFirstChildOfClass("Tool")
+    local hoe
+    for _,tool in ipairs(RemoteCatalog.OwnedTools()) do
+        local name=string.lower(tool.Name)
+        if tool:IsA("Tool") and (name=="hoe" or name=="plow" or name:match("hoe$")) then
+            hoe=tool;if tool==previous then break end
+        end
+    end
+    if not hoe then RemoteCatalog.PlowMessage("Own a hoe tool before starting Auto Plow. No blocks were changed.");return false end
+    RemoteCatalog.PlowGeneration+=1;local token=RemoteCatalog.PlowGeneration
+    RemoteCatalog.PlowWorker=token;RemoteCatalog.PlowEnabled=true
+    RemoteCatalog.PlowConfirmed=0;RemoteCatalog.PlowFailed=0;RemoteCatalog.PlowSkipped=0
+    RemoteCatalog.PlowButton.Text="AUTO PLOW: ON";RemoteCatalog.PlowButton.BackgroundColor3=COLORS.on
+    task.spawn(function()
+        local function active()
+            return gui.Parent~=nil and RemoteCatalog.PlowEnabled and RemoteCatalog.PlowGeneration==token and player.Character==char
+                and RemoteCatalog.BuildIslandBlocks()==blocks and not RemoteCatalog.PlowOtherBusy()
+        end
+        local outcome="Pass finished"
+        local completed=false
+        local ok,failure=pcall(function()
+            if not RemoteCatalog.EquipTool(hoe) then error("Could not equip the owned hoe") end
+            task.wait(.1)
+            local streak=0
+            for index,entry in ipairs(targets) do
+                if not active() then return end
+                local root=char:FindFirstChild("HumanoidRootPart")
+                if not RemoteCatalog.PlowSurface(entry.Block,blocks,root) then RemoteCatalog.PlowSkipped+=1;continue end
+                RemoteCatalog.PlowMessage("Plowing "..index.."/"..#targets.." · "..RemoteCatalog.PlowConfirmed.." observed soil conversions. Face the area; OFF cancels.")
+                local sent,reason=RemoteCatalog.PlowClick(entry.Block,blocks,hoe,active)
+                if not active() then return end
+                local confirmed=false
+                if sent then
+                    for attempt=1,20 do
+                        if not active() then return end
+                        if RemoteCatalog.PlowSoilAt(blocks,entry.Position) then confirmed=true;break end
+                        task.wait(.1)
+                    end
+                end
+                if not active() then return end
+                if confirmed then RemoteCatalog.PlowConfirmed+=1;streak=0
+                else
+                    RemoteCatalog.PlowFailed+=1;streak+=1
+                    if sent then reason="no soil appeared; check hoe behavior and island permissions" end
+                end
+                if streak>=3 then outcome="Paused after 3 unconfirmed attempts: "..tostring(reason);return end
+                task.wait(.2)
+            end
+            completed=true
+        end)
+        -- Restore only when the worker still owns tool selection on the same character.
+        if player.Character==char and previous and previous~=hoe and previous.Parent and char:FindFirstChildOfClass("Tool")==hoe then pcall(RemoteCatalog.EquipTool,previous) end
+        if RemoteCatalog.PlowWorker==token then RemoteCatalog.PlowWorker=nil end
+        if RemoteCatalog.PlowGeneration==token then
+            RemoteCatalog.PlowEnabled=false
+            if gui.Parent then
+                RemoteCatalog.PlowButton.Text="AUTO PLOW: OFF";RemoteCatalog.PlowButton.BackgroundColor3=COLORS.off
+                RemoteCatalog.PlowMessage((not ok and "Plow error: "..tostring(failure) or not completed and outcome=="Pass finished" and "Stopped: character, island or active mode changed" or outcome).."\n"..RemoteCatalog.PlowConfirmed.." observed soil · "..RemoteCatalog.PlowSkipped.." skipped · "..RemoteCatalog.PlowFailed.." failed. No seeds were planted.")
+            end
+        end
+    end)
+    return true
+end
+-- AUTO PLOW END
+
 function RemoteCatalog.StopAllAutomation()
+    RemoteCatalog.SetPlowEnabled(false)
     RemoteCatalog.StopTimerDeadline=nil
     RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
     RemoteCatalog.SetChestAuto(false)
@@ -7128,6 +7417,7 @@ track(layoutBtn.Activated:Connect(function()
 end))
 
 track(plantBtn.Activated:Connect(function()
+    if RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);setStatus("Wait for Auto Plow input cleanup before planting",COLORS.warn);return end
     if RemoteCatalog.Planting then return end
     RemoteCatalog.PlantGeneration=(RemoteCatalog.PlantGeneration or 0)+1
     local token=RemoteCatalog.PlantGeneration
@@ -7148,6 +7438,29 @@ end))
 --------------------------------------------------------------------
 -- Live refresh + cleanup
 --------------------------------------------------------------------
+do
+    local bottom=0
+    for _,child in ipairs(harvestPage:GetChildren()) do
+        if child:IsA("GuiObject") then bottom=math.max(bottom,child.Position.Y.Offset+child.Size.Y.Offset) end
+    end
+    pageHeading(harvestPage,"AUTO PLOW · OWN ISLAND",bottom+20)
+    RemoteCatalog.PlowButton=button({Parent=harvestPage,Text="AUTO PLOW: OFF",TextSize=12,
+        Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,bottom+48)})
+    RemoteCatalog.PlowScanButton=button({Parent=harvestPage,Text="Scan grass / dirt",TextSize=12,
+        Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,bottom+48)})
+    RemoteCatalog.PlowRadiusButton=button({Parent=harvestPage,Text="Plow area: 15 studs",TextSize=12,
+        Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,bottom+90)})
+    RemoteCatalog.PlowInfo=label({Parent=harvestPage,Text="Own a hoe. Scan exposed grass/dirt on your own island, face the area, then enable. One pass, up to 100 blocks; observed soil conversions only. No walking or planting.",TextSize=12,Color=COLORS.muted,
+        Size=UDim2.new(1,-16,0,84),Position=UDim2.fromOffset(8,bottom+130)})
+    RemoteCatalog.PlowInfo.TextWrapped=true
+    track(RemoteCatalog.PlowButton.Activated:Connect(function() RemoteCatalog.SetPlowEnabled(not RemoteCatalog.PlowEnabled) end))
+    track(RemoteCatalog.PlowScanButton.Activated:Connect(function() RemoteCatalog.ScanPlowArea() end))
+    track(RemoteCatalog.PlowRadiusButton.Activated:Connect(function()
+        if RemoteCatalog.PlowWorker then RemoteCatalog.PlowMessage("Finish the current pass before changing its area.");return end
+        RemoteCatalog.PlowRadius=RemoteCatalog.PlowRadius>=20 and 5 or RemoteCatalog.PlowRadius+5
+        RemoteCatalog.PlowRadiusButton.Text="Plow area: "..RemoteCatalog.PlowRadius.." studs"
+    end))
+end
 for mode,page in pairs({fishing=fishingPage,crop=harvestPage,wood=woodPage,mine=minePage}) do
     local bottom=0
     for _,child in ipairs(page:GetChildren()) do
@@ -7168,6 +7481,7 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
+    RemoteCatalog.SetPlowEnabled(false)
     RemoteCatalog.StopTimerDeadline=nil
     for _,connection in ipairs(RemoteCatalog.ChestItemConnections) do connection:Disconnect() end
     table.clear(RemoteCatalog.ChestItemConnections)

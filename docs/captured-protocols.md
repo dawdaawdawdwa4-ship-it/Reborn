@@ -293,3 +293,19 @@ clears stale physical-chest selection and still requires valid learned bindings
 in the current session. Active/manual/learning and cancelled in-flight workers
 lock profile Save/Load. Actual collection retains the existing reach, confirmation,
 retry, goal and single-worker behavior.
+
+### Blueprint backup/transfer and native plowing (blueprint-plow-54)
+
+Blueprint backup and import/export use the existing version-1 local layout
+schema. The saved-slot writer accepts an optional validated previous layout and
+writes its fixed account/slot backup filename before replacing the primary file.
+Imports decode JSON and validate plain data before changing the working copy;
+export/restore/import do not place blocks or store request/session envelopes.
+
+Auto Plow introduces no remote schema. It equips an owned hoe through the
+existing tool selector and uses the normal mouse-input path on owned exposed
+grass/dirt, with reach, visibility, UI/chat, tool, character and cancellation
+checks. Only observed owned `soil` replacements count. Input-release and worker
+ownership cover Stop, errors, GUI cleanup and handoffs to other modes. Existing
+resource input exposes its held-input lock so Plow cannot overlap its cleanup.
+Actual native hoe effects and server acceptance remain unverified.

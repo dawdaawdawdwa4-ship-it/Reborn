@@ -868,3 +868,91 @@ All/None/legacy filters, file errors and session fallback, worker/learning guard
 actual profile buttons, control-label refresh, profile-only browsing and stable
 panel expansion/tab cleanup. The full v41–v52 regression suite remains covered.
 Live Roblox behavior and file API availability on the user's host are unverified.
+
+### Blueprint backup and transfer (v54)
+
+**Auto Build > Saved blueprints & checks** now includes a backup summary,
+**Restore backup → slot**, **Export saved slot**, **Export working layout**, and a
+multiline JSON transfer field with **Import to working layout**.
+
+Every changed saved-slot overwrite retains one previous validated version for
+that slot, including Save preview, island capture, rename and copy-to-target.
+The previous version can come from the session library or a validated primary
+file that has not yet been loaded. Identical saves retain the existing useful
+backup. Backups are independent snapshots. With working file APIs, the host
+writes `RebornBlueprint_<UserId>_<slot>_backup.json` before replacing the primary
+file. If backup writing fails, the primary file is retained and the new layout
+remains usable in the session. A primary-write failure can still leave a valid
+backup for recovery. This is an ordered two-file write, not an atomic filesystem
+transaction.
+
+**Refresh saved slots** also inspects the selected slot's backup. **Restore
+backup → slot** replaces the selected saved slot and retains the valid version
+it replaced as the new backup, allowing another restore to swap back. It leaves
+the current working preview untouched; use Load selected slot to work with the
+restored version. Invalid/missing backups do not overwrite the selected slot.
+Backups remain session-only if file APIs are unavailable or fail.
+
+Export saved slot serializes that slot's validated layout. Export working layout
+serializes the unsaved loaded/edited layout or generated preview. Both include
+all layers and materials, regardless of the current layer filter. Export writes
+JSON to the transfer field and attempts clipboard copying; manual copy remains
+available if clipboard APIs fail. It does not save files or place blocks.
+
+Paste the same version-1 blueprint JSON into the field and press Import to
+working layout. JSON decoding and the existing complete blueprint validator run
+before the current preview is changed: version, name, size, dense 1–300-cell
+list, materials, bounded finite coordinates, orthonormal/right-handed rotations
+and duplicate positions are checked. Text is limited to 1,000,000 bytes. Text is
+never evaluated as code or fetched as a URL. Invalid input retains working data
+and slots. A valid import creates an unsaved working copy, clears the old preview
+and Undo/Redo, and resets layer/offset/rotation settings. It does not alter saved
+slots or start building. Preview checks current block definitions and positioning; use the existing
+material/reach checks before Start. Save preview commits the import with normal
+backup behavior.
+
+Transfer, restore and slot writes wait for active/cancelled in-flight build
+workers. Controls remain inside the existing collapsed library section, keeping
+the compact default workspace. Tests cover uncached disk backups, independent
+snapshots, same-data saves, restore swaps, backup-write failure ordering and retry,
+invalid backup files, import rejection, working-versus-saved exports, full-layer
+export, clipboard fallback, worker guards and actual host/UI adapters.
+
+### Auto Plow on owned ground (v54)
+
+**Harvest > Auto Plow · Own island** starts OFF and is session-only. Own a hoe,
+use **Scan grass / dirt**, face the area and leave the target clear of the hub,
+then enable Auto Plow. The radius starts at 15 studs and cycles 5/10/15/20; it is
+locked through worker cleanup. Each pass considers at most the nearest 100
+eligible blocks and switches OFF when finished. Move manually and start another
+pass for additional ground. It does not walk, plant seeds or automatically run
+after Auto Build.
+
+Scanning reads only the player's owned island Blocks folder. Candidates are
+existing horizontal BaseParts named `grass` or `dirt` within the selected radius,
+with a clear vertical ray for one block above their top center. Existing `soil`,
+foreign island blocks, covered targets and tilted blocks are excluded. Scanning
+sends no input. The worker equips an owned hoe/plow tool, then uses normal host
+mouse input or VirtualInputManager on a visible, unobstructed top-face point
+within normal tool reach. It does not guess or replay a new plow remote payload.
+
+Chat/text focus, hub/GUI controls, changed tools, off-screen/occluded targets,
+character/island changes and stopped generations prevent further clicks. Input
+release is always attempted on Stop, hold/press errors and GUI cleanup. The
+previous tool is restored only on the same character while the worker still owns
+selection. Other input automation and blueprint picking must be stopped first;
+other mode/build/chest/plant starts wait for Plow cleanup. Stop All stops Plow too.
+
+Counts advance only when a `soil` BasePart is observed at the target's former
+center in the owned folder within the confirmation window. A successful input
+API return or block disappearance alone is insufficient. Three consecutive
+unconfirmed attempts pause the pass. The Plow panel and session report retain
+observed conversion/failure counts. A hoe can affect neighboring ground according
+to the game's own tool behavior; only processed targets' observed changes count.
+
+Mock tests cover owned/surface/range filtering, the pass cap, read-only scans,
+hoe selection, actual normal-input guards, observed conversion versus no change,
+three-failure stopping, Stop/in-flight ownership, error/GUI release, manual tool
+preservation, respawn cleanup and real UI handoffs. The full v41–v53 regressions
+remain covered. Live Roblox plow behavior, native hoe area effects and all new
+file/clipboard behavior on the user's host remain unverified.

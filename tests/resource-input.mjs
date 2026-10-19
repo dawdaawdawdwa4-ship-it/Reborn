@@ -52,7 +52,7 @@ assert(resourceInputHit(target));assert(table.concat(events,',')=='move,down,up'
 local function reset() events={};waits=0;stopAt=nil;failPress=false;failWait=false end
 reset();stopAt=1;assert(not resourceInputHit(target));assert(table.concat(events,',')=='move','Stop before press must prevent click')
 reset();stopAt=2;assert(not resourceInputHit(target));assert(table.concat(events,',')=='move,down,up','Stop during press must release')
-reset();failPress=true;assert(not resourceInputHit(target));assert(events[#events]=='up','press error must release')
+reset();failPress=true;assert(not resourceInputHit(target));assert(events[#events]=='up' and not RemoteCatalog.ResourceInputBusy,'press error must release input and its shared lock')
 reset();hub.Root.Visible=true;assert(not resourceInputHit(target));assert(#events==0,'hub must not be clicked');hub.Root.Visible=false
 reset();target.Position=vec(100);assert(not resourceInputHit(target));assert(#events==0,'out of reach');target.Position=vec(5)
 reset();visible=false;assert(not resourceInputHit(target));assert(#events==0,'off screen');visible=true

@@ -88,12 +88,13 @@ flush()
  local originalWrite,originalRead=writefile,readfile
  local encode,decode=HttpService.JSONEncode,HttpService.JSONDecode
  local path,encoded,snapshot
- HttpService.JSONEncode=function(_,data) snapshot=data;return 'blueprint-json' end
- HttpService.JSONDecode=function(_,value) assert(value=='blueprint-json');return snapshot end
- writefile=function(name,value) path=name;encoded=value end
- readfile=function(name) assert(name==path);return encoded end
+ local json,files={},{}
+ HttpService.JSONEncode=function(_,data) snapshot=data;local key='blueprint-json-'..(#json+1);table.insert(json,data);return key end
+ HttpService.JSONDecode=function(_,value) local index=tonumber(value:match('^blueprint%-json%-(%d+)$'));return assert(json[index]) end
+ writefile=function(name,value) path=name;encoded=value;files[name]=value end
+ readfile=function(name) return assert(files[name],'file missing') end
  local plan={Version=1,Name='House',BlockSize=3,Cells={{Material='grass',Components={0,0,0,1,0,0,0,1,0,0,0,1}}}}
- assert(buildController:StoreBlueprint(plan) and path=='RebornBlueprint_7_1.json' and encoded=='blueprint-json','host adapter must use account-specific fixed slot filenames')
+ assert(buildController:StoreBlueprint(plan) and path=='RebornBlueprint_7_1.json' and encoded=='blueprint-json-1','host adapter must use account-specific fixed slot filenames')
  buildController.Library={}
  buildController.Buttons.Load.Activated:Fire()
  assert(buildController.SavedPlan and buildController.SavedPlan.Name=='House' and not buildController.Running and not buildController.Cells,'Load button must validate disk data without starting a build')
@@ -807,7 +808,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn chest-profiles-53',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn blueprint-plow-54',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -896,6 +897,72 @@ end)()
  r.ChestTravel,r.ChestScanRange,r.ChestGoal,r.Recorder=oldSettings.Travel,oldSettings.Range,oldSettings.Goal,oldSettings.Recorder
  r.WithdrawCarrots=oldWithdraw
  writefile,readfile=oldWrite,oldRead;HttpService.JSONEncode,HttpService.JSONDecode=oldEncode,oldDecode
+ end)()
+
+ ;(function()
+ local b=buildController
+ local oldWrite,oldRead,oldCopy=writefile,readfile,setclipboard
+ local oldEncode,oldDecode=HttpService.JSONEncode,HttpService.JSONDecode
+ local oldLibrary,oldBackups,oldSources,oldBackupSources=b.Library,b.Backups,b.Persistence,b.BackupPersistence
+ local oldSlot,oldPlan=b.Slot,b.SavedPlan
+ local payloads,files,trace={}, {},{}
+ local copied,failBackup
+ HttpService.JSONEncode=function(_,data) table.insert(payloads,data);return 'layout-'..#payloads end
+ HttpService.JSONDecode=function(_,text) local index=tonumber(text:match('^layout%-(%d+)$'));return assert(payloads[index],'invalid JSON') end
+ writefile=function(path,text)
+  assert(path:match('^RebornBlueprint_7_[1-5]'))
+  if failBackup and path:find('_backup.json',1,true) then error('backup write unavailable') end
+  files[path]=text;table.insert(trace,path)
+ end
+ readfile=function(path) return assert(files[path],'file missing') end
+ setclipboard=function(text) copied=text end
+ b.Library={};b.Backups={};b.Persistence={};b.BackupPersistence={};b.Slot=1
+ local function plan(name) return {Version=1,Name=name,BlockSize=3,Cells={{Material='grass',Components={0,0,0,1,0,0,0,1,0,0,0,1}}}} end
+ assert(b:StoreBlueprint(plan('First')) and #trace==1 and trace[1]=='RebornBlueprint_7_1.json')
+ assert(b:StoreBlueprint(plan('Second')) and trace[2]=='RebornBlueprint_7_1_backup.json' and trace[3]=='RebornBlueprint_7_1.json','host writer must back up the previous version before replacing the primary file')
+ assert(HttpService:JSONDecode(files['RebornBlueprint_7_1_backup.json']).Name=='First')
+ local disk=files['RebornBlueprint_7_1.json'];failBackup=true
+ assert(b:StoreBlueprint(plan('Third')) and files['RebornBlueprint_7_1.json']==disk and b.Persistence[1]=='Session only','failed backup writes must protect the actual old primary file')
+ failBackup=false
+ b.SavedPlan=plan('Working');b.PlanDirty=true
+ local working=b.SavedPlan
+ b.SectionButtons.Library.Activated:Fire()
+ b.Buttons.RestoreBackup.Activated:Fire()
+ assert(b.Library[1].Name=='Second' and b.Backups[1].Name=='Third' and b.SavedPlan==working,'Restore button must replace only the selected saved slot and retain its replacement')
+ b.Buttons.ExportSaved.Activated:Fire()
+ assert(copied==b.Inputs.Transfer.Text and HttpService:JSONDecode(copied).Name=='Second','saved export must use the host JSON and clipboard adapters')
+ b.Buttons.ExportWorking.Activated:Fire()
+ assert(HttpService:JSONDecode(copied).Name=='Working','working export must retain unsaved changes')
+ local stored=b.Library[1];b.Inputs.Transfer.Text='not JSON';b.Buttons.Import.Activated:Fire()
+ assert(b.SavedPlan==working and b.Library[1]==stored,'invalid UI import must retain working/saved layouts')
+ local before=#trace
+ b.Inputs.Transfer.Text=HttpService:JSONEncode(plan('Shared layout'));b.Buttons.Import.Activated:Fire()
+ assert(b.SavedPlan.Name=='Shared layout' and b.PlanDirty and not b.Cells and not b.Running and b.Library[1]==stored and #trace==before,'valid UI import must load only an unsaved working copy without file writes or building')
+ b.Backups={};b.BackupPersistence={};b.Buttons.Inspect.Activated:Fire()
+ assert(b.Backups[1].Name=='Third' and b.BackupPersistence[1]=='Loaded from file','refresh must discover and validate account-specific backup files')
+ b.SectionButtons.Library.Activated:Fire()
+ assert(not b.Inputs.Transfer.Visible and not b.Buttons.RestoreBackup.Visible and b.LayoutHeight<650,'transfer controls must remain inside the existing compact library section')
+ b.Library,b.Backups,b.Persistence,b.BackupPersistence=oldLibrary,oldBackups,oldSources,oldBackupSources
+ b.Slot,b.SavedPlan=oldSlot,oldPlan;b.PlanDirty=false;b:ClearEdits();b:ClearPreview()
+ writefile,readfile,setclipboard=oldWrite,oldRead,oldCopy;HttpService.JSONEncode,HttpService.JSONDecode=oldEncode,oldDecode
+ end)()
+ ;(function()
+ assert(not RemoteCatalog.PlowEnabled and not RemoteCatalog.PlowWorker and RemoteCatalog.PlowRadius==15,'Auto Plow must start OFF with a small area')
+ RemoteCatalog.PlowScanButton.Activated:Fire()
+ assert(not RemoteCatalog.PlowEnabled,'scan must never enable plowing')
+ RemoteCatalog.PlowRadiusButton.Activated:Fire();assert(RemoteCatalog.PlowRadius==20)
+ RemoteCatalog.PlowRadiusButton.Activated:Fire();assert(RemoteCatalog.PlowRadius==5)
+ RemoteCatalog.PlowRadius=15
+ setEnabled(false);setBaitEnabled(false);setFarmMode('crop',false);setFarmMode('wood',false);setFarmMode('mine',false)
+ RemoteCatalog.PlowWorker=999
+ toggle.Activated:Fire();harvestToggle.Activated:Fire();woodToggle.Activated:Fire();mineToggle.Activated:Fire();baitToggle.Activated:Fire()
+ assert(not enabled and not baitEnabled and not harvestEnabled and not woodEnabled and not mineEnabled,'other input-mode callbacks must wait for stopped Plow cleanup')
+ buildController.Buttons.Start.Activated:Fire();plantBtn.Activated:Fire();RemoteCatalog.ChestAutoButton.Activated:Fire()
+ assert(not buildController.Running and not RemoteCatalog.Planting and not RemoteCatalog.ChestAutoEnabled,'build, planting and chest starts must also wait for Plow ownership')
+ RemoteCatalog.PlowRadiusButton.Activated:Fire();assert(RemoteCatalog.PlowRadius==15,'active ownership must freeze the selected plow area')
+ RemoteCatalog.PlowWorker=nil
+ stopAllButton.Activated:Fire()
+ assert(not RemoteCatalog.PlowEnabled,'Stop All must stop Auto Plow too')
  end)()
 
 RemoteCatalog.StopTimerButton.Activated:Fire()

@@ -65,7 +65,7 @@ local function vector(x,y,z)
 end
 local Vector3={new=vector}
 local RaycastParams={new=function() return {} end}
-local Enum={RaycastFilterType={Exclude=1},Material={ForceField=1},AutomaticSize={Y=1},TextTruncate={None=1}}
+local Enum={RaycastFilterType={Exclude=1},Material={ForceField=1},AutomaticSize={Y=1},TextTruncate={None=1},TextXAlignment={Left=1},TextYAlignment={Top=1}}
 local definitions={FindFirstChild=function(_,name) return (name=='grass' or name=='stone') and {} end}
 local game={GetService=function() return {FindFirstChild=function() return definitions end} end}
 fm.__index.ToObjectSpace=function(a,b) return a:Inverse()*b end
@@ -595,6 +595,70 @@ do
  e:SetPicking(true);e:CloseMenus();assert(not e.Picking,'tab/menu cleanup must disable picking')
  assert(e:SavePreview() and #e.UndoStack==0 and #e.RedoStack==0 and not e.MaterialUndo,'saving must clear both edit histories')
  assert(e:ReplaceMaterial('stone','grass') and e:LoadBlueprint() and #e.UndoStack==0 and #e.RedoStack==0,'loading a saved blueprint must clear edit history')
+end
+-- Saved-slot overwrites retain an independent previous version; restoring swaps versions.
+do
+ local c=table.clone(ctx);c.Parent={}
+ local files,backups={},{}
+ local writes={}
+ local failBackup=false
+ c.ReadBlueprint=function(slot) return files[slot] end
+ c.ReadBlueprintBackup=function(slot) return backups[slot] end
+ c.WriteBlueprint=function(slot,data,previous)
+  if previous then
+   if failBackup then error('backup failed') end
+   backups[slot]=A.Validate(previous);table.insert(writes,'backup')
+  end
+  files[slot]=A.Validate(data);table.insert(writes,'main');return true
+ end
+ local first=valid();first.Name='First';files[1]=A.Validate(first)
+ local b=A.new(c);local second=valid();second.Name='Second'
+ assert(b:StoreBlueprint(second) and b.Backups[1].Name=='First' and files[1].Name=='Second','an uncached valid disk slot must be backed up before overwrite')
+ assert(writes[1]=='backup' and writes[2]=='main' and b.BackupPersistence[1]=='File + session')
+ assert(b:StoreBlueprint(second) and b.Backups[1].Name=='First','identical repeated saves must preserve the useful prior version')
+ second.Cells[1].Material='mutated';assert(b.Library[1].Cells[1].Material~='mutated' and b.Backups[1].Name=='First','new saves and backups must be independent copies')
+ local working,cells=b.SavedPlan,b.Cells
+ assert(b:RestoreBackup() and files[1].Name=='First' and b.Backups[1].Name=='Second' and b.SavedPlan==working and b.Cells==cells,'restore must change only the saved slot and retain the version it replaced')
+ assert(b:RestoreBackup() and files[1].Name=='Second' and b.Backups[1].Name=='First','restoring again must recover the replaced version')
+ local fresh=A.new(c);assert(fresh:InspectBackup(1) and fresh.Backups[1].Name=='First','a new controller must read validated backup files')
+ failBackup=true;local third=valid();third.Name='Third'
+ assert(fresh:StoreBlueprint(third) and fresh.Library[1].Name=='Third' and files[1].Name=='Second' and fresh.Backups[1].Name=='Second' and fresh.Persistence[1]=='Session only','backup write failure must preserve the old primary file and retain the new session layout')
+ failBackup=false
+ assert(fresh:StoreBlueprint(third) and files[1].Name=='Third' and backups[1].Name=='Second','retrying an unchanged session save must first persist its retained backup')
+ local corrupt=A.new(c);backups[2]={Version=99}
+ corrupt.Slot=2;assert(not corrupt:RestoreBackup() and not files[2],'invalid backup files must not change a saved slot')
+ b.WorkerToken=5
+ assert(not b:StoreBlueprint(valid()) and not b:RestoreBackup() and not b:LoadBlueprint(),'in-flight build ownership must lock slot overwrite, restore and load')
+end
+-- Import validates first and edits only working data; export includes the complete canonical layout.
+do
+ local c=table.clone(ctx);c.Parent={};c.ReadBlueprint=nil;c.WriteBlueprint=nil
+ local decoded,encoded,copied
+ c.DecodeBlueprint=function(text) if text=='bad' then error('invalid JSON') end;return decoded end
+ c.EncodeBlueprint=function(data) encoded=A.Validate(data);return 'canonical-json' end
+ c.CopyBlueprint=function(text) copied=text;return true end
+ local b=A.new(c);assert(b:StoreBlueprint(valid()))
+ local slot=b.Library[1];local oldCells={{CFrame=frame(0,0,0),LayerY=0,Material='grass',Preview=control()}}
+ b.Cells=oldCells;b.Anchor=frame(0,0,0);b.BlockSize=3;b.LayerIndex=1;b.BuildReport='old check'
+ decoded={Version=99};assert(not b:ImportBlueprint('invalid') and b.Cells==oldCells and b.BuildReport=='old check' and b.Library[1]==slot,'invalid imports must preserve preview, checks and slots')
+ assert(not b:ImportBlueprint('bad') and not b:ImportBlueprint('') and not b:ImportBlueprint(string.rep('x',1000001)))
+ decoded=valid();decoded.Name='Shared house'
+ assert(b:ImportBlueprint('valid') and not b.Cells and b.PlanDirty and b.SavedPlan.Name=='Shared house' and b.Library[1]==slot and not b.Running and not b.LayerIndex,'import must create an unsaved working copy without saving or building')
+ decoded.Cells[1].Material='changed';assert(b.SavedPlan.Cells[1].Material~='changed','import must not retain references to decoder data')
+ assert(b:ExportBlueprint(false)=='canonical-json' and copied=='canonical-json' and b.Inputs.Transfer.Text=='canonical-json' and encoded.Name=='Shared house','working export must serialize canonical layout and populate the transfer field')
+ assert(b:ExportBlueprint(true)=='canonical-json' and encoded.Name==slot.Name,'saved-slot export must use the stored layout rather than unsaved working edits')
+ local base=b.SavedPlan.Cells[1]
+ table.insert(b.SavedPlan.Cells,{Material='stone',Components={3,3,0,1,0,0,0,1,0,0,0,1}})
+ b.Cells={{CFrame=frame(0,0,0),LayerY=0,Material=base.Material,Preview=control()},{CFrame=frame(3,3,0),LayerY=3,Material='stone',Preview=control()}}
+ b.Anchor=frame(0,0,0);b.BlockSize=3;b.LayerIndex=1
+ assert(#b:SelectedCells()==1 and b:ExportBlueprint(false) and #encoded.Cells==2,'export must include unselected blueprint layers')
+ c.CopyBlueprint=function() error('clipboard unavailable') end
+ assert(b:ExportBlueprint(false) and string.find(b.Status.Text,'Select and copy',1,true),'clipboard failures must retain export text for manual copy')
+ b.WorkerToken=9;local plan=b.SavedPlan
+ assert(not b:ImportBlueprint('valid') and not b:ExportBlueprint(false) and b.SavedPlan==plan,'active or stopped in-flight workers must lock transfer operations')
+ b.WorkerToken=nil
+ c.EncodeBlueprint=function() error('encoder failed') end
+ assert(not b:ExportBlueprint(false) and b.Inputs.Transfer.Text=='canonical-json','encoder failures must retain the last useful export')
 end
 return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
