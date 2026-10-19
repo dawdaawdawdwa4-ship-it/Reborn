@@ -807,7 +807,85 @@ do
  assert(RemoteCatalog.ChestRateDelay==.25,'recovery must never go below the selected base pace')
  task.wait=oldWait;RemoteCatalog.ChestClock=nil;RemoteCatalog.ChestRequestAt=nil;RemoteCatalog.ChestRateFloor=nil;RemoteCatalog.ChestRateCeiling=nil;RemoteCatalog.ChestRateAccepted=0;RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestRateSuccesses=0;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil
 end
-return 'Chest Auto Max: adaptive/full-stack batches, TOO_FAST pacing, repeat/top-up, pause/resume, goals, confirmation, remainders, Stop and cleanup passed'
+-- Balance continuously refilling chests without starving another chest/item.
+do
+ local oldWait=task.wait
+ local clock,qty,trace,stock,settings,blocked,rateOnce,bindings,items,approaches
+ local a,b={},{}
+ local owner={CanUseChestBinding=function() return true end}
+ local a1={Chest=a,Slot=8,Item='carrotHarvested',Amount=30,Id='A8'}
+ local a2={Chest=a,Slot=3,Item='potatoSalad',Amount=30,Id='A3'}
+ local b1={Chest=b,Slot=1,Item='carrotHarvested',Amount=30,Id='B1'}
+ local b2={Chest=b,Slot=2,Item='potatoSalad',Amount=30,Id='B2'}
+ task.wait=function(dt) clock+=dt;return oldWait(dt) end
+ local function prepare(options)
+  settings=options;clock=0;qty={};trace={};stock=options.Stock or {};blocked=options.BlockB;rateOnce=options.RateB;approaches={}
+  bindings=options.Multi and {a1,a2,b1,b2} or {a1,b1}
+  items={}
+  for _,binding in ipairs(bindings) do if not qty[binding.Item] then qty[binding.Item]=0;table.insert(items,{Name=binding.Item}) end end
+  RemoteCatalog.ChestOrder=options.Order
+  RemoteCatalog.ChestAutoBatch=30;RemoteCatalog.ChestGoal=options.Goal;RemoteCatalog.ChestStockTarget=options.Target;RemoteCatalog.ChestRepeat=options.Repeat==true;RemoteCatalog.ChestTravel=options.Walk and 'Walk' or 'Stay'
+  RemoteCatalog.ChestClock=function() return clock end
+  RemoteCatalog.ChestRequestAt=nil;RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestRateFloor=nil;RemoteCatalog.ChestRateCeiling=nil;RemoteCatalog.ChestRateSuccesses=0;RemoteCatalog.ChestRateAccepted=0
+  RemoteCatalog.SelectedChestTargets=function() local result={};for _,binding in ipairs(bindings) do table.insert(result,{Recorder=owner,Binding=binding}) end;return result end
+  RemoteCatalog.OwnedTools=function() return items end
+  RemoteCatalog.BaitCount=function(tool) return qty[tool.Name] end
+  RemoteCatalog.ApproachChest=function(_,active,binding) table.insert(approaches,binding.Id);return not (blocked and binding.Chest==b),'out of reach' end
+  RemoteCatalog.WithdrawCarrots=function(amount,rec,binding)
+   assert(rec==owner and amount<=30)
+   local rate=rateOnce and binding==b1
+   if rate then rateOnce=false end
+   table.insert(trace,{Id=binding.Id,Amount=amount,Rate=rate})
+   if rate then return false,{success=false,error='TOO_FAST'} end
+   local available=stock[binding.Id] or (options.Finite and 0 or math.huge)
+   if available<amount then return false,'insufficient' end
+   if available~=math.huge then stock[binding.Id]-=amount end
+   qty[binding.Item]+=amount;return true
+  end
+ end
+ local function pump(count)
+  for _=1,count do assert(worker and coroutine.status(worker)=='suspended');local ok,e=coroutine.resume(worker);assert(ok,e) end
+ end
+ local function untilTrue(predicate)
+  for _=1,1000 do if predicate() then return end;pump(1) end
+  assert(predicate(),'balanced queue did not settle')
+ end
+ prepare({Goal=90}) -- Missing preference must retain the original same-stack default.
+ assert(RemoteCatalog.SetChestAuto(true));RemoteCatalog.ChestOrder='Balance chests';drain()
+ assert(#trace==3 and trace[1].Id=='A8' and trace[2].Id=='A8' and trace[3].Id=='A8','Same stack must remain the default and its captured preference must not change mid-run')
+ prepare({Order='Balance chests',Goal=90})
+ assert(RemoteCatalog.SetChestAuto(true));RemoteCatalog.ChestOrder='Same stack';drain()
+ assert(#trace==3 and trace[1].Id=='A8' and trace[2].Id=='B1' and trace[3].Id=='A8' and RemoteCatalog.ChestAutoTotal==90,'Balance must give another chest a turn even if the first continually refills, with a frozen mode and cumulative goal')
+ prepare({Order='Balance chests',Goal=120,Multi=true,Walk=true})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#trace==4 and trace[1].Id=='A8' and trace[2].Id=='B1' and trace[3].Id=='A3' and trace[4].Id=='B2' and qty.carrotHarvested==60 and qty.potatoSalad==60,'Balance must rotate physical chests and their selected item/slot cursors even in Walk mode')
+ prepare({Order='Balance chests',Goal=120,Multi=true,RateB=true})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#trace==5 and trace[2].Id=='B1' and trace[2].Rate and trace[3].Id=='B1' and trace[3].Amount==30 and trace[4].Id=='A3' and trace[5].Id=='B2','TOO_FAST must retry the same slot/full amount before advancing the balanced queue')
+ prepare({Order='Balance chests',Goal=90,BlockB=true,Walk=true})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#trace==3 and qty.carrotHarvested==90 and #approaches>=5 and approaches[2]=='B1' and approaches[3]=='A8','an unreachable chest must not trap balanced scheduling or block reachable refills')
+ prepare({Order='Balance chests',Multi=true,Target=50})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(qty.carrotHarvested==50 and qty.potatoSalad==50 and RemoteCatalog.ChestAutoTotal==100 and RemoteCatalog.ChestHistory[1].Outcome=='Inventory targets met','balanced chests sharing an item must obey the live per-item inventory target')
+ prepare({Order='Balance chests',Goal=90})
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.SetChestPaused(true));pump(20)
+ assert(#trace==1 and RemoteCatalog.ChestAutoTotal==30,'Pause must hold the balanced cursor without sending to another chest')
+ assert(RemoteCatalog.SetChestPaused(false));drain()
+ assert(#trace==3 and trace[2].Id=='B1' and trace[3].Id=='A8','Resume must continue the existing balanced queue and totals')
+ prepare({Order='Balance chests',Goal=90,Repeat=true,Finite=true,Stock={A8=30,B1=30}})
+ assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
+ local requests=#trace
+ stock.A8=30;stock.B1=30
+ drain()
+ assert(RemoteCatalog.ChestAutoTotal==90 and trace[requests+1].Id=='A8' and trace[requests+1].Amount==1 and trace[requests+2].Id=='B1' and trace[requests+2].Amount==1 and trace[requests+3].Amount==28,'Repeat must refresh balanced cursors/probes while preserving the remaining cumulative goal')
+ prepare({Order='Balance chests',Goal=90})
+ assert(RemoteCatalog.SetChestAuto(true));RemoteCatalog.SetChestAuto(false);drain()
+ assert(#trace==1 and not RemoteCatalog.ChestAutoWorker and RemoteCatalog.ChestHistory[1].Total==30,'Stop must cancel the pending balanced turn without losing confirmed totals')
+ task.wait=oldWait;RemoteCatalog.ChestClock=nil;RemoteCatalog.ChestRequestAt=nil;RemoteCatalog.ChestOrder=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestRepeat=false
+ RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestRateFloor=nil;RemoteCatalog.ChestRateCeiling=nil;RemoteCatalog.ChestRateSuccesses=0;RemoteCatalog.ChestRateAccepted=0
+end
+return 'Chest Auto Max: same-stack and balanced queues, adaptive batches, server pacing, repeat/top-up, pause/resume, goals, confirmation, Stop and cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-auto',true)());}

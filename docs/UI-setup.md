@@ -1373,3 +1373,45 @@ working interval, holding a narrow bracket, changed/stale server bounds, request
 latency counting toward spacing, immediate restart pacing, full-batch preservation,
 goals, manual collection and visible totals. The full regression suite passes.
 Live v65 throughput and server acceptance remain unverified.
+
+
+### Optional balanced chest collection (v66)
+
+**Chests > Order** offers **Same stack** (default) and **Balance chests**.
+Same stack preserves continued collection from the current stack. Balance gives
+another physical chest a turn after a confirmed batch, so a continuously
+refilling output chest cannot monopolize collection. Each chest also retains a
+cursor through its selected items/slots, preventing a second item in that chest
+from being starved. With one physical chest it rotates its available selected
+slots; with one target it naturally continues that stack.
+
+A failed amount/remainder attempt and `TOO_FAST` keep their existing slot and
+amount retry behavior before yielding. Invalid targets are skipped. An
+unreachable chest releases its turn so reachable chests can continue. Walk mode
+honors balancing instead of always exhausting one physical chest first; it may
+therefore require more travel. One worker still sends serialized requests and
+the shared server interval/backoff is unchanged. Balancing is scheduling, not a
+rate-limit workaround, and does not by itself address a server rejecting every
+request while the confirmed total stays zero.
+
+Order is captured for the active run and locked during workers, Pause and
+cancelled-worker cleanup. Pause/Resume retains the queue, totals and cumulative
+goal. Repeat refreshes target/cursor state while retaining its whole-run goal.
+Top-up still shares each item's live deficit across chests. A balanced turn does
+not mark its stack finished: One pass ends when all selected states are finished,
+a goal/top-up ends it, or Stop is pressed. Continuously refilling targets can
+therefore keep an unlimited run ON.
+
+The order dropdown expands above details/manual controls, shares exclusive menu
+cleanup, and restores the compact layout on close/Escape. Choosing a mode only
+updates preferences and preview; START COLLECTING is separate. Version-1 profiles
+save optional `Order`; missing values restore Same stack and loading never starts
+collection. Manual withdrawal and batch/run/scan defaults remain unchanged.
+
+Mock tests compare default same-stack behavior with balancing refilling chests,
+physical-chest and multi-item/slot rotation in Walk mode, frozen run choices,
+same-slot rate retries, unreachable targets, shared inventory targets,
+Pause/Resume, Repeat goals, Stop, profile compatibility and real dropdown layout
+and locks. The full suite passes. Live v66 scheduling and throughput remain
+unverified. The latest short v65 clip shows zero confirmed items during a retry
+cooldown; its final copied result is needed to investigate that run further.

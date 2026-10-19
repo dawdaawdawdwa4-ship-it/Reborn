@@ -558,3 +558,22 @@ preferences remain unchanged. The catalog stays at 145 entries and recorder v28.
 Mock stable/changing-limit, latency, restart, full-batch, manual/UI and complete
 regression checks pass. Actual Roblox request timing and throughput of v65 must
 still be verified live.
+
+
+### Balanced target scheduling (balanced-chests-66)
+
+An optional Balance chests preference rotates to another physical chest after
+confirmed progress and rotates selected item/slot cursors within each chest.
+Same stack remains the default. Retry amounts, captured bindings and exact-item
+confirmation remain: `TOO_FAST` and remainder retries stay on their original
+slot before scheduling another target. Unreachable/invalid states cannot
+monopolize reachable targets. Only one request worker runs, using the same
+learned global pacing and bounded backoff.
+
+Cumulative goals, live per-item deficits, Pause/Resume and Stop are preserved.
+Repeat refreshes cursors with current target bindings. Profiles accept optional
+validated `Order` (Same stack / Balance chests); missing values retain the former
+behavior. No packet, remote, catalog (145 entries) or recorder v28 changes.
+Mock scheduling, rate-retry, target, profile/UI and full regressions pass; live
+v66 behavior remains unverified. Balancing does not establish why a server
+rejects all requests in a run with zero confirmed inventory gain.

@@ -66,6 +66,9 @@ RemoteCatalog.ChestRepeat=true
 assert(RemoteCatalog.LoadChestProfile() and not RemoteCatalog.ChestStockTarget,'loading an older profile must clear a previously selected top-up cap')
 assert(not RemoteCatalog.ChestRepeat,'loading an older profile must also clear Repeat')
 assert(RemoteCatalog.ChestAutoBatch==30,'older profiles must retain the former fixed thirty-item batch')
+assert(RemoteCatalog.ChestOrder=='Same stack','older profiles must preserve original same-stack scheduling')
+for _,order in ipairs({'Same stack','Balance chests'}) do local profile=template();profile.Order=order;assert(RemoteCatalog.ValidateChestProfile(profile).Order==order) end
+for _,order in ipairs({false,1,'Round robin'}) do local profile=template();profile.Order=order;assert(not pcall(RemoteCatalog.ValidateChestProfile,profile)) end
 for _,batch in ipairs({'Max',30,60,100,250,500,1000}) do local profile=template();profile.AutoBatch=batch;assert(RemoteCatalog.ValidateChestProfile(profile).AutoBatch==batch) end
 for _,batch in ipairs({false,1,31,1001,'1000'}) do local profile=template();profile.AutoBatch=batch;assert(not pcall(RemoteCatalog.ValidateChestProfile,profile),'invalid batches must not load') end
 RemoteCatalog.ChestItems.wood=nil
@@ -75,6 +78,7 @@ RemoteCatalog.ChestProfileName.Text='  Stone run  '
 RemoteCatalog.ChestStockTarget=50
 RemoteCatalog.ChestRepeat=true
 RemoteCatalog.ChestAutoBatch='Max'
+RemoteCatalog.ChestOrder='Balance chests'
 RemoteCatalog.ChestAutoPaused=true;RemoteCatalog.ChestRateDelay=1
 assert(RemoteCatalog.SaveChestProfile() and writes==1 and RemoteCatalog.ChestProfiles[1].Name=='Stone run')
 local disk=db[file]
@@ -82,12 +86,15 @@ assert(disk.Version==1 and disk.Profiles['1'].Items[1]=='stone' and not disk.Pro
 assert(disk.Profiles['1'].StockTarget==50,'profile files must retain the inventory preference')
 assert(disk.Profiles['1'].Repeat==true,'profile files must retain the explicit repeat preference')
 assert(disk.Profiles['1'].AutoBatch=='Max' and disk.Profiles['1'].ChestAutoPaused==nil and disk.Profiles['1'].ChestRateDelay==nil,'persist only batch preferences, never live pause/rate state')
+assert(disk.Profiles['1'].Order=='Balance chests','profiles must retain scheduling preference without live cursors')
+RemoteCatalog.ChestOrder='Same stack'
 RemoteCatalog.ChestAutoBatch=30;RemoteCatalog.ChestAutoPaused=false;RemoteCatalog.ChestRateDelay=nil
 RemoteCatalog.ChestStockTarget=nil
 RemoteCatalog.ChestRepeat=false
 assert(RemoteCatalog.LoadChestProfile() and RemoteCatalog.ChestStockTarget==50 and string.find(RemoteCatalog.ChestStockButton.Text,'50',1,true),'loading must restore the saved cap and label without starting collection')
 assert(RemoteCatalog.ChestRepeat and not RemoteCatalog.ChestAutoEnabled,'loading a repeat profile must not start a worker')
 assert(RemoteCatalog.ChestAutoBatch=='Max' and not RemoteCatalog.ChestAutoPaused,'load must restore Max without starting or pausing a run')
+assert(RemoteCatalog.ChestOrder=='Balance chests','load must restore balancing without starting a worker')
 RemoteCatalog.ChestProfiles[1].Items[1]='wood'
 assert(disk.Profiles['1'].Items[1]=='stone','file snapshots must not alias session profiles')
 local saved=RemoteCatalog.ChestProfiles[1]

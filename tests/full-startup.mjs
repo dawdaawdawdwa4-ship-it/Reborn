@@ -848,7 +848,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn stable-chests-65',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn balanced-chests-66',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1302,6 +1302,33 @@ end)()
  assert(r.ChestAutoBatch==30 and string.find(status.Text,'60 collected',1,true) and string.find(status.Text,'Request pace',1,true),'pacing must preserve a fixed thirty-item selection and show confirmed totals while waiting')
  r.ChestAutoEnabled=false;r.ChestAutoWorker=nil;r.ChestCooldown=nil;r.ChestCooldownKind=nil
  r.ChestAutoBatch=batch;r.ChestAutoTotal=total;r.RefreshChestActions()
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ assert(r.ChestOrder=='Same stack' and string.find(r.ChestOrderButton.Text,'Same stack',1,true),'scheduling must default to Same stack in the real UI')
+ local y=r.ChestWithdrawButton.Position.Y.Offset
+ for _=1,3 do
+  r.ChestOrderButton.Activated:Fire()
+  assert(r.ChestOrderMenu.Menu.Visible and r.ChestWithdrawButton.Position.Y.Offset>=r.ChestOrderMenu.Menu.Position.Y.Offset+r.ChestOrderMenu.Menu.Size.Y.Offset,'order dropdown must expand in flow above manual controls')
+  r.ChestOrderButton.Activated:Fire()
+  assert(r.ChestWithdrawButton.Position.Y.Offset==y,'order menu cleanup must restore the compact layout without drift')
+ end
+ r.ChestOrderButton.Activated:Fire();r.ChestOrderMenu.Options[2].Activated:Fire()
+ assert(r.ChestOrder=='Balance chests' and not r.ChestAutoEnabled and not r.ChestAutoWorker and string.find(r.ChestPlanLabel.Text,'another chest a turn',1,true),'Balance selection must explain its behavior and never start a worker')
+ r.ChestOrderButton.Activated:Fire();r.ChestRepeatButton.Activated:Fire()
+ assert(not r.ChestOrderMenu.Menu.Visible and r.ChestRepeatMenu.Menu.Visible,'order choices must share exclusive dropdown cleanup')
+ r.CloseMenus()
+ r.ChestOrderButton.Activated:Fire();r.ChestAutoWorker=660;r.ChestOrderMenu.Options[1].Activated:Fire()
+ assert(r.ChestOrder=='Balance chests' and not r.ChestOrderMenu.Menu.Visible,'an already-open scheduling choice must lock when a worker starts')
+ r.ChestAutoEnabled=true;r.ChestAutoPaused=true;r.RefreshChestActions()
+ assert(not r.ChestOrderButton.Active,'Pause must retain the order lock')
+ r.ChestOrderButton.Activated:Fire();assert(not r.ChestOrderMenu.Menu.Visible)
+ r.ChestAutoEnabled=false;r.ChestAutoPaused=false;r.ChestAutoWorker=nil;r.RefreshChestActions()
+ r.ChestOrderButton.Activated:Fire();UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.Escape},true)
+ assert(not r.ChestOrderMenu.Menu.Visible and r.ChestWithdrawButton.Position.Y.Offset==y,'Escape must restore scheduling dropdown layout')
+ r.ChestOrderButton.Activated:Fire();r.ChestOrderMenu.Options[1].Activated:Fire()
+ r.UpdateChestSelectionUI()
  end)()
 
 ;(function()
