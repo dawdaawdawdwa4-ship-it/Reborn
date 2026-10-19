@@ -1415,3 +1415,45 @@ Pause/Resume, Repeat goals, Stop, profile compatibility and real dropdown layout
 and locks. The full suite passes. Live v66 scheduling and throughput remain
 unverified. The latest short v65 clip shows zero confirmed items during a retry
 cooldown; its final copied result is needed to investigate that run further.
+
+### Auto Craft Bait and reachable chest scans (v67)
+
+Fishing now includes **Auto Craft Bait** beneath the bait diagnostics. It starts
+OFF and uses the player's materials. Click **Learn bait craft**, craft bait
+manually once (batch 1–100) at your own `workbench2`, then choose **Batch**
+(25/50/100), **Bait target** (100/250/500/1000) and **Start crafting**. The default
+batch and target are 100. Learning forwards the manual action once and sends no
+extra craft. Hosts without the recorder hook APIs cannot learn this feature.
+
+Crafting uses the exact observed workbench and current request context. It waits
+while outside the local 20-stud guard or while chest collection is active, checks
+ownership/range again after quantity replication, and stops on a changed
+character/server, rejected request or missing confirmed inventory gain. Each
+request is limited to the selected batch and remaining inventory deficit. The
+server determines recipe output, so an inventory target is a stopping condition,
+not a guarantee of an exact final count. Existing bait is included in the target;
+this is a finite top-up run, not a continuous refill mode. Auto Bait and Fishing
+remain separately controlled.
+
+Only observed net inventory growth confirms crafting. Unreadable quantities send
+nothing, and an accepted response without gain stops after the bounded inventory
+wait. `TOO_FAST` allows at most five retries with cancellable .5/1/2/4/4-second
+waits. Other errors stop immediately. Stop, Stop All and GUI destruction cancel
+the worker/learner. An in-flight request must finish before restart or chest
+withdrawal; it cannot be recalled. Batch/target menus expand within the page and
+lock while the worker is running. Choices are session-only.
+
+Chest **Stay** still sends only within 20 studs; it never enables walking. The
+range control is now labeled **Walk range** to distinguish its purpose. An
+unreachable physical chest defers all its selected slots for that scan, allowing
+nearby chests to collect without a separate one-second delay for every distant
+slot. When all remaining targets are deferred, collection stays ON, explains the
+range wait and rescans once per second. Moving into range resumes without a
+restart. These local waits do not consume server cooldown intervals or count
+items. Same stack remains the default scheduling choice.
+
+Validation: `npm --prefix tests test` covers the full suite, including learned
+craft envelope preservation, quantity confirmation, delayed replication, cooldown
+bounds, ownership/range, movement during quantity waits, cancellation, the real
+UI controls and grouped distant chest scans. Live Roblox crafting, rendering and
+server acceptance of v67 remain unverified.

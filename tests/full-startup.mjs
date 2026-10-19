@@ -848,7 +848,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn balanced-chests-66',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn craft-bait-67',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1355,6 +1355,37 @@ end)()
  end
  r.SelectedChestTargets,r.ChestRequestReady,r.WithdrawCarrots,r.ChestSpeed=oldTargets,oldReady,oldWithdraw,oldSpeed
  r.UpdateChestSelectionUI()
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ assert(not r.CraftEnabled and not r.CraftWorker and r.CraftBatch==100 and r.CraftTarget==100,'craft startup must be OFF with batch/target 100')
+ assert(string.find(r.ChestRangeButton.Text,'Walk range:',1,true),'range control must identify walking range')
+ local y=r.CraftInfo.Position.Y.Offset
+ r.CraftBatchButton.Activated:Fire()
+ assert(r.CraftBatchMenu.Menu.Visible and r.CraftInfo.Position.Y.Offset>y,'craft dropdown must expand in flow')
+ r.CraftBatchMenu.Options[1].Activated:Fire()
+ assert(r.CraftBatch==25 and not r.CraftBatchMenu.Menu.Visible and r.CraftInfo.Position.Y.Offset==y,'craft batch selection must restore layout')
+ r.CraftTargetButton.Activated:Fire();r.CraftTargetMenu.Options[2].Activated:Fire()
+ assert(r.CraftTarget==250 and not r.CraftWorker,'choosing target must not start crafting')
+ r.CraftWorker=67;r.CraftBatchButton.Activated:Fire()
+ assert(not r.CraftBatchMenu.Menu.Visible,'active craft must lock dropdowns')
+ r.CraftWorker=nil
+ local start,recorder=r.StartCapture,r.Recorder
+ local learned={Active=false,LearnBaitOnly=true,Stop=function(self) self.Stopped=true end}
+ r.StartCapture=function() return learned end
+ r.CraftLearnButton.Activated:Fire()
+ assert(learned.LearnCraftOnly and not learned.Active and not r.CraftEnabled,'learn must listen without starting craft')
+ r.StopBaitLearning();assert(learned.LearnCraftOnly and not learned.Stopped,'stopping bait learner must preserve craft learner')
+ r.StopAllAutomation();assert(not learned.LearnCraftOnly and learned.Stopped and not r.CraftEnabled,'Stop All must cancel craft learning')
+ r.StartCapture,r.Recorder=start,recorder
+ r.CraftEnabled=true;r.CraftWorker=67;r.RefreshCraftUI()
+ r.CraftToggle.Activated:Fire()
+ assert(not r.CraftEnabled and r.CraftWorker==67 and string.find(r.CraftToggle.Text,'FINISHING',1,true),'Stop must show outstanding request cleanup')
+ r.CraftWorker=nil;r.RefreshCraftUI()
+ r.ChestAutoEnabled=true;r.ChestAutoWorker=67;r.ChestReachWaiting=true;r.ChestAutoTotal=0;r.RefreshChestActions()
+ assert(string.find(r.ChestIntro.Text,'within 20 studs',1,true),'range pause must explain Stay reach in the real UI')
+ r.SetChestAuto(false);assert(not r.ChestReachWaiting,'Stop clears deferred reach status')
  end)()
 
 RemoteCatalog.StopTimerButton.Activated:Fire()

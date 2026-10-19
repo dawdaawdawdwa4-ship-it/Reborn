@@ -885,7 +885,40 @@ do
  task.wait=oldWait;RemoteCatalog.ChestClock=nil;RemoteCatalog.ChestRequestAt=nil;RemoteCatalog.ChestOrder=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestRepeat=false
  RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestRateFloor=nil;RemoteCatalog.ChestRateCeiling=nil;RemoteCatalog.ChestRateSuccesses=0;RemoteCatalog.ChestRateAccepted=0
 end
-return 'Chest Auto Max: same-stack and balanced queues, adaptive batches, server pacing, repeat/top-up, pause/resume, goals, confirmation, Stop and cleanup passed'
+-- Distant physical chests must not add a one-second delay for every slot.
+do
+ local oldWait=task.wait
+ local clock,total,calls,checks,near=0,0,{}, {},{}
+ local a,b,c={},{},{}
+ local owner={CanUseChestBinding=function() return true end}
+ local targets={}
+ for _,chest in ipairs({a,b,c}) do for slot=0,12 do table.insert(targets,{Recorder=owner,Binding={Chest=chest,Slot=slot,Item='carrotHarvested',Amount=30}}) end end
+ RemoteCatalog.ChestOrder='Same stack';RemoteCatalog.ChestAutoBatch=30;RemoteCatalog.ChestGoal=30;RemoteCatalog.ChestTravel='Stay';RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestRequestAt=nil
+ RemoteCatalog.ChestClock=function() return clock end
+ task.wait=function(dt) clock+=dt;return oldWait(dt) end
+ RemoteCatalog.SelectedChestTargets=function() return targets end
+ RemoteCatalog.OwnedTools=function() return {{Name='carrotHarvested'}} end
+ RemoteCatalog.BaitCount=function() return total end
+ RemoteCatalog.ApproachChest=function(_,active,binding) checks[binding.Chest]=(checks[binding.Chest] or 0)+1;return near[binding.Chest]==true,'Stay mode: stand within 20 studs' end
+ RemoteCatalog.WithdrawCarrots=function(amount,rec,binding) assert(near[binding.Chest]);table.insert(calls,binding);total+=amount;return true end
+ near[c]=true
+ assert(RemoteCatalog.SetChestAuto(true) and #calls==1 and calls[1].Chest==c and clock<1,'reachable chests must be served immediately after skipping distant groups, without one-second per-slot waits')
+ assert(checks[a]==1 and checks[b]==1,'defer all distant slots after one physical-chest preflight')
+ drain();assert(total==30 and RemoteCatalog.ChestAutoTotal==30)
+ near={};checks={};calls={};total=0;clock=0
+ RemoteCatalog.ChestGoal=30;RemoteCatalog.ChestRateDelay=3;RemoteCatalog.ChestRequestAt=0
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.ChestReachWaiting and #calls==0 and clock==1,'all-distant targets must wait one scan interval, without a server cooldown or fabricated progress')
+ assert(checks[a]==1 and checks[b]==1 and checks[c]==1 and not RemoteCatalog.ChestCooldown)
+ RemoteCatalog.ChestRateDelay=nil;near[b]=true
+ drain()
+ assert(#calls==1 and calls[1].Chest==b and total==30 and not RemoteCatalog.ChestReachWaiting,'moving near a deferred chest must resume collection without switching modes or restarting')
+ near={};calls={};total=0;clock=0;checks={}
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.ChestReachWaiting)
+ RemoteCatalog.SetChestAuto(false);drain()
+ assert(#calls==0 and not RemoteCatalog.ChestReachWaiting and not RemoteCatalog.ChestAutoWorker,'Stop must release the local rescan wait without sending')
+ task.wait=oldWait;RemoteCatalog.ChestClock=nil;RemoteCatalog.ChestRequestAt=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestOrder=nil
+end
+return 'Chest Auto Max: nearby/deferred groups, same-stack and balanced queues, adaptive batches, server pacing, repeat/top-up, pause/resume, goals, confirmation, Stop and cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-auto',true)());}

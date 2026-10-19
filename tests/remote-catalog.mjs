@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==145)
+assert(#RemoteCatalog.Entries==146)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -46,6 +46,11 @@ assert(RemoteCatalog.Refresh()==1,'exact path discovery')
 out.children={node('renamed-group','Folder',{fish})}
 assert(RemoteCatalog.FindNamed('CLIENT_CAST_FISHING_ROD','RemoteFunction')==fish,'alternate grouping')
 assert(RemoteCatalog.Refresh()==1,'catalog fallback')
+local craft=node('tIFPj2BFAwqodE','RemoteFunction')
+out.children={node('cuWyO3sRPqwiuD','Folder',{craft})}
+assert(RemoteCatalog.FindPath('ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.cuWyO3sRPqwiuD.tIFPj2BFAwqodE','RemoteFunction')==craft and RemoteCatalog.Refresh()==1,'bait craft endpoint must resolve at its exact path without sending')
+out.children={node('rotatedCraftGroup','Folder',{craft})}
+assert(RemoteCatalog.FindNamed('tIFPj2BFAwqodE','RemoteFunction')==craft and RemoteCatalog.Refresh()==1,'bait craft lookup must tolerate a changed group')
 local salad=node('FiAxD3JcLWBD6I','RemoteFunction')
 out.children={node('cuWyO3sRPqwiuD','Folder',{salad})}
 assert(RemoteCatalog.FindPath('ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.cuWyO3sRPqwiuD.FiAxD3JcLWBD6I','RemoteFunction')==salad,'supplied potato salad endpoint must resolve at its exact path')
@@ -320,7 +325,7 @@ do
  assert(RemoteCatalog.LiveRecorder('PlowBinding')==globalPlow,'valid standalone plow binding must remain available when the local sample is stale')
  RemoteCatalog.Recorder,context.RebornCapture=oldLocal,oldGlobal
 end
-return '145 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '146 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}

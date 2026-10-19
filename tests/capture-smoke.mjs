@@ -553,6 +553,37 @@ end)()
  capture:Stop();assert(not capture.LearnPlowOnly,'Stop must clear plow learning')
  gamePlayer.Character=oldCharacter;game.JobId=oldJob;game.GetService=oldService
  end)()
+;(function()
+ local capture=environment.RebornCapture
+ capture:Resume()
+ local endpoint=remote('tIFPj2BFAwqodE')
+ local bench={_type='Instance',Name='workbench2',Parent=game,IsA=function(_,cls) return cls=='Model' end}
+ local packet={ptT2graQXL5nZ4='live-craft-context',FrOcxUDTzCT48d={toolName='bait',workbenchBlock=bench,amount=100,extra='retain'}}
+ local replay,requests=nil,0
+ endpoint.InvokeServer=function(_,...) requests+=1;replay=table.pack(...);return {success=true} end
+ capture.Active=false;capture.LearnCraftOnly=true;capture.LearnBaitOnly=true
+ local records=#capture.Records;local forwarded=#calls
+ installedHook(endpoint,{ptT2graQXL5nZ4='unrelated',FrOcxUDTzCT48d={toolName='stone',workbenchBlock=bench,amount=100}})
+ assert(capture.LearnCraftOnly and not capture.CraftBinding,'quiet craft learner must ignore other recipes')
+ installedHook(endpoint,packet,nil,'tail',nil)
+ assert(#calls==forwarded+2 and #capture.Records==records and requests==0,'learning forwards originals once and never sends extra calls or logs')
+ assert(capture.CraftBinding and capture.CraftBinding.Workbench==bench and not capture.LearnCraftOnly and capture.LearnBaitOnly and not capture.Stopped,'craft learning must coexist with another learner')
+ assert(capture:CraftBait(25) and requests==1)
+ assert(replay.n==4 and replay[2]==nil and replay[3]=='tail' and replay[4]==nil,'craft argument arity/tail must be preserved')
+ assert(replay[1].ptT2graQXL5nZ4=='live-craft-context' and replay[1].FrOcxUDTzCT48d.workbenchBlock==bench and replay[1].FrOcxUDTzCT48d.toolName=='bait' and replay[1].FrOcxUDTzCT48d.amount==25 and replay[1].FrOcxUDTzCT48d.extra=='retain','craft must retain exact live context and change only amount')
+ assert(packet.FrOcxUDTzCT48d.amount==100,'craft replay must never mutate the observed template')
+ for _,amount in ipairs({0,-1,101,1.5,math.huge,0/0,'100'}) do assert(not capture:CraftBait(amount)) end
+ local count=requests
+ local character=gamePlayer.Character;gamePlayer.Character={};assert(not capture:CraftBait(100));gamePlayer.Character=character
+ local userId=gamePlayer.UserId;gamePlayer.UserId=100;assert(not capture:CraftBait(100));gamePlayer.UserId=userId
+ local job=game.JobId;game.JobId='different-server';assert(not capture:CraftBait(100));game.JobId=job
+ bench.Parent=nil;assert(not capture:CraftBait(100));bench.Parent=game
+ endpoint.Parent=nil;assert(not capture:CraftBait(100));endpoint.Parent=game
+ assert(requests==count,'stale craft actor/server/remote/bench or invalid batch must send nothing')
+ for _,response in ipairs({false,{success=false,error='TOO_FAST'}}) do endpoint.InvokeServer=function() return response end;assert(not capture:CraftBait(100)) end
+ endpoint.InvokeServer=function() error('request failed') end;assert(not capture:CraftBait(100),'craft transport errors must remain failures')
+ capture.LearnCraftOnly=true;capture:Stop();assert(not capture.LearnCraftOnly,'Stop must cancel craft learning')
+ end)()
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
 const state=await LuauState.createAsync();

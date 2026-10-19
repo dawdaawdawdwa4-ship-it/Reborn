@@ -577,3 +577,44 @@ behavior. No packet, remote, catalog (145 entries) or recorder v28 changes.
 Mock scheduling, rate-retry, target, profile/UI and full regressions pass; live
 v66 behavior remains unverified. Balancing does not establish why a server
 rejects all requests in a run with zero confirmed inventory gain.
+
+### Bait crafting (craft-bait-67)
+
+The supplied outgoing Cobalt call uses RemoteFunction
+`ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.cuWyO3sRPqwiuD.tIFPj2BFAwqodE`:
+
+```lua
+{
+    ptT2graQXL5nZ4 = currentRequestContext,
+    FrOcxUDTzCT48d = {
+        toolName = "bait",
+        workbenchBlock = actualWorkbench2,
+        amount = 100,
+    },
+}
+```
+
+The `PlayerScripts.TS.interact.interact` path identifies the observing client
+module; it is not another RPC argument. The pasted context and island ID are not
+embedded. Catalog size is now 146 and the recorder is version 29. Quiet **Learn
+bait craft** accepts only the bait recipe, a live `workbench2`, and an integer
+batch of 1–100. The complete observed argument list, including trailing nils and
+unknown envelope fields, is retained. Replays clone it and change only `amount`;
+they retain the captured workbench. A rotated group/endpoint can be learned under
+`out` from the same exact payload shape. Other recipes are ignored.
+
+Bindings belong to the current account, character and server. Removed remotes or
+workbenches invalidate them. The application additionally requires the workbench
+to remain on the player's own island and within its local 20-stud guard. The
+controller requests at most its chosen batch or current target deficit. The
+capture does not establish recipe costs, output-per-craft, server reach, or a
+working server response; those are not guessed. Only an observed increase in
+bait inventory confirms progress, and unconfirmed gain or server rejection stops
+the run. Cooldown retries are bounded and respect Stop. No automatic purchasing,
+material withdrawal, or switching to another player's workbench is introduced.
+
+v67 also groups unreachable chest slots by physical chest and rescans all deferred
+targets once per second without changing Stay/Walk selection or packet formats.
+The reported v65 "stand within 20 studs" message describes a local reach wait,
+not evidence of `TOO_FAST`. Tests cover the recorded craft packet and controller
+behavior with mocked Roblox services; live v67 behavior remains unverified.

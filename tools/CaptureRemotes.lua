@@ -8,17 +8,18 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 28 and previous.Resume then
+if previous and previous.Version == 29 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 28, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 29, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
+    capture.CraftBinding = previous.CraftBinding
     capture.BaitBinding = previous.BaitBinding
     capture.PlacementBinding = previous.PlacementBinding
     capture.PlowBinding = previous.PlowBinding
@@ -35,6 +36,7 @@ if previous then
 end
 capture.ChestBindings=capture.ChestBindings or {}
 local exactNames = {
+    tIFPj2BFAwqodE = true, -- Bait crafting; learn the live envelope and workbench.
     FiAxD3JcLWBD6I = true, -- Supplied potatoSalad chest withdrawal; learn its live envelope.
     PdqfVEBKHDSMfE = true, -- Supplied hoe/plow endpoint; context is learned live.
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
@@ -193,6 +195,7 @@ function capture:Stop()
     self.Active, self.Stopped = false, true
     self.LearnPlowOnly = false
     self.LearnWoodOnly = false
+    self.LearnCraftOnly = false
     self.LearnBaitOnly = false
     self.LearnChestOnly = false
     self.LearnChestMany = false
@@ -408,6 +411,48 @@ function capture:Place(body)
     if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
     return true, result
 end
+local function craftBody(packet)
+    if type(packet)~="table" then return nil end
+    if packet.workbenchBlock~=nil then return packet end
+    for _,value in pairs(packet) do
+        if type(value)=="table" and value.workbenchBlock~=nil then return value end
+    end
+end
+local function learnCraftBait(remote,method,args)
+    if method~="InvokeServer" then return false end
+    local group=remote.Parent
+    if remote.Name~="tIFPj2BFAwqodE" and (not group or not group.Parent or group.Parent.Name~="out") then return false end
+    local body=craftBody(args[1])
+    if not body or body.toolName~="bait" or type(body.amount)~="number" or body.amount<1 or body.amount>100 or body.amount%1~=0 then return false end
+    local bench=body.workbenchBlock
+    if typeof(bench)~="Instance" or not bench.Parent or bench.Name~="workbench2" or not (bench:IsA("Model") or bench:IsA("BasePart")) then return false end
+    local owner=game:GetService("Players").LocalPlayer
+    if not owner or not owner.Character then return false end
+    capture.CraftBinding={Remote=remote,Method=method,Args=cloneArguments(args),Workbench=bench,
+        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
+    return true
+end
+function capture:CanUseCraftBinding()
+    local binding=self.CraftBinding
+    local owner=game:GetService("Players").LocalPlayer
+    return binding~=nil and binding.Remote~=nil and binding.Remote.Parent~=nil and binding.Workbench~=nil
+        and binding.Workbench.Parent~=nil and owner~=nil and owner.Character~=nil
+        and binding.OwnerCharacter==owner.Character and binding.OwnerUserId==owner.UserId and binding.JobId==game.JobId
+end
+function capture:CraftBait(amount)
+    if not self:CanUseCraftBinding() then return false,"Learn bait crafting again on this character/server" end
+    if type(amount)~="number" or amount<1 or amount>100 or amount%1~=0 then return false,"Craft batch must be 1–100" end
+    local binding=self.CraftBinding
+    local ok,result=pcall(function()
+        local args=cloneArguments(binding.Args)
+        local body=craftBody(args[1])
+        assert(body and body.toolName=="bait" and body.workbenchBlock==binding.Workbench,"Invalid craft template")
+        body.amount=amount
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    return true,result
+end
 local function learnBait(remote, method, args)
     if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
     local known=remote.Name=="yrIxXd1d5bBQji" or remote.Name=="GDbJa5Ix6UZ8mg" or remote.Name=="wKCeyGAO4SqdMY" or remote.Name=="XPQExfDjDSUkYv" or remote.Name=="raqRasAwcny1zh"
@@ -553,11 +598,12 @@ local original
 local function intercept(remote, ...)
     if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
-    if capture.LearnWoodOnly or capture.LearnBaitOnly or capture.LearnChestOnly or capture.LearnPlowOnly then
+    if capture.LearnCraftOnly or capture.LearnWoodOnly or capture.LearnBaitOnly or capture.LearnChestOnly or capture.LearnPlowOnly then
         if method == "InvokeServer" then
             local args = table.pack(...)
             pcall(function()
                 if typeof(remote)=="Instance" and remote:IsA("RemoteFunction") then
+                    if capture.LearnCraftOnly and learnCraftBait(remote,method,args) then capture.LearnCraftOnly=false end
                     if capture.LearnPlowOnly and learnPlow(remote,method,args) then capture.LearnPlowOnly=false end
                     if capture.LearnWoodOnly then
                         local previousWood=capture.WoodHitBinding
@@ -567,7 +613,7 @@ local function intercept(remote, ...)
                     end
                     if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
                     if capture.LearnChestOnly and learnChest(remote,method,args) and not capture.LearnChestMany then capture.LearnChestOnly=false end
-                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly and not capture.LearnPlowOnly then capture:Stop() end
+                    if not capture.LearnCraftOnly and not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly and not capture.LearnPlowOnly then capture:Stop() end
                 end
             end)
         end
@@ -583,7 +629,7 @@ local function intercept(remote, ...)
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
                 learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args)
                 if not learned then learned,autoReplantValue=learnAutoReplant(remote, method, args) end
-                learned = learned or learnPlow(remote,method,args) or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learned or learnCraftBait(remote,method,args) or learnPlow(remote,method,args) or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
