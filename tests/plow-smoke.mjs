@@ -63,7 +63,10 @@ local VirtualInputManager={SendMouseMoveEvent=function() table.insert(events,'mo
  if down and confirm and aimed then aimed.Name='soil' end
 end}
 local mousemoveabs,mouse1press,mouse1release
+local elapsed=0
+local os={clock=function() return elapsed end}
 local task={spawn=function(fn) worker=coroutine.create(fn);local ok,e=coroutine.resume(worker);assert(ok,e) end,wait=function(dt)
+ elapsed+=dt
  if hook then hook(dt) end
  if failHold and dt==.06 then error('hold failed') end
  coroutine.yield(dt)
@@ -80,16 +83,20 @@ local function reset()
  RemoteCatalog.BuildIslandBlocks=function() return blocks end
  RemoteCatalog.PlowRadius=15;events={};equipped={};hook=nil;confirm=true;failPress=false;failHold=false
  focused=false;uiBlocked=false;hub.Root.Visible=false;visible=true;obstructed=false;covered=false;tools={hoe,previous}
- enabled=false;RemoteCatalog.ResourceInputBusy=nil;RemoteCatalog.LiveRecorder=nil;RemoteCatalog.Recorder=nil;RemoteCatalog.PlowLearning=false;RemoteCatalog.PlowMode="Auto"
+ enabled=false;RemoteCatalog.ResourceInputBusy=nil;RemoteCatalog.LiveRecorder=nil;RemoteCatalog.Recorder=nil;RemoteCatalog.PlowLearning=false;RemoteCatalog.PlowMode="Auto";RemoteCatalog.PlowRunMode="One pass"
 end
-assert(not RemoteCatalog.PlowEnabled and not RemoteCatalog.PlowWorker,'Auto Plow must start OFF')
+assert(not RemoteCatalog.PlowEnabled and not RemoteCatalog.PlowWorker and RemoteCatalog.PlowRunMode=='Continuous','Auto Plow must start OFF with continuous selected')
+RemoteCatalog.PlowRunMode='One pass'
 local scan=RemoteCatalog.ScanPlowArea()
 assert(#scan==2 and #events==0 and #equipped==0,'scan must select exposed nearby owned grass/dirt and send no input')
 covered=true;assert(#RemoteCatalog.ScanPlowArea()==0,'covered ground must be excluded');covered=false
 a.CFrame.UpVector.Y=.5;assert(#RemoteCatalog.ScanPlowArea()==1,'tilted blocks must be excluded');a.CFrame.UpVector.Y=1
 local originalChildren=children;children={}
 for i=1,120 do table.insert(children,block('grass',0,-3)) end
-assert(#RemoteCatalog.ScanPlowArea()==100,'passes must be capped at 100 candidates');children=originalChildren
+assert(#RemoteCatalog.ScanPlowArea()==100,'scans must be capped at 100 candidates')
+local cooling={};for i=1,100 do cooling[children[i]]=os.clock()+100 end
+assert(#RemoteCatalog.ScanPlowArea(true,cooling)==20,'cooling blocks must be excluded before the scan cap so they cannot hide eligible ground')
+children=originalChildren
 enabled=true;assert(not RemoteCatalog.SetPlowEnabled(true) and #events==0);enabled=false
 RemoteCatalog.ResourceInputBusy=true;assert(not RemoteCatalog.SetPlowEnabled(true));RemoteCatalog.ResourceInputBusy=nil
 tools={previous};assert(not RemoteCatalog.SetPlowEnabled(true) and #events==0,'missing hoe must not click anything');tools={hoe,previous}
@@ -151,7 +158,7 @@ do
  reset();capture.calls=0;capture.valid=true;RemoteCatalog.LiveRecorder=function() return capture end
  capture.Plow=function(self) self.calls+=1;self.valid=false;return true end
  assert(RemoteCatalog.SetPlowEnabled(true));drain()
- assert(capture.calls==1 and #events==0 and RemoteCatalog.PlowConfirmed==0,'a binding expiring mid-pass must not switch transports or falsely count an accepted result')
+ assert(capture.calls==1 and #events==0 and RemoteCatalog.PlowConfirmed==0 and string.find(RemoteCatalog.PlowInfo.Text,'expired',1,true),'a binding expiring mid-pass must not switch transports or falsely count an accepted result')
  reset();capture.calls=0;capture.valid=true;RemoteCatalog.LiveRecorder=function() return capture end
  capture.Plow=function(self,part) self.calls+=1;task.wait(.25);part.Name='soil';return true end
  assert(RemoteCatalog.SetPlowEnabled(true));local ok,e=coroutine.resume(worker);assert(ok,e)
@@ -167,9 +174,78 @@ do
  RemoteCatalog.StartCapture=function() return nil end
  assert(not RemoteCatalog.BeginPlowLearning() and #events==0,'unsupported capture must retain native-input availability without sending requests')
 end
+-- Continuous must remain ON through empty scans, movement and bounded retries.
+do
+ local function stepUntil(predicate,limit)
+  for _=1,limit or 100 do
+   if predicate() then return end
+   assert(worker and coroutine.status(worker)=='suspended','worker stopped unexpectedly')
+   local ok,e=coroutine.resume(worker);assert(ok,e)
+  end
+  assert(predicate(),'condition did not settle')
+ end
+ reset();RemoteCatalog.PlowRunMode='Continuous'
+ local capture={valid=true,calls=0,CanUsePlowBinding=function(self) return self.valid end,
+  Plow=function(self,part) self.calls+=1;part.Name='soil';return true end}
+ RemoteCatalog.LiveRecorder=function() return capture end
+ assert(RemoteCatalog.SetPlowEnabled(true))
+ stepUntil(function() return RemoteCatalog.PlowConfirmed==2 end)
+ for _=1,15 do local ok,e=coroutine.resume(worker);assert(ok,e) end
+ assert(RemoteCatalog.PlowEnabled and capture.calls==2 and string.find(RemoteCatalog.PlowInfo.Text,'Waiting',1,true),'finishing nearby ground must wait ON without extra calls')
+ table.insert(children,block('grass',-3,-3))
+ stepUntil(function() return RemoteCatalog.PlowConfirmed==3 end)
+ assert(capture.calls==3,'newly discovered grass must be plowed without toggling again')
+ RemoteCatalog.SetPlowEnabled(false);drain()
+ assert(not RemoteCatalog.PlowWorker and not RemoteCatalog.PlowEnabled and capture.calls==3 and RemoteCatalog.PlowButton.Text=='AUTO PLOW: OFF','OFF must stop rescanning and finish in the OFF state')
+ reset();RemoteCatalog.PlowRunMode='Continuous';children={soil}
+ assert(RemoteCatalog.SetPlowEnabled(true),'continuous should start even when nearby ground is already plowed')
+ stepUntil(function() return string.find(RemoteCatalog.PlowInfo.Text,'Waiting',1,true) end)
+ assert(RemoteCatalog.PlowEnabled and #events==0)
+ RemoteCatalog.SetPlowEnabled(false);drain()
+ reset();RemoteCatalog.PlowRunMode='Continuous';capture.calls=0;capture.valid=true
+ capture.Plow=function(self) self.calls+=1;return false,'server rejected' end
+ RemoteCatalog.LiveRecorder=function() return capture end
+ children={a,b,block('grass',-3,-3)}
+ local retryStarted=elapsed
+ assert(RemoteCatalog.SetPlowEnabled(true))
+ stepUntil(function() return capture.calls==3 end)
+ stepUntil(function() return string.find(RemoteCatalog.PlowInfo.Text,'Cooling down',1,true) end)
+ assert(RemoteCatalog.PlowEnabled and RemoteCatalog.PlowFailed==3,'three failures should pause continuous instead of randomly switching OFF')
+ for _=1,20 do local ok,e=coroutine.resume(worker);assert(ok,e) end
+ assert(capture.calls==3,'failed blocks must not be retried during cooldown')
+ stepUntil(function() return capture.calls>3 end,200)
+ assert(elapsed-retryStarted>=10 and RemoteCatalog.PlowEnabled,'continuous must retry after cooldown without switching OFF')
+ -- Put this failed attempt back on cooldown before introducing a fresh target.
+ local failedCalls=capture.calls
+ -- A blocked nearest set must not hide later eligible targets.
+ capture.Plow=function(self,part) self.calls+=1;part.Name='soil';return true end
+ table.insert(children,block('grass',6,-3))
+ stepUntil(function() return RemoteCatalog.PlowConfirmed==1 end)
+ assert(capture.calls==failedCalls+1,'fresh ground must be processed while failed targets are cooling')
+ capture.valid=false
+ stepUntil(function() return not RemoteCatalog.PlowWorker end)
+ assert(not RemoteCatalog.PlowEnabled and string.find(RemoteCatalog.PlowInfo.Text,'expired',1,true),'expired session must stop with a useful reason')
+ -- Rapid OFF/ON queues one restart only after the pending request returns.
+ reset();RemoteCatalog.PlowRunMode='One pass';capture.valid=true;capture.calls=0
+ capture.Plow=function(self,part) self.calls+=1;task.wait(.25);part.Name='soil';return true end
+ RemoteCatalog.LiveRecorder=function() return capture end
+ assert(RemoteCatalog.SetPlowEnabled(true))
+ stepUntil(function() return capture.calls==1 end)
+ local oldWorker=worker
+ RemoteCatalog.TogglePlow()
+ assert(not RemoteCatalog.PlowEnabled and string.find(RemoteCatalog.PlowButton.Text,'STOPPING',1,true))
+ RemoteCatalog.TogglePlow()
+ assert(RemoteCatalog.PlowPendingStart and worker==oldWorker and capture.calls==1,'restart must queue without overlapping an in-flight call')
+ drain()
+ assert(capture.calls==2 and RemoteCatalog.PlowConfirmed==1 and not RemoteCatalog.PlowWorker and not RemoteCatalog.PlowPendingStart,'queued restart must run once and ignore late old confirmation')
+ reset();capture.calls=0;RemoteCatalog.LiveRecorder=function() return capture end
+ assert(RemoteCatalog.SetPlowEnabled(true));stepUntil(function() return capture.calls==1 end)
+ RemoteCatalog.TogglePlow();RemoteCatalog.TogglePlow();RemoteCatalog.TogglePlow()
+ drain();assert(capture.calls==1 and not RemoteCatalog.PlowPendingStart,'clicking a queued restart again must cancel it')
+end
 reset();hook=function(dt) if dt==.06 then gui.Parent=nil end end
 assert(RemoteCatalog.SetPlowEnabled(true));drain();assert(events[#events]=='up' and not RemoteCatalog.PlowWorker,'destroyed GUI must release held input')
-return 'Auto Plow: owned surface scan, cap, hoe selection, native input guards, observed soil confirmation, bounded failures, Stop/error release and tool/character cleanup passed'
+return 'Auto Plow: owned surface scan, cap, hoe selection, native input guards, observed soil confirmation, continuous rescan/cooldown, queued restart, Stop/error release and tool/character cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'plow',true)());} finally {state.destroy();}

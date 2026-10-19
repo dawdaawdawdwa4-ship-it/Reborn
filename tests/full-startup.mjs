@@ -8,6 +8,8 @@ for(let changed=true;changed;){changed=false;for(const c of schema.Classes)if(us
 const classes=Object.fromEntries(schema.Classes.filter(c=>used.has(c.Name)).map(c=>[c.Name,{super:c.Superclass,members:Object.fromEntries(c.Members.map(m=>[m.Name,m.MemberType]))}]));
 const enums=Object.fromEntries(schema.Enums.map(e=>[e.Name,Object.fromEntries(e.Items.map(i=>[i.Name,{Name:i.Name}]))]));
 const setup='local API_CLASSES='+lit(classes)+'\nlocal Enum='+lit(enums)+'\n'+fs.readFileSync(new URL('roblox-mock.luau',import.meta.url),'utf8')+`
+local time=os.clock
+function services.GuiService:GetGuiInset() return Vector2.zero,Vector2.zero end
 player.Name='Test';player.UserId=7
 player.ChildAdded=signal();player.CharacterAdded=signal()
 function player:GetAttribute() return nil end
@@ -808,7 +810,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn captured-plow-55',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn continuous-controls-56',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -950,8 +952,9 @@ end)()
  assert(not RemoteCatalog.PlowEnabled and not RemoteCatalog.PlowWorker and RemoteCatalog.PlowRadius==15,'Auto Plow must start OFF with a small area')
  RemoteCatalog.PlowScanButton.Activated:Fire()
  assert(not RemoteCatalog.PlowEnabled,'scan must never enable plowing')
- RemoteCatalog.PlowRadiusButton.Activated:Fire();assert(RemoteCatalog.PlowRadius==20)
- RemoteCatalog.PlowRadiusButton.Activated:Fire();assert(RemoteCatalog.PlowRadius==5)
+ RemoteCatalog.PlowRadiusButton.Activated:Fire();assert(RemoteCatalog.PlowRadiusMenu.Menu.Visible and RemoteCatalog.PlowRadius==15,'opening area choices must not change the setting')
+ RemoteCatalog.PlowRadiusMenu.Options[4].Activated:Fire();assert(RemoteCatalog.PlowRadius==20)
+ RemoteCatalog.PlowRadiusButton.Activated:Fire();RemoteCatalog.PlowRadiusMenu.Options[1].Activated:Fire();assert(RemoteCatalog.PlowRadius==5)
  RemoteCatalog.PlowRadius=15
  setEnabled(false);setBaitEnabled(false);setFarmMode('crop',false);setFarmMode('wood',false);setFarmMode('mine',false)
  RemoteCatalog.PlowWorker=999
@@ -968,9 +971,10 @@ end)()
  ;(function()
  local r=RemoteCatalog
  assert(r.PlowMode=='Auto','Auto must preserve normal-input fallback as the default')
- r.PlowModeButton.Activated:Fire();assert(r.PlowMode=='Captured')
- r.PlowModeButton.Activated:Fire();assert(r.PlowMode=='Input')
- r.PlowModeButton.Activated:Fire();assert(r.PlowMode=='Auto')
+ r.PlowModeButton.Activated:Fire();assert(r.PlowMode=='Auto' and r.PlowModeMenu.Menu.Visible)
+ r.PlowModeMenu.Options[2].Activated:Fire();assert(r.PlowMode=='Captured')
+ r.PlowModeButton.Activated:Fire();r.PlowModeMenu.Options[3].Activated:Fire();assert(r.PlowMode=='Input')
+ r.PlowModeButton.Activated:Fire();r.PlowModeMenu.Options[1].Activated:Fire();assert(r.PlowMode=='Auto')
  r.PlowWorker=55;r.PlowModeButton.Activated:Fire();assert(r.PlowMode=='Auto','in-flight workers must freeze method selection');r.PlowWorker=nil
  local oldRecorder,oldStart,oldAttempted=r.Recorder,r.StartCapture,r.CaptureAttempted
  local learner={Version=27,Active=false,Stopped=false,Records={},MaxCalls=100,RequestIds={}}
@@ -991,8 +995,49 @@ end)()
  r.PlowLearnButton.Activated:Fire();assert(learner.LearnPlowOnly)
  r.PlowLearnButton.Activated:Fire();assert(not learner.LearnPlowOnly and not r.PlowLearning,'Learn button must also cancel a pending learner')
  r.PlowLearnButton.Activated:Fire();assert(learner.LearnPlowOnly)
+ r.PlowStopButton.Activated:Fire();assert(not learner.LearnPlowOnly and not r.PlowLearning,'dedicated Stop must also cancel manual hoe learning')
+ r.PlowLearnButton.Activated:Fire();assert(learner.LearnPlowOnly)
  r.StopAllAutomation();assert(not learner.LearnPlowOnly and not r.PlowLearning,'Stop All must cancel hoe learning as well as plowing')
  r.Recorder,r.StartCapture,r.CaptureAttempted=oldRecorder,oldStart,oldAttempted
+ end)()
+
+ ;(function()
+ local r=RemoteCatalog
+ assert(r.PlowRunMode=='Continuous' and r.PlowStopButton.Modal and r.PlowButton.Active,'new controls must expose continuous and keep the mouse accessible')
+ local base=r.PlowInfo.Position.Y.Offset
+ for _=1,3 do
+  r.PlowModeButton.Activated:Fire()
+  assert(r.PlowModeMenu.Menu.Visible and r.PlowInfo.Position.Y.Offset>base,'open method menu must push the status below its options')
+  assert(string.find(r.PlowModeMenu.Options[1].Text,'✓',1,true),'selected method must have a checkmark')
+  r.PlowModeButton.Activated:Fire()
+  assert(not r.PlowModeMenu.Menu.Visible and r.PlowInfo.Position.Y.Offset==base,'closing menus must restore exact layout without drift')
+ end
+ r.PlowModeButton.Activated:Fire();r.PlowRadiusButton.Activated:Fire()
+ assert(not r.PlowModeMenu.Menu.Visible and r.PlowRadiusMenu.Menu.Visible,'only one choice menu may remain open')
+ local oldObjects=methods.GetGuiObjectsAtPosition
+ local child=Instance.new('TextLabel');child.Parent=r.PlowRadiusMenu.Options[1]
+ methods.GetGuiObjectsAtPosition=function() return {child} end
+ UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.MouseButton1},true)
+ assert(r.PlowRadiusMenu.Menu.Visible,'clicking a menu descendant must not dismiss before selection')
+ methods.GetGuiObjectsAtPosition=function() return {} end
+ UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Touch,Position=Vector2.new(900,900)},true)
+ assert(not r.PlowRadiusMenu.Menu.Visible and r.PlowInfo.Position.Y.Offset==base,'outside touch must dismiss and restore layout')
+ r.PlowRunButton.Activated:Fire();r.PlowRunMenu.Options[2].Activated:Fire()
+ assert(r.PlowRunMode=='One pass' and not r.PlowEnabled,'run selection must not start automation')
+ r.PlowRunButton.Activated:Fire();r.PlowRunMenu.Options[1].Activated:Fire()
+ r.PlowModeButton.Activated:Fire();UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.Escape},true)
+ assert(not r.PlowModeMenu.Menu.Visible,'Escape must close dropdowns')
+ r.PlowModeButton.Activated:Fire();showTab('Fishing')
+ assert(not r.PlowModeMenu.Menu.Visible and r.PlowInfo.Position.Y.Offset==base,'tab changes must restore dropdown layout')
+ r.PlowModeButton.Activated:Fire();r.PlowWorker=777;r.PlowModeMenu.Options[2].Activated:Fire()
+ assert(r.PlowMode=='Auto' and not r.PlowModeMenu.Menu.Visible,'a worker starting between menu open and selection must retain its method')
+ r.PlowEnabled=true;r.UpdatePlowControls()
+ r.PlowStopButton.Activated:Fire()
+ assert(not r.PlowEnabled and r.PlowWorker==777 and string.find(r.PlowButton.Text,'STOPPING',1,true),'Stop must immediately disable while accurately showing pending cleanup')
+ r.PlowButton.Activated:Fire();assert(r.PlowPendingStart,'actual ON button must queue a restart during cleanup')
+ r.PlowStopButton.Activated:Fire();assert(not r.PlowPendingStart,'Stop must cancel pending restart intent')
+ r.PlowWorker=nil;r.UpdatePlowControls()
+ methods.GetGuiObjectsAtPosition=oldObjects
  end)()
 
 RemoteCatalog.StopTimerButton.Activated:Fire()

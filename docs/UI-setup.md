@@ -23,14 +23,14 @@ npm --prefix tests test
 ```
 
 The test compiles the hub, both src scripts, and the recorder and constructs the full Farming Hub UI using
-Roblox mocks. It checks that all seven tabs have content, switches tabs, closes and
+Roblox mocks. It checks that all eleven tabs have content, switches tabs, closes and
 reopens the hub, and exercises resize/reset. The reduced Roblox API name fixture
 comes from MaximumADHD/Roblox-Client-Tracker's `roblox/API-Dump.json`, retrieved
 2026-10-17; the mock rejects invalid initialization properties and property signals.
 Mocks do not validate actual rendering, input routing, or server interactions.
 
 In Roblox Studio, put the contents of `message.txt` into a LocalScript under
-StarterPlayerScripts in your own experience. Verify that the seven tabs render,
+StarterPlayerScripts in your own experience. Verify that the eleven tabs render,
 scrolling/clicking does not drag the hub, dragging the header works, the corner
 handle resizes, RightControl and the floating button reopen the closed window,
 and Settings > Reset view restores its original size and centered position.
@@ -986,3 +986,48 @@ guards remain. New tests cover learned-packet preservation, detached samples,
 ownership/session expiry, method selection, rejection without duplicate input,
 and Stop during an in-flight request. The full regression suite passes in mocks;
 live Roblox acceptance and hoe behavior remain unverified.
+
+### Continuous plowing and clearer controls (v56)
+
+Auto Plow still starts OFF, but **Run: Continuous** is now the session default.
+After nearby ground is plowed, it stays ON and rescans around the character every
+0.5 seconds. It can start with no eligible ground and waits as you move around
+your own island. Each scan selects at most the nearest 100 eligible blocks.
+There is no automatic movement or planting. Choose **Run: One pass** for v54/v55's
+finite pass and its three-failure stop behavior.
+
+Continuous no longer switches OFF after a completed scan or three unconfirmed
+attempts. A failed block waits at least 10 seconds before another attempt, and
+three consecutive failures pause processing for 3 seconds before rescanning.
+Cooling blocks are excluded before applying the candidate cap, allowing fresh
+ground to be considered. The panel explains waiting and cooldowns and retains
+the observed-soil/failure totals for the run. Character/island changes, manual
+tool changes, expired captured context, conflicting automation and unexpected
+errors still stop the worker with a reason. Learn a new manual hoe action if a
+captured binding expires; captured failures never fall through to mouse input.
+
+The larger ON/OFF control now has a separate **STOP PLOW** button. OFF cancels
+remaining work immediately; an already-sent request must return before ownership
+is released, so the control shows **STOPPING…** during cleanup. Pressing ON then
+queues one restart instead of silently losing that click. Clicking again, Stop,
+Stop All or closing the hub cancels the queued restart. Restart also checks that
+the character, island and competing automation have not changed. Late old-run
+results never increment the new run's confirmation count.
+
+**Area**, **Run** and **Method** are real dropdowns with checked selections and
+larger option rows. Opening a menu does not change a setting or start automation.
+Only one menu remains open, and inline expansion pushes following controls down
+inside the scrollable page. Selection, Escape, outside mouse/touch input, tab
+navigation and hiding the hub close menus and restore their exact positions.
+Area/run/method changes wait for active or cancelled workers to finish. Existing
+crop, tool, travel, movement, chest and blueprint menus participate in outside
+click dismissal. Buttons have consistent padding, truncated long captions,
+higher-contrast ON backgrounds and Modal enabled so visible controls can release
+a game-locked pointer. Existing protection against synthetic Fishing/Bait clicks
+is retained.
+
+The full mock regression suite covers continuous waiting and new-target discovery,
+cooldown/retry timing, candidate caps, cancellation and queued restart, preserved
+one-pass behavior, actual dropdown selection/layout and mouse/touch/Escape event
+wiring. Live input routing, rendering and Roblox server behavior still need an
+in-game check.

@@ -2617,7 +2617,7 @@ local COLORS = {
 	stroke = Color3.fromRGB(56, 73, 83),
 	text = Color3.fromRGB(226, 232, 240),
 	muted = Color3.fromRGB(170, 186, 194),
-	on = Color3.fromRGB(70, 190, 145),
+	on = Color3.fromRGB(24, 92, 75),
 	off = Color3.fromRGB(42, 55, 65),
 	gold = Color3.fromRGB(255, 200, 60),
 	good = Color3.fromRGB(80, 230, 130),
@@ -2673,6 +2673,14 @@ local function button(props)
 	b.TextSize = math.max(props.TextSize or 13, 13)
 	b.BorderSizePixel = 0
 	b.AutoButtonColor = true
+    b.Active = true
+    b.Selectable = true
+    b.Modal = true -- Keep controls reachable when the game locks the pointer.
+    b.TextTruncate = Enum.TextTruncate.AtEnd
+    local padding = Instance.new("UIPadding")
+    padding.PaddingLeft = UDim.new(0, 10)
+    padding.PaddingRight = UDim.new(0, 10)
+    padding.Parent = b
 	b.Parent = props.Parent
 	corner(b, props.Radius or 8)
     local stroke = Instance.new("UIStroke")
@@ -2684,10 +2692,8 @@ local function button(props)
     track(b.MouseLeave:Connect(function() stroke.Color = COLORS.stroke end))
     if string.find(props.Text or "", "▼", 1, true) then
         b.TextXAlignment = Enum.TextXAlignment.Left
-        local padding = Instance.new("UIPadding")
         padding.PaddingLeft = UDim.new(0, 12)
         padding.PaddingRight = UDim.new(0, 12)
-        padding.Parent = b
     end
 	return b
 end
@@ -2851,7 +2857,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "captured-plow-55",
+    Subtitle = "continuous-controls-56",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2866,8 +2872,69 @@ local cropDropdown, cropDropdownOpen
 local activeTab = "Fishing"
 
 RemoteCatalog.MenuClosers={}
+RemoteCatalog.MenuRegions={}
+function RemoteCatalog.RegisterMenuRegion(anchor,menu)
+    table.insert(RemoteCatalog.MenuRegions,{Anchor=anchor,Menu=menu})
+end
 function RemoteCatalog.CloseMenus()
     for _,close in ipairs(RemoteCatalog.MenuClosers) do close() end
+end
+-- Inline menus expand the scroll canvas instead of covering the next control.
+function RemoteCatalog.ChoiceDropdown(page,anchor,options,settings)
+    local self={Options={},Positions={}}
+    local menu=Instance.new("ScrollingFrame")
+    self.Menu=menu
+    menu.Name=settings.Name or "ChoiceDropdown"
+    menu.Size=UDim2.new(1,-12,0,math.min(#options*40+12,212))
+    menu.CanvasSize=UDim2.fromOffset(0,#options*40+12)
+    menu.ScrollBarThickness=4;menu.ScrollBarImageColor3=COLORS.accent
+    menu.ScrollingDirection=Enum.ScrollingDirection.Y
+    menu.BackgroundColor3=COLORS.panel;menu.BorderSizePixel=0
+    menu.Visible=false;menu.ClipsDescendants=true;menu.ZIndex=25;menu.Parent=page
+    corner(menu,8)
+    anchor.TextXAlignment=Enum.TextXAlignment.Left
+    function self:Refresh()
+        anchor.Text=settings.Title..": "..tostring(settings.Get())..(menu.Visible and "  ▲" or "  ▼")
+        for i,option in ipairs(self.Options) do
+            local chosen=options[i]==settings.Get()
+            option.Text=(chosen and "✓  " or "    ")..tostring(options[i])
+            option.BackgroundColor3=chosen and COLORS.on or COLORS.panel
+        end
+    end
+    function self:Close()
+        menu.Visible=false
+        for child,position in pairs(self.Positions) do if child.Parent==page then child.Position=position end end
+        self.Positions={}
+        self:Refresh()
+    end
+    function self:Open()
+        if settings.Locked and settings.Locked() then return false end
+        RemoteCatalog.CloseMenus()
+        local y=anchor.Position.Y.Offset+anchor.Size.Y.Offset+6
+        menu.Position=UDim2.fromOffset(6,y)
+        for _,child in ipairs(page:GetChildren()) do
+            if child~=menu and child~=anchor and child:IsA("GuiObject") and child.Position.Y.Offset>=y-6 then
+                self.Positions[child]=child.Position
+                child.Position=UDim2.new(child.Position.X.Scale,child.Position.X.Offset,child.Position.Y.Scale,child.Position.Y.Offset+menu.Size.Y.Offset+12)
+            end
+        end
+        menu.Visible=true;self:Refresh()
+        return true
+    end
+    for i,value in ipairs(options) do
+        local option=button({Parent=menu,Text=tostring(value),Size=UDim2.new(1,-16,0,38),Position=UDim2.fromOffset(6,6+(i-1)*40)})
+        option.TextXAlignment=Enum.TextXAlignment.Left;option.ZIndex=26
+        self.Options[i]=option
+        track(option.Activated:Connect(function()
+            if settings.Locked and settings.Locked() then self:Close();return end
+            settings.Set(value);self:Close()
+        end))
+    end
+    track(anchor.Activated:Connect(function() if menu.Visible then self:Close() else self:Open() end end))
+    table.insert(RemoteCatalog.MenuClosers,function() self:Close() end)
+    RemoteCatalog.RegisterMenuRegion(anchor,menu)
+    self:Refresh()
+    return self
 end
 local selectTabOriginal=hub.SelectTab
 hub.SelectTab=function(self,...)
@@ -3255,7 +3322,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn captured-plow-55",
+    return table.concat({"Reborn continuous-controls-56",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -3753,6 +3820,7 @@ cropScroll.Parent = cropDropdown
 cropList.Parent = cropScroll
 for _, option in ipairs(cropButtons) do option.Parent = cropScroll end
 cropDropdownOpen = false
+RemoteCatalog.RegisterMenuRegion(cropSelect,cropDropdown)
 local function refreshCropSelectionUI()
     local selected=FarmLogic.SelectedCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)
     local summary=#selected<=2 and table.concat(selected,", ") or tostring(#selected).." selected"
@@ -4072,6 +4140,7 @@ function RemoteCatalog.TravelSelector(page,y)
     for i,mode in ipairs(modes) do
         local option=button({Parent=page,Text=mode,TextSize=12,Size=UDim2.new(1,-12,0,30),Position=UDim2.fromOffset(6,y+34+(i-1)*31)})
         option.Visible=false;option.ZIndex=20
+        RemoteCatalog.RegisterMenuRegion(selector,option)
         table.insert(options,option)
         track(option.Activated:Connect(function()
             CONFIG[key]=mode
@@ -4523,6 +4592,7 @@ local movementController = (function()
         local menu=Instance.new("Frame");menu.BackgroundColor3=COLORS.panel;menu.BorderSizePixel=0
         menu.Size=UDim2.new(1,-12,0,#options*36);menu.Position=UDim2.fromOffset(6,y);menu.ZIndex=30;menu.Visible=false;menu.Parent=movementPage;corner(menu,8)
         table.insert(self.Menus,menu)
+        RemoteCatalog.RegisterMenuRegion(anchor,menu)
         table.insert(RemoteCatalog.MenuClosers,function() menu.Visible=false end)
         for i, option in ipairs(options) do
             local choice=button({Parent=menu,Text=tostring(option),Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(i-1)*36)})
@@ -4839,7 +4909,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn captured-plow-55", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn continuous-controls-56", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6712,7 +6782,7 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn captured-plow-55\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn continuous-controls-56\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -6910,7 +6980,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn captured-plow-55\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn continuous-controls-56\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -7050,6 +7120,27 @@ RemoteCatalog.PlowEnabled=false
 RemoteCatalog.PlowGeneration=0
 RemoteCatalog.PlowRadius=15
 RemoteCatalog.PlowMode="Auto"
+RemoteCatalog.PlowRunMode="Continuous"
+function RemoteCatalog.UpdatePlowControls()
+    local stopping=RemoteCatalog.PlowWorker and not RemoteCatalog.PlowEnabled
+    if RemoteCatalog.PlowButton then
+        RemoteCatalog.PlowButton.Text=RemoteCatalog.PlowPendingStart and "RESTART QUEUED · cancel" or stopping and "STOPPING… · restart" or RemoteCatalog.PlowEnabled and "AUTO PLOW: ON" or "AUTO PLOW: OFF"
+        RemoteCatalog.PlowButton.BackgroundColor3=RemoteCatalog.PlowEnabled and COLORS.on or COLORS.off
+    end
+    if RemoteCatalog.PlowStopButton then
+        RemoteCatalog.PlowStopButton.Text=stopping and "STOPPING…" or "STOP PLOW"
+    end
+end
+function RemoteCatalog.TogglePlow()
+    if RemoteCatalog.PlowEnabled or RemoteCatalog.PlowPendingStart then return RemoteCatalog.SetPlowEnabled(false) end
+    if RemoteCatalog.PlowWorker then
+        RemoteCatalog.PlowPendingStart=true
+        RemoteCatalog.PlowMessage("Restart queued. Waiting for the previous request/input to finish; click again or Stop to cancel.")
+        RemoteCatalog.UpdatePlowControls()
+        return true
+    end
+    return RemoteCatalog.SetPlowEnabled(true)
+end
 function RemoteCatalog.PlowMessage(text)
     if gui.Parent and RemoteCatalog.PlowInfo then RemoteCatalog.PlowInfo.Text=text end
 end
@@ -7106,18 +7197,21 @@ function RemoteCatalog.PlowSurface(block,blocks,root)
     if workspace:Raycast(point+Vector3.new(0,.08,0),Vector3.new(0,3,0),params) then return nil end
     return point
 end
-function RemoteCatalog.ScanPlowArea()
+function RemoteCatalog.ScanPlowArea(quiet,cooldowns)
     local blocks=RemoteCatalog.BuildIslandBlocks()
     local char=player.Character;local root=char and char:FindFirstChild("HumanoidRootPart")
-    if not blocks or not root then RemoteCatalog.PlowMessage("Stand on your own island with a character before scanning.");return nil end
+    if not blocks or not root then
+        if not quiet then RemoteCatalog.PlowMessage("Stand on your own island with a character before scanning.") end
+        return nil
+    end
     local targets={}
     for _,block in ipairs(blocks:GetChildren()) do
-        if RemoteCatalog.PlowSurface(block,blocks,root) then table.insert(targets,{Block=block,Position=block.Position,Distance=(block.Position-root.Position).Magnitude}) end
+        if (not cooldowns or not cooldowns[block] or cooldowns[block]<=os.clock()) and RemoteCatalog.PlowSurface(block,blocks,root) then table.insert(targets,{Block=block,Position=block.Position,Distance=(block.Position-root.Position).Magnitude}) end
     end
     table.sort(targets,function(a,b) return a.Distance<b.Distance end)
     local total=#targets
     while #targets>100 do table.remove(targets) end
-    RemoteCatalog.PlowMessage("Scan: "..total.." exposed grass/dirt blocks within "..RemoteCatalog.PlowRadius.." studs; at most 100 per pass. Equip/own a hoe, face the area and leave it clear of the hub. Scan sends no input.")
+    if not quiet then RemoteCatalog.PlowMessage("Scan: "..total.." exposed grass/dirt blocks within "..RemoteCatalog.PlowRadius.." studs; at most 100 per scan. Continuous stays ON as you move. Scan sends no input.") end
     return targets,blocks,char
 end
 function RemoteCatalog.PlowSoilAt(blocks,position)
@@ -7187,9 +7281,9 @@ function RemoteCatalog.PlowAction(block,blocks,tool,active,recorder)
 end
 function RemoteCatalog.SetPlowEnabled(state)
     if not state then
-        RemoteCatalog.PlowEnabled=false;RemoteCatalog.PlowGeneration+=1
-        if RemoteCatalog.PlowButton then RemoteCatalog.PlowButton.Text="AUTO PLOW: OFF";RemoteCatalog.PlowButton.BackgroundColor3=COLORS.off end
-        RemoteCatalog.PlowMessage("Plowing stopped. Input release is attempted before another run can start.")
+        RemoteCatalog.PlowEnabled=false;RemoteCatalog.PlowPendingStart=false;RemoteCatalog.PlowGeneration+=1
+        RemoteCatalog.UpdatePlowControls()
+        RemoteCatalog.PlowMessage(RemoteCatalog.PlowWorker and "Stopping: no further blocks will be attempted. Waiting for the current request/input to finish." or "Auto Plow is OFF. Press ON to start again.")
         return true
     end
     if RemoteCatalog.PlowEnabled then return true end
@@ -7199,7 +7293,8 @@ function RemoteCatalog.SetPlowEnabled(state)
     local recorder=RemoteCatalog.PlowMode~="Input" and RemoteCatalog.PlowRecorder() or nil
     if RemoteCatalog.PlowMode=="Captured" and not recorder then RemoteCatalog.PlowMessage("Learn hoe request first: equip your hoe and plow one grass/dirt block manually.");return false end
     local targets,blocks,char=RemoteCatalog.ScanPlowArea()
-    if not targets or #targets==0 then return false end
+    if not targets then return false end
+    if #targets==0 and RemoteCatalog.PlowRunMode=="One pass" then RemoteCatalog.PlowMessage("No exposed grass/dirt in range. Move closer or choose Continuous.");return false end
     local previous=char:FindFirstChildOfClass("Tool")
     local hoe
     for _,tool in ipairs(RemoteCatalog.OwnedTools()) do
@@ -7210,56 +7305,86 @@ function RemoteCatalog.SetPlowEnabled(state)
     end
     if not hoe then RemoteCatalog.PlowMessage("Own a hoe tool before starting Auto Plow. No blocks were changed.");return false end
     RemoteCatalog.PlowGeneration+=1;local token=RemoteCatalog.PlowGeneration
-    RemoteCatalog.PlowWorker=token;RemoteCatalog.PlowEnabled=true
+    RemoteCatalog.PlowWorker=token;RemoteCatalog.PlowEnabled=true;RemoteCatalog.PlowPendingStart=false
     RemoteCatalog.PlowConfirmed=0;RemoteCatalog.PlowFailed=0;RemoteCatalog.PlowSkipped=0
     RemoteCatalog.PlowBackend=recorder and "Captured request" or "Hoe input"
-    RemoteCatalog.PlowButton.Text="AUTO PLOW: ON";RemoteCatalog.PlowButton.BackgroundColor3=COLORS.on
+    RemoteCatalog.UpdatePlowControls()
+    local continuous=RemoteCatalog.PlowRunMode=="Continuous"
     task.spawn(function()
+        local stopReason
         local function active()
-            return gui.Parent~=nil and RemoteCatalog.PlowEnabled and RemoteCatalog.PlowGeneration==token and player.Character==char
-                and RemoteCatalog.BuildIslandBlocks()==blocks and not RemoteCatalog.PlowOtherBusy()
+            if not gui.Parent then stopReason="Hub closed";return false end
+            if not RemoteCatalog.PlowEnabled or RemoteCatalog.PlowGeneration~=token then stopReason="Stopped by user";return false end
+            if player.Character~=char or not char:FindFirstChild("HumanoidRootPart") then stopReason="Character changed; start again after spawning";return false end
+            if RemoteCatalog.BuildIslandBlocks()~=blocks then stopReason="Owned island changed; start again on your island";return false end
+            if RemoteCatalog.PlowOtherBusy() then stopReason="Another automation mode took control";return false end
+            return true
         end
         local outcome="Pass finished"
-        local completed=false
+        local cooldowns=setmetatable({},{__mode="k"})
         local ok,failure=pcall(function()
             if not RemoteCatalog.EquipTool(hoe) then error("Could not equip the owned hoe") end
             task.wait(.1)
-            local streak=0
-            for index,entry in ipairs(targets) do
-                if not active() then return end
-                local root=char:FindFirstChild("HumanoidRootPart")
-                if not RemoteCatalog.PlowSurface(entry.Block,blocks,root) then RemoteCatalog.PlowSkipped+=1;continue end
-                RemoteCatalog.PlowMessage("Plowing "..index.."/"..#targets.." · "..RemoteCatalog.PlowConfirmed.." observed soil conversions · "..RemoteCatalog.PlowBackend..". OFF cancels.")
-                local sent,reason=RemoteCatalog.PlowAction(entry.Block,blocks,hoe,active,recorder)
-                if not active() then return end
-                local confirmed=false
-                if sent then
-                    for attempt=1,20 do
-                        if not active() then return end
-                        if RemoteCatalog.PlowSoilAt(blocks,entry.Position) then confirmed=true;break end
-                        task.wait(.1)
+            while active() do
+                local streak=0
+                local reason
+                for index,entry in ipairs(targets) do
+                    if not active() then return end
+                    if hoe.Parent~=char or char:FindFirstChildOfClass("Tool")~=hoe then outcome="Stopped: selected tool changed. Equip a hoe and start again.";return end
+                    if recorder and not recorder:CanUsePlowBinding() then outcome="Stopped: hoe request expired. Learn one manual hoe action again.";return end
+                    local root=char:FindFirstChild("HumanoidRootPart")
+                    if cooldowns[entry.Block] and cooldowns[entry.Block]>os.clock() then continue end
+                    if not RemoteCatalog.PlowSurface(entry.Block,blocks,root) then RemoteCatalog.PlowSkipped+=1;continue end
+                    RemoteCatalog.PlowMessage("Plowing "..index.."/"..#targets.." · "..RemoteCatalog.PlowConfirmed.." observed soil conversions · "..RemoteCatalog.PlowBackend..". OFF cancels.")
+                    local sent,detail=RemoteCatalog.PlowAction(entry.Block,blocks,hoe,active,recorder)
+                    reason=detail
+                    if not active() then return end
+                    local confirmed=false
+                    if sent then
+                        for attempt=1,20 do
+                            if not active() then return end
+                            if RemoteCatalog.PlowSoilAt(blocks,entry.Position) then confirmed=true;break end
+                            task.wait(.1)
+                        end
                     end
+                    if not active() then return end
+                    if confirmed then RemoteCatalog.PlowConfirmed+=1;streak=0
+                    else
+                        RemoteCatalog.PlowFailed+=1;streak+=1
+                        cooldowns[entry.Block]=os.clock()+10
+                        if sent then reason="no soil appeared; check hoe behavior and island permissions" end
+                    end
+                    if streak>=3 then
+                        outcome="Paused after 3 unconfirmed attempts: "..tostring(reason)
+                        if not continuous then return end
+                        break
+                    end
+                    task.wait(.2)
                 end
+                if not continuous then return end
                 if not active() then return end
-                if confirmed then RemoteCatalog.PlowConfirmed+=1;streak=0
-                else
-                    RemoteCatalog.PlowFailed+=1;streak+=1
-                    if sent then reason="no soil appeared; check hoe behavior and island permissions" end
-                end
-                if streak>=3 then outcome="Paused after 3 unconfirmed attempts: "..tostring(reason);return end
-                task.wait(.2)
+                if hoe.Parent~=char or char:FindFirstChildOfClass("Tool")~=hoe then outcome="Stopped: selected tool changed. Equip a hoe and start again.";return end
+                if recorder and not recorder:CanUsePlowBinding() then outcome="Stopped: hoe request expired. Learn one manual hoe action again.";return end
+                RemoteCatalog.PlowMessage((streak>=3 and outcome..". Cooling down; failed blocks wait 10 seconds." or "Waiting for exposed grass/dirt in range. Move around your own island; Auto Plow stays ON.").."\n"..RemoteCatalog.PlowConfirmed.." observed soil · "..RemoteCatalog.PlowFailed.." failed. OFF stops.")
+                -- Check Stop throughout the scan delay; never overlap a pending call.
+                for _=1,streak>=3 and 30 or 5 do if not active() then return end;task.wait(.1) end
+                if not active() then return end
+                local nextTargets,nextBlocks,nextChar=RemoteCatalog.ScanPlowArea(true,cooldowns)
+                if not nextTargets or nextBlocks~=blocks or nextChar~=char then outcome="Stopped: owned island or character unavailable";return end
+                targets=nextTargets
             end
-            completed=true
         end)
         -- Restore only when the worker still owns tool selection on the same character.
         if player.Character==char and previous and previous~=hoe and previous.Parent and char:FindFirstChildOfClass("Tool")==hoe then pcall(RemoteCatalog.EquipTool,previous) end
-        if RemoteCatalog.PlowWorker==token then RemoteCatalog.PlowWorker=nil end
-        if RemoteCatalog.PlowGeneration==token then
-            RemoteCatalog.PlowEnabled=false
-            if gui.Parent then
-                RemoteCatalog.PlowButton.Text="AUTO PLOW: OFF";RemoteCatalog.PlowButton.BackgroundColor3=COLORS.off
-                RemoteCatalog.PlowMessage((not ok and "Plow error: "..tostring(failure) or not completed and outcome=="Pass finished" and "Stopped: character, island or active mode changed" or outcome).."\n"..RemoteCatalog.PlowConfirmed.." observed soil · "..RemoteCatalog.PlowSkipped.." skipped · "..RemoteCatalog.PlowFailed.." failed. No seeds were planted.")
-            end
+        if RemoteCatalog.PlowWorker~=token then return end
+        local restart=RemoteCatalog.PlowPendingStart
+        RemoteCatalog.PlowWorker=nil;RemoteCatalog.PlowEnabled=false;RemoteCatalog.PlowPendingStart=false
+        if not gui.Parent then return end
+        RemoteCatalog.UpdatePlowControls()
+        RemoteCatalog.PlowMessage((not ok and "Plow error: "..tostring(failure) or stopReason or outcome).."\n"..RemoteCatalog.PlowConfirmed.." observed soil · "..RemoteCatalog.PlowSkipped.." skipped · "..RemoteCatalog.PlowFailed.." failed. No seeds were planted.")
+        if restart then
+            if player.Character==char and RemoteCatalog.BuildIslandBlocks()==blocks and not RemoteCatalog.PlowOtherBusy() then RemoteCatalog.SetPlowEnabled(true)
+            else RemoteCatalog.PlowMessage("Restart cancelled: character, island or active automation changed. Press ON when ready.") end
         end
     end)
     return true
@@ -7397,6 +7522,7 @@ local function makeToolDropdown(page, anchor, options, kind, yPosition, onChoose
     menu.ZIndex = 25
     menu.Parent = page
     corner(menu, 6)
+    RemoteCatalog.RegisterMenuRegion(anchor,menu)
     local list = Instance.new("UIListLayout")
     list.Padding = UDim.new(0, 2)
     list.SortOrder = Enum.SortOrder.LayoutOrder
@@ -7470,6 +7596,27 @@ track(saveButton.Activated:Connect(function()
     saveButton.Text = saved and "Preferences saved ✓" or "Save unavailable in this environment"
     saveButton.BackgroundColor3 = saved and COLORS.on or COLORS.warn
 end))
+
+-- MENU DISMISS INPUT BEGIN
+function RemoteCatalog.DismissMenuInput(input)
+    if input.KeyCode==Enum.KeyCode.Escape then RemoteCatalog.CloseMenus();return end
+    if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+    local point=input.UserInputType==Enum.UserInputType.Touch and input.Position or UserInputService:GetMouseLocation()
+    local ok,objects=pcall(function() return playerGui:GetGuiObjectsAtPosition(point.X,point.Y) end)
+    if not ok then return end
+    for _,object in ipairs(objects) do
+        local current=object
+        while current and current~=playerGui do
+            for _,region in ipairs(RemoteCatalog.MenuRegions) do
+                if region.Menu.Visible and (current==region.Menu or current==region.Anchor) then return end
+            end
+            current=current.Parent
+        end
+    end
+    RemoteCatalog.CloseMenus()
+end
+track(UserInputService.InputBegan:Connect(RemoteCatalog.DismissMenuInput))
+-- MENU DISMISS INPUT END
 
 -- BUILD PICK INPUT BEGIN
 function RemoteCatalog.TryPickBuildInput(input,processed)
@@ -7562,33 +7709,39 @@ do
         if child:IsA("GuiObject") then bottom=math.max(bottom,child.Position.Y.Offset+child.Size.Y.Offset) end
     end
     pageHeading(harvestPage,"AUTO PLOW · OWN ISLAND",bottom+20)
-    RemoteCatalog.PlowButton=button({Parent=harvestPage,Text="AUTO PLOW: OFF",TextSize=12,
-        Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,bottom+48)})
+    RemoteCatalog.PlowButton=button({Parent=harvestPage,Text="AUTO PLOW: OFF",TextSize=13,
+        Size=UDim2.new(.5,-9,0,40),Position=UDim2.fromOffset(6,bottom+48)})
+    RemoteCatalog.PlowStopButton=button({Parent=harvestPage,Text="STOP PLOW",TextSize=13,
+        Size=UDim2.new(.5,-9,0,40),Position=UDim2.new(.5,3,0,bottom+48),Bg=Color3.fromRGB(87,39,47)})
     RemoteCatalog.PlowScanButton=button({Parent=harvestPage,Text="Scan grass / dirt",TextSize=12,
-        Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,bottom+48)})
-    RemoteCatalog.PlowRadiusButton=button({Parent=harvestPage,Text="Plow area: 15 studs",TextSize=12,
-        Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,bottom+90)})
+        Size=UDim2.new(1,-12,0,36),Position=UDim2.fromOffset(6,bottom+96)})
+    RemoteCatalog.PlowRadiusButton=button({Parent=harvestPage,Text="Area: 15 studs",TextSize=12,
+        Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,bottom+140)})
+    RemoteCatalog.PlowRunButton=button({Parent=harvestPage,Text="Run: Continuous",TextSize=12,
+        Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,bottom+140)})
     RemoteCatalog.PlowLearnButton=button({Parent=harvestPage,Text="Learn hoe request",TextSize=12,
-        Size=UDim2.new(.5,-9,0,32),Position=UDim2.fromOffset(6,bottom+130)})
+        Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,bottom+184)})
     RemoteCatalog.PlowModeButton=button({Parent=harvestPage,Text="Method: Auto",TextSize=12,
-        Size=UDim2.new(.5,-9,0,32),Position=UDim2.new(.5,3,0,bottom+130)})
-    RemoteCatalog.PlowInfo=label({Parent=harvestPage,Text="Own a hoe. Auto uses a current learned hoe request, otherwise normal input. Learn one manual hoe action for captured mode. Scan owned grass/dirt first. One pass, up to 100 blocks; no walking or planting.",TextSize=12,Color=COLORS.muted,
-        Size=UDim2.new(1,-16,0,84),Position=UDim2.fromOffset(8,bottom+170)})
+        Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,bottom+184)})
+    RemoteCatalog.PlowInfo=label({Parent=harvestPage,Text="Continuous stays ON and rescans as you move. Own a hoe; learn one manual hoe action for captured mode. OFF or Stop cancels. No walking or planting.",TextSize=12,Color=COLORS.muted,
+        Size=UDim2.new(1,-16,0,96),Position=UDim2.fromOffset(8,bottom+232)})
     RemoteCatalog.PlowInfo.TextWrapped=true
-    track(RemoteCatalog.PlowLearnButton.Activated:Connect(function() RemoteCatalog.BeginPlowLearning() end))
-    track(RemoteCatalog.PlowModeButton.Activated:Connect(function()
-        if RemoteCatalog.PlowWorker then RemoteCatalog.PlowMessage("Finish the current pass before changing its method.");return end
-        local modes={"Auto","Captured","Input"}
-        RemoteCatalog.PlowMode=modes[(table.find(modes,RemoteCatalog.PlowMode) or 1)%#modes+1]
-        RemoteCatalog.PlowModeButton.Text="Method: "..RemoteCatalog.PlowMode
-    end))
-    track(RemoteCatalog.PlowButton.Activated:Connect(function() RemoteCatalog.SetPlowEnabled(not RemoteCatalog.PlowEnabled) end))
+    RemoteCatalog.PlowInfo.TextTruncate=Enum.TextTruncate.None
+    RemoteCatalog.PlowInfo.TextYAlignment=Enum.TextYAlignment.Top
+    local function locked()
+        if RemoteCatalog.PlowWorker then RemoteCatalog.PlowMessage("Stop Auto Plow and wait for cleanup before changing its settings.");return true end
+        return false
+    end
+    RemoteCatalog.PlowRadiusMenu=RemoteCatalog.ChoiceDropdown(harvestPage,RemoteCatalog.PlowRadiusButton,{5,10,15,20},{Name="PlowAreaDropdown",Title="Area (studs)",
+        Get=function() return RemoteCatalog.PlowRadius end,Set=function(value) RemoteCatalog.PlowRadius=value end,Locked=locked})
+    RemoteCatalog.PlowRunMenu=RemoteCatalog.ChoiceDropdown(harvestPage,RemoteCatalog.PlowRunButton,{"Continuous","One pass"},{Name="PlowRunDropdown",Title="Run",
+        Get=function() return RemoteCatalog.PlowRunMode end,Set=function(value) RemoteCatalog.PlowRunMode=value end,Locked=locked})
+    RemoteCatalog.PlowModeMenu=RemoteCatalog.ChoiceDropdown(harvestPage,RemoteCatalog.PlowModeButton,{"Auto","Captured","Input"},{Name="PlowMethodDropdown",Title="Method",
+        Get=function() return RemoteCatalog.PlowMode end,Set=function(value) RemoteCatalog.PlowMode=value end,Locked=locked})
+    track(RemoteCatalog.PlowLearnButton.Activated:Connect(function() RemoteCatalog.CloseMenus();RemoteCatalog.BeginPlowLearning() end))
+    track(RemoteCatalog.PlowButton.Activated:Connect(function() RemoteCatalog.CloseMenus();RemoteCatalog.TogglePlow() end))
+    track(RemoteCatalog.PlowStopButton.Activated:Connect(function() RemoteCatalog.CloseMenus();RemoteCatalog.SetPlowEnabled(false);RemoteCatalog.StopPlowLearning() end))
     track(RemoteCatalog.PlowScanButton.Activated:Connect(function() RemoteCatalog.ScanPlowArea() end))
-    track(RemoteCatalog.PlowRadiusButton.Activated:Connect(function()
-        if RemoteCatalog.PlowWorker then RemoteCatalog.PlowMessage("Finish the current pass before changing its area.");return end
-        RemoteCatalog.PlowRadius=RemoteCatalog.PlowRadius>=20 and 5 or RemoteCatalog.PlowRadius+5
-        RemoteCatalog.PlowRadiusButton.Text="Plow area: "..RemoteCatalog.PlowRadius.." studs"
-    end))
 end
 for mode,page in pairs({fishing=fishingPage,crop=harvestPage,wood=woodPage,mine=minePage}) do
     local bottom=0
@@ -7600,6 +7753,11 @@ for mode,page in pairs({fishing=fishingPage,crop=harvestPage,wood=woodPage,mine=
         Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,bottom+12)})
     track(goal.PageButton.Activated:Connect(function() RemoteCatalog.CycleModeGoal(mode) end))
 end
+RemoteCatalog.RegisterMenuRegion(RemoteCatalog.ChestSelectButton,RemoteCatalog.ChestSelectMenu)
+RemoteCatalog.RegisterMenuRegion(RemoteCatalog.ChestAmountButton,RemoteCatalog.ChestAmountMenu)
+RemoteCatalog.RegisterMenuRegion(RemoteCatalog.ChestItemButton,RemoteCatalog.ChestItemMenu)
+RemoteCatalog.RegisterMenuRegion(buildController.Buttons.Preset,buildPage:FindFirstChild("BlueprintOptions"))
+RemoteCatalog.RegisterMenuRegion(buildController.Buttons.Movement,buildController.MoveMenu)
 updateBoard()
 
 task.spawn(function()

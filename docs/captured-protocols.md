@@ -341,3 +341,22 @@ Quiet learning, Stop All and GUI cleanup send no plow requests themselves.
 Regression tests preserve the v41–v54 behaviors and exercise this protocol with
 mock instances and placeholder context. Actual server acceptance remains
 unverified in live Roblox.
+
+### Continuous control lifecycle (continuous-controls-56)
+
+Continuous Auto Plow reuses v55's learned hoe packet and input adapter; it adds no
+remote endpoints, envelope fields or saved session data. The catalog remains at
+144 entries. Default continuous operation rescans every 0.5 seconds when idle,
+selects at most 100 eligible targets per scan and keeps the same normal-reach,
+owned-surface, equipped-hoe and observed-soil checks. Failed targets wait at least
+10 seconds before retry, with a 3-second pause after three consecutive failures.
+One pass remains available with the previous bounded stop behavior.
+
+OFF invalidates the current generation before any further target attempt. Its
+worker lock stays held through input release or a pending InvokeServer return.
+A UI restart request records only local intent, and starts one new worker after
+cleanup if the character/island and automation state still permit it. Stop, Stop
+All and GUI cleanup clear that intent. Captured-context expiry requires learning
+again and never switches an active run to native input. Dropdowns, pointer access
+and visual state changes introduce no server calls. Runtime tests use mocks;
+live Roblox rendering, input dispatch and server behavior remain unverified.

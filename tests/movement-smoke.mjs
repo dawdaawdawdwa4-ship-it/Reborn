@@ -27,7 +27,7 @@ local UDim2={new=function(...) return {...} end,fromOffset=function(...) return 
 local COLORS={muted='muted',on='on',off='off',panel='panel'}
 local function corner() end
 local function track() end
-local RemoteCatalog={MenuClosers={}}
+local RemoteCatalog={MenuClosers={},RegisterMenuRegion=function() end}
 function RemoteCatalog.CloseMenus() for _,close in ipairs(RemoteCatalog.MenuClosers) do close() end end
 local pending={}
 local task={spawn=function(callback) table.insert(pending,callback) end}
