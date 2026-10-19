@@ -32,6 +32,29 @@ local function warn() end
 const checks=`
 flush()
  ;(function()
+ assert(buildController.LayoutHeight<650 and not buildController.Inputs.Width.Visible and buildController.Buttons.Start.Visible,'actual startup must show a compact Auto Build workspace')
+ showTab('Auto Build');flush()
+ assert(not buildController.Inputs.Width.Visible and not buildController.Buttons.Load.Visible,'tab intro must not reveal collapsed Auto Build fields')
+ local startY=buildController.Buttons.Start.Position.Y.Offset
+ buildController.SectionButtons.Settings.Activated:Fire()
+ assert(buildController.Inputs.Width.Visible and buildController.Buttons.Start.Position.Y.Offset>startY,'settings must expand in flow above build actions')
+ buildController.SectionButtons.Library.Activated:Fire()
+ assert(buildController.Buttons.Load.Visible and buildController.Buttons.Check.Visible,'saved-blueprint section must reveal its controls')
+ buildController.SectionButtons.Materials.Activated:Fire()
+ assert(buildController.Inputs.ReplaceTo.Visible and buildPage.CanvasSize.Y.Offset==buildController.LayoutHeight,'editing section must expand the explicit scroll canvas')
+ for _,key in ipairs({'Library','Settings','Materials'}) do buildController.SectionButtons[key].Activated:Fire() end
+ assert(buildController.Buttons.Start.Position.Y.Offset==startY and buildController.LayoutHeight<650,'section round trip must not drift the action layout')
+ buildController.Buttons.Movement.Activated:Fire()
+ assert(buildController.MoveMenu.Visible,'move menu must still open in compact layout')
+ showTab('Chests')
+ assert(not buildController.MoveMenu.Visible,'switching tabs must close the Auto Build menu')
+ showTab('Fishing')
+ buildController.Buttons.Reach.Activated:Fire();updateBoard()
+ assert(buildController.RangeMarkers and not buildController.Cells and not buildController.Running,'reach marking without a preview must remain a display preference')
+ buildController.Buttons.Reach.Activated:Fire()
+ assert(not buildController.RangeMarkers,'reach markers must be switchable OFF through the actual UI')
+ end)()
+ ;(function()
  local originalWrite,originalRead=writefile,readfile
  local encode,decode=HttpService.JSONEncode,HttpService.JSONDecode
  local path,encoded,snapshot
@@ -680,7 +703,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn blueprint-position-49',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-workspace-50',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()

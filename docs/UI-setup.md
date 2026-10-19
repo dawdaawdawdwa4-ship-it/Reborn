@@ -668,3 +668,36 @@ height/orientation retention, ghost updates, layer selection, real unsaved edits
 and Undo, missing characters, request/file isolation and in-flight guards. Full
 v41–v48 regressions remain covered; live Roblox rendering and placement remain
 unverified.
+
+### Compact build workspace and reach markers (v50)
+
+Auto Build now starts with three optional sections collapsed: **Build settings**,
+**Saved blueprints & checks**, and **Material editing**. Rotation, positioning,
+layer selection, Preview, Start/Stop and status remain in the compact workspace.
+Open a section to access its existing controls; stored values and blueprint data
+are retained when it is closed. Section layout adjusts the scroll canvas and
+pushes later controls down without overlap or accumulated position drift.
+Collapsing a focused field releases focus through its existing commit handler.
+
+Auto Build manages its own collapsed visibility rather than using Airflow's
+child-reveal animation. Moving between tabs or closing the window now also closes
+the builder's preset/movement menus through the shared menu-closer mechanism.
+These presentation changes do not start or stop workers or change saved files.
+
+**Move blueprint > Mark reach** is optional and OFF by default. When enabled,
+selected preview ghosts retain their original blue/gold color within normal
+build reach, turn orange beyond reach, and gray when character/reach data is
+unavailable. The button shows in/out/unknown counts. Unselected layers remain
+faint and are excluded from marker counts. Markers refresh with the existing
+one-second hub refresh and after preview transforms or layer changes; switching
+OFF restores original colors. Completed ghosts removed by the builder are no
+longer counted.
+
+Markers show local preview-cell distance, not occupancy, material availability,
+structural support or server permission. They neither approach targets nor send
+placement requests. Check remaining materials and actual placement still use
+their existing separate checks. Mock tests cover compact defaults, independent
+section expansion/collapse, exact layout round trips, explicit canvas size, tab
+intro visibility, shared menu cleanup, marker refresh, unknown data, selected
+layers, color restoration and absence of placement/file side effects. Full
+v41–v49 regressions remain covered. Live Roblox rendering remains unverified.

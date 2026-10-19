@@ -89,6 +89,8 @@ function AutoBuild.new(ctx)
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
         self.Cells=nil;self.BuildReport=nil;self.LayerIndex=nil;self.BaseAnchor=nil
         if buttons.Layer then buttons.Layer.Text="Build: All layers" end
+        self.ReachCounts=nil
+        if buttons.Reach then buttons.Reach.Text=self.RangeMarkers and "Mark reach: ON" or "Mark reach: OFF" end
         if self.MaterialSummary then self.MaterialSummary.Text="Preview or load a blueprint to see its material counts." end
     end
     function self:Stop()
@@ -152,6 +154,47 @@ function AutoBuild.new(ctx)
         end
         return selected
     end
+    function self:RefreshReach()
+        if not self.RangeMarkers then
+            if self.ReachCounts then
+                for _,cell in ipairs(self.Cells or {}) do
+                    cell.ReachState=nil
+                    if cell.Preview then cell.Preview.Color=cell.PreviewColor or Color3.fromRGB(100,160,255) end
+                end
+            end
+            self.ReachCounts=nil
+            if buttons.Reach then buttons.Reach.Text="Mark reach: OFF" end
+            return nil
+        end
+        if not self.Cells then
+            if buttons.Reach then buttons.Reach.Text="Mark reach: ON · preview first" end
+            return nil
+        end
+        local included={}
+        for _,cell in ipairs(self:SelectedCells()) do included[cell]=true end
+        local _,root=characterRoot()
+        local readable,reach=pcall(ctx.GameModule,"ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
+        if readable and type(reach)~="number" then reach=20 end
+        local valid=readable and type(reach)=="number" and reach>0 and reach<math.huge
+        local counts={InRange=0,OutOfRange=0,Unknown=0}
+        for _,cell in ipairs(self.Cells) do
+            if cell.Preview then
+                local color=cell.PreviewColor or Color3.fromRGB(100,160,255)
+                cell.ReachState=nil
+                if included[cell] then
+                    if not root or not valid then
+                        cell.ReachState="unknown";counts.Unknown+=1;color=Color3.fromRGB(160,170,180)
+                    elseif (root.Position-cell.CFrame.Position).Magnitude>reach then
+                        cell.ReachState="out";counts.OutOfRange+=1;color=Color3.fromRGB(255,160,70)
+                    else cell.ReachState="in";counts.InRange+=1 end
+                end
+                cell.Preview.Color=color
+            end
+        end
+        self.ReachCounts=counts
+        if buttons.Reach then buttons.Reach.Text="Reach: "..counts.InRange.." in / "..counts.OutOfRange.." out / "..counts.Unknown.." unknown" end
+        return counts
+    end
     function self:CycleLayer()
         if self.Running or self.WorkerToken then status("Wait for the build worker before changing layers.");return false end
         if not self.Cells then status("Preview a blueprint before selecting a layer.");return false end
@@ -168,6 +211,7 @@ function AutoBuild.new(ctx)
         end
         buttons.Layer.Text=self.LayerIndex and ("Build: Layer "..self.LayerIndex.."/"..#heights.." · "..#selected.." blocks") or ("Build: All layers · "..#selected.." blocks")
         self:UpdateMaterials(selected)
+        self:RefreshReach()
         status("Selected "..#selected.." of "..#self.Cells.." blocks. Faint preview blocks are excluded. Save preview still saves the full layout.")
         return true
     end
@@ -216,10 +260,11 @@ function AutoBuild.new(ctx)
             part.Transparency=.65;part.Material=Enum.Material.ForceField
             part.Color=cell.role=="path" and Color3.fromRGB(210,180,100) or Color3.fromRGB(100,160,255)
             part.Parent=folder
-            table.insert(self.Cells,{CFrame=cf,Material=self.SavedPlan and cell.Material or cell.role=="path" and pathMaterial or material,Preview=part,LayerY=self.SavedPlan and cell.Components[2] or cell.y*size})
+            table.insert(self.Cells,{CFrame=cf,Material=self.SavedPlan and cell.Material or cell.role=="path" and pathMaterial or material,Preview=part,PreviewColor=part.Color,LayerY=self.SavedPlan and cell.Components[2] or cell.y*size})
         end
         self.BlockSize=size
         self:UpdateMaterials(self:SelectedCells())
+        self:RefreshReach()
         status(string.format("Preview: %s, %d blocks. Blue = build/beds; gold = paths.",self.Preset,#self.Cells))
         return true
     end
@@ -231,6 +276,7 @@ function AutoBuild.new(ctx)
         end
         self.Anchor=anchor;self.BuildReport=nil
         self:UpdateMaterials(self:SelectedCells())
+        self:RefreshReach()
     end
     local function updateOffsetLabel()
         self.MoveLabel.Text=string.format("Offset: right %d / up %d / forward %d blocks",self.OffsetX,self.OffsetY,self.OffsetZ)
@@ -568,13 +614,18 @@ function AutoBuild.new(ctx)
         return self:StoreBlueprint(data)
     end
     function self:Destroy() self:Stop();self:ClearPreview() end
+    local layoutItems={}
+    local function register(control,y,height,x,offset,section,field)
+        table.insert(layoutItems,{Control=control,Y=y,Height=height,X=x or 0,Offset=offset or 6,Section=section,Field=field})
+        return control
+    end
     local function layoutY(y) return y>=446 and y+44 or y end
     local function label(text,y,height)
-        return ctx.Label({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(1,-12,0,height or 24),Position=UDim2.fromOffset(6,layoutY(y))})
+        return register(ctx.Label({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(1,-12,0,height or 24),Position=UDim2.fromOffset(6,layoutY(y))}),layoutY(y),height or 24)
     end
     local function button(name,text,x,y,width,callback)
         local b=ctx.Button({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(width or 1,-12,0,32),Position=UDim2.new(x or 0,6,0,layoutY(y))})
-        buttons[name]=b
+        buttons[name]=b;register(b,layoutY(y),32,x)
         ctx.Track(b.Activated:Connect(callback));return b
     end
     local function invalidate()
@@ -589,7 +640,7 @@ function AutoBuild.new(ctx)
         if not self.Running then presetMenu.Visible=not presetMenu.Visible;if self.MoveMenu then self.MoveMenu.Visible=false end end
     end)
     local moveMenu=Instance.new("Frame")
-    moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,184);moveMenu.Position=UDim2.fromOffset(6,84)
+    moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,220);moveMenu.Position=UDim2.fromOffset(6,84)
     moveMenu.BackgroundColor3=Color3.fromRGB(29,39,48);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
     button("Movement","Move blueprint  ▼",.5,48,.5,function()
         presetMenu.Visible=false
@@ -612,6 +663,13 @@ function AutoBuild.new(ctx)
     self.MoveLabel=ctx.Label({Parent=moveMenu,Text="Moves 1 block per click, relative to preview.",TextSize=12,Size=UDim2.new(1,-12,0,30),Position=UDim2.fromOffset(6,148)})
     self.MoveLabel.ZIndex=36;self.MoveLabel.TextWrapped=true
     self.MoveMenu=moveMenu
+    buttons.Reach=ctx.Button({Parent=moveMenu,Text="Mark reach: OFF",TextSize=12,Size=UDim2.new(1,-6,0,30),Position=UDim2.fromOffset(3,184)})
+    buttons.Reach.ZIndex=36
+    ctx.Track(buttons.Reach.Activated:Connect(function()
+        self.RangeMarkers=not self.RangeMarkers;self:RefreshReach()
+        status(self.RangeMarkers and "Reach markers ON: original colors are in reach, orange is beyond reach, gray is unknown. Selected preview ghosts update while the hub runs."
+            or "Reach markers OFF. Original preview colors restored.")
+    end))
     for index,preset in ipairs(presets) do
         local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(1,-4,0,34),Position=UDim2.fromOffset(2,(index-1)*36)})
         option.ZIndex=36
@@ -626,7 +684,7 @@ function AutoBuild.new(ctx)
         local field=Instance.new("TextBox");field.Name=key;field.Text=tostring(value);field.PlaceholderText=title
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240)
         field.BackgroundColor3=Color3.fromRGB(29,39,48);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
-        inputs[key]=field
+        inputs[key]=field;register(field,y+24,30,0,6,nil,true)
         local committed=field.Text
         ctx.Track(field.FocusLost:Connect(function()
             if self.Running or self.SavedPlan then
@@ -654,6 +712,7 @@ function AutoBuild.new(ctx)
     end)
     button("Center","Center in front",.5,406,.5,function() self:CenterPreview() end)
     buttons.Layer=ctx.Button({Parent=ctx.Parent,Text="Build: All layers",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,446)})
+    register(buttons.Layer,446,32)
     ctx.Track(buttons.Layer.Activated:Connect(function() self:CycleLayer() end))
     button("Preview","Preview",0,446,.5,function() self:Preview() end)
     button("Start","Start build",.5,446,.5,function() self:Start() end)
@@ -665,13 +724,13 @@ function AutoBuild.new(ctx)
     materialView.Size=UDim2.new(1,-12,0,100);materialView.Position=UDim2.fromOffset(6,layoutY(616))
     materialView.BackgroundTransparency=1;materialView.BorderSizePixel=0;materialView.ScrollBarThickness=5
     materialView.CanvasSize=UDim2.new();materialView.AutomaticCanvasSize=Enum.AutomaticSize.Y;materialView.Parent=ctx.Parent
+    register(materialView,layoutY(616),100)
     self.MaterialSummary=ctx.Label({Parent=materialView,Text="Preview or load a blueprint to see its material counts.",TextSize=12,
         Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
     self.MaterialSummary.TextWrapped=true;self.MaterialSummary.AutomaticSize=Enum.AutomaticSize.Y;self.MaterialSummary.TextTruncate=Enum.TextTruncate.None
-    label("SAVED BLUEPRINTS · own-island block layouts, up to 300 blocks",724,34)
     local name=Instance.new("TextBox");name.Name="BlueprintName";name.Text="My island build";name.PlaceholderText="Blueprint name (1–48 bytes)"
     name.ClearTextOnFocus=false;name.TextSize=14;name.TextColor3=Color3.fromRGB(226,232,240);name.BackgroundColor3=Color3.fromRGB(29,39,48)
-    name.Size=UDim2.new(1,-12,0,32);name.Position=UDim2.fromOffset(6,layoutY(764));name.Parent=ctx.Parent;inputs.Name=name
+    name.Size=UDim2.new(1,-12,0,32);name.Position=UDim2.fromOffset(6,layoutY(764));name.Parent=ctx.Parent;inputs.Name=name;register(name,layoutY(764),32,0,6,nil,true)
     button("Slot","Blueprint slot: 1 / 5",0,804,1,function()
         if self.Running then status("Stop the build before changing its blueprint slot.");return end
         self.Slot=self.Slot%5+1
@@ -704,17 +763,68 @@ function AutoBuild.new(ctx)
     button("CopySlot","Copy selected slot → target (overwrites target)",0,1416,1,function() self:CopySlot(self.CopyTarget) end)
     local copyHint=label("Rename uses the blueprint name field. Copy changes only the target slot; the current preview stays where it is. Choose the destination before copying.",1456,72)
     copyHint.TextWrapped=true
-    label("REPLACE MATERIAL IN LOADED BLUEPRINT",1536,34)
     for index,key in ipairs({"ReplaceFrom","ReplaceTo"}) do
         local field=Instance.new("TextBox");field.Name=key;field.Text="";field.PlaceholderText=index==1 and "Existing block name" or "Replacement block name"
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240);field.BackgroundColor3=Color3.fromRGB(29,39,48)
         field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,layoutY(1578));field.Parent=ctx.Parent
-        inputs[key]=field
+        inputs[key]=field;register(field,layoutY(1578),32,(index-1)*.5,6,nil,true)
     end
     button("Replace","Replace material",0,1618,.5,function() self:ReplaceMaterial(inputs.ReplaceFrom.Text,inputs.ReplaceTo.Text) end)
     button("UndoMaterial","Undo last edit",.5,1618,.5,function() self:UndoMaterial() end)
     local replaceHint=label("Applies to the loaded working blueprint and its preview. The saved slot is kept until Save preview. Existing placed blocks are not replaced; Start still skips occupied cells.",1660,84)
     replaceHint.TextWrapped=true
+    self.Sections={
+        {Key="Settings",Title="Build settings",Header=90,Start=90,Finish=392,Expanded=40,Collapsed=-262,Open=false},
+        {Key="Library",Title="Saved blueprints & checks",Header=768,Start=808,Finish=1572,Expanded=0,Collapsed=-764,Open=false},
+        {Key="Materials",Title="Material editing",Header=1580,Start=1620,Finish=1788,Expanded=0,Collapsed=-168,Open=false},
+    }
+    self.SectionButtons={}
+    function self:CloseMenus() presetMenu.Visible=false;moveMenu.Visible=false end
+    function self:LayoutSections()
+        local bottom=0
+        for _,item in ipairs(layoutItems) do
+            local y,visible=item.Y,true
+            for _,section in ipairs(self.Sections) do
+                if item.Section~=section.Key then
+                    if item.Y>=section.Start and item.Y<section.Finish then
+                        if section.Open then y+=section.Expanded else visible=false end
+                    elseif item.Y>=section.Finish then y+=section.Open and section.Expanded or section.Collapsed end
+                end
+            end
+            item.Control.Visible=visible
+            item.Control.Position=UDim2.new(item.X,item.Offset,0,y)
+            if visible then bottom=math.max(bottom,y+item.Height) end
+        end
+        self.LayoutHeight=bottom+16
+        ctx.Parent.AutomaticCanvasSize=Enum.AutomaticSize.None
+        ctx.Parent.CanvasSize=UDim2.new(0,0,0,self.LayoutHeight)
+    end
+    function self:ToggleSection(key)
+        for _,section in ipairs(self.Sections) do
+            if section.Key==key then
+                if section.Open then
+                    for _,item in ipairs(layoutItems) do
+                        if item.Field and item.Y>=section.Start and item.Y<section.Finish then
+                            pcall(function() item.Control:ReleaseFocus() end)
+                        end
+                    end
+                end
+                self:CloseMenus();section.Open=not section.Open
+                self.SectionButtons[key].Text=(section.Open and "▾  " or "▸  ")..section.Title
+                self:LayoutSections();return true
+            end
+        end
+        return false
+    end
+    for _,section in ipairs(self.Sections) do
+        local control=ctx.Button({Parent=ctx.Parent,Text="▸  "..section.Title,TextSize=13,
+            Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,section.Header)})
+        register(control,section.Header,32,0,6,section.Key)
+        self.SectionButtons[section.Key]=control
+        ctx.Track(control.Activated:Connect(function() self:ToggleSection(section.Key) end))
+    end
+    if ctx.RegisterMenuCloser then ctx.RegisterMenuCloser(function() self:CloseMenus() end) end
+    self:LayoutSections()
     self.Buttons=buttons;self.Inputs=inputs
     return self
 end

@@ -371,6 +371,43 @@ assert(spatial:Move(-spatial.OffsetX,-spatial.OffsetY,-spatial.OffsetZ))
 assert(spatial.OffsetX==0 and spatial.OffsetY==0 and spatial.OffsetZ==0 and math.abs(spatial.Anchor.Position.X-spatial.BaseAnchor.Position.X)<.001 and math.abs(spatial.Anchor.Position.Z-spatial.BaseAnchor.Position.Z)<.001,'Reset offset must still return to the rotated base after centering')
 local undoPosition49=spatial.Cells[1].CFrame
 assert(spatial:UndoMaterial() and spatial.Cells[1].Material=='grass' and spatial.Cells[1].CFrame==undoPosition49,'material Undo must still work after rotation, centering and offset reset without moving the preview')
+-- Optional reach markers query only selected ghosts and restore original colors.
+local markers=A.new(ctx)
+local base50a,base50b,base50c={},{},{}
+markers.Cells={
+ {CFrame={Position=1},LayerY=0,Material='grass',Preview={},PreviewColor=base50a},
+ {CFrame={Position=2},LayerY=0,Material='grass',Preview={},PreviewColor=base50b},
+ {CFrame={Position=3},LayerY=3,Material='stone',Preview={},PreviewColor=base50c}}
+markers.BlockSize=3
+root.Position=setmetatable({},{__sub=function(_,position) return {Magnitude=position==1 and 5 or 40} end})
+assert(not markers.RangeMarkers,'reach marking must be OFF by default')
+assert(markers:CycleLayer())
+local req50,writes50=requests,writes47
+markers.Buttons.Reach.Activated:Fire()
+assert(markers.RangeMarkers and markers.ReachCounts.InRange==1 and markers.ReachCounts.OutOfRange==1 and markers.ReachCounts.Unknown==0,'reach markers must distinguish selected cells at normal reach')
+assert(markers.Cells[1].ReachState=='in' and markers.Cells[2].ReachState=='out' and not markers.Cells[3].ReachState and markers.Cells[3].Preview.Transparency==.94,'unselected layers must remain faint without misleading out-of-range markers')
+root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+markers:RefreshReach()
+assert(markers.ReachCounts.InRange==2 and markers.ReachCounts.OutOfRange==0 and markers.Cells[2].Preview.Color==base50b,'refresh must follow character movement and restore in-range colors')
+local char50=ctx.Player.Character;ctx.Player.Character=nil
+markers:RefreshReach()
+assert(markers.ReachCounts.Unknown==2 and markers.Cells[1].ReachState=='unknown','missing characters must show unknown reach')
+ctx.Player.Character=char50
+local modules50=ctx.GameModule;ctx.GameModule=function() error('unavailable') end
+markers:RefreshReach();assert(markers.ReachCounts.Unknown==2,'failed reach reads must stay unknown rather than imply readiness')
+ctx.GameModule=modules50
+markers.Buttons.Reach.Activated:Fire()
+assert(not markers.RangeMarkers and not markers.ReachCounts and not markers.Cells[2].ReachState and markers.Cells[1].Preview.Color==base50a and markers.Cells[2].Preview.Color==base50b,'OFF must restore all original colors and clear marker state')
+assert(requests==req50 and writes47==writes50 and not markers.Running,'marker refresh must never place, write files or start a worker')
+-- Panel toggles change only presentation and have stable, bounded layout height.
+local compact=A.new(ctx)
+assert(compact.LayoutHeight<650 and not compact.Inputs.Width.Visible and compact.Buttons.Start.Visible and not compact.Buttons.Load.Visible and not compact.Buttons.Replace.Visible,'compact layout must expose primary actions and collapse optional sections')
+local compactHeight50=compact.LayoutHeight
+assert(compact:ToggleSection('Settings') and compact.Inputs.Width.Visible and compact.LayoutHeight==compactHeight50+302,'settings expansion must reveal its fields and reserve their full height')
+assert(compact:ToggleSection('Library') and compact.Buttons.Load.Visible and compact.Buttons.Check.Visible,'library expansion must reveal saves and material checks')
+assert(compact:ToggleSection('Materials') and compact.Inputs.ReplaceFrom.Visible,'editing expansion must reveal material fields')
+for _,key in ipairs({'Library','Settings','Materials'}) do assert(compact:ToggleSection(key)) end
+assert(compact.LayoutHeight==compactHeight50 and not compact:ToggleSection('missing') and not compact.Running,'collapsing must restore exact layout height without starting gameplay')
 return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

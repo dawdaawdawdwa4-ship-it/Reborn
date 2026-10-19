@@ -242,3 +242,12 @@ in whole horizontal block steps; rotation composes full CFrames around the
 preview anchor. Actual placement still requires Start and the existing reach,
 occupancy and confirmation path. Spatial controls retain worker guards through
 in-flight cancellation cleanup.
+
+### Build workspace presentation (build-workspace-50)
+
+Collapsible sections, shared menu cleanup and optional reach markers add no
+remote formats or saved blueprint fields. Markers read character/preview distance
+using the same CLIENT_REACH configuration and 20-stud fallback used by the
+builder. Unknown data stays explicitly unknown. No material, occupancy, support
+or server-acceptance claim is inferred from a marker color. All actual placement
+continues through the existing guarded Start workflow.
