@@ -22,7 +22,7 @@ function recorder:MakeChestTarget(binding,chest,slot)
  if not valid or chest.Name~='chestMediumIndustrialIO' or slot<0 or slot>12 then return end
  return {Chest=chest,Slot=slot,Amount=binding.Amount,Item=binding.Item,Generated=true,ObservedAt=binding.ObservedAt}
 end
-local RemoteCatalog={Recorder=recorder,ChestDiscover=true,ChestWhole=true,ChestScanRange=120}
+local RemoteCatalog={ChestIncludeConveyor=true,Recorder=recorder,ChestDiscover=true,ChestWhole=true,ChestScanRange=120}
 ${source}
 local candidates=RemoteCatalog.ChestTargets()
 assert(#candidates==2 and candidates[1].Binding.Chest==a and candidates[2].Binding.Chest==b,'one learned request must discover nearby matching owned chests')
@@ -86,9 +86,25 @@ assert(oldSalad.Slot==8 and newSalad.Slot==3,'whole chest must preserve both man
 RemoteCatalog.ChestWhole=false;RemoteCatalog.ChestDiscover=false
 local exact=RemoteCatalog.SelectedChestTargets()
 assert(#exact==2 and exact[1].Binding==oldSalad and exact[2].Binding==newSalad,'learned-slot mode must preserve distinct observed slots instead of guessing that a stack moved')
+-- Default conveyor protection must apply after discovery and item/chest selection.
+local regular={Name='chestSmall',Position=pos(4)}
+local ordinary={Chest=regular,Slot=1,Amount=30,ObservedAt=5,Item='carrotHarvested'}
+learned={template,ordinary};RemoteCatalog.ChestSelection=nil;RemoteCatalog.ChestWhole=false;RemoteCatalog.ChestDiscover=false
+RemoteCatalog.ChestIncludeConveyor=nil
+local safe=RemoteCatalog.SelectedChestTargets()
+assert(#safe==1 and safe[1].Binding==ordinary,'missing Include preference must protect industrial I/O while retaining regular chests')
+assert(#RemoteCatalog.ChestTargets()==2 and #RemoteCatalog.SelectedChestTargets(true)==2,'protection must retain learning evidence and allow read-only blocked previews')
+RemoteCatalog.ChestIncludeConveyor=false;RemoteCatalog.ChestSelection={Chest=a,Slot=1}
+assert(#RemoteCatalog.SelectedChestTargets()==0,'an explicit I/O selection must not bypass Skip')
+RemoteCatalog.ChestWhole=true;RemoteCatalog.ChestDiscover=true
+assert(#RemoteCatalog.SelectedChestTargets()==0,'whole/discovered I/O slot expansion must not bypass Skip')
+RemoteCatalog.ChestIncludeConveyor=true
+assert(#RemoteCatalog.SelectedChestTargets()==13,'explicit Include must restore the selected I/O chest and its full slot scan')
+RemoteCatalog.ChestIncludeConveyor=false
+assert(RemoteCatalog.ChestConveyorProtected({Chest={Name='CHESTMEDIUMINDUSTRIALIO'}}) and not RemoteCatalog.ChestConveyorProtected(ordinary),'known I/O type matching must be case insensitive and preserve ordinary chests')
 valid=false
 assert(#RemoteCatalog.ChestTargets()==0 and #RemoteCatalog.SelectedChestTargets()==0,'invalid session must prevent discovery and replay target generation')
-return 'Chest targets: matching owned discovery, range/type filtering, complete slot coverage, deduplication, individual/scope controls and expired-session guards passed'
+return 'Chest targets: conveyor Skip/Include, matching owned discovery, range/type filtering, complete slot coverage, deduplication, individual/scope controls and expired-session guards passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-targets',true)());}

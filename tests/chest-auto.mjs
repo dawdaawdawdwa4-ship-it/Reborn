@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const main=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8');
 const source=main.slice(main.indexOf('-- CHEST AUTO BEGIN'),main.indexOf('-- CHEST AUTO END'));
+const conveyor=main.slice(main.indexOf('-- CHEST CONVEYOR GUARD BEGIN'),main.indexOf('-- CHEST CONVEYOR GUARD END'));
 const quantityAdapter=main.slice(main.indexOf('RemoteCatalog.BaitCount=function(tool)'),main.indexOf('RemoteCatalog.WithBaitTool = function'));
 const code=`
 local gui={Parent=true}
@@ -26,6 +27,7 @@ local function request(amount)
  chest-=amount;inventory+=amount;return true
 end
 RemoteCatalog.WithdrawCarrots=request
+${conveyor}
 ${source}
 local function drain()
  for i=1,500 do
@@ -918,7 +920,29 @@ do
  assert(#calls==0 and not RemoteCatalog.ChestReachWaiting and not RemoteCatalog.ChestAutoWorker,'Stop must release the local rescan wait without sending')
  task.wait=oldWait;RemoteCatalog.ChestClock=nil;RemoteCatalog.ChestRequestAt=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestOrder=nil
 end
-return 'Chest Auto Max: nearby/deferred groups, same-stack and balanced queues, adaptive batches, server pacing, repeat/top-up, pause/resume, goals, confirmation, Stop and cleanup passed'
+-- Defence at queue construction also prevents repeat/custom target lists from replaying I/O withdrawals.
+do
+ local io,ordinary={Name='chestMediumIndustrialIO'},{Name='chestSmall'}
+ local owner={CanUseChestBinding=function() return true end}
+ local blocked={Recorder=owner,Binding={Chest=io,Slot=1,Item='carrotHarvested',Amount=30}}
+ local regular={Recorder=owner,Binding={Chest=ordinary,Slot=1,Item='carrotHarvested',Amount=30}}
+ local transferred,trace=0,{}
+ RemoteCatalog.ChestIncludeConveyor=false;RemoteCatalog.ChestAutoBatch=30;RemoteCatalog.ChestGoal=30;RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestRequestAt=nil
+ RemoteCatalog.SelectedChestTargets=function() return {blocked} end
+ assert(not RemoteCatalog.SetChestAuto(true) and not RemoteCatalog.ChestAutoWorker and string.find(RemoteCatalog.ChestResultLabel.Text,'Conveyor I/O chests are skipped',1,true),'all-I/O scans must stop with an actionable Skip reason before any request')
+ RemoteCatalog.SelectedChestTargets=function() return {blocked,regular} end
+ RemoteCatalog.ApproachChest=function() return true end
+ RemoteCatalog.OwnedTools=function() return {{Name='carrotHarvested'}} end
+ RemoteCatalog.BaitCount=function() return transferred end
+ RemoteCatalog.WithdrawCarrots=function(amount,_,binding) assert(binding.Chest~=io);table.insert(trace,binding);transferred+=amount;return true end
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#trace==1 and trace[1].Chest==ordinary and transferred==30,'mixed scans must still collect regular chests and never withdraw from I/O')
+ assert(#RemoteCatalog.ChestAutoStates({blocked},30,true)==0,'repeat probes must also exclude protected I/O')
+ RemoteCatalog.ChestIncludeConveyor=true
+ assert(#RemoteCatalog.ChestAutoStates({blocked},30,false)==1,'explicit Include must retain the legacy I/O worker path')
+ RemoteCatalog.ChestIncludeConveyor=false
+end
+return 'Chest Auto Max: protected conveyor queues, nearby/deferred groups, same-stack and balanced queues, adaptive batches, server pacing, repeat/top-up, pause/resume, goals, confirmation, Stop and cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-auto',true)());}

@@ -147,6 +147,8 @@ local cached=RemoteCatalog.ChestProfiles;RemoteCatalog.ChestProfiles={}
 db.partial={Version=1,Profiles={['1']=template(),['2']={Version=999}}};file='partial'
 assert(not RemoteCatalog.ReadChestProfiles() and next(RemoteCatalog.ChestProfiles)==nil,'invalid files must not partially load valid siblings')
 RemoteCatalog.ChestProfiles=cached
+RemoteCatalog.ChestProfileSlot=3;RemoteCatalog.ChestIncludeConveyor=false
+assert(RemoteCatalog.LoadChestProfile() and RemoteCatalog.ChestIncludeConveyor==false,'profile loading must not silently include conveyor I/O chests')
 return 'Chest profiles: validation, startup read-only cache, account files, independent snapshots, All/None/legacy filters, session fallback and worker guards passed'
 `;
 const state=await LuauState.createAsync();

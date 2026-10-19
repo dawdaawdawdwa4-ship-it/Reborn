@@ -33,6 +33,9 @@ local function warn() end
 `;
 const checks=`
 flush()
+assert(RemoteCatalog.ChestIncludeConveyor==false and string.find(RemoteCatalog.ChestConveyorButton.Text,"Skip",1,true),"conveyor I/O chests must be skipped by default")
+RemoteCatalog.ChestConveyorButton.Activated:Fire()
+assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy I/O collection")
  ;(function()
  assert(buildController.LayoutHeight<650 and not buildController.Inputs.Width.Visible and buildController.Buttons.Start.Visible,'actual startup must show a compact Auto Build workspace')
  showTab('Auto Build');flush()
@@ -848,7 +851,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn auto-craft-69',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn conveyor-guard-70',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1432,6 +1435,7 @@ end)()
  r.ChestAutoEnabled=true;r.ChestAutoWorker=67;r.ChestReachWaiting=true;r.ChestAutoTotal=0;r.RefreshChestActions()
  assert(string.find(r.ChestIntro.Text,'within 20 studs',1,true),'range pause must explain Stay reach in the real UI')
  r.SetChestAuto(false);assert(not r.ChestReachWaiting,'Stop clears deferred reach status')
+ r.ChestAutoWorker=nil;r.RefreshChestActions()
  end)()
 
 ;(function()
@@ -1445,6 +1449,43 @@ end)()
  r.RefreshCraftUI()
  assert(r.CraftItem=='testRecipe' and not r.CraftLearning and string.find(r.CraftInfo.Text,'Learned recipe: testRecipe',1,true) and not r.CraftEnabled,'completed learning must select the new recipe and explain Start without crafting automatically')
  r.StopCraftLearning();r.StartCapture,r.Recorder=start,recorder;r.CraftItem='bait';r.RefreshCraftUI()
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ assert(r.ChestIncludeConveyor,'legacy fixtures explicitly opted into I/O')
+ r.ChestConveyorButton.Activated:Fire();assert(not r.ChestIncludeConveyor and string.find(r.ChestConveyorButton.Text,'Skip',1,true), 'idle protection toggle must switch from Include to Skip')
+ local targets=r.ChestTargets
+ local io={Name='chestMediumIndustrialIO'}
+ local ordinary={Name='chestSmall'}
+ local owner={CanUseChestBinding=function() return true end}
+ local block={Recorder=owner,Binding={Chest=io,Slot=1,Amount=30,Item='carrotHarvested'}}
+ local regular={Recorder=owner,Binding={Chest=ordinary,Slot=1,Amount=30,Item='carrotHarvested'}}
+ r.ChestTargets=function() return {block,regular} end
+ local selection,items,item,whole=r.ChestSelection,r.ChestItems,r.ChestItem,r.ChestWhole
+ r.ChestSelection=nil;r.ChestItems=nil;r.ChestItem=nil;r.ChestWhole=false
+ assert(#r.SelectedChestTargets()==1 and r.SelectedChestTargets()[1]==regular,'real target selection must skip I/O for both Auto and manual hub actions')
+ local ready,reason=r.ChestRequestReady(block.Binding)
+ assert(not ready and string.find(reason,'Conveyor I/O chest skipped',1,true),'final withdrawal preflight must reject protected I/O before checking reach or sending')
+ local text=r.PreviewChestSelection()
+ assert(string.find(text,'1 selected chests protected',1,true),'plan must show protected chest count')
+ r.ChestSelection={Chest=io,Slot=1}
+ assert(#r.SelectedChestTargets()==0 and string.find(r.PreviewChestSelection(),'No eligible targets',1,true),'all-protected selection needs an actionable empty plan')
+ assert(not r.SetChestAuto(true) and not r.ChestAutoWorker,'all-protected selection must not start a worker')
+ r.ChestAutoEnabled=true;r.ChestAutoPaused=true;r.ChestAutoWorker=70;r.RefreshChestActions()
+ assert(not r.ChestConveyorButton.Active,'paused collection must keep conveyor selection locked')
+ r.ChestConveyorButton.Activated:Fire();assert(not r.ChestIncludeConveyor,'handler must retain protection even if fired while locked')
+ r.SetChestAuto(false);r.ChestConveyorButton.Activated:Fire();assert(not r.ChestIncludeConveyor,'cleanup must lock the protection toggle')
+ r.ChestAutoWorker=nil;r.RefreshChestActions()
+ r.ChestConveyorButton.Activated:Fire();assert(r.ChestIncludeConveyor and #r.SelectedChestTargets()==1,'explicit Include must restore I/O selection without starting a worker')
+ r.ChestConveyorButton.Activated:Fire()
+ r.ChestSelection,r.ChestItems,r.ChestItem,r.ChestWhole=selection,items,item,whole
+ r.ChestTargets=targets
+ local profileY=r.ChestProfilesButton.Position.Y.Offset
+ assert(r.ChestConveyorButton.Position.Y.Offset+r.ChestConveyorButton.Size.Y.Offset<=profileY,'protection control must sit above profiles without overlap')
+ local itemY=r.ChestItemButton.Position.Y.Offset
+ for _=1,3 do r.ChestProfilesButton.Activated:Fire();r.ChestProfilesButton.Activated:Fire() end
+ assert(r.ChestProfilesButton.Position.Y.Offset==profileY and r.ChestItemButton.Position.Y.Offset==itemY,'profile expansion must preserve the new protection row without drift')
  end)()
 
 local lastRecipeOption=RemoteCatalog.CraftRecipeMenu.Options[1]

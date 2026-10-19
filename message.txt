@@ -2922,7 +2922,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "auto-craft-69",
+    Subtitle = "conveyor-guard-70",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3411,7 +3411,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn auto-craft-69",
+    return table.concat({"Reborn conveyor-guard-70",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -4288,6 +4288,16 @@ for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
         if child.Position.X.Scale==.5 then child.Position=UDim2.new(.5,6,child.Position.Y.Scale,child.Position.Y.Offset) end
     end
 end
+RemoteCatalog.ChestIncludeConveyor=false
+RemoteCatalog.ChestConveyorButton=button({Parent=RemoteCatalog.ChestPage,Text="Conveyor I/O chests: Skip",TextSize=13,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,214)})
+track(RemoteCatalog.ChestConveyorButton.Activated:Connect(function()
+    if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then setStatus("Stop collection and wait for cleanup before changing conveyor protection",COLORS.warn);return end
+    RemoteCatalog.ChestIncludeConveyor=not RemoteCatalog.ChestIncludeConveyor
+    RemoteCatalog.ChestConveyorButton.Text=RemoteCatalog.ChestIncludeConveyor and "Conveyor I/O chests: Include" or "Conveyor I/O chests: Skip"
+    RemoteCatalog.CloseMenus();RemoteCatalog.UpdateChestSelectionUI();RemoteCatalog.PreviewChestSelection()
+    setStatus(RemoteCatalog.ChestIncludeConveyor and "Conveyor I/O chests included: withdrawals can compete with the belt." or "Conveyor I/O chests skipped: no automatic or manual hub withdrawal from them.",COLORS.good)
+end))
 RemoteCatalog.ChestControlPositions={}
 for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
     if child:IsA("GuiObject") and child~=RemoteCatalog.ChestSelectMenu and child~=RemoteCatalog.ChestAmountMenu and child~=RemoteCatalog.ChestItemMenu and child~=RemoteCatalog.ChestStockMenu.Menu and child~=RemoteCatalog.ChestRepeatMenu.Menu and child~=RemoteCatalog.ChestBatchMenu.Menu and child~=RemoteCatalog.ChestOrderMenu.Menu then
@@ -4304,6 +4314,7 @@ function RemoteCatalog.LayoutChestControls()
         or RemoteCatalog.ChestRepeatMenu.Menu.Visible and RemoteCatalog.ChestRepeatMenu.Menu.Size.Y.Offset+12 or 0
     for child,base in pairs(RemoteCatalog.ChestControlPositions) do
         local y=base.Y.Offset
+        if child~=RemoteCatalog.ChestConveyorButton and base.Y.Offset>=214 then y+=44 end
         if base.Y.Offset>=214 then y+=batchOffset end
         if base.Y.Offset>=534 then y+=orderOffset end
         if not RemoteCatalog.ChestDetailsOpen and base.Y.Offset>=676 then y-=134 end
@@ -4311,12 +4322,12 @@ function RemoteCatalog.LayoutChestControls()
         if base.Y.Offset>=730 then y+=amountOffset end
         if base.Y.Offset>=490 then y+=stockOffset end
         if base.Y.Offset>=260 then y+=itemOffset end
-        if child~=RemoteCatalog.ChestProfilesButton and child~=RemoteCatalog.ChestProfilesPanel and child~=RemoteCatalog.ChestQuickButton and base.Y.Offset>=214 then
+        if child~=RemoteCatalog.ChestConveyorButton and child~=RemoteCatalog.ChestProfilesButton and child~=RemoteCatalog.ChestProfilesPanel and child~=RemoteCatalog.ChestQuickButton and base.Y.Offset>=214 then
             y+=44+(RemoteCatalog.ChestProfilesPanel.Visible and 160 or 0)
         end
         child.Position=UDim2.new(base.X.Scale,base.X.Offset,base.Y.Scale,y)
     end
-    local profileOffset=44+batchOffset+(RemoteCatalog.ChestProfilesPanel.Visible and 160 or 0)
+    local profileOffset=88+batchOffset+(RemoteCatalog.ChestProfilesPanel.Visible and 160 or 0)
     RemoteCatalog.ChestItemMenu.Position=UDim2.fromOffset(6,254+profileOffset)
     RemoteCatalog.ChestAmountMenu.Position=UDim2.new(0,6,0,716+selectOffset+itemOffset+profileOffset+stockOffset+orderOffset-(RemoteCatalog.ChestDetailsOpen and 0 or 134))
     RemoteCatalog.ChestOrderMenu.Menu.Position=UDim2.fromOffset(6,RemoteCatalog.ChestOrderButton.Position.Y.Offset+RemoteCatalog.ChestOrderButton.Size.Y.Offset+6)
@@ -5128,7 +5139,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn auto-craft-69", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn conveyor-guard-70", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6474,6 +6485,13 @@ track(RemoteCatalog.ChestLearnButton.Activated:Connect(function()
     RemoteCatalog.UpdateCaptureUI()
 end))
 -- CHEST TARGETS BEGIN
+-- CHEST CONVEYOR GUARD BEGIN
+function RemoteCatalog.ChestConveyorProtected(binding)
+    local chest=binding and binding.Chest
+    return RemoteCatalog.ChestIncludeConveyor~=true and chest~=nil and type(chest.Name)=="string"
+        and string.lower(chest.Name)=="chestmediumindustrialio"
+end
+-- CHEST CONVEYOR GUARD END
 function RemoteCatalog.ChestTargets()
     local recorders={}
     if RemoteCatalog.Recorder then table.insert(recorders,RemoteCatalog.Recorder) end
@@ -6527,7 +6545,7 @@ function RemoteCatalog.ChestTargets()
     end
     return targets
 end
-function RemoteCatalog.SelectedChestTargets()
+function RemoteCatalog.SelectedChestTargets(includeProtected)
     local targets,seen={},{}
     local candidates=RemoteCatalog.ChestTargets()
     local newest={}
@@ -6544,7 +6562,7 @@ function RemoteCatalog.SelectedChestTargets()
         local binding=entry.Binding
         local selected=RemoteCatalog.ChestSelection
         local item=binding.Item or "carrotHarvested"
-        if (not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[item]) and (not RemoteCatalog.ChestItem or RemoteCatalog.ChestItem==item) and (not selected or selected.Chest==binding.Chest and (RemoteCatalog.ChestWhole or selected.Slot==binding.Slot)) then
+        if (includeProtected==true or not RemoteCatalog.ChestConveyorProtected(binding)) and (not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[item]) and (not RemoteCatalog.ChestItem or RemoteCatalog.ChestItem==item) and (not selected or selected.Chest==binding.Chest and (RemoteCatalog.ChestWhole or selected.Slot==binding.Slot)) then
             if RemoteCatalog.ChestWhole and entry.Recorder.MakeChestTarget and string.lower(binding.Chest.Name)=="chestmediumindustrialio" then
                 seen[binding.Chest]=seen[binding.Chest] or {}
                 if newest[binding.Chest][item]==entry and not seen[binding.Chest][item] then
@@ -6683,10 +6701,16 @@ function RemoteCatalog.PreviewChestSelection()
     table.sort(names)
     local itemCount=#names
     while #names>4 do table.remove(names) end
-    local text=#targets==0 and "No targets selected. Learn a withdrawal and choose items first." or
+    local protected={}
+    for _,entry in ipairs(RemoteCatalog.SelectedChestTargets(true)) do
+        if RemoteCatalog.ChestConveyorProtected(entry.Binding) then protected[entry.Binding.Chest]=true end
+    end
+    local protectedCount=0;for _ in pairs(protected) do protectedCount+=1 end
+    local text=#targets==0 and (protectedCount>0 and "No eligible targets: selected conveyor I/O chests are skipped. Set Conveyor I/O chests: Include only if you want to withdraw from them." or "No targets selected. Learn a withdrawal and choose items first.") or
         (count.." chests · "..#targets.." slot checks · "..itemCount.." item types\n"..
         ready.." checks in reach; "..(#targets-ready).." need approach or attention.\n"..
         table.concat(names,", ")..(itemCount>4 and " …" or "").."\nInventory contents remain unknown until withdrawal.")
+    text..="\nConveyor I/O chests: "..(RemoteCatalog.ChestIncludeConveyor and "Include; withdrawals can compete with the belt." or ("Skip; "..protectedCount.." selected chests protected. Manual hub withdrawal also skips them."))
     for index,reason in ipairs(reasonOrder) do
         if index>3 then text..="\nMore blocked checks: refresh after resolving the above.";break end
         text..="\n"..reasons[reason].." checks: "..reason
@@ -6706,6 +6730,7 @@ function RemoteCatalog.PreviewChestSelection()
     return text
 end
 function RemoteCatalog.ChestRequestReady(binding)
+    if RemoteCatalog.ChestConveyorProtected(binding) then return false,"Conveyor I/O chest skipped. Choose Include to withdraw from it." end
     local chest=binding and binding.Chest
     local island=getPlayerIsland()
     local cursor=chest
@@ -7086,7 +7111,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn auto-craft-69\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn conveyor-guard-70\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -7193,7 +7218,7 @@ function RemoteCatalog.RefreshChestActions()
     local manual=RemoteCatalog.ChestManualRunning
     local paused=auto and RemoteCatalog.ChestAutoPaused
     local locked=auto or cleanup or RemoteCatalog.ChestBusy
-    for _,key in ipairs({"ChestAmountButton","ChestSpeedButton","ChestLearnedButton","ChestStockButton","ChestRepeatButton","ChestBatchButton","ChestQuickButton","ChestOrderButton"}) do
+    for _,key in ipairs({"ChestAmountButton","ChestSpeedButton","ChestLearnedButton","ChestStockButton","ChestRepeatButton","ChestBatchButton","ChestQuickButton","ChestOrderButton","ChestConveyorButton"}) do
         local control=RemoteCatalog[key]
         if control then
             control.Active=not locked;control.Selectable=not locked;control.AutoButtonColor=not locked
@@ -7238,7 +7263,7 @@ function RemoteCatalog.ChestAutoStates(targets,batch,probe)
     for _,entry in ipairs(targets) do
         local adaptive=batch=="Max"
         local maximum=adaptive and 1000 or batch or entry.Binding.Amount
-        if type(maximum)=="number" and maximum>=1 and maximum%1==0 and maximum<=1000000 then
+        if not RemoteCatalog.ChestConveyorProtected(entry.Binding) and type(maximum)=="number" and maximum>=1 and maximum%1==0 and maximum<=1000000 then
             local unconfirmed=probe or entry.Binding.Probe
             table.insert(states,{Recorder=entry.Recorder,Binding=entry.Binding,Maximum=maximum,Amount=unconfirmed and 1 or adaptive and math.min(1000,math.max(30,entry.Binding.Amount or 30)) or maximum,Adaptive=adaptive,Probe=unconfirmed,NoProgress=0,RateRetries=0})
         end
@@ -7277,7 +7302,7 @@ function RemoteCatalog.SetChestAuto(state)
     local repeating=RemoteCatalog.ChestRepeat==true
     local states=RemoteCatalog.ChestAutoStates(RemoteCatalog.SelectedChestTargets(),batch,false)
     if #states==0 then
-        RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestItems and next(RemoteCatalog.ChestItems)==nil and "No items selected. Choose items or All learned items." or "Learn and select at least one valid item withdrawal first")
+        RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestItems and next(RemoteCatalog.ChestItems)==nil and "No items selected. Choose items or All learned items." or (RemoteCatalog.ChestIncludeConveyor~=true and "No eligible chest targets. Conveyor I/O chests are skipped; choose Include to withdraw from them, or learn/select a regular chest." or "Learn and select at least one valid item withdrawal first"))
         return false
     end
     RemoteCatalog.ChestAutoGeneration=(RemoteCatalog.ChestAutoGeneration or 0)+1
@@ -7594,7 +7619,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn auto-craft-69\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn conveyor-guard-70\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -7805,7 +7830,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn auto-craft-69 · Craft diagnostics",
+    return table.concat({"Reborn conveyor-guard-70 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),

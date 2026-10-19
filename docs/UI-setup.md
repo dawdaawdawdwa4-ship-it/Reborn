@@ -1543,3 +1543,34 @@ workbench isolation, bait compatibility/migration, selected-item confirmation,
 Continuous Stop/material failure, recipe selection and dynamic callback cleanup,
 12-tab startup, plus existing build/plow/chest/fishing regressions. Live Roblox
 crafting, menu rendering and recipe compatibility remain unverified.
+
+### Leave conveyor I/O chests alone by default (v70)
+
+The user's v68 clip shows Auto Take running across 25 chests while carrots travel
+on the conveyor. The industrial Input/Output chests can feed the belt while Auto
+Take withdraws from the same storage. v70 changes the default selection:
+**Conveyor I/O chests: Skip** appears in Chests above the profile controls.
+
+Skip excludes the known `chestMediumIndustrialIO` type from automatic collection
+and manual hub withdrawal. It also excludes discovered matches, whole-chest slot
+expansion and repeat queues. Learning a normal manual withdrawal still observes
+that action; it does not cause a replay. Regular chests remain eligible. The
+selection, worker queue construction and final withdrawal readiness check all
+honor Skip. If every selected target is protected, Start sends nothing and
+explains why. Show details lists the number of selected physical I/O chests
+protected, instead of treating them as available withdrawal checks.
+
+Click the control to choose **Include** explicitly and restore the earlier I/O
+withdrawal behavior. Included I/O withdrawals can compete with the belt. This
+control is locked during collection, pause, manual requests and worker cleanup.
+It does not start collection. The preference is session-only and defaults to Skip
+on reload; loading a profile does not override it. Other item, scope, order,
+batch, pacing, crafting and build settings are unchanged.
+
+The protection matches the known I/O chest type, including unconnected I/O
+chests. It does not infer a physical conveyor connection or pause/change the
+conveyor itself. Other conveyor/container types have not been established by the
+supplied capture. Validation covers default protection, Include compatibility,
+regular/mixed scopes, discovered/whole/repeat queues, final preflight, actionable
+empty plans, profile behavior and UI locks/layout. `npm --prefix tests test`
+passes. Live Roblox conveyor operation remains unverified.

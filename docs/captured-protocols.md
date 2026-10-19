@@ -668,3 +668,20 @@ normal access/range checks. Other recipe shapes, output ratios and server costs
 are not established by the supplied bait capture. Tests use synthetic second
 recipe captures to validate isolation; live non-bait compatibility remains
 unverified.
+
+### Conveyor I/O exclusion (conveyor-guard-70)
+
+The subsequent video shows the v68 Chests UI collecting from a scope of 25
+matching chests, with the known industrial Input/Output chest type at the
+conveyor. v70 adds local **Skip / Include** selection for
+`chestMediumIndustrialIO`. Skip is the startup default. It blocks both automatic
+and manual hub withdrawals from that type, including discovered, whole-chest and
+repeat targets, before invoking any withdrawal request. Normal game/manual
+learning remains pass-through. Explicit Include restores the prior observed
+withdrawal format and behavior; it does not establish priority over the belt.
+
+This changes no endpoint, packet, session context, slot range or request pacing.
+Catalog size remains 146 and recorder v30 is unchanged. Tests cover mixed regular
+and protected chests, all-protected selections, repeat queue construction,
+preflight rejection, Include and profile-load isolation. It is a type-based
+exclusion, not inferred conveyor topology; live behavior remains unverified.
