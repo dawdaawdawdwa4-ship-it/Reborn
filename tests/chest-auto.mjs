@@ -123,7 +123,9 @@ RemoteCatalog.WithdrawCarrots=function(amount,owner,selected)
 end
 assert(RemoteCatalog.SetChestAuto(true));drain()
 assert(inventory==98 and remaining.A==0 and remaining.B==0 and RemoteCatalog.ChestAutoTotal==98,'multi chest auto must collect both full and partial stacks')
-assert(sent[1]=='A' and sent[2]=='B','auto must rotate between chests rather than blocking behind the first one')
+local moved=false
+for _,id in ipairs(sent) do if id=='B' then moved=true end;assert(not moved or id~='A','auto must finish the current stack before moving to the next chest') end
+assert(sent[1]=='A' and moved,'both selected chests must still be processed')
 remaining={A=0,B=9};inventory=0;sent={}
 assert(RemoteCatalog.SetChestAuto(true));drain()
 assert(inventory==9 and remaining.B==0,'empty first chest must not stop another chest')
@@ -247,12 +249,12 @@ RemoteCatalog.WithdrawCarrots=function(amount,_,binding)
  table.insert(calls,amount);quantities[binding.Item]+=amount;return true
 end
 assert(RemoteCatalog.SetChestAuto(true));drain()
-assert(#calls==2 and quantities.wood==4 and quantities.stone==2 and RemoteCatalog.ChestAutoTotal==6,'mixed items must share one combined collection goal')
+assert(#calls==2 and quantities.wood==6 and quantities.stone==0 and RemoteCatalog.ChestAutoTotal==6,'combined goal must cap the current stack instead of switching items before it is drained')
 RemoteCatalog.ChestGoal=nil
 assert(RemoteCatalog.ChestHistory[1].Outcome=='Goal reached' and RemoteCatalog.ChestHistory[1].Total==6 and RemoteCatalog.ChestHistory[1].Goal==6,'automatic completion must retain its outcome, total and goal')
 local historical=RemoteCatalog.ChestHistory[1]
 RemoteCatalog.ChestAutoItems.wood=999
-assert(historical.Items.wood==4,'history must snapshot totals instead of retaining mutable run state')
+assert(historical.Items.wood==6,'history must snapshot totals instead of retaining mutable run state')
 for index=1,8 do RemoteCatalog.RecordChestRun('Stopped',index,{wood=index}) end
 assert(#RemoteCatalog.ChestHistory==5 and RemoteCatalog.ChestHistory[1].Total==8 and RemoteCatalog.ChestHistory[5].Total==4,'history must keep only the newest five runs in order')
 -- Fast pacing shortens confirmed-transfer waits without weakening confirmation or retries.
@@ -426,7 +428,44 @@ do
  assert(#requests==1 and RemoteCatalog.ChestAutoTotal==0 and RemoteCatalog.ChestHistory[1].Outcome=='Stopped' and not RemoteCatalog.ChestAutoWorker,'Stop must discard late confirmation and prevent extra top-up requests')
  RemoteCatalog.ChestStockTarget=nil;RemoteCatalog.ChestGoal=nil
 end
-return 'Chest Auto Max: batches/remainder, variable slots, delayed food quantity replication, optional per-item inventory top-up, live deficit/goal caps, item confirmation, range waits, Stop/in-flight restart and cleanup passed'
+-- Explicit thirty-item batches keep collecting the same physical slot.
+do
+ local oldBatch=RemoteCatalog.ChestAutoBatch
+ RemoteCatalog.ChestAutoBatch=30;RemoteCatalog.ChestStockTarget=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestTravel='Stay'
+ local chest={}
+ local first={Chest=chest,Slot=8,Item='potatoSalad',Amount=17,Probe=true}
+ local second={Chest=chest,Slot=3,Item='potatoSalad',Amount=17,Probe=true}
+ local stock={[8]=95,[3]=60}
+ local total,trace,blocked=0,{},false
+ RemoteCatalog.SelectedChestTargets=function() return {{Recorder=recorder,Binding=first},{Recorder=recorder,Binding=second}} end
+ RemoteCatalog.OwnedTools=function() return {{Name='potatoSalad'}} end
+ RemoteCatalog.BaitCount=function() return total end
+ RemoteCatalog.ApproachChest=function(_,_,binding) return not (blocked and binding==first),'out of range' end
+ RemoteCatalog.WithdrawCarrots=function(amount,owner,binding)
+  assert(owner==recorder and amount<=30 and (binding==first or binding==second),'collector must retain the exact learned slot/item while applying the requested batch')
+  table.insert(trace,{Slot=binding.Slot,Amount=amount})
+  if stock[binding.Slot]<amount then return false,'insufficient salad' end
+  stock[binding.Slot]-=amount;total+=amount;return true
+ end
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(trace[1].Slot==8 and trace[1].Amount==1 and trace[2].Slot==8 and trace[2].Amount==30 and trace[3].Slot==8 and trace[3].Amount==30,'after one probe, thirty-item batches must continue on the same slot instead of switching stacks')
+ local moved=false
+ for _,request in ipairs(trace) do
+  if request.Slot==3 then moved=true end
+  assert(not moved or request.Slot~=8,'the first stack must be drained before checking another slot in the same chest')
+ end
+ assert(total==155 and stock[8]==0 and stock[3]==0 and RemoteCatalog.ChestAutoTotal==155 and #trace<40,'both stacks and their remainders must drain with bounded attempts')
+ assert(first.Slot==8 and first.Amount==17 and second.Slot==3,'batch override must not mutate captured slot or amount metadata')
+ -- A preferred stack losing reach must release preference so another can continue.
+ first.Probe=false;second.Probe=false;stock={[8]=100,[3]=60};total=0;trace={};blocked=false
+ assert(RemoteCatalog.SetChestAuto(true) and trace[1].Slot==8 and trace[1].Amount==30)
+ blocked=true
+ for _=1,100 do if coroutine.status(worker)=='suspended' then local ok,e=coroutine.resume(worker);assert(ok,e) end end
+ assert(stock[8]==70 and stock[3]==0 and total==90 and RemoteCatalog.ChestAutoEnabled,'an unreachable preferred stack must not block reachable stacks')
+ RemoteCatalog.SetChestAuto(false);drain()
+ RemoteCatalog.ChestAutoBatch=oldBatch
+end
+return 'Chest Auto Max: thirty-item batches, same-slot continuation, bounded remainders, delayed quantity replication, per-item top-up/goal limits, range waits, Stop and cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-auto',true)());}

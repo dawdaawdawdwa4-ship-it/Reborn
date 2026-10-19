@@ -429,3 +429,21 @@ ownership rules remain in place; unknown quantities are never replaced by a
 guessed stack size. The catalog remains at 145 entries and recorder v28 is
 unchanged. Mock regression tests exercise actual quantity parsing with delayed
 attributes, batch continuation, timeout/Stop and manual 17-versus-1 dispatch.
+
+### Explicit thirty-item batches (stack-thirty-60)
+
+The user requested thirty-item withdrawals followed by continued collection from
+the same stack. Auto Take now snapshots a requested maximum of 30 per slot, and
+the manual dropdown defaults to 30. This explicitly selected amount can exceed
+the count in the manual learning sample. Replay still clones the live packet and
+changes only its existing amount/validated target fields; captured metadata is
+not overwritten. No endpoint, envelope or schema is introduced (145 catalog
+entries, recorder v28).
+
+A confirmed stack keeps priority through subsequent batches and bounded remainder
+retries. Unknown slots retain the one-item probe; an empty, invalid or completed
+slot releases priority, as does loss of reach. Goal/top-up limits can reduce a
+request below 30 and stop collection before the stack empties. Session, ownership,
+reach, exact-item confirmation and cancellation checks remain. Tests exercise
+same-slot request order, thirty-item payload amounts and smaller remainders;
+actual live acceptance remains unverified.

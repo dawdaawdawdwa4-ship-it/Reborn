@@ -1133,3 +1133,33 @@ stack using the one-item probe and larger batches. They also cover permanently
 missing metadata, Stop while waiting, pending top-up counts, invalid numbers,
 and actual manual controls sending learned 17 versus an explicitly selected 1.
 The full mock suite passes. Live Roblox behavior remains unverified.
+
+### Thirty-item batches and same-stack collection (v60)
+
+At the user's request, manual collection now defaults to **30**, and Auto Take
+uses a requested maximum batch of **30**, independently of the manual dropdown.
+The dropdown includes 1, 5, 10, 25, 30 and Learned; the manual action displays
+**Withdraw ×30**. Choosing another manual amount does not change Auto Take's
+thirty-item setting. Current captured chest/item/slot and live envelope remain
+required; this explicit amount preference replaces the automatic learned-count
+ceiling used in previous versions without changing the captured sample itself.
+
+Auto Take keeps the same chest, slot and item selected after a confirmed transfer,
+instead of rotating to another stack after every batch. Unobserved whole-chest
+slots still start with a single-item probe, then progress to batches of up to 30
+after confirmation. Rejected larger batches use bounded smaller remainder
+attempts on that same stack. Empty/unconfirmed slots finish after the existing
+retry limits, allowing another selected stack to proceed. A preferred stack that
+loses reach releases its preference so reachable stacks can continue.
+
+The combined collection goal, per-item top-up target, exact inventory confirmation,
+quantity replication wait and Stop/in-flight cleanup still apply. A shared run
+goal can now be satisfied entirely from the current stack before another selected
+item is considered. Manual withdrawal remains one selected batch per checked
+slot; use **START COLLECTING** for repeated same-stack collection.
+
+Mock tests drain 95 and 60 salads from two slots without returning to the first
+after moving to the second, check one-item probe → 30-item continuation, preserve
+the original recorded amount, and verify range loss, smaller remainders, goals
+and manual thirty-item dispatch. The full suite passes; live Roblox behavior
+remains unverified.

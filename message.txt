@@ -2859,7 +2859,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "salad-confirmation-59",
+    Subtitle = "stack-thirty-60",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3326,7 +3326,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn salad-confirmation-59",
+    return table.concat({"Reborn stack-thirty-60",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -3907,18 +3907,19 @@ RemoteCatalog.ChestAutoButton=button({Parent=RemoteCatalog.ChestPage,Text="START
     Size=UDim2.new(1,-12,0,38),Position=UDim2.fromOffset(6,330)})
 RemoteCatalog.ChestWithdrawButton=button({Parent=RemoteCatalog.ChestPage,Text="Learn chests first",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,376)})
-RemoteCatalog.ChestAmount="Learned"
-RemoteCatalog.ChestAmountButton=button({Parent=RemoteCatalog.ChestPage,Text="Manual batch: Learned  ▾",TextSize=13,
+RemoteCatalog.ChestAmount=30
+RemoteCatalog.ChestAutoBatch=30
+RemoteCatalog.ChestAmountButton=button({Parent=RemoteCatalog.ChestPage,Text="Manual batch: 30  ▾",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,376)})
 RemoteCatalog.ChestAmountMenu=Instance.new("Frame")
-RemoteCatalog.ChestAmountMenu.Size=UDim2.new(.5,-9,0,160)
+RemoteCatalog.ChestAmountMenu.Size=UDim2.new(.5,-9,0,192)
 RemoteCatalog.ChestAmountMenu.Position=UDim2.new(.5,3,0,416)
 RemoteCatalog.ChestAmountMenu.BackgroundColor3=COLORS.panel
 RemoteCatalog.ChestAmountMenu.BorderSizePixel=0
 RemoteCatalog.ChestAmountMenu.Parent=RemoteCatalog.ChestPage
 RemoteCatalog.ChestAmountMenu.Visible=false
 RemoteCatalog.ChestAmountMenu.ZIndex=30
-for i,value in ipairs({1,5,10,25,"Learned"}) do
+for i,value in ipairs({1,5,10,25,30,"Learned"}) do
     local option=button({Parent=RemoteCatalog.ChestAmountMenu,Text=tostring(value),TextSize=13,
         Size=UDim2.new(1,-4,0,30),Position=UDim2.fromOffset(2,(i-1)*32)})
     option.ZIndex=31
@@ -4035,7 +4036,7 @@ RemoteCatalog.ChestLearnButton.Size=UDim2.new(.5,-9,0,34)
 RemoteCatalog.ChestAutoButton.Size=UDim2.new(.5,-9,0,34)
 RemoteCatalog.ChestAutoButton.Position=UDim2.new(.5,3,0,130)
 RemoteCatalog.ChestHint.Position=UDim2.fromOffset(8,542)
-RemoteCatalog.ChestHint.Text="Standard preserves existing pacing. Fast shortens pauses after confirmed transfers. Learned slots only skips whole-chest discovery; item choices stay selected."
+RemoteCatalog.ChestHint.Text="Auto takes up to 30 per batch and stays on the same stack. Unknown slots start with one probe. Fast shortens pauses."
 RemoteCatalog.ChestSpeed="Standard"
 RemoteCatalog.ChestSpeedButton=button({Parent=RemoteCatalog.ChestPage,Text="Pace: Standard",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,172)})
@@ -4941,7 +4942,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn salad-confirmation-59", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn stack-thirty-60", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6861,7 +6862,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn salad-confirmation-59\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn stack-thirty-60\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -6904,7 +6905,7 @@ function RemoteCatalog.SetChestAuto(state)
     local targets=RemoteCatalog.SelectedChestTargets()
     local states={}
     for _,entry in ipairs(targets) do
-        local maximum=entry.Binding.Amount
+        local maximum=RemoteCatalog.ChestAutoBatch or entry.Binding.Amount
         if type(maximum)=="number" and maximum>=1 and maximum%1==0 and maximum<=1000000 then
             table.insert(states,{Recorder=entry.Recorder,Binding=entry.Binding,Maximum=maximum,Amount=entry.Binding.Probe and 1 or maximum,Probe=entry.Binding.Probe,NoProgress=0})
         end
@@ -6936,6 +6937,7 @@ function RemoteCatalog.SetChestAuto(state)
         local ok,failure=pcall(function()
             local index=0
             local currentChest=nil
+            local preferredSlot=nil
             local chestNumbers,chestCount={},0
             for _,state in ipairs(states) do
                 local chest=state.Binding.Chest
@@ -6963,7 +6965,9 @@ function RemoteCatalog.SetChestAuto(state)
                     break
                 end
                 index=index%#states+1
-                if RemoteCatalog.ChestTravel=="Walk" and currentChest then
+                if preferredSlot and states[preferredSlot].Done then preferredSlot=nil end
+                if preferredSlot then index=preferredSlot
+                elseif RemoteCatalog.ChestTravel=="Walk" and currentChest then
                     for candidate,state in ipairs(states) do
                         if not state.Done and state.Binding.Chest==currentChest then index=candidate;break end
                     end
@@ -6994,7 +6998,7 @@ function RemoteCatalog.SetChestAuto(state)
                 local reached,reason=RemoteCatalog.ApproachChest(recorder,active,binding)
                 if not active() then break end
                 if not reached then
-                    currentChest=nil
+                    currentChest=nil;preferredSlot=nil
                     RemoteCatalog.ChestAutoMessage(target.." waiting: "..tostring(reason))
                     task.wait(1)
                     continue
@@ -7038,8 +7042,10 @@ function RemoteCatalog.SetChestAuto(state)
                     RemoteCatalog.ChestAutoMessage("Collected "..RemoteCatalog.ChestAutoTotal.." items · "..finished.."/"..#states.." checks finished\n"..target,COLORS.good)
                     if not state.Probe then state.Maximum=math.min(state.Maximum,state.Amount) end
                     state.Amount=state.Maximum;state.NoProgress=0;state.Probe=false
+                    preferredSlot=index -- Drain this chest/slot/item before checking another stack.
                     task.wait(successPause)
                 else
+                    preferredSlot=index -- Keep remainder retries on the same stack, bounded below.
                     RemoteCatalog.ChestAutoMessage(target..": no inventory gain. "..RemoteCatalog.ChestResultText(response))
                     if state.Probe then
                         state.Done=true
@@ -7100,7 +7106,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn salad-confirmation-59\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn stack-thirty-60\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
