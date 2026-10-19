@@ -48,7 +48,8 @@ assert(#RemoteCatalog.SelectedChestTargets()==1 and RemoteCatalog.SelectedChestT
 RemoteCatalog.ChestDiscover=true;RemoteCatalog.ChestWhole=true;RemoteCatalog.ChestTravel='Walk';rootX=10
 local nearest=RemoteCatalog.SelectedChestTargets()
 assert(nearest[1].Binding.Chest==b and nearest[14].Binding.Chest==a,'Walk must list nearer physical chests first')
-for index=1,13 do assert(nearest[index].Binding.Slot==index-1,'equal-distance slots must retain their original order') end
+local slotOrder={1,0,2,3,4,5,6,7,8,9,10,11,12}
+for index=1,13 do assert(nearest[index].Binding.Slot==slotOrder[index],'check the learned slot first, then every remaining slot exactly once') end
 local wood={Chest=a,Slot=2,Amount=5,ObservedAt=2,Item='wood'}
 learned={template,wood};RemoteCatalog.ChestTravel='Stay'
 local mixed=RemoteCatalog.SelectedChestTargets()
@@ -77,7 +78,7 @@ local oldSalad={Chest=a,Slot=8,Amount=17,ObservedAt=3,Item='potatoSalad'}
 local newSalad={Chest=a,Slot=3,Amount=9,ObservedAt=4,Item='potatoSalad'}
 learned={oldSalad,newSalad};RemoteCatalog.ChestDiscover=true;RemoteCatalog.ChestWhole=true
 local salads=RemoteCatalog.SelectedChestTargets()
-assert(#salads==26,'salad must cover all supported slots in both matching chests')
+assert(#salads==26 and salads[1].Binding.Slot==3 and salads[14].Binding.Slot==3,'salad must check its newest learned slot first and still cover every slot')
 for _,entry in ipairs(salads) do
  assert(entry.Binding.Item=='potatoSalad' and entry.Binding.ObservedAt==4 and entry.Binding.Amount==9,'whole-chest discovery and slot checks must use the latest learned packet/maximum for that item')
 end

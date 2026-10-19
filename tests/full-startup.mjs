@@ -506,7 +506,7 @@ end)()
  local recorder={Records={},MaxCalls=100,Active=false,ChestBinding={Chest=chest,Amount=26},CanUseChestBinding=function() return true end,WithdrawCarrots=function(_,amount) sent+=1;requested=amount;if denied then return false,denied end;return true end}
  RemoteCatalog.LiveRecorder=function() return recorder end
  assert(RemoteCatalog.WithdrawCarrots() and sent==1,'nearby owned chest request must send once')
- assert(requested==30 and RemoteCatalog.ChestAmount==30 and RemoteCatalog.ChestAutoBatch==30,'manual and auto must default to the requested thirty-item batch')
+ assert(requested==30 and RemoteCatalog.ChestAmount==30 and RemoteCatalog.ChestAutoBatch=='Max','manual must stay at thirty while Auto defaults to the requested Max mode')
  chest.Position=position(50)
  assert(not RemoteCatalog.WithdrawCarrots() and sent==1,'distant chest must not send')
  chest.Position=position(5);chest.Parent=foreign
@@ -566,13 +566,13 @@ end)()
  local requestedBindings={}
  assert(RemoteCatalog.ChestAutoButton.Position.Y.Offset==130 and RemoteCatalog.ChestAutoButton.Position.X.Scale==.5,'collection action must be beside learning at the top')
  assert(RemoteCatalog.ChestSpeed=='Standard','Standard must remain the default pace')
- assert(not RemoteCatalog.ChestDetailsOpen and not RemoteCatalog.ChestPlanView.Visible and not RemoteCatalog.ChestHint.Visible,'chest guidance must start collapsed without leaving its old blank area')
+ assert(not RemoteCatalog.ChestDetailsOpen and not RemoteCatalog.ChestPlanView.Visible and not RemoteCatalog.ChestLearnedButton.Visible,'chest guidance must start collapsed without leaving its old blank area')
  local compactY=RemoteCatalog.ChestWithdrawButton.Position.Y.Offset
  for _=1,3 do
   RemoteCatalog.ChestPreviewButton.Activated:Fire()
-  assert(RemoteCatalog.ChestPlanView.Visible and RemoteCatalog.ChestHint.Visible and RemoteCatalog.ChestWithdrawButton.Position.Y.Offset>compactY,'showing details must expand in flow above manual collection')
+  assert(RemoteCatalog.ChestPlanView.Visible and RemoteCatalog.ChestLearnedButton.Visible and RemoteCatalog.ChestWithdrawButton.Position.Y.Offset>compactY,'showing details must expand in flow above manual collection')
   RemoteCatalog.ChestPreviewButton.Activated:Fire()
-  assert(not RemoteCatalog.ChestPlanView.Visible and not RemoteCatalog.ChestHint.Visible and RemoteCatalog.ChestWithdrawButton.Position.Y.Offset==compactY,'closing details must restore the compact layout without drift')
+  assert(not RemoteCatalog.ChestPlanView.Visible and not RemoteCatalog.ChestLearnedButton.Visible and RemoteCatalog.ChestWithdrawButton.Position.Y.Offset==compactY,'closing details must restore the compact layout without drift')
  end
  local left,right=RemoteCatalog.ChestLearnButton,RemoteCatalog.ChestAutoButton
  local gap=right.Position.X.Offset-left.Position.X.Offset-left.Size.X.Offset
@@ -848,7 +848,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn clean-chests-62',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn adaptive-chests-63',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1170,7 +1170,7 @@ end)()
  r.ChestRepeatButton.Activated:Fire();assert(not r.ChestRepeatMenu.Menu.Visible,'repeat waiting/cleanup must lock menu opening too')
  r.ChestAutoWorker=nil
  r.ChestAutoEnabled=true;r.ChestRepeatWaiting=true;r.UpdateChestSelectionUI()
- assert(string.find(r.ChestIntro.Text,'Waiting',1,true) and r.ChestWithdrawButton.Text=='Auto Take running','waiting state must explain why a manual action cannot overlap Auto Take')
+ assert(string.find(r.ChestIntro.Text,'Waiting',1,true) and r.ChestWithdrawButton.Text=='PAUSE AUTO TAKE','waiting state must explain why a manual action cannot overlap Auto Take')
  assert(r.ChestAutoButton.Text=='STOP AUTO TAKE' and not r.ChestAmountButton.Active and not r.ChestRepeatButton.Active,'repeat waits must keep an obvious Stop action and lock irrelevant preferences')
  r.ChestAutoEnabled=false;r.ChestRepeatWaiting=false
  r.ChestRepeatButton.Activated:Fire();UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.Escape},true)
@@ -1178,6 +1178,66 @@ end)()
  r.ChestRepeatButton.Activated:Fire();r.ChestRepeatMenu.Options[1].Activated:Fire()
  assert(not r.ChestRepeat and not r.ChestAutoEnabled,'One pass must remain an explicit non-starting choice')
  r.UpdateChestSelectionUI()
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ local total,goal=r.ChestAutoTotal,r.ChestGoal
+ r.ChestAutoEnabled=true;r.ChestAutoWorker=631;r.ChestAutoTotal=37;r.ChestGoal=100;r.ChestBusy=true
+ r.RefreshChestActions()
+ assert(r.ChestWithdrawButton.Active and r.ChestWithdrawButton.Text=='PAUSE AUTO TAKE' and r.ChestAutoButton.Text=='STOP AUTO TAKE','Auto Take must expose distinct Pause and Stop actions')
+ r.ChestWithdrawButton.Activated:Fire()
+ assert(r.ChestAutoPaused and r.ChestWithdrawButton.Text=='RESUME AUTO TAKE' and string.find(status.Text,'Pausing',1,true),'Pause during an in-flight request must explain that its confirmation is finishing')
+ r.ChestBusy=false;r.RefreshChestActions()
+ assert(string.find(status.Text,'Paused',1,true) and not r.ChestAmountButton.Active and not r.ChestRepeatButton.Active,'paused runs must retain preference locks and visible footer guidance')
+ r.ChestWithdrawButton.Activated:Fire()
+ assert(not r.ChestAutoPaused and r.ChestAutoTotal==37 and r.ChestGoal==100 and r.ChestAutoWorker==631,'actual Resume must preserve counts, goal and worker ownership')
+ r.ChestWithdrawButton.Activated:Fire();r.ChestAutoButton.Activated:Fire()
+ assert(not r.ChestAutoEnabled and not r.ChestAutoPaused and r.ChestAutoWorker==631 and r.ChestAutoButton.Text=='STOPPING…','Stop must cancel a paused run while keeping cleanup explicit')
+ local generation=r.ChestManualGeneration
+ r.ChestWithdrawButton.Activated:Fire()
+ assert(r.ChestManualGeneration==generation and not r.ChestWithdrawButton.Active,'the resumed/manual action must stay blocked through cancelled worker cleanup')
+ r.ChestAutoWorker=nil;r.ChestAutoTotal=total;r.ChestGoal=goal;r.UpdateChestSelectionUI()
+ assert(r.ChestWithdrawButton.Active and r.ChestAmountButton.Active,'cleanup must restore manual controls')
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ r.ChestAutoBatch='Max';r.ChestBatchMenu:Refresh()
+ local y=r.ChestProfilesButton.Position.Y.Offset
+ for _=1,3 do
+  r.ChestBatchButton.Activated:Fire()
+  assert(r.ChestBatchMenu.Menu.Visible and r.ChestProfilesButton.Position.Y.Offset>=r.ChestBatchMenu.Menu.Position.Y.Offset+r.ChestBatchMenu.Menu.Size.Y.Offset,'auto batch choices must push every following section below the menu')
+  r.ChestBatchButton.Activated:Fire()
+  assert(not r.ChestBatchMenu.Menu.Visible and r.ChestProfilesButton.Position.Y.Offset==y,'batch dropdown cleanup must restore the compact layout without drift')
+ end
+ local manual=r.ChestAmount
+ r.ChestBatchButton.Activated:Fire();r.ChestBatchMenu.Options[5].Activated:Fire()
+ assert(r.ChestAutoBatch==250 and r.ChestAmount==manual and not r.ChestAutoEnabled,'fixed automatic batches must stay independent of manual amount and never start automation')
+ r.ChestBatchButton.Activated:Fire();r.ChestAutoWorker=633;r.ChestBatchMenu.Options[1].Activated:Fire()
+ assert(r.ChestAutoBatch==250 and not r.ChestBatchMenu.Menu.Visible,'an in-flight worker must lock an already-open batch selection')
+ r.ChestAutoWorker=nil;r.ChestBatchButton.Activated:Fire();r.ChestBatchMenu.Options[1].Activated:Fire()
+ assert(r.ChestAutoBatch=='Max' and string.find(r.ChestPlanLabel.Text,'adaptive 30–1000',1,true),'Max must explain its bounded growth in the read-only preview')
+ r.ChestBatchButton.Activated:Fire();r.ChestRepeatButton.Activated:Fire()
+ assert(not r.ChestBatchMenu.Menu.Visible and r.ChestRepeatMenu.Menu.Visible,'automatic batch choices must share exclusive dropdown cleanup')
+ r.CloseMenus()
+ r.ChestPreviewButton.Activated:Fire()
+ if not r.ChestDetailsOpen then r.ChestPreviewButton.Activated:Fire() end
+ assert(r.ChestLearnedButton.Visible and r.ChestWithdrawButton.Position.Y.Offset>=r.ChestLearnedButton.Position.Y.Offset+r.ChestLearnedButton.Size.Y.Offset,'the learned-slot shortcut must fit inside details above the manual actions')
+ r.ChestPreviewButton.Activated:Fire()
+ local targets,ready,withdraw=r.SelectedChestTargets,r.ChestRequestReady,r.WithdrawCarrots
+ local chest={};local binding={Chest=chest,Slot=8,Amount=30};local calls=0
+ r.SelectedChestTargets=function() return {{Binding=binding}} end
+ r.ChestRequestReady=function() return true end
+ r.WithdrawCarrots=function(_,_,selected) assert(selected==binding);calls+=1;if calls==1 then return false,{success=false,error='TOO_FAST'} end;return true end
+ r.ChestRateDelay=nil
+ local generation=r.ChestManualGeneration
+ local co=coroutine.create(function() return r.WithdrawSelectedCarrots(generation) end)
+ assert(coroutine.resume(co) and calls==1 and r.ChestCooldown,'manual TOO_FAST must enter a cooldown before retrying the same slot')
+ for _=1,20 do if coroutine.status(co)=='dead' then break end;local ok,e=coroutine.resume(co);assert(ok,e) end
+ assert(coroutine.status(co)=='dead' and calls==2 and not r.ChestCooldown and r.ChestRateDelay==.5,'manual withdrawal must retry once at its learned pace, rather than skipping the stack')
+ r.SelectedChestTargets,r.ChestRequestReady,r.WithdrawCarrots=targets,ready,withdraw
+ r.ChestRateDelay=nil;r.RefreshChestActions()
  end)()
 
 ;(function()

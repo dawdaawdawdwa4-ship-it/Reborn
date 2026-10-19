@@ -1239,3 +1239,58 @@ Mock tests verify exact shorter pauses, frozen pacing, the two-second refill
 interval, Stop before another manual send, compact/detail layout round trips,
 button spacing, full-width dropdowns, visible progress and cleanup locks. The
 full test suite passes. Live Roblox timing and rendering remain unverified.
+
+
+### Adaptive Auto Max, server pacing and Pause/Resume (v63)
+
+The live v62 recording showed `TOO_FAST` followed by 15-, 7- and smaller-item
+batches. That server rejection was incorrectly routed through the remainder
+logic. V63 distinguishes `TOO_FAST` from other failures in both automatic and
+manual collection. It waits and retries the same chest/slot/item/amount,
+including one-item probes, rather than shrinking the amount or marking the
+slot empty. Cooldowns grow from 0.5 to 1, 2 and at most 4 seconds. Five consecutive
+rate rejections of the same automatic state/manual check stop with an explicit
+reason. The learned interval also paces later successes and remainder checks in
+this script session. No cooldown bypass or concurrent request worker is added.
+
+**Chests > Auto batch > Max (1000)** is the new startup choice requested after
+the recording. It starts a confirmed-slot batch at at least 30 (or a larger
+observed amount, capped at 1000), doubles only after full confirmed transfers,
+and caps each request at 1000. A fresh one-item probe is followed by a batch of
+up to 30. A partially fulfilled larger request, or a successful reduced batch
+after an amount/remainder rejection, sets the smaller observed ceiling for that
+slot. `TOO_FAST` never changes this ceiling. This is bounded adaptation; 1000 is
+a local request ceiling, not a claim that Roblox accepts 1000 or that the exact
+server maximum is known. Run goals and live top-up deficits can reduce requests.
+Choose a fixed **30, 60, 100, 250, 500 or 1000** instead if preferred. The manual
+batch remains independent and defaults to 30.
+
+The auto-batch dropdown occupies the former learned-slot shortcut position beside
+Pace. The shortcut is now inside **Show details**. Dropdown choices expand in
+flow, share exclusive cleanup and lock during workers/cleanup. Whole-chest scans
+check the newest learned slot first, followed by all other supported slots once;
+this preserves coverage when an item moves. A full 23-chest scan can still mean
+299 checks. **Whole chest: OFF** checks just the learned slot for each matching
+chest; enable whole-chest scanning when items move between slots.
+
+During Auto Take, the manual action becomes **PAUSE AUTO TAKE** / **RESUME AUTO
+TAKE**, while the main action remains **STOP AUTO TAKE**. Pause preserves one
+worker, the current stack state, confirmed totals and cumulative goal. It cancels
+chest navigation and holds future requests; an already-sent request finishes its
+existing inventory confirmation and is counted once. Resume rechecks reach and
+live inventory. Repeat and rate-cooldown countdowns freeze during Pause. Stop,
+Stop All and GUI destruction can end a paused run without Resume. The footer
+shows Pausing, Paused, server cooldown and pending cleanup states.
+
+Profile schema version 1 accepts optional `AutoBatch`. Older profiles default
+to fixed 30, preserving their preference. New saves can retain Max or a supported
+fixed size. Pause and learned server pacing are runtime state and are not saved.
+Existing own-island/session/reach checks and the two-second exact-item
+confirmation window remain.
+
+Mock tests reproduce repeated `TOO_FAST` at a minimum server interval and verify
+same-amount retries, adaptive growth, a 1000-item ceiling, server-clamped and
+rejected larger amounts, remainders, goals, capped retries, manual retry,
+cancellation, Pause during requests/navigation/quantity waits/cooldowns, profile
+compatibility and actual UI layout/actions. The full suite passes. Live behavior
+of this new version, including the server's accepted maximum, remains unverified.

@@ -549,7 +549,190 @@ do
  gui.Parent=true;task.wait=oldWait
  RemoteCatalog.ChestRepeat=false;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil
 end
-return 'Chest Auto Max: thirty-item same-slot batches, repeated refill polling/top-up, cumulative goals, quantity replication, bounded retries, Stop and cleanup passed'
+-- Pause holds one run, preserves its stack/goal and allows sent requests to settle.
+do
+ local originalWait=task.wait
+ local clock,qty,stock,trace,usable,pending,walking,approaches,walkActive,stopCount
+ local savedStop=RemoteCatalog.Navigation.Stop
+ RemoteCatalog.Navigation.Stop=function(owner) assert(owner=='Chest');stopCount=(stopCount or 0)+1 end
+ task.wait=function(dt) clock+=dt;return originalWait(dt) end
+ local binding={Chest={},Slot=8,Item='potatoSalad',Amount=17}
+ local owner={CanUseChestBinding=function() return usable end}
+ local function prepare(options)
+  clock=0;qty=0;stock=options.Stock or 90;trace={};usable=true;pending=options.Pending;walking=options.Walk;approaches=0;stopCount=0;walkActive=nil
+  if options.Missing then qty=nil end
+  binding.Probe=options.Probe
+  RemoteCatalog.ChestAutoBatch=30;RemoteCatalog.ChestSpeed='Standard'
+  RemoteCatalog.ChestGoal=options.Goal;RemoteCatalog.ChestStockTarget=options.Target;RemoteCatalog.ChestRepeat=options.Repeat==true
+  RemoteCatalog.SelectedChestTargets=function() return {{Recorder=owner,Binding=binding}} end
+  RemoteCatalog.OwnedTools=function() return {{Name='potatoSalad'}} end
+  RemoteCatalog.BaitCount=function() return qty end
+  RemoteCatalog.ApproachChest=function(_,active)
+   approaches+=1
+   if walking then walking=false;walkActive=active;task.wait(.05);return active(),'walk cancelled' end
+   return true
+  end
+  RemoteCatalog.WithdrawCarrots=function(amount,rec,selected)
+   assert(rec==owner and selected==binding and not RemoteCatalog.ChestAutoPaused,'a paused run must never issue a new request')
+   table.insert(trace,{Amount=amount,At=clock})
+   if pending then pending=false;task.wait(.05) end
+   if amount>stock then return false,'empty' end
+   stock-=amount;qty+=amount;return true
+  end
+ end
+ local function pump(count)
+  for _=1,count do assert(worker and coroutine.status(worker)=='suspended','pause fixture worker ended unexpectedly');local ok,e=coroutine.resume(worker);assert(ok,e) end
+ end
+ local function untilTrue(predicate)
+  for _=1,1000 do
+   if predicate() then return end
+   pump(1)
+  end
+  assert(predicate(),'pause fixture did not settle')
+ end
+ assert(not RemoteCatalog.SetChestPaused(true) and not RemoteCatalog.ChestAutoEnabled,'Pause while OFF must never start collection')
+ prepare({Stock=90,Goal=90})
+ assert(RemoteCatalog.SetChestAuto(true) and qty==30 and #trace==1)
+ local co,generation=worker,RemoteCatalog.ChestAutoGeneration
+ assert(RemoteCatalog.SetChestPaused(true))
+ local pauses=stopCount
+ assert(RemoteCatalog.SetChestPaused(true) and RemoteCatalog.SetChestAuto(true),'repeated Pause/ON must keep the same worker')
+ pump(40)
+ assert(stopCount==pauses and #trace==1 and qty==30 and RemoteCatalog.ChestAutoTotal==30 and worker==co and RemoteCatalog.ChestAutoGeneration==generation,'Pause must retain totals, generation, goal and worker without resending')
+ assert(RemoteCatalog.SetChestPaused(false));untilTrue(function() return not RemoteCatalog.ChestAutoWorker end)
+ assert(qty==90 and #trace==3 and trace[2].Amount==30 and trace[3].Amount==30 and RemoteCatalog.ChestHistory[1].Outcome=='Goal reached' and not RemoteCatalog.ChestAutoPaused,'Resume must continue the same stack and cumulative goal')
+ -- A request sent before Pause is still confirmed exactly once.
+ prepare({Stock=60,Goal=60,Pending=true})
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.ChestBusy and #trace==1 and qty==0)
+ assert(RemoteCatalog.SetChestPaused(true));pump(40)
+ assert(qty==30 and RemoteCatalog.ChestAutoTotal==30 and #trace==1 and not RemoteCatalog.ChestBusy and RemoteCatalog.ChestAutoPaused,'Pause must let an in-flight transfer settle without losing or duplicating its count')
+ assert(RemoteCatalog.SetChestPaused(false));untilTrue(function() return not RemoteCatalog.ChestAutoWorker end)
+ assert(qty==60 and #trace==2 and RemoteCatalog.ChestAutoTotal==60)
+ -- A pre-request quantity wait must not send when it resolves during Pause.
+ prepare({Stock=50,Target=50,Missing=true})
+ assert(RemoteCatalog.SetChestAuto(true) and #trace==0)
+ assert(RemoteCatalog.SetChestPaused(true));qty=50;pump(20)
+ assert(#trace==0 and RemoteCatalog.ChestAutoPaused,'resolved quantity metadata must not bypass Pause')
+ assert(RemoteCatalog.SetChestPaused(false));untilTrue(function() return not RemoteCatalog.ChestAutoWorker end)
+ assert(#trace==0 and RemoteCatalog.ChestAutoTotal==0 and RemoteCatalog.ChestHistory[1].Outcome=='Inventory targets met','Resume must re-read live inventory before deciding what to withdraw')
+ -- Pausing an approach cancels movement and retries reach before any resumed send.
+ prepare({Stock=30,Goal=30,Walk=true})
+ assert(RemoteCatalog.SetChestAuto(true) and walkActive and walkActive())
+ assert(RemoteCatalog.SetChestPaused(true) and not walkActive());pump(20)
+ assert(#trace==0 and approaches==1 and RemoteCatalog.ChestAutoPaused,'Pause must cancel navigation without sending at the destination')
+ assert(RemoteCatalog.SetChestPaused(false));untilTrue(function() return not RemoteCatalog.ChestAutoWorker end)
+ assert(qty==30 and approaches>=2 and #trace==1,'Resume must recheck reach after a cancelled approach')
+ -- The repeat countdown freezes, rather than running out behind Pause.
+ prepare({Stock=0,Goal=30,Repeat=true,Probe=true})
+ assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
+ local requests,seconds,pass=#trace,RemoteCatalog.ChestNextScan,RemoteCatalog.ChestAutoPass
+ assert(RemoteCatalog.SetChestPaused(true));pump(40)
+ assert(#trace==requests and RemoteCatalog.ChestNextScan==seconds and RemoteCatalog.ChestAutoPass==pass,'Pause must freeze Repeat without refreshing slots or sending requests')
+ stock=30;local resumedAt=clock
+ assert(RemoteCatalog.SetChestPaused(false));untilTrue(function() return not RemoteCatalog.ChestAutoWorker end)
+ assert(trace[requests+1].At-resumedAt>=1.8 and trace[requests+1].At-resumedAt<=2.1 and qty==30 and RemoteCatalog.ChestAutoTotal==30,'Resume must finish the remaining repeat wait before continuing the cumulative goal')
+ -- Stop can end a paused run and holds ownership through cleanup.
+ prepare({Stock=90,Goal=90})
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.SetChestPaused(true));pump(10)
+ requests=#trace
+ RemoteCatalog.SetChestAuto(false)
+ assert(not RemoteCatalog.ChestAutoPaused and not RemoteCatalog.SetChestPaused(false) and not RemoteCatalog.SetChestAuto(true),'Stop must clear Pause without allowing an overlapping restart')
+ drain()
+ assert(#trace==requests and not RemoteCatalog.ChestAutoWorker and RemoteCatalog.ChestHistory[1].Outcome=='Stopped' and RemoteCatalog.ChestHistory[1].Total==30)
+ -- Resume still validates current session/chest bindings.
+ prepare({Stock=60,Goal=60})
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.SetChestPaused(true));usable=false
+ assert(RemoteCatalog.SetChestPaused(false));untilTrue(function() return not RemoteCatalog.ChestAutoWorker end)
+ assert(#trace==1 and qty==30 and not RemoteCatalog.ChestAutoPaused,'Resume must not replay an expired binding')
+ -- GUI removal cancels a paused worker without needing Resume.
+ prepare({Stock=90,Goal=90})
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.SetChestPaused(true));pump(10)
+ requests=#trace;gui.Parent=nil;drain()
+ assert(#trace==requests and not RemoteCatalog.ChestAutoWorker and not RemoteCatalog.ChestAutoPaused and not RemoteCatalog.ChestBusy,'GUI cleanup must release a paused worker without another request')
+ gui.Parent=true;task.wait=originalWait;RemoteCatalog.Navigation.Stop=savedStop
+ RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil;RemoteCatalog.ChestRepeat=false
+end
+-- TOO_FAST is a pacing rejection, never evidence of an empty/smaller stack.
+do
+ local oldWait=task.wait
+ local clock,qty,stock,trace,options,lastRequest,firstReject,usable
+ task.wait=function(dt) clock+=dt;return oldWait(dt) end
+ local binding={Chest={},Slot=8,Item='potatoSalad',Amount=17}
+ local owner={CanUseChestBinding=function() return usable end}
+ local function prepare(settings)
+  options=settings;clock=0;qty=0;stock=settings.Stock or 10000;trace={};lastRequest=-100;firstReject=settings.RejectFirst;usable=true
+  binding.Probe=settings.Probe
+  RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestCooldown=nil
+  RemoteCatalog.ChestAutoBatch=settings.Fixed or 'Max';RemoteCatalog.ChestSpeed='Standard';RemoteCatalog.ChestRepeat=false
+  RemoteCatalog.ChestGoal=settings.Goal;RemoteCatalog.ChestStockTarget=settings.Target
+  RemoteCatalog.SelectedChestTargets=function() return {{Recorder=owner,Binding=binding}} end
+  RemoteCatalog.OwnedTools=function() return {{Name='potatoSalad'}} end
+  RemoteCatalog.BaitCount=function() return qty end
+  RemoteCatalog.ApproachChest=function() return true end
+  RemoteCatalog.WithdrawCarrots=function(amount,rec,selected)
+   assert(rec==owner and selected==binding and amount<=1000 and not RemoteCatalog.ChestAutoPaused)
+   local rejected=options.AlwaysFast or firstReject or options.Interval and clock-lastRequest<options.Interval-1e-6
+   firstReject=false;lastRequest=clock
+   table.insert(trace,{Amount=amount,At=clock,Rate=rejected})
+   if rejected then return false,{success=false,error='TOO_FAST'} end
+   if options.RejectAbove and amount>options.RejectAbove then return false,{success=false,error='AMOUNT_TOO_LARGE'} end
+   if amount>stock then return false,{success=false,error='INSUFFICIENT_ITEMS'} end
+   local gain=math.min(amount,options.Clamp or amount)
+   stock-=gain;qty+=gain;return true
+  end
+ end
+ local function pump(count)
+  for _=1,count do assert(worker and coroutine.status(worker)=='suspended');local ok,e=coroutine.resume(worker);assert(ok,e) end
+ end
+ assert(RemoteCatalog.ChestTooFast({success=false,error='TOO_FAST'}) and RemoteCatalog.ChestTooFast({value={code='TOO_FAST'}}))
+ local cyclic={error='INSUFFICIENT_ITEMS'};cyclic.value=cyclic
+ assert(not RemoteCatalog.ChestTooFast(cyclic) and not RemoteCatalog.ChestTooFast({success=false,error='NOT_ENOUGH_ITEMS'}),'only the known rate error may trigger same-batch pacing retries')
+ prepare({Goal=930,Interval=.8})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(qty==930 and RemoteCatalog.ChestAutoTotal==930 and #trace==7 and RemoteCatalog.ChestRateDelay==1,'Max must grow full transfers while learning an accepted request pace')
+ assert(trace[1].Amount==30 and trace[2].Rate and trace[2].Amount==60 and trace[3].Rate and trace[3].Amount==60 and trace[4].Amount==60,'TOO_FAST must retry the exact growth batch instead of halving it')
+ assert(trace[5].Amount==120 and trace[6].Amount==240 and trace[7].Amount==480,'confirmed Max batches must continue growing on the same stack')
+ for i=4,#trace do assert(not trace[i].Rate and trace[i].At-trace[i-1].At>=1-1e-6,'learned pacing must apply to subsequent requests') end
+ prepare({Goal=2930})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(qty==2930 and #trace==8 and trace[7].Amount==1000 and trace[8].Amount==40,'adaptive Max must cap at 1000 and obey the remaining cumulative goal')
+ prepare({Goal=90,Clamp=30})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(qty==90 and #trace==3 and trace[1].Amount==30 and trace[2].Amount==60 and trace[3].Amount==30,'a partially fulfilled larger request must retain only the observed supported batch')
+ prepare({Goal=150,RejectAbove=30})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(qty==150 and #trace==6 and trace[2].Amount==60,'Max must learn a supported smaller batch after a larger amount is rejected')
+ for i=3,#trace do assert(trace[i].Amount==30,'a learned batch ceiling must prevent repeated oversized attempts') end
+ prepare({Stock=137})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(qty==137 and stock==0 and #trace<40 and RemoteCatalog.ChestAutoTotal==137 and binding.Amount==17,'adaptive Max must drain smaller remainders with bounded retries without mutating the captured amount')
+ prepare({Goal=90,Fixed=30,Interval=.8})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(qty==90 and RemoteCatalog.ChestAutoTotal==90)
+ for _,request in ipairs(trace) do assert(request.Amount==30,'fixed full-stack batches must not shrink after TOO_FAST') end
+ prepare({Goal=31,RejectFirst=true,Probe=true})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(qty==31 and trace[1].Amount==1 and trace[1].Rate and trace[2].Amount==1 and trace[3].Amount==30,'a throttled probe must be retried rather than incorrectly marking its slot empty')
+ prepare({AlwaysFast=true})
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#trace==5 and qty==0 and RemoteCatalog.ChestAutoTotal==0 and not RemoteCatalog.ChestAutoWorker and string.find(RemoteCatalog.ChestLastDetail,'five attempts',1,true),'persistent TOO_FAST must stop after bounded same-batch attempts')
+ for _,request in ipairs(trace) do assert(request.Amount==30) end
+ prepare({Goal=30,RejectFirst=true})
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.ChestCooldown and #trace==1)
+ assert(RemoteCatalog.SetChestPaused(true));pump(20)
+ assert(#trace==1 and RemoteCatalog.ChestAutoPaused,'Pause must freeze a server cooldown without resending')
+ assert(RemoteCatalog.SetChestPaused(false));drain()
+ assert(qty==30 and #trace==2 and not RemoteCatalog.ChestCooldown)
+ prepare({RejectFirst=true})
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.ChestCooldown)
+ RemoteCatalog.SetChestAuto(false);drain()
+ assert(#trace==1 and not RemoteCatalog.ChestCooldown and not RemoteCatalog.ChestAutoWorker,'Stop during a rate cooldown must prevent the pending retry')
+ prepare({RejectFirst=true})
+ assert(RemoteCatalog.SetChestAuto(true));usable=false;drain()
+ assert(#trace==1 and qty==0,'cooldown completion must still validate the live binding before retrying')
+ task.wait=oldWait;RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil
+end
+return 'Chest Auto Max: adaptive/full-stack batches, TOO_FAST pacing, repeat/top-up, pause/resume, goals, confirmation, remainders, Stop and cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-auto',true)());}

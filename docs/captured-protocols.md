@@ -486,3 +486,31 @@ probes, same-stack priority and current-session/ownership/reach validation remai
 Manual replay stays serialized and checks cancellation before each next request.
 No payload, endpoint or profile schema changes. Mock timing, cancellation,
 confirmation and complete regression checks pass; live acceptance is unverified.
+
+
+### Rate rejection handling and adaptive batches (adaptive-chests-63)
+
+The supplied live v62 result was `{error="TOO_FAST", success=false}` for a carrot
+withdrawal. Recorder v28 already reports that as a rejected request. The worker
+now recognizes that exact code in bounded structured error fields and retries
+the same amount after a server cooldown, keeping probe/maximum/remainder state.
+The same handling applies to manual withdrawal. Exponential cooldowns are bounded
+to 4 seconds and five consecutive rate rejections stop the check/run. Learned
+pacing carries across later chest requests in the current script session.
+
+Requested Auto Max now grows from 30 or a larger observed count, up to a local
+1000-item request ceiling. Growth requires full exact-item inventory gain. A
+partially fulfilled request or confirmed smaller fallback retains the smaller
+ceiling. A one-item unknown-slot probe still precedes growth. Goal/top-up limits,
+current owned chest/session/reach validation and quantity confirmation remain.
+Learned slots are checked first without omitting any supported whole-chest slot.
+Neither the catalog (145 entries) nor the replay packet shape/recorder changes.
+Actual acceptance of larger amounts must be verified live; the local ceiling is
+not a discovered Roblox server limit.
+
+Pause keeps the same worker/bindings and lets sent transfers settle; it blocks
+new sends and freezes Repeat/cooldown timers. Stop/GUI cleanup can cancel a paused
+worker. No packet contains pause or pacing state. Profiles accept only the new
+validated optional `AutoBatch` preference (old profiles retain fixed 30), never
+live bindings, pause state or rate timing. Mock rate-limit, amount, cancellation,
+confirmation, profile and full regression checks pass; live v63 is unverified.
