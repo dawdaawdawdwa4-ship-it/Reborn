@@ -281,3 +281,15 @@ learned batch ceilings, unobserved-slot probes, goals, retries and cancellation
 remain on their existing paths. The learned-slots shortcut narrows target
 selection and previews it without sending requests. No remote format, session
 envelope or additional server field is introduced.
+
+### Chest profiles (chest-profiles-53)
+
+Chest profiles persist only validated local collection preferences: item names,
+scope, whole-chest flag, pace, movement mode, range and goal. They introduce no
+remote formats. Chest instances, slots, capture/session bindings and request
+payloads are excluded. Startup only caches profiles; Load applies settings and
+runs the existing read-only preview without movement or withdrawal. Loading
+clears stale physical-chest selection and still requires valid learned bindings
+in the current session. Active/manual/learning and cancelled in-flight workers
+lock profile Save/Load. Actual collection retains the existing reach, confirmation,
+retry, goal and single-worker behavior.

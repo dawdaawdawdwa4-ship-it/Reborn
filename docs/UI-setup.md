@@ -823,3 +823,48 @@ multiple Undo/Redo sequences after transforms, history bounds and lifecycle,
 pace snapshots, identical confirmed totals, unchanged confirmation windows and
 bounded no-progress behavior. Existing v41–v51 regressions remain covered. Live
 Roblox/Studio behavior and observed server throughput remain unverified.
+
+### Reusable chest profiles (v53)
+
+Open **Chests > Chest profiles**, choose one of three slots, enter a name and
+press **Save profile (overwrites)**. A profile stores the current item checklist,
+All matching/Learned only scope, Whole chest setting, Standard/Fast pace,
+Stay/Walk movement, approach range and combined collection goal. Selecting a
+slot only browses it. **Load profile** applies its settings, refreshes the existing
+control labels and read-only target preview, and closes menus. Press **START
+COLLECTING** separately when ready.
+
+Profiles preserve All learned items and an explicit empty checklist as different
+states. They can store up to 64 distinct item identifiers of 1–128 bytes and a
+trimmed name of 1–48 bytes. Items that are not learned in the current session do
+not produce requests; normal learning and target validation remain required.
+
+Specific chest instances/slots, capture bindings, server identifiers and request
+arguments are not saved. Loading clears the previous physical-chest selection
+and legacy single-item filter, selecting all eligible chests in the saved scope.
+Use the existing chest selector afterwards to narrow it. Saving leaves the
+current physical selection untouched. Save and Load are locked during automatic
+collection, stopped in-flight cleanup, manual chest work or chest learning;
+loading a Walk preference does not move the player.
+
+Profiles use the fixed account file `RebornChestProfiles_<UserId>.json` when file
+APIs work, with a version-1 envelope whose `Profiles` object contains string slot
+keys `"1"`, `"2"`, `"3"`. Only validated preference fields are serialized. Files
+are limited to 65,536 encoded bytes. Startup validates and caches profiles without
+applying them, so existing startup settings and OFF defaults are preserved.
+Invalid files are ignored as a whole. Missing/failing file APIs retain session
+profiles, and the panel identifies File + session, Loaded from file or Session
+only storage. Refreshing cached files does not replace newer session snapshots.
+A successful Save writes every cached slot, including earlier session-only saves.
+
+The panel starts collapsed, pushes later controls down when expanded and closes
+on shared menu/tab/window cleanup. Chests manages its initial visibility so the
+stock tab reveal does not expose hidden profile/menu controls. Start/Stop remains
+near the top, independent of the panel and menu layout.
+
+Tests cover schema and slot validation, whole-file rejection, fixed account
+filenames, startup caching without application, isolated save/load snapshots,
+All/None/legacy filters, file errors and session fallback, worker/learning guards,
+actual profile buttons, control-label refresh, profile-only browsing and stable
+panel expansion/tab cleanup. The full v41–v52 regression suite remains covered.
+Live Roblox behavior and file API availability on the user's host are unverified.

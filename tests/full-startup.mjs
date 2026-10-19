@@ -807,7 +807,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn editor-chests-52',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn chest-profiles-53',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -841,6 +841,63 @@ end)()
  RemoteCatalog.ChestBusy=false
  RemoteCatalog.ChestHistory=originalHistory
  end)()
+ ;(function()
+ local r=RemoteCatalog
+ local oldWrite,oldRead=writefile,readfile
+ local oldEncode,oldDecode=HttpService.JSONEncode,HttpService.JSONDecode
+ local oldProfiles,oldSources,oldSlot=r.ChestProfiles,r.ChestProfilePersistence,r.ChestProfileSlot
+ local oldSettings={Items=r.ChestItems,Item=r.ChestItem,Selection=r.ChestSelection,Discover=r.ChestDiscover,Whole=r.ChestWhole,
+  Speed=r.ChestSpeed,Travel=r.ChestTravel,Range=r.ChestScanRange,Goal=r.ChestGoal,Recorder=r.Recorder}
+ local oldWithdraw=r.WithdrawCarrots
+ local path,snapshot,writes=nil,nil,0
+ HttpService.JSONEncode=function(_,data) snapshot=data;return 'profiles-json' end
+ HttpService.JSONDecode=function(_,value) assert(value=='profiles-json');return snapshot end
+ writefile=function(name,value) assert(value=='profiles-json');path=name;writes+=1 end
+ readfile=function(name) assert(name==path);return 'profiles-json' end
+ r.WithdrawCarrots=function() error('profile UI must never withdraw') end
+ r.ChestProfiles={};r.ChestProfilePersistence={};r.ChestProfileSlot=1;r.Recorder=nil
+ r.ChestItems={wood=true,stone=true};r.ChestItem=nil;r.ChestSelection={};r.ChestDiscover=false;r.ChestWhole=false
+ r.ChestSpeed='Fast';r.ChestTravel='Walk';r.ChestScanRange=60;r.ChestGoal=100
+ showTab('Chests');flush()
+ assert(not r.ChestProfilesPanel.Visible and r.ChestAutoButton.Position.Y.Offset==130,'profiles must stay collapsed on tab reveal and keep collection near the top')
+ local initial=r.ChestItemButton.Position.Y.Offset
+ r.ChestProfilesButton.Activated:Fire()
+ assert(r.ChestProfilesPanel.Visible and r.ChestItemButton.Position.Y.Offset>=r.ChestProfilesPanel.Position.Y.Offset+r.ChestProfilesPanel.Size.Y.Offset,'profile expansion must push the item selector below the panel')
+ r.ChestProfileName.Text='  Material run  ';r.ChestProfileSaveButton.Activated:Fire()
+ assert(path=='RebornChestProfiles_7.json' and snapshot.Version==1 and snapshot.Profiles['1'].Name=='Material run' and writes==1,'Save button must persist the named profile to the account-specific file')
+ assert(r.ChestSelection and not snapshot.Profiles['1'].Selection and not snapshot.Profiles['1'].Chest,'saving preferences must not persist or change the current physical chest choice')
+ r.ChestItems=nil;r.ChestDiscover=true;r.ChestWhole=true;r.ChestSpeed='Standard';r.ChestTravel='Stay';r.ChestScanRange=120;r.ChestGoal=nil
+ r.ChestProfileLoadButton.Activated:Fire()
+ assert(r.ChestItems.wood and r.ChestItems.stone and r.ChestSpeed=='Fast' and r.ChestTravel=='Walk' and r.ChestScanRange==60 and r.ChestGoal==100,'Load button must restore all collection preferences')
+ assert(not r.ChestSelection and not r.ChestAutoEnabled and not r.ChestAutoWorker and not r.ChestProfilesPanel.Visible,'loading must reset stale physical selection, remain idle and close menus')
+ assert(r.ChestSpeedButton.Text=='Pace: Fast' and r.ChestScopeButton.Text=='Scope: Learned only' and r.ChestWholeButton.Text=='Whole chest: OFF' and r.ChestGoalButton.Text=='Auto goal: 100 items','profile loading must refresh existing controls')
+ r.ChestProfilesButton.Activated:Fire();r.ChestProfileSlotButton.Activated:Fire()
+ assert(r.ChestProfileSlot==2 and r.ChestProfileName.Text=='Chest setup 2','slot cycling must show a default name for an empty slot')
+ r.ChestProfileName.Text='Empty filter';r.ChestItems={};r.ChestProfileSaveButton.Activated:Fire()
+ r.ChestProfileSlotButton.Activated:Fire();r.ChestProfileName.Text='Everything';r.ChestItems=nil;r.ChestProfileSaveButton.Activated:Fire()
+ assert(snapshot.Profiles['2'].ItemMode=='Selected' and #snapshot.Profiles['2'].Items==0 and snapshot.Profiles['3'].ItemMode=='All','file encoding must distinguish None from All across separate slots')
+ r.ChestProfileSlotButton.Activated:Fire()
+ assert(r.ChestProfileSlot==1 and r.ChestProfileName.Text=='Material run' and not r.ChestItems,'browsing profiles must not apply them')
+ r.ChestAutoWorker=99
+ local before=writes
+ r.ChestProfileSaveButton.Activated:Fire();r.ChestProfileLoadButton.Activated:Fire()
+ assert(writes==before and not r.ChestItems,'in-flight request ownership must guard actual profile callbacks')
+ r.ChestAutoWorker=nil
+ r.ChestProfiles={};r.ChestProfilePersistence={}
+ assert(r.ReadChestProfiles() and r.ChestProfiles[1].Name=='Material run' and r.ChestProfiles[2].ItemMode=='Selected' and not r.ChestItems,'file reload must validate and cache settings without applying them')
+ r.RefreshChestProfiles()
+ showTab('Fishing');flush()
+ assert(not r.ChestProfilesPanel.Visible and r.ChestItemButton.Position.Y.Offset==initial,'tab cleanup must collapse profiles and restore exact layout positions')
+ for i=1,3 do r.ChestProfilesButton.Activated:Fire();r.ChestProfilesButton.Activated:Fire() end
+ assert(r.ChestItemButton.Position.Y.Offset==initial,'profile layout toggles must not accumulate drift')
+ r.ChestProfiles,r.ChestProfilePersistence,r.ChestProfileSlot=oldProfiles,oldSources,oldSlot
+ r.ChestItems,r.ChestItem,r.ChestSelection=oldSettings.Items,oldSettings.Item,oldSettings.Selection
+ r.ChestDiscover,r.ChestWhole,r.ChestSpeed=oldSettings.Discover,oldSettings.Whole,oldSettings.Speed
+ r.ChestTravel,r.ChestScanRange,r.ChestGoal,r.Recorder=oldSettings.Travel,oldSettings.Range,oldSettings.Goal,oldSettings.Recorder
+ r.WithdrawCarrots=oldWithdraw
+ writefile,readfile=oldWrite,oldRead;HttpService.JSONEncode,HttpService.JSONDecode=oldEncode,oldDecode
+ end)()
+
 RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
 assert(not RemoteCatalog.StopTimerDeadline,'destroying the hub must clear its timer')

@@ -2697,7 +2697,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "editor-chests-52",
+    Subtitle = "chest-profiles-53",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -2754,7 +2754,7 @@ local function createPage(name)
     -- Airflow's intro reveals its list's children. Use the content as that list.
     tab.List = page
     -- Auto Build owns collapsed-control visibility; the stock reveal would show hidden fields.
-    if name=="Auto Build" then tab._revealed=true end
+    if name=="Auto Build" or name=="Chests" then tab._revealed=true end
     pages[name] = page
     return page
 end
@@ -3080,7 +3080,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn editor-chests-52",
+    return table.concat({"Reborn chest-profiles-53",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -3805,6 +3805,40 @@ track(RemoteCatalog.ChestLearnedButton.Activated:Connect(function()
     RemoteCatalog.CloseMenus();RemoteCatalog.UpdateChestSelectionUI();RemoteCatalog.PreviewChestSelection()
     setStatus("Learned slots only selected. Press START COLLECTING; item choices are retained.",COLORS.good)
 end))
+RemoteCatalog.ChestProfilesButton=button({Parent=RemoteCatalog.ChestPage,Text="Chest profiles  ▾",TextSize=13,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,214)})
+RemoteCatalog.ChestProfilesPanel=Instance.new("Frame")
+RemoteCatalog.ChestProfilesPanel.Name="ChestProfiles";RemoteCatalog.ChestProfilesPanel.Size=UDim2.new(1,-12,0,152)
+RemoteCatalog.ChestProfilesPanel.Position=UDim2.fromOffset(6,254);RemoteCatalog.ChestProfilesPanel.BackgroundColor3=COLORS.panel
+RemoteCatalog.ChestProfilesPanel.BorderSizePixel=0;RemoteCatalog.ChestProfilesPanel.Visible=false;RemoteCatalog.ChestProfilesPanel.Parent=RemoteCatalog.ChestPage
+RemoteCatalog.ChestProfileSlotButton=button({Parent=RemoteCatalog.ChestProfilesPanel,Text="Profile: 1 / 3",TextSize=12,
+    Size=UDim2.new(.4,-6,0,30),Position=UDim2.fromOffset(4,4)})
+RemoteCatalog.ChestProfileName=Instance.new("TextBox")
+RemoteCatalog.ChestProfileName.Name="ChestProfileName";RemoteCatalog.ChestProfileName.Text="Chest setup 1"
+RemoteCatalog.ChestProfileName.PlaceholderText="Profile name (1–48 bytes)";RemoteCatalog.ChestProfileName.ClearTextOnFocus=false
+RemoteCatalog.ChestProfileName.TextSize=13;RemoteCatalog.ChestProfileName.TextColor3=COLORS.text;RemoteCatalog.ChestProfileName.BackgroundColor3=COLORS.bg
+RemoteCatalog.ChestProfileName.Size=UDim2.new(.6,-6,0,30);RemoteCatalog.ChestProfileName.Position=UDim2.new(.4,2,0,4);RemoteCatalog.ChestProfileName.Parent=RemoteCatalog.ChestProfilesPanel
+RemoteCatalog.ChestProfileSaveButton=button({Parent=RemoteCatalog.ChestProfilesPanel,Text="Save profile (overwrites)",TextSize=12,
+    Size=UDim2.new(.5,-6,0,30),Position=UDim2.fromOffset(4,40)})
+RemoteCatalog.ChestProfileLoadButton=button({Parent=RemoteCatalog.ChestProfilesPanel,Text="Load profile",TextSize=12,
+    Size=UDim2.new(.5,-6,0,30),Position=UDim2.new(.5,2,0,40)})
+RemoteCatalog.ChestProfileSummary=label({Parent=RemoteCatalog.ChestProfilesPanel,Text="No profile saved.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-12,0,70),Position=UDim2.fromOffset(6,76)})
+RemoteCatalog.ChestProfileSummary.TextWrapped=true
+track(RemoteCatalog.ChestProfilesButton.Activated:Connect(function()
+    local open=not RemoteCatalog.ChestProfilesPanel.Visible
+    RemoteCatalog.CloseMenus();RemoteCatalog.ChestProfilesPanel.Visible=open
+    RemoteCatalog.ChestProfilesButton.Text=open and "Chest profiles  ▴" or "Chest profiles  ▾"
+    RemoteCatalog.RefreshChestProfiles();RemoteCatalog.LayoutChestControls()
+end))
+track(RemoteCatalog.ChestProfileSlotButton.Activated:Connect(function()
+    RemoteCatalog.ChestProfileSlot=RemoteCatalog.ChestProfileSlot%3+1
+    local profile=RemoteCatalog.ChestProfiles[RemoteCatalog.ChestProfileSlot]
+    RemoteCatalog.ChestProfileName.Text=profile and profile.Name or "Chest setup "..RemoteCatalog.ChestProfileSlot
+    RemoteCatalog.RefreshChestProfiles()
+end))
+track(RemoteCatalog.ChestProfileSaveButton.Activated:Connect(function() RemoteCatalog.SaveChestProfile() end))
+track(RemoteCatalog.ChestProfileLoadButton.Activated:Connect(function() RemoteCatalog.LoadChestProfile() end))
 RemoteCatalog.ChestControlPositions={}
 for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
     if child:IsA("GuiObject") and child~=RemoteCatalog.ChestSelectMenu and child~=RemoteCatalog.ChestAmountMenu and child~=RemoteCatalog.ChestItemMenu then
@@ -3820,16 +3854,24 @@ function RemoteCatalog.LayoutChestControls()
         if y>=328 then y+=selectOffset end
         if base.Y.Offset>=642 then y+=amountOffset end
         if base.Y.Offset>=260 then y+=itemOffset end
+        if child~=RemoteCatalog.ChestProfilesButton and child~=RemoteCatalog.ChestProfilesPanel and base.Y.Offset>=214 then
+            y+=44+(RemoteCatalog.ChestProfilesPanel.Visible and 160 or 0)
+        end
         child.Position=UDim2.new(base.X.Scale,base.X.Offset,base.Y.Scale,y)
     end
-    RemoteCatalog.ChestAmountMenu.Position=UDim2.new(.5,3,0,628+selectOffset+itemOffset)
-    RemoteCatalog.ChestSelectMenu.Position=UDim2.fromOffset(6,326+itemOffset)
+    local profileOffset=44+(RemoteCatalog.ChestProfilesPanel.Visible and 160 or 0)
+    RemoteCatalog.ChestItemMenu.Position=UDim2.fromOffset(6,254+profileOffset)
+    RemoteCatalog.ChestAmountMenu.Position=UDim2.new(.5,3,0,628+selectOffset+itemOffset+profileOffset)
+    RemoteCatalog.ChestSelectMenu.Position=UDim2.fromOffset(6,326+itemOffset+profileOffset)
 end
 table.insert(RemoteCatalog.MenuClosers,function()
     RemoteCatalog.ChestSelectMenu.Visible=false;RemoteCatalog.ChestAmountMenu.Visible=false;RemoteCatalog.ChestItemMenu.Visible=false
     if RemoteCatalog.ChestItemSearch then pcall(function() RemoteCatalog.ChestItemSearch:ReleaseFocus() end) end
+    RemoteCatalog.ChestProfilesPanel.Visible=false;RemoteCatalog.ChestProfilesButton.Text="Chest profiles  ▾"
+    pcall(function() RemoteCatalog.ChestProfileName:ReleaseFocus() end)
     RemoteCatalog.LayoutChestControls()
 end)
+RemoteCatalog.LayoutChestControls()
 
 RemoteCatalog.HarvestWalkButton=button({Parent=harvestPage,Text=CONFIG.HarvestWalk and "AUTO MOVE: ON" or "AUTO MOVE: OFF",TextSize=12,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,244),Bg=CONFIG.HarvestWalk and COLORS.on or COLORS.off})
@@ -4620,7 +4662,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn editor-chests-52", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-profiles-53", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6339,6 +6381,139 @@ function RemoteCatalog.WithdrawSelectedCarrots(generation)
     if #targets==0 then return false,"Learn at least one chest first" end
     return sent>0,"Sent "..sent.."/"..#targets.." requests; "..skipped.." skipped or rejected. Check inventory. "..table.concat(details,"; ")
 end
+-- CHEST PROFILES BEGIN
+RemoteCatalog.ChestProfiles={}
+RemoteCatalog.ChestProfilePersistence={}
+RemoteCatalog.ChestProfileSlot=1
+function RemoteCatalog.ValidateChestProfile(data)
+    assert(type(data)=="table" and data.Version==1,"Unsupported chest profile version")
+    assert(type(data.Name)=="string" and #data.Name>=1 and #data.Name<=48 and data.Name:match("^%s*(.-)%s*$")==data.Name and not data.Name:find("[%c]"),"Use a profile name of 1–48 bytes")
+    assert(data.ItemMode=="All" or data.ItemMode=="Selected","Invalid profile item mode")
+    assert(type(data.Items)=="table" and #data.Items<=64,"Profiles support up to 64 selected items")
+    local items,seen,count={},{},0
+    for index in pairs(data.Items) do
+        assert(type(index)=="number" and index%1==0 and index>=1 and index<=#data.Items,"Invalid profile item list")
+        count+=1
+    end
+    assert(count==#data.Items and (data.ItemMode~="All" or count==0),"Invalid profile item list")
+    for _,item in ipairs(data.Items) do
+        assert(type(item)=="string" and #item>=1 and #item<=128 and item:match("^%s*(.-)%s*$")==item and not item:find("[%c]") and not seen[item],"Invalid profile item name")
+        seen[item]=true;table.insert(items,item)
+    end
+    table.sort(items)
+    assert(type(data.Discover)=="boolean" and type(data.Whole)=="boolean","Invalid profile scope")
+    assert(data.Speed=="Standard" or data.Speed=="Fast","Invalid profile pace")
+    assert(data.Travel=="Stay" or data.Travel=="Walk","Invalid profile movement")
+    assert(data.Range==30 or data.Range==60 or data.Range==120 or data.Range==240,"Invalid profile range")
+    assert(data.Goal==0 or data.Goal==25 or data.Goal==50 or data.Goal==100 or data.Goal==250 or data.Goal==500,"Invalid profile goal")
+    return {Version=1,Name=data.Name,ItemMode=data.ItemMode,Items=items,Discover=data.Discover,Whole=data.Whole,
+        Speed=data.Speed,Travel=data.Travel,Range=data.Range,Goal=data.Goal}
+end
+function RemoteCatalog.ValidateChestProfiles(data)
+    assert(type(data)=="table" and data.Version==1 and type(data.Profiles)=="table","Invalid chest profiles file")
+    local result={}
+    for key,profile in pairs(data.Profiles) do
+        assert(key=="1" or key=="2" or key=="3","Invalid chest profile slot")
+        result[tonumber(key)]=RemoteCatalog.ValidateChestProfile(profile)
+    end
+    return result
+end
+function RemoteCatalog.RefreshChestProfiles()
+    local slot=RemoteCatalog.ChestProfileSlot
+    local profile=RemoteCatalog.ChestProfiles[slot]
+    RemoteCatalog.ChestProfileSlotButton.Text="Profile: "..slot.." / 3"
+    if profile then
+        local items=profile.ItemMode=="All" and "All learned items" or #profile.Items==0 and "No items selected" or #profile.Items.." selected items"
+        RemoteCatalog.ChestProfileSummary.Text=profile.Name.." · "..(RemoteCatalog.ChestProfilePersistence[slot] or "Session only").."\n"..items.." · "..profile.Speed.." · "..profile.Travel.."\n"..(profile.Discover and "All matching" or "Learned only").." · "..(profile.Whole and "Whole chest" or "Learned slots").." · Goal "..(profile.Goal==0 and "Unlimited" or profile.Goal)
+    else
+        RemoteCatalog.ChestProfileSummary.Text="Empty profile "..slot..". "..(RemoteCatalog.ChestProfilesFileState or "Session only").."\nSave current settings here (overwrites this slot). Load never starts collecting."
+    end
+end
+function RemoteCatalog.ReadChestProfiles()
+    if type(readfile)~="function" then RemoteCatalog.ChestProfilesFileState="File reading unavailable";return false end
+    local ok,result=pcall(function()
+        local encoded=readfile("RebornChestProfiles_"..tostring(player.UserId)..".json")
+        assert(type(encoded)=="string" and #encoded<=65536,"Invalid chest profiles file size")
+        return RemoteCatalog.ValidateChestProfiles(HttpService:JSONDecode(encoded))
+    end)
+    if not ok then RemoteCatalog.ChestProfilesFileState="File missing or invalid; session settings retained";return false end
+    for slot,profile in pairs(result) do
+        if not RemoteCatalog.ChestProfiles[slot] then
+            RemoteCatalog.ChestProfiles[slot]=profile;RemoteCatalog.ChestProfilePersistence[slot]="Loaded from file"
+        end
+    end
+    RemoteCatalog.ChestProfilesFileState="File loaded"
+    return true
+end
+function RemoteCatalog.ChestProfileIdle()
+    local slot=RemoteCatalog.ChestProfileSlot
+    if type(slot)~="number" or slot%1~=0 or slot<1 or slot>3 then setStatus("Choose a chest profile slot from 1 to 3",COLORS.warn);return false end
+    if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy or RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnChestOnly then
+        setStatus("Finish or stop chest collection/learning before saving or loading profiles",COLORS.warn);return false
+    end
+    return true
+end
+function RemoteCatalog.SaveChestProfile()
+    if not RemoteCatalog.ChestProfileIdle() then return false end
+    local selected,mode={},"All"
+    if RemoteCatalog.ChestItem then
+        mode="Selected"
+        if not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[RemoteCatalog.ChestItem] then table.insert(selected,RemoteCatalog.ChestItem) end
+    elseif RemoteCatalog.ChestItems then
+        mode="Selected"
+        for item,enabled in pairs(RemoteCatalog.ChestItems) do if enabled then table.insert(selected,item) end end
+    end
+    local name=RemoteCatalog.ChestProfileName.Text:match("^%s*(.-)%s*$")
+    local ok,profile=pcall(RemoteCatalog.ValidateChestProfile,{Version=1,Name=name,ItemMode=mode,Items=selected,
+        Discover=RemoteCatalog.ChestDiscover,Whole=RemoteCatalog.ChestWhole,Speed=RemoteCatalog.ChestSpeed,
+        Travel=RemoteCatalog.ChestTravel,Range=RemoteCatalog.ChestScanRange,Goal=RemoteCatalog.ChestGoal or 0})
+    if not ok then setStatus("Profile not saved: "..tostring(profile),COLORS.warn);return false end
+    local slot=RemoteCatalog.ChestProfileSlot
+    RemoteCatalog.ChestProfiles[slot]=profile;RemoteCatalog.ChestProfileName.Text=profile.Name
+    local saved=false
+    if type(writefile)=="function" then
+        saved=pcall(function()
+            local envelope={Version=1,Profiles={}}
+            for index,entry in pairs(RemoteCatalog.ChestProfiles) do envelope.Profiles[tostring(index)]=RemoteCatalog.ValidateChestProfile(entry) end
+            local encoded=HttpService:JSONEncode(envelope)
+            assert(type(encoded)=="string" and #encoded<=65536,"Chest profiles file exceeds its size limit")
+            local result=writefile("RebornChestProfiles_"..tostring(player.UserId)..".json",encoded)
+            assert(result~=false,"Profile file writer reported failure")
+        end)
+    end
+    -- A successful write stores every current profile, including earlier session-only saves.
+    if saved then for index in pairs(RemoteCatalog.ChestProfiles) do RemoteCatalog.ChestProfilePersistence[index]="File + session" end
+    else RemoteCatalog.ChestProfilePersistence[slot]="Session only" end
+    RemoteCatalog.RefreshChestProfiles()
+    setStatus("Saved chest profile "..slot..": "..profile.Name..(saved and " (file + session)" or " (session only; file saving unavailable or failed)"),COLORS.good)
+    return true
+end
+function RemoteCatalog.LoadChestProfile()
+    if not RemoteCatalog.ChestProfileIdle() then return false end
+    local ok,profile=pcall(RemoteCatalog.ValidateChestProfile,RemoteCatalog.ChestProfiles[RemoteCatalog.ChestProfileSlot])
+    if not ok then setStatus("Save a valid profile in this slot before loading it",COLORS.warn);return false end
+    local items
+    if profile.ItemMode=="Selected" then items={};for _,item in ipairs(profile.Items) do items[item]=true end end
+    RemoteCatalog.ChestItems=items;RemoteCatalog.ChestItem=nil;RemoteCatalog.ChestSelection=nil
+    RemoteCatalog.ChestDiscover=profile.Discover;RemoteCatalog.ChestWhole=profile.Whole;RemoteCatalog.ChestSpeed=profile.Speed
+    RemoteCatalog.ChestTravel=profile.Travel;RemoteCatalog.ChestScanRange=profile.Range;RemoteCatalog.ChestGoal=profile.Goal>0 and profile.Goal or nil
+    RemoteCatalog.ChestProfileName.Text=profile.Name
+    RemoteCatalog.ChestSpeedButton.Text="Pace: "..profile.Speed
+    RemoteCatalog.ChestTravelButton.Text="Movement: "..profile.Travel
+    RemoteCatalog.ChestRangeButton.Text="Approach: "..profile.Range.." studs"
+    RemoteCatalog.ChestGoalButton.Text="Auto goal: "..(profile.Goal>0 and profile.Goal.." items" or "Unlimited")
+    RemoteCatalog.ChestScopeButton.Text=profile.Discover and "Scope: All matching" or "Scope: Learned only"
+    RemoteCatalog.ChestWholeButton.Text=profile.Whole and "Whole chest: ON" or "Whole chest: OFF"
+    RemoteCatalog.ChestItemButton.Text="Items: "..RemoteCatalog.ChestItemSelectionText().."  ▾"
+    RemoteCatalog.CloseMenus();RemoteCatalog.UpdateChestSelectionUI();RemoteCatalog.PreviewChestSelection();RemoteCatalog.RefreshChestProfiles()
+    setStatus("Loaded "..profile.Name..". Chest choice reset to all in scope; learn slots this session, then press START COLLECTING.",COLORS.good)
+    return true
+end
+RemoteCatalog.ReadChestProfiles()
+if RemoteCatalog.ChestProfiles[RemoteCatalog.ChestProfileSlot] then RemoteCatalog.ChestProfileName.Text=RemoteCatalog.ChestProfiles[RemoteCatalog.ChestProfileSlot].Name end
+RemoteCatalog.RefreshChestProfiles()
+-- CHEST PROFILES END
+
 -- CHEST AUTO BEGIN
 function RemoteCatalog.CarrotCount(item)
     local total=0
@@ -6354,7 +6529,7 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn editor-chests-52\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-profiles-53\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -6551,7 +6726,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn editor-chests-52\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-profiles-53\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
