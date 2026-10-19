@@ -1294,3 +1294,42 @@ rejected larger amounts, remainders, goals, capped retries, manual retry,
 cancellation, Pause during requests/navigation/quantity waits/cooldowns, profile
 compatibility and actual UI layout/actions. The full suite passes. Live behavior
 of this new version, including the server's accepted maximum, remains unverified.
+
+
+### Recovering request pacing and Fast slot setup (v64)
+
+The supplied v63 clip shows 91 collected items, 2/299 checks finished, a 30-carrot
+notification and a multi-second countdown after a successful transfer. V63 kept
+a raised server interval for the rest of the session. V64 reduces that interval
+by 20 percent after every three non-throttled server replies, down to the chosen
+base pace (0.25 seconds Standard / 0.1 seconds Fast). A new `TOO_FAST` resets the
+recovery streak and retains the existing bounded backoff and same-batch retry.
+
+Successful calls and structured server replies with a boolean `success` field,
+including non-throttled empty-slot rejections, provide pacing evidence. Local
+validation messages and transport failures reset the streak without reducing the
+interval. This also lets scans of empty slots recover from a temporary throttle.
+Pacing state remains shared across manual/automatic chest requests in the current
+script session; it is not saved in profiles. Server acceptance of a shorter
+interval must still be observed and no fixed live throughput is promised.
+
+The footer distinguishes **Request pace** (ordinary spacing after a response)
+from **Server cooldown** (waiting to retry `TOO_FAST`). Pause freezes either
+countdown, and Stop/GUI cleanup clears both the countdown and its label state.
+The existing amount, goal, top-up, exact-item confirmation and retry rules remain.
+
+**Fast slot setup**, beside **Chest profiles**, chooses All matching scope and
+turns Whole chest OFF. It clears an individual chest selection, preserves item
+filters and batch/run preferences, refreshes the preview, and leaves collection
+OFF. Press START COLLECTING separately. It checks learned slots and the matching
+slots of discovered supported chests, rather than every one of the 13 supported
+slots. Multiple explicitly learned slots remain available. Re-enable Whole chest
+when items move between slots. The default scan scope is unchanged until the
+preset is selected, and workers/cleanup lock the button. Profiles already save
+its resulting Discover/Whole preferences; no new profile schema is required.
+
+Mock tests cover recovery from a four-second interval against a simulated server
+limit, renewed throttling without shrinking batches, the selected base-pace floor,
+non-throttled empty replies versus local/transport errors, shared manual recovery,
+countdown labels/cleanup, exact slot/filter preservation and actual preset/profile
+layout controls. The full regression suite passes. Live v64 remains unverified.

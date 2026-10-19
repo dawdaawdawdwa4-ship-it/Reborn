@@ -514,3 +514,25 @@ worker. No packet contains pause or pacing state. Profiles accept only the new
 validated optional `AutoBatch` preference (old profiles retain fixed 30), never
 live bindings, pause state or rate timing. Mock rate-limit, amount, cancellation,
 confirmation, profile and full regression checks pass; live v63 is unverified.
+
+
+### Recovering learned pacing (paced-chests-64)
+
+The v63 recording confirms collected inventory and a long normal inter-request
+wait; it does not establish the server's maximum batch or required interval.
+V64 keeps the `TOO_FAST` handling but reduces a previously raised interval by
+20 percent after three non-throttled server replies, never below the selected
+base pace. A fresh rate rejection resets the streak and uses the existing bounded
+backoff without changing the batch or treating the slot as empty.
+
+Structured empty/rejected replies with a boolean `success` also provide server
+pacing evidence. Local validation strings and transport errors do not. Manual
+and automatic loops share this runtime policy. Ordinary request pacing and retry
+cooldowns have separate UI labels; Pause/Stop and GUI cleanup apply to both.
+
+An optional Fast slot setup selects the existing matching-chest/learned-slot mode
+while preserving item filters, distinct learned slots and packet bindings. It
+never starts collection and leaves whole-chest coverage available as an explicit
+choice. No remote, payload, catalog (145 entries), recorder v28 or persisted
+profile schema changes. Mock pacing, retry, amount, target/UI and complete
+regression checks pass; live v64 acceptance remains unverified.

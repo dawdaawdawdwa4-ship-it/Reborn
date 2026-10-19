@@ -689,10 +689,10 @@ do
  assert(not RemoteCatalog.ChestTooFast(cyclic) and not RemoteCatalog.ChestTooFast({success=false,error='NOT_ENOUGH_ITEMS'}),'only the known rate error may trigger same-batch pacing retries')
  prepare({Goal=930,Interval=.8})
  assert(RemoteCatalog.SetChestAuto(true));drain()
- assert(qty==930 and RemoteCatalog.ChestAutoTotal==930 and #trace==7 and RemoteCatalog.ChestRateDelay==1,'Max must grow full transfers while learning an accepted request pace')
+ assert(qty==930 and RemoteCatalog.ChestAutoTotal==930 and #trace==7 and RemoteCatalog.ChestRateDelay==.8,'Max must grow full transfers while recovering an accepted request pace')
  assert(trace[1].Amount==30 and trace[2].Rate and trace[2].Amount==60 and trace[3].Rate and trace[3].Amount==60 and trace[4].Amount==60,'TOO_FAST must retry the exact growth batch instead of halving it')
  assert(trace[5].Amount==120 and trace[6].Amount==240 and trace[7].Amount==480,'confirmed Max batches must continue growing on the same stack')
- for i=4,#trace do assert(not trace[i].Rate and trace[i].At-trace[i-1].At>=1-1e-6,'learned pacing must apply to subsequent requests') end
+ for i=4,#trace do assert(not trace[i].Rate and trace[i].At-trace[i-1].At>=.8-1e-6,'learned pacing must still respect the simulated server interval') end
  prepare({Goal=2930})
  assert(RemoteCatalog.SetChestAuto(true));drain()
  assert(qty==2930 and #trace==8 and trace[7].Amount==1000 and trace[8].Amount==40,'adaptive Max must cap at 1000 and obey the remaining cumulative goal')
@@ -730,7 +730,28 @@ do
  prepare({RejectFirst=true})
  assert(RemoteCatalog.SetChestAuto(true));usable=false;drain()
  assert(#trace==1 and qty==0,'cooldown completion must still validate the live binding before retrying')
- task.wait=oldWait;RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil
+ -- A transient four-second delay must not become a permanent per-request pause.
+ prepare({Goal=1800,Fixed=30,Interval=.4})
+ RemoteCatalog.ChestRateDelay=4;RemoteCatalog.ChestRateSuccesses=0
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.ChestCooldownKind=='pace')
+ for _=1,3000 do if not RemoteCatalog.ChestAutoWorker then break end;pump(1) end
+ assert(not RemoteCatalog.ChestAutoWorker and qty==1800 and #trace<75 and RemoteCatalog.ChestRateDelay<1,'stable responses must gradually recover a transient four-second delay without losing transfers')
+ assert(math.abs(trace[2].At-trace[1].At-4)<1e-6 and math.abs(trace[4].At-trace[3].At-3.2)<1e-6,'pacing must decrease by twenty percent only after three valid server responses')
+ for _,request in ipairs(trace) do assert(request.Amount==30,'recovery must retain the full batch even if the faster probe meets TOO_FAST again') end
+ -- Accepted protocol replies, including empty checks, are pacing evidence.
+ RemoteCatalog.ChestRateDelay=4;RemoteCatalog.ChestRateSuccesses=0
+ RemoteCatalog.ObserveChestPace(false,'Stand within 20 studs',.25)
+ RemoteCatalog.ObserveChestPace(false,nil,.25)
+ assert(RemoteCatalog.ChestRateDelay==4 and RemoteCatalog.ChestRateSuccesses==0,'local/transport errors must never suggest that a shorter server interval is accepted')
+ for _=1,3 do RemoteCatalog.ObserveChestPace(false,{success=false,error='INSUFFICIENT_ITEMS'},.25) end
+ assert(RemoteCatalog.ChestRateDelay==3.2,'non-throttled empty-slot server replies must let scanning recover too')
+ RemoteCatalog.ObserveChestPace(true,nil,.25);RemoteCatalog.ObserveChestPace(false,{success=false,error='TOO_FAST'},.25)
+ assert(RemoteCatalog.ChestRateDelay==3.2 and RemoteCatalog.ChestRateSuccesses==0,'a rate rejection must reset the recovery streak')
+ assert(RemoteCatalog.ChestBackoff()==4 and RemoteCatalog.ChestRateSuccesses==0,'fresh throttling must still back off within the existing bound')
+ RemoteCatalog.ChestRateDelay=.26;RemoteCatalog.ChestRateSuccesses=0
+ for _=1,30 do RemoteCatalog.ObserveChestPace(true,nil,.25) end
+ assert(RemoteCatalog.ChestRateDelay==.25,'recovery must never go below the selected base pace')
+ task.wait=oldWait;RemoteCatalog.ChestRateDelay=nil;RemoteCatalog.ChestRateSuccesses=0;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil
 end
 return 'Chest Auto Max: adaptive/full-stack batches, TOO_FAST pacing, repeat/top-up, pause/resume, goals, confirmation, remainders, Stop and cleanup passed'
 `;

@@ -2859,7 +2859,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "adaptive-chests-63",
+    Subtitle = "paced-chests-64",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3326,7 +3326,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn adaptive-chests-63",
+    return table.concat({"Reborn paced-chests-64",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -4134,7 +4134,16 @@ RemoteCatalog.ChestBatchMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.ChestPag
     Layout=function() if RemoteCatalog.LayoutChestControls then RemoteCatalog.LayoutChestControls() end end,
 })
 RemoteCatalog.ChestProfilesButton=button({Parent=RemoteCatalog.ChestPage,Text="Chest profiles  ▾",TextSize=13,
-    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,214)})
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,214)})
+RemoteCatalog.ChestQuickButton=button({Parent=RemoteCatalog.ChestPage,Text="Fast slot setup",TextSize=13,
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,214)})
+track(RemoteCatalog.ChestQuickButton.Activated:Connect(function()
+    if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then return end
+    RemoteCatalog.ChestDiscover=true;RemoteCatalog.ChestWhole=false;RemoteCatalog.ChestSelection=nil
+    RemoteCatalog.ChestScopeButton.Text="Scope: All matching";RemoteCatalog.ChestWholeButton.Text="Whole chest: OFF"
+    RemoteCatalog.CloseMenus();RemoteCatalog.UpdateChestSelectionUI();RemoteCatalog.PreviewChestSelection()
+    setStatus("Fast slot setup: learned slots across matching chests. Items retained; press START COLLECTING. Use Whole chest ON if items move.",COLORS.good)
+end))
 RemoteCatalog.ChestProfilesPanel=Instance.new("Frame")
 RemoteCatalog.ChestProfilesPanel.Name="ChestProfiles";RemoteCatalog.ChestProfilesPanel.Size=UDim2.new(1,-12,0,152)
 RemoteCatalog.ChestProfilesPanel.Position=UDim2.fromOffset(6,254);RemoteCatalog.ChestProfilesPanel.BackgroundColor3=COLORS.panel
@@ -4194,7 +4203,7 @@ function RemoteCatalog.LayoutChestControls()
         if base.Y.Offset>=686 then y+=amountOffset end
         if base.Y.Offset>=490 then y+=stockOffset end
         if base.Y.Offset>=260 then y+=itemOffset end
-        if child~=RemoteCatalog.ChestProfilesButton and child~=RemoteCatalog.ChestProfilesPanel and base.Y.Offset>=214 then
+        if child~=RemoteCatalog.ChestProfilesButton and child~=RemoteCatalog.ChestProfilesPanel and child~=RemoteCatalog.ChestQuickButton and base.Y.Offset>=214 then
             y+=44+(RemoteCatalog.ChestProfilesPanel.Visible and 160 or 0)
         end
         child.Position=UDim2.new(base.X.Scale,base.X.Offset,base.Y.Scale,y)
@@ -5008,7 +5017,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn adaptive-chests-63", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn paced-chests-64", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6758,7 +6767,10 @@ function RemoteCatalog.WithdrawSelectedCarrots(generation)
                 if not gui.Parent or generation and RemoteCatalog.ChestManualGeneration~=generation then return false,"Withdrawal stopped" end
                 ran,ok,result=pcall(RemoteCatalog.WithdrawCarrots,nil,entry.Recorder,entry.Binding)
                 if not ran then ok,result=false,ok end
-                if ok or not RemoteCatalog.ChestTooFast(result) then break end
+                if ok or not RemoteCatalog.ChestTooFast(result) then
+                    if ran then RemoteCatalog.ObserveChestPace(ok,result,pause) end
+                    break
+                end
                 if attempt==5 then return false,"Server keeps returning TOO_FAST; stopped after five attempts without reducing the batch" end
                 local function active() return gui.Parent~=nil and (not generation or RemoteCatalog.ChestManualGeneration==generation) end
                 if not RemoteCatalog.WaitChestCooldown(RemoteCatalog.ChestBackoff(),active) then return false,"Withdrawal stopped" end
@@ -6775,7 +6787,7 @@ function RemoteCatalog.WithdrawSelectedCarrots(generation)
             local delay=math.max(pause,RemoteCatalog.ChestRateDelay or 0)
             if delay>pause then
                 local function active() return gui.Parent~=nil and (not generation or RemoteCatalog.ChestManualGeneration==generation) end
-                if not RemoteCatalog.WaitChestCooldown(delay,active) then break end
+                if not RemoteCatalog.WaitChestCooldown(delay,active,nil,"pace") then break end
             else task.wait(pause) end
         end
     end
@@ -6954,7 +6966,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn adaptive-chests-63\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn paced-chests-64\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -6986,19 +6998,35 @@ function RemoteCatalog.ChestTooFast(response)
 end
 function RemoteCatalog.ChestBackoff()
     local previous=RemoteCatalog.ChestRateDelay or 0
+    RemoteCatalog.ChestRateSuccesses=0
     RemoteCatalog.ChestRateDelay=math.min(4,math.max(.5,previous*2))
     return RemoteCatalog.ChestRateDelay
 end
-function RemoteCatalog.WaitChestCooldown(seconds,active,ready)
+-- Recover from a temporary throttle after three non-throttled server replies.
+-- Local validation/transport errors provide no evidence that faster pacing works.
+function RemoteCatalog.ObserveChestPace(sent,response,base)
+    local delay=RemoteCatalog.ChestRateDelay
+    if not delay or delay<=base then RemoteCatalog.ChestRateSuccesses=0;return end
+    if RemoteCatalog.ChestTooFast(response) or not (sent or type(response)=="table" and type(response.success)=="boolean") then
+        RemoteCatalog.ChestRateSuccesses=0;return
+    end
+    RemoteCatalog.ChestRateSuccesses=(RemoteCatalog.ChestRateSuccesses or 0)+1
+    if RemoteCatalog.ChestRateSuccesses>=3 then
+        RemoteCatalog.ChestRateDelay=math.max(base,math.floor(delay*.8*100+.5)/100)
+        RemoteCatalog.ChestRateSuccesses=0
+    end
+end
+function RemoteCatalog.WaitChestCooldown(seconds,active,ready,kind)
     local remaining=seconds
+    RemoteCatalog.ChestCooldownKind=kind or "retry"
     while remaining>1e-6 do
-        if not active() or ready and not ready() then RemoteCatalog.ChestCooldown=nil;return false end
+        if not active() or ready and not ready() then RemoteCatalog.ChestCooldown=nil;RemoteCatalog.ChestCooldownKind=nil;return false end
         RemoteCatalog.ChestCooldown=string.format("%.1fs",remaining)
         RemoteCatalog.RefreshChestActions()
         local tick=math.min(.1,remaining)
         task.wait(tick);remaining=math.max(0,remaining-tick)
     end
-    RemoteCatalog.ChestCooldown=nil
+    RemoteCatalog.ChestCooldown=nil;RemoteCatalog.ChestCooldownKind=nil
     return active()
 end
 -- Keep action labels stable; progress belongs in the status line.
@@ -7009,7 +7037,7 @@ function RemoteCatalog.RefreshChestActions()
     local manual=RemoteCatalog.ChestManualRunning
     local paused=auto and RemoteCatalog.ChestAutoPaused
     local locked=auto or cleanup or RemoteCatalog.ChestBusy
-    for _,key in ipairs({"ChestAmountButton","ChestSpeedButton","ChestLearnedButton","ChestStockButton","ChestRepeatButton","ChestBatchButton"}) do
+    for _,key in ipairs({"ChestAmountButton","ChestSpeedButton","ChestLearnedButton","ChestStockButton","ChestRepeatButton","ChestBatchButton","ChestQuickButton"}) do
         local control=RemoteCatalog[key]
         if control then
             control.Active=not locked;control.Selectable=not locked;control.AutoButtonColor=not locked
@@ -7033,7 +7061,7 @@ function RemoteCatalog.RefreshChestActions()
         local learning=RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnChestOnly
         RemoteCatalog.ChestIntro.Text=cleanup and "Stopping · waiting for the current request"
             or paused and (RemoteCatalog.ChestBusy and "Pausing · finishing current request" or "Paused · Resume continues this run; Stop ends it")
-            or RemoteCatalog.ChestCooldown and ("Server cooldown · next request in "..RemoteCatalog.ChestCooldown)
+            or RemoteCatalog.ChestCooldown and ((RemoteCatalog.ChestCooldownKind=="pace" and "Request pace" or "Server cooldown").." · next request in "..RemoteCatalog.ChestCooldown)
             or manual and ("Withdrawing · "..(RemoteCatalog.ChestManualProgress or "starting"))
             or auto and (RemoteCatalog.ChestRepeatWaiting and ("Waiting · next scan in "..tostring(RemoteCatalog.ChestNextScan or 2).."s") or ("Collecting · "..(RemoteCatalog.ChestAutoProgress or "starting")))
             or learning and "Learning · withdraw once from each chest" or "Ready · learn chests, choose targets, then collect"
@@ -7066,7 +7094,7 @@ function RemoteCatalog.SetChestAuto(state)
         RemoteCatalog.Navigation.Stop("Chest")
         RemoteCatalog.ChestAutoEnabled=false
         RemoteCatalog.ChestAutoPaused=false
-        RemoteCatalog.ChestCooldown=nil
+        RemoteCatalog.ChestCooldown=nil;RemoteCatalog.ChestCooldownKind=nil
         RemoteCatalog.ChestRepeatWaiting=false
         RemoteCatalog.ChestNextScan=nil
         RemoteCatalog.ChestAutoGeneration=(RemoteCatalog.ChestAutoGeneration or 0)+1
@@ -7127,7 +7155,7 @@ function RemoteCatalog.SetChestAuto(state)
         local function moving() return active() and not RemoteCatalog.ChestAutoPaused end
         local function paced(base)
             local delay=math.max(base,RemoteCatalog.ChestRateDelay or 0)
-            if delay>base then return RemoteCatalog.WaitChestCooldown(delay,active,ready) end
+            if delay>base then return RemoteCatalog.WaitChestCooldown(delay,active,ready,"pace") end
             task.wait(base)
             return active()
         end
@@ -7269,6 +7297,7 @@ function RemoteCatalog.SetChestAuto(state)
                     continue
                 end
                 state.RateRetries=0
+                if ran then RemoteCatalog.ObserveChestPace(sent,response,successPause) end
                 if after==nil then
                     RemoteCatalog.ChestAutoMessage(afterState=="pending" and ("The "..tostring(binding.Item or "carrotHarvested").." stack quantity did not become readable within 2 seconds. No further requests were sent; let inventory settle and try again.") or "Item count became unreadable; automatic withdrawal stopped.")
                     break
@@ -7312,7 +7341,7 @@ function RemoteCatalog.SetChestAuto(state)
         if ownsBusy then RemoteCatalog.ChestBusy=false end
         RemoteCatalog.ChestRepeatWaiting=false
         RemoteCatalog.ChestAutoPaused=false
-        RemoteCatalog.ChestCooldown=nil
+        RemoteCatalog.ChestCooldown=nil;RemoteCatalog.ChestCooldownKind=nil
         RemoteCatalog.ChestAutoWorker=nil
         RemoteCatalog.ChestNextScan=nil
         RemoteCatalog.RefreshChestActions()
@@ -7360,14 +7389,14 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         local ran,ok,reason=pcall(RemoteCatalog.WithdrawSelectedCarrots,generation)
         RemoteCatalog.ChestBusy=false
         RemoteCatalog.ChestManualRunning=false
-        RemoteCatalog.ChestCooldown=nil
+        RemoteCatalog.ChestCooldown=nil;RemoteCatalog.ChestCooldownKind=nil
         RemoteCatalog.ChestManualProgress=nil
         if not gui.Parent then return end
         RemoteCatalog.RefreshChestActions()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn adaptive-chests-63\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn paced-chests-64\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn

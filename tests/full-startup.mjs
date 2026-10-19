@@ -848,7 +848,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn adaptive-chests-63',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn paced-chests-64',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1238,6 +1238,58 @@ end)()
  assert(coroutine.status(co)=='dead' and calls==2 and not r.ChestCooldown and r.ChestRateDelay==.5,'manual withdrawal must retry once at its learned pace, rather than skipping the stack')
  r.SelectedChestTargets,r.ChestRequestReady,r.WithdrawCarrots=targets,ready,withdraw
  r.ChestRateDelay=nil;r.RefreshChestActions()
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ local targets,discover,whole,selection,items,item=r.ChestTargets,r.ChestDiscover,r.ChestWhole,r.ChestSelection,r.ChestItems,r.ChestItem
+ local a,b={Name='chestMediumIndustrialIO'},{Name='chestMediumIndustrialIO'}
+ local owner={}
+ function owner:MakeChestTarget(binding,chest,slot) return {Chest=chest,Slot=slot,Item=binding.Item,Amount=binding.Amount} end
+ r.ChestTargets=function() return {{Recorder=owner,Binding={Chest=a,Slot=3,Item='wood',Amount=30}},{Recorder=owner,Binding={Chest=b,Slot=8,Item='wood',Amount=30}},{Recorder=owner,Binding={Chest=a,Slot=1,Item='stone',Amount=30}}} end
+ r.ChestDiscover=false;r.ChestWhole=true;r.ChestSelection={Chest=a,Slot=3};r.ChestItems={wood=true};r.ChestItem=nil
+ local chosen=r.ChestItems
+ r.ChestQuickButton.Activated:Fire()
+ local selected=r.SelectedChestTargets()
+ assert(r.ChestDiscover and not r.ChestWhole and not r.ChestSelection and r.ChestItems==chosen and #selected==2 and selected[1].Binding.Slot==3 and selected[2].Binding.Slot==8,'Fast slot setup must retain the item filter and select exact learned slots across matching chests')
+ assert(not r.ChestAutoEnabled and not r.ChestAutoWorker and not r.ChestBusy and string.find(status.Text,'press START COLLECTING',1,true),'fast setup must explain the separate Start action without sending requests')
+ local y=r.ChestQuickButton.Position.Y.Offset
+ for _=1,3 do
+  r.ChestProfilesButton.Activated:Fire()
+  assert(r.ChestProfilesPanel.Visible and r.ChestQuickButton.Position.Y.Offset==r.ChestProfilesButton.Position.Y.Offset,'profile expansion must leave Fast slot setup beside its header')
+  r.ChestProfilesButton.Activated:Fire()
+  assert(r.ChestQuickButton.Position.Y.Offset==y,'profile cleanup must not move the quick action')
+ end
+ for _,flag in ipairs({'ChestAutoEnabled','ChestAutoWorker','ChestBusy'}) do
+  r.ChestDiscover=false;r.ChestWhole=true;local selectedChest={Chest=a,Slot=3};r.ChestSelection=selectedChest
+  r[flag]=flag=='ChestAutoWorker' and 640 or true
+  r.RefreshChestActions();r.ChestQuickButton.Activated:Fire()
+  assert(not r.ChestQuickButton.Active and not r.ChestDiscover and r.ChestWhole and r.ChestSelection==selectedChest,'busy/paused/cleanup workers must lock the quick preset without replacing their targets')
+  if flag=='ChestAutoWorker' then r[flag]=nil else r[flag]=false end
+ end
+ r.ChestAutoWorker=nil;r.ChestAutoEnabled=false;r.ChestBusy=false
+ r.ChestTargets,r.ChestDiscover,r.ChestWhole,r.ChestSelection,r.ChestItems,r.ChestItem=targets,discover,whole,selection,items,item
+ r.ChestScopeButton.Text=discover and 'Scope: All matching' or 'Scope: Learned only';r.ChestWholeButton.Text=whole and 'Whole chest: ON' or 'Whole chest: OFF'
+ r.UpdateChestSelectionUI()
+ -- Ordinary accepted-request spacing and retry cooldowns need different labels.
+ r.ChestCooldown='2.0s';r.ChestCooldownKind='pace';r.RefreshChestActions()
+ assert(string.find(r.ChestIntro.Text,'Request pace',1,true),'normal request spacing must not claim another server error')
+ r.ChestCooldownKind='retry';r.RefreshChestActions()
+ assert(string.find(r.ChestIntro.Text,'Server cooldown',1,true),'an actual rejected request must retain its cooldown explanation')
+ r.ChestCooldown=nil;r.ChestCooldownKind=nil;r.RefreshChestActions()
+ -- Manual collection shares the recovery policy, including its footer labels.
+ local selectedTargets,ready,withdraw=r.SelectedChestTargets,r.ChestRequestReady,r.WithdrawCarrots
+ local c={};local calls=0
+ r.SelectedChestTargets=function() return {{Binding={Chest=c}},{Binding={Chest=c}},{Binding={Chest=c}}} end
+ r.ChestRequestReady=function() return true end
+ r.WithdrawCarrots=function() calls+=1;return true end
+ r.ChestRateDelay=4;r.ChestRateSuccesses=0
+ local co=coroutine.create(function() return r.WithdrawSelectedCarrots(r.ChestManualGeneration) end)
+ assert(coroutine.resume(co) and calls==1 and r.ChestCooldownKind=='pace','manual accepted-request spacing must use the normal pacing label')
+ for _=1,200 do if coroutine.status(co)=='dead' then break end;local ok,e=coroutine.resume(co);assert(ok,e) end
+ assert(coroutine.status(co)=='dead' and calls==3 and r.ChestRateDelay==3.2 and not r.ChestCooldown and not r.ChestCooldownKind,'three accepted manual responses must recover pacing and clean up the indicator')
+ r.SelectedChestTargets,r.ChestRequestReady,r.WithdrawCarrots=selectedTargets,ready,withdraw
+ r.ChestRateDelay=nil;r.ChestRateSuccesses=0;r.RefreshChestActions()
  end)()
 
 ;(function()
