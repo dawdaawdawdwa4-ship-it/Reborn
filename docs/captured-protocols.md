@@ -618,3 +618,25 @@ targets once per second without changing Stay/Walk selection or packet formats.
 The reported v65 "stand within 20 studs" message describes a local reach wait,
 not evidence of `TOO_FAST`. Tests cover the recorded craft packet and controller
 behavior with mocked Roblox services; live v67 behavior remains unverified.
+
+### Explicit craft amount versus inventory target (craft-amount-68)
+
+The user clarified that crafting accepts a maximum of **100 per request**.
+The existing learned `tIFPj2BFAwqodE` replay already rejects amounts outside
+1–100. v68 retains this limit and the exact recorded bait/workbench envelope;
+no remote, token, recorder format or catalog entry changes (recorder v29,
+146 endpoints). A total run goal above 100 is fulfilled only by successive
+requests capped by the selected 25/50/100 batch and confirmed remaining goal.
+
+**Make amount** now counts confirmed positive bait inventory growth during the
+run and ignores pre-existing stock when computing the remaining goal. **Top up
+stock** retains v67's comparison against total inventory. This resolves the
+reported 3,770-stock case, where v67's maximum target of 1,000 could not initiate
+a craft even with a valid binding. The expanded total goal choices do not raise
+the RPC amount limit. Craft mode/batch/goal are frozen for each run. Recipe
+output is still observed rather than inferred, and unconfirmed growth stops.
+
+The new craft report is read-only, distinguishes craft binding/learning from
+bait-use binding/learning, and omits captured session context. Regression tests
+verify the high-stock scenario, request caps, final remainder and both goal
+semantics. Live server acceptance remains unverified.

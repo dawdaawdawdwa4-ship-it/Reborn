@@ -1457,3 +1457,43 @@ craft envelope preservation, quantity confirmation, delayed replication, cooldow
 bounds, ownership/range, movement during quantity waits, cancellation, the real
 UI controls and grouped distant chest scans. Live Roblox crafting, rendering and
 server acceptance of v67 remain unverified.
+
+### Craft extra bait regardless of stock (v68)
+
+The reported 3,770 bait exceeds every v67 inventory target (maximum 1,000).
+That version only topped up inventory; it would not make additional bait above
+its selected target. Its **Copy bait diagnostics** report described using bait,
+not crafting it, so the report did not identify craft readiness or the target.
+
+Auto Craft now defaults to **Craft: Make amount**. Amount 100 means 100 additional
+confirmed bait during this run, independently of existing stock. **Top up stock**
+retains the previous inventory-target behavior as an explicit choice. Both use
+amounts/targets 100, 250, 500, 1,000, 2,500, 5,000 or 10,000; the choice is a run
+goal, not the quantity sent in one request. The game allows at most **100 per
+craft request**. Batch choices remain 25/50/100, and a final partial batch can be
+smaller. For example, Make amount 500 with batch 100 sends separate batches of
+at most 100 and waits for confirmed inventory growth between them. With stock
+3,770, Make amount 100 can make 100 more, while Top up stock 100 sends nothing.
+The mode, batch and goal remain fixed for an active run. Startup remains OFF.
+These choices are session-only; no saved preferences are migrated.
+
+Fishing's craft section now sits below the manual bait-use learning button,
+with a separate mode dropdown. All dropdowns expand in flow and lock while a
+craft worker is active. **Copy craft diagnostics** reports mode, batch, request
+limit, amount/target, inventory, craft-specific binding/learning state, active
+worker, last status and next step. It copies no learned session context and sends
+no requests. **Copy bait diagnostics** now identifies its scope as bait use and
+shows that no activation is scheduled while Auto Bait is OFF.
+
+To use crafting: **Learn bait craft** → craft bait manually once at your own
+workbench2 (at most 100 in that manual craft) → choose **Make amount** and amount
+→ **Start crafting**. Using/equipping bait is a separate action and does not teach
+a craft request. A new character/server needs its own learned craft context.
+Stop, cancellation, reach/ownership checks, inventory confirmation and bounded
+cooldown retries remain as in v67. Materials are consumed by successful crafts;
+server recipe output still determines the final observed quantity.
+
+Validation: `npm --prefix tests test` includes the 3,770-stock regression,
+500 crafted via five requests of 100, a smaller final batch, top-up to 5,000,
+configuration frozen mid-run, the distinct diagnostics, and layout/menu locks.
+The full suite passes. Live v68 Roblox crafting/rendering remains unverified.

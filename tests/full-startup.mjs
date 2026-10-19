@@ -848,7 +848,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn craft-bait-67',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn craft-amount-68',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1360,6 +1360,30 @@ end)()
 ;(function()
  local r=RemoteCatalog
  assert(not r.CraftEnabled and not r.CraftWorker and r.CraftBatch==100 and r.CraftTarget==100,'craft startup must be OFF with batch/target 100')
+ assert(r.CraftMode=='Make amount','craft default must make extra bait independently of stock')
+ assert(r.LearnBaitButton.Position.Y.Offset+r.LearnBaitButton.Size.Y.Offset<r.CraftHeading.Position.Y.Offset,'craft heading must not cover the manual bait-use learning button')
+ assert(r.CraftHeading.Position.Y.Offset+r.CraftHeading.Size.Y.Offset<r.CraftModeButton.Position.Y.Offset,'craft mode must be below its heading')
+ local originalModeY=r.CraftLearnButton.Position.Y.Offset
+ for _=1,3 do
+  r.CraftModeButton.Activated:Fire()
+  assert(r.CraftModeMenu.Menu.Visible and r.CraftLearnButton.Position.Y.Offset>originalModeY,'craft mode dropdown must expand without covering learning/start controls')
+  r.CraftModeButton.Activated:Fire()
+  assert(r.CraftLearnButton.Position.Y.Offset==originalModeY,'closing mode menu must restore its layout without drift')
+ end
+ local count=r.CarrotCount
+ r.CarrotCount=function() return 3770 end
+ r.CraftModeButton.Activated:Fire();r.CraftModeMenu.Options[2].Activated:Fire()
+ assert(r.CraftMode=='Top up stock' and string.find(r.CraftInfo.Text,'Stock target already met',1,true) and not r.CraftWorker,'top-up selection must explain the 3770/100 case without sending')
+ local copied
+ setclipboard=function(value) copied=value end
+ r.CraftDiagnosticButton.Activated:Fire()
+ assert(copied==r.CraftDiagnosticReport() and string.find(copied,'Craft diagnostics',1,true) and string.find(copied,'Stock target already met',1,true),'dedicated button must copy the actual craft report')
+ assert(not string.find(copied,'ptT2gra',1,true),'craft diagnostics must not dump learned request context')
+ setclipboard=nil
+ r.CraftModeButton.Activated:Fire();r.CraftModeMenu.Options[1].Activated:Fire()
+ assert(string.find(r.CraftInfo.Text,'extra bait',1,true),'Make amount selection must explain that it makes extra bait')
+ r.CarrotCount=count
+
  assert(string.find(r.ChestRangeButton.Text,'Walk range:',1,true),'range control must identify walking range')
  local y=r.CraftInfo.Position.Y.Offset
  r.CraftBatchButton.Activated:Fire()
@@ -1370,6 +1394,7 @@ end)()
  assert(r.CraftTarget==250 and not r.CraftWorker,'choosing target must not start crafting')
  r.CraftWorker=67;r.CraftBatchButton.Activated:Fire()
  assert(not r.CraftBatchMenu.Menu.Visible,'active craft must lock dropdowns')
+ r.CraftModeButton.Activated:Fire();assert(not r.CraftModeMenu.Menu.Visible,'active craft must lock mode dropdown')
  r.CraftWorker=nil
  local start,recorder=r.StartCapture,r.Recorder
  local learned={Active=false,LearnBaitOnly=true,Stop=function(self) self.Stopped=true end}

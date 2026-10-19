@@ -30,10 +30,41 @@ local function reset()
  if worker and coroutine.status(worker)~='dead' then RemoteCatalog.SetCraftEnabled(false);drain() end
  inventory=0;calls={};valid=true;pending=false;bench.Parent=island;distance=0
  behavior=function(amount) inventory+=amount;return true end
- RemoteCatalog.CraftBatch=100;RemoteCatalog.CraftTarget=100;RemoteCatalog.ChestBusy=false;RemoteCatalog.ChestAutoWorker=nil
+ RemoteCatalog.CraftMode="Top up stock";RemoteCatalog.CraftBatch=100;RemoteCatalog.CraftTarget=100;RemoteCatalog.ChestBusy=false;RemoteCatalog.ChestAutoWorker=nil
 end
-assert(not RemoteCatalog.CraftEnabled and #calls==0,'craft must start OFF')
-inventory=75
+assert(not RemoteCatalog.CraftEnabled and #calls==0 and RemoteCatalog.CraftMode=='Make amount','craft must start OFF with Make amount selected')
+-- Reported regression: already owning 3770 must not block making 100 more.
+inventory=3770
+assert(RemoteCatalog.SetCraftEnabled(true));drain()
+assert(#calls==1 and calls[1]==100 and inventory==3870 and string.find(RemoteCatalog.CraftInfo.Text,'Made +100',1,true),'Make amount must ignore existing stock and count only this run')
+reset();RemoteCatalog.CraftMode='Make amount';RemoteCatalog.CraftTarget=500;inventory=3770
+assert(RemoteCatalog.SetCraftEnabled(true));drain()
+assert(#calls==5 and inventory==4270,'larger run must use separate batches capped at one hundred')
+for _,amount in ipairs(calls) do assert(amount==100,'every request must respect the crafting limit') end
+reset();RemoteCatalog.CraftMode='Make amount';RemoteCatalog.CraftTarget=250;inventory=3770
+assert(RemoteCatalog.SetCraftEnabled(true))
+RemoteCatalog.CraftMode='Top up stock';RemoteCatalog.CraftTarget=100
+-- Mode/amount are frozen even if external code changes the configuration mid-run.
+drain();assert(#calls==3 and calls[1]==100 and calls[2]==100 and calls[3]==50 and inventory==4020,'Make amount needs a smaller last batch and frozen run settings')
+reset();inventory=3770
+assert(RemoteCatalog.SetCraftEnabled(true));drain()
+assert(#calls==0 and string.find(RemoteCatalog.CraftInfo.Text,'Choose Make amount',1,true),'Top up stock must explain why existing stock prevents a request')
+assert(string.find(RemoteCatalog.CraftDiagnosticReport(),'Stock target already met',1,true),'craft diagnostics must explain the reported high-stock case without requests')
+reset();inventory=3770;RemoteCatalog.CraftTarget=5000
+assert(RemoteCatalog.SetCraftEnabled(true));drain()
+assert(inventory==5000 and #calls==13 and calls[13]==30,'Top up stock must support targets above existing 3770 and cap each batch')
+for _,amount in ipairs(calls) do assert(amount<=100) end
+reset();RemoteCatalog.CraftMode='Make amount';inventory=3770;valid=false
+local report=RemoteCatalog.CraftDiagnosticReport()
+assert(string.find(report,'Craft request ready: false',1,true) and string.find(report,'Press Learn bait craft',1,true) and #calls==0,'craft report must distinguish missing craft binding from a bait-use binding without sending')
+valid=true
+report=RemoteCatalog.CraftDiagnosticReport()
+assert(string.find(report,'Craft request ready: true',1,true) and string.find(report,'Bait inventory: 3770',1,true),'craft report must use actual crafting readiness and stock')
+reset();RemoteCatalog.CraftBatch=101
+assert(not RemoteCatalog.SetCraftEnabled(true) and #calls==0,'invalid batches above one hundred must never send')
+reset();RemoteCatalog.CraftMode='unknown'
+assert(not RemoteCatalog.SetCraftEnabled(true) and #calls==0,'invalid craft mode must never send')
+reset();inventory=75
 assert(RemoteCatalog.SetCraftEnabled(true));drain()
 assert(#calls==1 and calls[1]==25 and inventory==100 and not RemoteCatalog.CraftEnabled,'craft only inventory deficit and stop on target')
 reset();RemoteCatalog.CraftBatch=25
@@ -77,7 +108,7 @@ reset();behavior=function() return true end
 assert(RemoteCatalog.SetCraftEnabled(true) and #calls==1)
 for _=1,5 do step() end
 inventory=100;drain()
-assert(#calls==1 and string.find(RemoteCatalog.CraftInfo.Text,'Target reached',1,true),'delayed replicated inventory gain must confirm without crafting extra batches')
+assert(#calls==1 and string.find(RemoteCatalog.CraftInfo.Text,'Stock target reached',1,true),'delayed replicated inventory gain must confirm without crafting extra batches')
 reset();behavior=function(amount) coroutine.yield('in-flight');inventory+=amount;return true end
 assert(RemoteCatalog.SetCraftEnabled(true) and #calls==1)
 RemoteCatalog.SetCraftEnabled(false)
@@ -86,7 +117,7 @@ drain();assert(#calls==1 and not RemoteCatalog.CraftWorker and not RemoteCatalog
 reset();behavior=function(amount) coroutine.yield('replicating');inventory+=amount;return true end
 assert(RemoteCatalog.SetCraftEnabled(true));gui.Parent=nil;drain()
 assert(#calls==1 and not RemoteCatalog.CraftWorker,'GUI removal must finish without another request')
-return 'Auto Craft Bait: top-up, batch repeat, cooldown bounds, inventory confirmation, range, ownership, stale context, cancellation and concurrency passed'
+return 'Auto Craft Bait: Make amount at 3770 stock, 100/request cap, top-up, batch repeat, cooldown bounds, inventory confirmation, range, ownership, stale context, cancellation and concurrency passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'craft-bait',true)());}
