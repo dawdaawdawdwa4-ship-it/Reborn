@@ -460,6 +460,44 @@ end)()
  capture:Stop()
 end)()
 ;(function()
+ capture:Resume();capture.Active=false;capture.LearnChestOnly=true
+ local chest={_type='Instance',Name='chestMediumIndustrialIO',Parent=game,IsA=function(_,kind) return kind=='Model' end}
+ local endpoint=remote('FiAxD3JcLWBD6I')
+ endpoint.Parent={Name='cuWyO3sRPqwiuD',Parent={Name='out',Parent=game}}
+ local sent,requests=nil,0
+ endpoint.InvokeServer=function(_,...) requests+=1;sent=table.pack(...);return true end
+ local packet={ptT2graQXL5nZ4='test-live-salad-context',FrOcxUDTzCT48d={chest=chest,action='withdraw',slot=8,item='potatoSalad',amount=17}}
+ local logged,forwarded=#capture.Records,#calls
+ installedHook(endpoint,packet,nil,'salad-tail',nil)
+ local binding=capture.ChestBinding
+ assert(binding.Remote==endpoint and binding.Item=='potatoSalad' and binding.Slot==8 and binding.Amount==17,'supplied potato salad packet must learn exact chest/slot/item/count')
+ assert(capture.Stopped and #capture.Records==logged and #calls==forwarded+1 and requests==0,'quiet learning must only forward the original manual action')
+ assert(capture:WithdrawItems(nil,binding) and sent[1].FrOcxUDTzCT48d.amount==17,'Learned amount must come from the observed packet')
+ assert(sent[1].ptT2graQXL5nZ4=='test-live-salad-context' and sent.n==4 and sent[3]=='salad-tail' and sent[4]==nil,'salad replay must preserve session envelope and trailing nil arguments')
+ for _,slot in ipairs({0,1,3,8,12}) do
+  local target=capture:MakeChestTarget(binding,chest,slot)
+  assert(target and capture:WithdrawItems(1,target),'supported whole-chest slots must not be fixed at eight')
+  local body=sent[1].FrOcxUDTzCT48d
+  assert(body.slot==slot and body.item=='potatoSalad' and body.chest==chest and body.amount==1,'slot probes must preserve the exact salad item and chest')
+ end
+ assert(packet.FrOcxUDTzCT48d.slot==8 and packet.FrOcxUDTzCT48d.amount==17 and binding.Slot==8,'probing other slots must not mutate the manual capture')
+ capture:Resume();capture.Active=false;capture.LearnChestOnly=true
+ installedHook(endpoint,{ptT2graQXL5nZ4='test-fresh-salad-context',FrOcxUDTzCT48d={chest=chest,action='withdraw',slot=3,item='potatoSalad',amount=9}})
+ local fresh=capture.ChestBinding
+ assert(fresh.Slot==3 and fresh.Amount==9 and capture:WithdrawItems(nil,fresh),'another manual withdrawal must use its current slot and amount')
+ assert(sent[1].FrOcxUDTzCT48d.slot==3 and sent[1].FrOcxUDTzCT48d.amount==9 and sent[1].ptT2graQXL5nZ4=='test-fresh-salad-context','relearning must not reuse the pasted slot, count or stale envelope')
+ capture:Resume();capture.Active=false;capture.LearnChestOnly=true
+ installedHook(endpoint,{ptT2graQXL5nZ4='test-other-item',FrOcxUDTzCT48d={chest=chest,action='withdraw',slot=3,item='wood',amount=2}})
+ local countAtSlot=0
+ for _,entry in ipairs(capture:GetChestBindings()) do if entry.Chest==chest and entry.Slot==3 then countAtSlot+=1;assert(entry.Item=='wood','same physical slot must retain only its latest observed contents') end end
+ assert(countAtSlot==1,'relearning one physical slot must replace its old item binding')
+ local originalCharacter=gamePlayer.Character;gamePlayer.Character={}
+ local before=requests
+ assert(not capture:WithdrawItems(1,fresh) and requests==before,'salad binding must expire on respawn')
+ gamePlayer.Character=originalCharacter
+ capture:Stop()
+end)()
+;(function()
  local oldCharacter,oldJob,oldService=gamePlayer.Character,game.JobId,game.GetService
  local blocks,foreign={},{}
  local islands={}

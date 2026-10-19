@@ -280,7 +280,37 @@ do
  for _,dt in ipairs(waits) do assert(dt==.6,'pacing must be stable throughout a run') end
  RemoteCatalog.ChestSpeed='Standard';RemoteCatalog.ChestGoal=nil
 end
-return 'Chest Auto Max: batches/remainder, inventory confirmation, range wait/resume, one worker, bounded no-progress, Stop/in-flight restart, errors/session/GUI cleanup passed'
+-- Potato salad can move between slots; each check must retain the item and learned ceiling.
+do
+ RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestSpeed='Standard';RemoteCatalog.ChestTravel='Stay'
+ local salad={}
+ local amounts={potatoSalad=0,carrotHarvested=100,wood=20}
+ local source={['3']=9,['8']=17,['12']=4}
+ local checks={}
+ for slot=0,12 do table.insert(checks,{Recorder=recorder,Binding={Chest=salad,Slot=slot,Item='potatoSalad',Amount=17,Probe=true}}) end
+ RemoteCatalog.SelectedChestTargets=function() return checks end
+ RemoteCatalog.OwnedTools=function() return {{Name='potatoSalad'},{Name='carrotHarvested'},{Name='wood'}} end
+ RemoteCatalog.BaitCount=function(tool) return amounts[tool.Name] end
+ local sent={}
+ RemoteCatalog.WithdrawCarrots=function(amount,owner,selected)
+  assert(owner==recorder and selected.Item=='potatoSalad' and amount<=17,'salad collection must retain the exact item and learned maximum')
+  local key=tostring(selected.Slot)
+  if not sent[key] then assert(amount==1,'unobserved salad slots must start with a one-item probe') end
+  sent[key]=(sent[key] or 0)+1
+  if (source[key] or 0)<amount then return false,'insufficient salad' end
+  source[key]-=amount;amounts.potatoSalad+=amount;return true
+ end
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(amounts.potatoSalad==30 and RemoteCatalog.ChestAutoTotal==30 and RemoteCatalog.ChestAutoItems.potatoSalad==30,'salad in varying slots must all count after observed inventory changes')
+ assert(amounts.carrotHarvested==100 and amounts.wood==20 and sent['0']==1 and sent['11']==1,'empty probes must stop without changing unrelated inventory')
+ -- A success response accompanied only by another item's increase is insufficient.
+ amounts.potatoSalad=0;RemoteCatalog.ChestGoal=1;sent={}
+ RemoteCatalog.SelectedChestTargets=function() return {{Recorder=recorder,Binding={Chest=salad,Slot=8,Item='potatoSalad',Amount=17}}} end
+ RemoteCatalog.WithdrawCarrots=function(amount) table.insert(sent,amount);amounts.carrotHarvested+=amount;return true end
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#sent==3 and RemoteCatalog.ChestAutoTotal==0 and RemoteCatalog.ChestAutoItems.potatoSalad==nil,'only salad inventory growth can confirm a salad withdrawal')
+end
+return 'Chest Auto Max: batches/remainder, potato salad in varying slots, item-specific inventory confirmation, range wait/resume, one worker, bounded no-progress, Stop/in-flight restart, errors/session/GUI cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-auto',true)());}

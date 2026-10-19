@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 27 and previous.Resume then
+if previous and previous.Version == 28 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 27, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 28, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -35,6 +35,7 @@ if previous then
 end
 capture.ChestBindings=capture.ChestBindings or {}
 local exactNames = {
+    FiAxD3JcLWBD6I = true, -- Supplied potatoSalad chest withdrawal; learn its live envelope.
     PdqfVEBKHDSMfE = true, -- Supplied hoe/plow endpoint; context is learned live.
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
@@ -448,7 +449,7 @@ end
 local function learnChest(remote,method,args)
     if method~="InvokeServer" or type(args[1])~="table" then return false end
     local group=remote.Parent
-    if remote.Name~="kAnpiAlDrqMuEh" and (not group or not group.Parent or group.Parent.Name~="out") then return false end
+    if remote.Name~="kAnpiAlDrqMuEh" and remote.Name~="FiAxD3JcLWBD6I" and (not group or not group.Parent or group.Parent.Name~="out") then return false end
     local body=args[1]
     for _,value in pairs(body) do
         if type(value)=="table" and value.action=="withdraw" then body=value;break end

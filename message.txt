@@ -152,6 +152,7 @@ local RemoteCatalog = (function()
         { Path = "RobloxReplicatedStorage.UpdateLocalPlayerBlockList", Class = "RemoteEvent" },
         { Path = "RobloxReplicatedStorage.UpdatePlayerBlockList", Class = "RemoteEvent" },
         { Path = "RobloxReplicatedStorage.UpdatePlayerProfileSettings", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.cuWyO3sRPqwiuD.FiAxD3JcLWBD6I", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Pyrlndnwplmt4r.PdqfVEBKHDSMfE", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.mEn0GOcgVLtb4o.COtnYCOPUThadM", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.wRLHwn9X7tFCOv.UctIHHAfsCxxzj", Class = "RemoteFunction" },
@@ -473,7 +474,7 @@ local RemoteCatalog = (function()
         for _, entry in ipairs(catalog.Entries) do
             entry.Instance = catalog.FindPath(entry.Path, entry.Class)
             -- A renamed grouping folder may still contain the exact named remote.
-            if not entry.Instance and string.find(entry.Path, ".out._NetManaged.", 1, true) then
+            if not entry.Instance and string.find(entry.Path, ".out.", 1, true) then
                 entry.Instance = catalog.FindNamed(string.match(entry.Path, "([^.]+)$"), entry.Class)
             end
             if entry.Instance then found += 1 end
@@ -497,13 +498,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 27 and previous.Resume then
+if previous and previous.Version == 28 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 27, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 28, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -524,6 +525,7 @@ if previous then
 end
 capture.ChestBindings=capture.ChestBindings or {}
 local exactNames = {
+    FiAxD3JcLWBD6I = true, -- Supplied potatoSalad chest withdrawal; learn its live envelope.
     PdqfVEBKHDSMfE = true, -- Supplied hoe/plow endpoint; context is learned live.
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
@@ -937,7 +939,7 @@ end
 local function learnChest(remote,method,args)
     if method~="InvokeServer" or type(args[1])~="table" then return false end
     local group=remote.Parent
-    if remote.Name~="kAnpiAlDrqMuEh" and (not group or not group.Parent or group.Parent.Name~="out") then return false end
+    if remote.Name~="kAnpiAlDrqMuEh" and remote.Name~="FiAxD3JcLWBD6I" and (not group or not group.Parent or group.Parent.Name~="out") then return false end
     local body=args[1]
     for _,value in pairs(body) do
         if type(value)=="table" and value.action=="withdraw" then body=value;break end
@@ -2857,7 +2859,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "continuous-controls-56",
+    Subtitle = "salad-chests-57",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3322,7 +3324,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn continuous-controls-56",
+    return table.concat({"Reborn salad-chests-57",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -4909,7 +4911,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn continuous-controls-56", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn salad-chests-57", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6288,6 +6290,8 @@ function RemoteCatalog.ChestTargets()
         local root=char and char:FindFirstChild("HumanoidRootPart")
         if blocks and root then
             local templates=table.clone(targets)
+            -- Prefer the newest packet when one item was observed in multiple slots.
+            table.sort(templates,function(a,b) return (a.Binding.ObservedAt or 0)>(b.Binding.ObservedAt or 0) end)
             for _,chest in ipairs(blocks:GetChildren()) do
                 for _,entry in ipairs(templates) do
                     local binding=entry.Binding
@@ -6308,14 +6312,25 @@ function RemoteCatalog.ChestTargets()
 end
 function RemoteCatalog.SelectedChestTargets()
     local targets,seen={},{}
-    for _,entry in ipairs(RemoteCatalog.ChestTargets()) do
+    local candidates=RemoteCatalog.ChestTargets()
+    local newest={}
+    if RemoteCatalog.ChestWhole then
+        for _,entry in ipairs(candidates) do
+            local binding=entry.Binding
+            local item=binding.Item or "carrotHarvested"
+            newest[binding.Chest]=newest[binding.Chest] or {}
+            local old=newest[binding.Chest][item]
+            if not old or (binding.ObservedAt or 0)>(old.Binding.ObservedAt or 0) then newest[binding.Chest][item]=entry end
+        end
+    end
+    for _,entry in ipairs(candidates) do
         local binding=entry.Binding
         local selected=RemoteCatalog.ChestSelection
         local item=binding.Item or "carrotHarvested"
         if (not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[item]) and (not RemoteCatalog.ChestItem or RemoteCatalog.ChestItem==item) and (not selected or selected.Chest==binding.Chest and (RemoteCatalog.ChestWhole or selected.Slot==binding.Slot)) then
             if RemoteCatalog.ChestWhole and entry.Recorder.MakeChestTarget and string.lower(binding.Chest.Name)=="chestmediumindustrialio" then
                 seen[binding.Chest]=seen[binding.Chest] or {}
-                if not seen[binding.Chest][item] then
+                if newest[binding.Chest][item]==entry and not seen[binding.Chest][item] then
                     seen[binding.Chest][item]=true
                     for slot=0,12 do
                         local generated=entry.Recorder:MakeChestTarget(binding,binding.Chest,slot)
@@ -6374,14 +6389,14 @@ function RemoteCatalog.ToggleChestItems()
     empty.ZIndex=41;empty.TextWrapped=true
     local none,done
     local function refresh()
-        local query=string.lower(search.Text):match("^%s*(.-)%s*$")
+        local query=string.lower(search.Text):gsub("[%s_%-]", "")
         local row,shown=36,0
         for index=0,#items do
             local option,item=options[index],items[index]
             local selected=index==0 and not RemoteCatalog.ChestItems or index>0 and RemoteCatalog.ChestItems and RemoteCatalog.ChestItems[item]
             option.Text=(selected and "✓ " or "")..(item or "All learned items")
             option.BackgroundColor3=selected and COLORS.on or COLORS.off
-            option.Visible=index==0 or string.find(string.lower(item),query,1,true)~=nil
+            option.Visible=index==0 or string.find(string.lower(item):gsub("[%s_%-]", ""),query,1,true)~=nil
             if option.Visible then
                 option.Position=UDim2.fromOffset(2,row);row+=32
                 if item then shown+=1 end
@@ -6782,7 +6797,7 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn continuous-controls-56\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn salad-chests-57\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -6980,7 +6995,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn continuous-controls-56\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn salad-chests-57\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn

@@ -72,6 +72,19 @@ RemoteCatalog.ChestItems=nil
 RemoteCatalog.ChestItem='unobservedItem'
 assert(#RemoteCatalog.SelectedChestTargets()==0,'unlearned items must not produce fabricated requests')
 RemoteCatalog.ChestItem=nil
+-- Whole chest must not pin its packet to the first observed salad slot.
+local oldSalad={Chest=a,Slot=8,Amount=17,ObservedAt=3,Item='potatoSalad'}
+local newSalad={Chest=a,Slot=3,Amount=9,ObservedAt=4,Item='potatoSalad'}
+learned={oldSalad,newSalad};RemoteCatalog.ChestDiscover=true;RemoteCatalog.ChestWhole=true
+local salads=RemoteCatalog.SelectedChestTargets()
+assert(#salads==26,'salad must cover all supported slots in both matching chests')
+for _,entry in ipairs(salads) do
+ assert(entry.Binding.Item=='potatoSalad' and entry.Binding.ObservedAt==4 and entry.Binding.Amount==9,'whole-chest discovery and slot checks must use the latest learned packet/maximum for that item')
+end
+assert(oldSalad.Slot==8 and newSalad.Slot==3,'whole chest must preserve both manual samples')
+RemoteCatalog.ChestWhole=false;RemoteCatalog.ChestDiscover=false
+local exact=RemoteCatalog.SelectedChestTargets()
+assert(#exact==2 and exact[1].Binding==oldSalad and exact[2].Binding==newSalad,'learned-slot mode must preserve distinct observed slots instead of guessing that a stack moved')
 valid=false
 assert(#RemoteCatalog.ChestTargets()==0 and #RemoteCatalog.SelectedChestTargets()==0,'invalid session must prevent discovery and replay target generation')
 return 'Chest targets: matching owned discovery, range/type filtering, complete slot coverage, deduplication, individual/scope controls and expired-session guards passed'

@@ -1031,3 +1031,32 @@ cooldown/retry timing, candidate caps, cancellation and queued restart, preserve
 one-pass behavior, actual dropdown selection/layout and mouse/touch/Escape event
 wiring. Live input routing, rendering and Roblox server behavior still need an
 in-game check.
+
+### Potato salad and variable chest slots (v57)
+
+The supplied `potatoSalad` withdrawal endpoint is now included in the catalog and
+recorder v28. In **Chests**, press **Start learning**, manually withdraw some
+potato salad, then **Stop learning**. Open **Items**, search for `potato salad`
+and check `potatoSalad`, then use the normal collection controls. Searches ignore
+case, spaces, underscores and hyphens; selected request identifiers remain exact.
+Searching and selecting items do not withdraw anything.
+
+The captured slot 8 and amount 17 are examples, not fixed settings. Learning
+records the actual chest, slot, amount and live envelope each time. Relearning
+the same physical slot replaces its previous item binding. Distinct observed
+slots remain separate, since two stacks of the same item may coexist.
+
+**Whole chest** checks all supported slots of matching industrial I/O chests,
+starting each unobserved slot with a one-item probe. It uses the newest learned
+packet and batch ceiling for each chest/item, including when discovering another
+matching chest. Thus an older observation of salad in slot 8 cannot hide a newer
+packet learned in slot 3. **Learned slots** retains exact observed slots. Unknown
+chest types still require learning their individual slots; their layout is not
+inferred from this capture.
+
+Auto Take confirms potato salad through the `potatoSalad` inventory total, not
+another item's increase or a successful request response alone. The existing
+owned-island, reach, session/character, cancellation, batch and retry checks remain.
+Tests cover the supplied packet, slot changes, newest-template selection, salad in
+multiple slots and unrelated inventory changes. The full mock suite passes;
+live Roblox behavior remains unverified.

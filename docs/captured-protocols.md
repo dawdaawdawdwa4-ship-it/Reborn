@@ -360,3 +360,31 @@ All and GUI cleanup clear that intent. Captured-context expiry requires learning
 again and never switches an active run to native input. Dropdowns, pointer access
 and visual state changes introduce no server calls. Runtime tests use mocks;
 live Roblox rendering, input dispatch and server behavior remain unverified.
+
+### Potato salad withdrawals (salad-chests-57)
+
+The new RemoteFunction is `out.cuWyO3sRPqwiuD.FiAxD3JcLWBD6I` under
+`ReplicatedStorage.rbxts_include.node_modules["@rbxts"].net`. The observed
+InvokeServer packet has a live context field `ptT2graQXL5nZ4` and body
+`FrOcxUDTzCT48d={chest=<live instance>, action="withdraw", slot=8,
+item="potatoSalad", amount=17}`. The pasted context value, island ID and
+`GetChildren()[1538]` index are not embedded. `PlayerScripts.TS.interact.interact`
+identifies the originating interaction script; it is not another request argument.
+Catalog size: 145 endpoints. Read-only discovery now also resolves captured
+endpoint names when their grouping folder changes, with the same class check.
+
+Recorder v28 uses the generic withdrawal parser to retain the actual envelope,
+chest, item, slot and learned amount. Replay clones that packet and changes only
+the selected count/slot or a validated matching chest target. Slot 8 and count 17
+are not constants in the collector. Known industrial I/O whole-chest collection
+probes slots 0–12, including the indexing boundary retained by the existing
+adapter; unknown layouts continue to use individually learned slots.
+
+Whole-chest target generation and matching-chest discovery prefer the most recent
+observed packet for each item. Separate exact slot samples are retained for
+learned-slot mode, and another item observed in the same physical slot replaces
+the previous binding for that slot. Only an increase in the exact requested
+item's inventory total confirms collection. Existing ownership, reach, actor,
+server, character, cancellation and bounded-retry rules are unchanged. Mock tests
+cover the supplied schema, varying slots and counts, newest-template selection,
+food-name search and item-specific confirmation; live acceptance is unverified.

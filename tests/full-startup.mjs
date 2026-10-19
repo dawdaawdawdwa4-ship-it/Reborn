@@ -689,6 +689,25 @@ end)()
  chooseItem('All learned items')
  chooseItem('Done')
  assert(not RemoteCatalog.ChestItemMenu.Visible,'Done must close the item checklist')
+ do
+  local item,slot,amount=a.Item,a.Slot,a.Amount
+  a.Item='potatoSalad';a.Slot=8;a.Amount=17
+  local requestCount=#requestedBindings
+  RemoteCatalog.ChestItemButton.Activated:Fire()
+  searchItems('  PoTaTo SaLaD  ')
+  assert(itemVisible('potatoSalad') and not itemVisible('stone'),'spaced food names must find the exact camelCase learned identifier')
+  searchItems('potato_salad')
+  assert(itemVisible('potatoSalad'),'underscored search must also find the learned food')
+  chooseItem('potatoSalad')
+  local targets=RemoteCatalog.SelectedChestTargets()
+  assert(#targets==1 and targets[1].Binding==a and targets[1].Binding.Item=='potatoSalad' and targets[1].Binding.Slot==8,'food selection must keep the captured identifier and slot')
+  a.Slot=3
+  targets=RemoteCatalog.SelectedChestTargets()
+  assert(targets[1].Binding.Slot==3,'item selection must not pin salad to slot eight')
+  assert(#requestedBindings==requestCount and not RemoteCatalog.ChestAutoEnabled,'searching/selecting a food must never withdraw or start Auto Take')
+  chooseItem('All learned items');chooseItem('Done')
+  a.Item,a.Slot,a.Amount=item,slot,amount
+ end
  local beforePreview=#requestedBindings
  chest.Position=position(80)
  RemoteCatalog.ChestPreviewButton.Activated:Fire()
@@ -810,7 +829,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn continuous-controls-56',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn salad-chests-57',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
