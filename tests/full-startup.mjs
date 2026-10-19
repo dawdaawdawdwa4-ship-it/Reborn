@@ -169,6 +169,38 @@ flush()
  HttpService.JSONEncode,HttpService.JSONDecode=encode,decode
  end)()
 
+ ;(function()
+ local b=buildController
+ b:ClearEdits()
+ local function transform(x,z) return {GetComponents=function() return x,0,z,1,0,0,0,1,0,0,0,1 end} end
+ b.Anchor={ToObjectSpace=function(_,cf) return cf end};b.BlockSize=3
+ b.SavedPlan={Version=1,Name='Single edits',BlockSize=3,Cells={
+  {Material='grass',Components={0,0,-6,1,0,0,0,1,0,0,0,1}},
+  {Material='grass',Components={0,0,-3,1,0,0,0,1,0,0,0,1}},
+  {Material='grass',Components={3,0,-3,1,0,0,0,1,0,0,0,1}}}}
+ local function ghost() return {Destroy=function(self) self.Destroyed=true end} end
+ b.Cells={{CFrame=transform(0,-3),LayerY=0,Material='grass',Preview=ghost()},
+  {CFrame=transform(0,-6),LayerY=0,Material='grass',Preview=ghost()},
+  {CFrame=transform(3,-3),LayerY=0,Material='grass',Preview=ghost()}}
+ local findDefinitions=ReplicatedStorage.FindFirstChild
+ ReplicatedStorage.FindFirstChild=function(_,name) if name=='Blocks' then return {FindFirstChild=function(_,name) return name=='grass' or name=='stone' end} end end
+ b.SectionButtons.Materials.Activated:Fire()
+ b.Buttons.Pick.Activated:Fire();assert(b.Picking and type(RemoteCatalog.BuildPicker)=='function','actual picker control must enable registered world input')
+ b.Buttons.NextBlock.Activated:Fire();assert(b.SelectedCell==b.Cells[1] and b.Cells[1].Preview.Transparency==.25,'Next block must highlight a real preview ghost')
+ b.Inputs.ReplaceTo.Text='stone';b.Buttons.ReplaceSelected.Activated:Fire()
+ assert(b.Cells[1].Material=='stone' and b.Cells[2].Material=='grass','Replace selected button must edit exactly one same-material ghost')
+ b.Buttons.UndoMaterial.Activated:Fire();assert(b.Cells[1].Material=='grass' and #b.RedoStack==1)
+ b.Buttons.Redo.Activated:Fire();assert(b.Cells[1].Material=='stone' and #b.RedoStack==0,'actual Redo button must restore the selected replacement')
+ b.Buttons.RemoveSelected.Activated:Fire();assert(#b.Cells==2 and not b.SelectedCell,'Remove selected button must remove one ghost')
+ b:ClearPreview();b.Buttons.UndoMaterial.Activated:Fire()
+ assert(#b.SavedPlan.Cells==3 and not b.Cells,'actual removal Undo after Clear must restore data without constructing a preview')
+ b.Buttons.Redo.Activated:Fire();assert(#b.SavedPlan.Cells==2 and not b.Cells,'actual removal Redo must restore the survivor-only plan')
+ b.SectionButtons.Materials.Activated:Fire()
+ assert(not b.Picking and b.LayoutHeight<650 and not b.Buttons.ReplaceSelected.Visible,'closing the editor must disable picking and restore compact layout')
+ ReplicatedStorage.FindFirstChild=findDefinitions
+ b:ClearEdits();b.SavedPlan=nil;b.PlanDirty=false;b.Preset='Farm plots';b.Inputs.ReplaceTo.Text='';b.Anchor=nil
+ end)()
+
 buildController.Buttons.Rotate.Activated:Fire()
 assert(buildController.Rotation==90 and not buildController.Cells,'rotation before Preview must retain the existing settings behavior')
 buildController.Buttons.Center.Activated:Fire()
@@ -529,9 +561,26 @@ end)()
  RemoteCatalog.Recorder=recorder
  recorder.CanUseChestBinding=function() return true end
  local requestedBindings={}
+ assert(RemoteCatalog.ChestAutoButton.Position.Y.Offset==130 and RemoteCatalog.ChestAutoButton.Position.X.Scale==.5,'collection action must be beside learning at the top')
+ assert(RemoteCatalog.ChestSpeed=='Standard','legacy chest pacing must remain the default')
+ RemoteCatalog.ChestSpeedButton.Activated:Fire()
+ assert(RemoteCatalog.ChestSpeed=='Fast' and not RemoteCatalog.ChestAutoEnabled,'pace changes must not start collection')
+ RemoteCatalog.ChestAutoWorker=99
+ RemoteCatalog.ChestSpeedButton.Activated:Fire()
+ assert(RemoteCatalog.ChestSpeed=='Fast','in-flight workers must lock pace changes')
+ local whole,discover,items=RemoteCatalog.ChestWhole,RemoteCatalog.ChestDiscover,RemoteCatalog.ChestItems
+ RemoteCatalog.ChestLearnedButton.Activated:Fire()
+ assert(RemoteCatalog.ChestWhole==whole and RemoteCatalog.ChestDiscover==discover,'in-flight workers must also lock target shortcuts')
+ RemoteCatalog.ChestAutoWorker=nil
+ local filter={wood=true};RemoteCatalog.ChestItems=filter
+ RemoteCatalog.ChestLearnedButton.Activated:Fire()
+ assert(not RemoteCatalog.ChestWhole and not RemoteCatalog.ChestDiscover and RemoteCatalog.ChestItems==filter and #requestedBindings==0 and not RemoteCatalog.ChestAutoEnabled,'learned-only shortcut must preserve item choices and preview without withdrawing')
+ RemoteCatalog.ChestWhole,RemoteCatalog.ChestDiscover,RemoteCatalog.ChestItems=whole,discover,items
+ RemoteCatalog.ChestSpeedButton.Activated:Fire();RemoteCatalog.UpdateChestSelectionUI()
+
  recorder.WithdrawCarrots=function(_,amount,binding) table.insert(requestedBindings,binding);return true end
  RemoteCatalog.ChestSelectButton.Activated:Fire()
- assert(RemoteCatalog.ChestAutoButton.Position.Y.Offset>=RemoteCatalog.ChestSelectMenu.Position.Y.Offset+RemoteCatalog.ChestSelectMenu.Size.Y.Offset,'chest selector must push collection controls below itself')
+ assert(RemoteCatalog.ChestWithdrawButton.Position.Y.Offset>=RemoteCatalog.ChestSelectMenu.Position.Y.Offset+RemoteCatalog.ChestSelectMenu.Size.Y.Offset,'chest selector must push manual controls below itself')
  local list=RemoteCatalog.ChestSelectMenu:GetChildren()[1]
  for _,option in ipairs(list:GetChildren()) do if string.find(option.Text,'#2',1,true) then option.Activated:Fire() end end
  assert(#RemoteCatalog.SelectedChestTargets()==1 and RemoteCatalog.SelectedChestTargets()[1].Binding==b,'selector must support an individual chest')
@@ -647,7 +696,7 @@ end)()
  assert(string.find(RemoteCatalog.ChestPlanLabel.Text,'Stand within 20 studs',1,true),'preview must give an actionable reason for blocked checks')
  assert(RemoteCatalog.ChestPlanLabel.Parent==RemoteCatalog.ChestPlanView and RemoteCatalog.ChestPlanView.AutomaticCanvasSize==Enum.AutomaticSize.Y,'long preview details must scroll within their own viewport')
 
- assert(RemoteCatalog.ChestAutoButton.Position.Y.Offset>=RemoteCatalog.ChestPlanView.Position.Y.Offset+RemoteCatalog.ChestPlanView.Size.Y.Offset,'plan must fit above the collection action')
+ assert(RemoteCatalog.ChestAutoButton.Position.Y.Offset==130 and RemoteCatalog.ChestHint.Position.Y.Offset>=RemoteCatalog.ChestPlanView.Position.Y.Offset+RemoteCatalog.ChestPlanView.Size.Y.Offset,'primary collection must stay at the top while detailed guidance fits below the plan')
  assert(not RemoteCatalog.ChestGoal,'goal must default to unlimited')
  RemoteCatalog.ChestAutoEnabled=true
  RemoteCatalog.ChestGoalButton.Activated:Fire()
@@ -758,7 +807,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn blueprint-tools-51',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn editor-chests-52',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()

@@ -766,3 +766,60 @@ host filenames, cancellation/error/failure history, immutable results and the
 five-run limit. The full suite retains v41 and later regression coverage. Live
 Roblox/Studio rendering, server acceptance and structural support remain
 unverified.
+
+### Individual blocks, Undo/Redo and chest pacing (v52)
+
+Open **Auto Build > Blueprint block editing** after creating a preview. Enable
+**Pick block**, then click/tap a ghost outside the hub, or use **Next block**.
+The selected ghost becomes less transparent, and the editor identifies its
+material and current cell number. Only live preview ghosts in the selected
+build layer are eligible; world geometry in front of a ghost blocks click
+selection. The number identifies the current preview and can change after edits.
+
+**Remove selected** removes that one cell. **Replace selected** changes that
+cell's material to the replacement field's value, with the existing known-block
+validation. Named replacement/removal retain their full-blueprint scope. Removing
+the last remaining cell is still rejected. Picking is OFF by default, disables
+on preview clearing/regeneration, build start, tab/window menu cleanup or editor
+closing, and is locked while a build worker or stopped in-flight call is active.
+UI-consumed input, keyboard input, chat/text editing, hub controls, hidden windows,
+other tabs and destroyed UI are excluded. Picking does not inject mouse or tool
+input. Preview parts remain noncolliding, nontouchable and nonqueryable.
+
+**Undo** and **Redo** now retain up to 20 edit steps for the current working
+blueprint, including bulk/individual material changes and cell/layer removals.
+The buttons show available counts. Undoing a removal recreates the previous
+shape at the current moved/rotated anchor and resets layer selection to All;
+material-only steps preserve existing preview CFrames. Redo reapplies the edit.
+New valid edits discard the abandoned Redo path; rejected/no-op edits retain it.
+Older steps are evicted at the cap, so exhausting Undo does not necessarily mean
+the original layout was reached. Save, loading a slot, choosing a built-in preset
+and destruction clear both stacks. Clear preview keeps them: Undo/Redo can restore
+working data without creating a new preview. Slots remain unchanged until Save.
+
+On **Chests**, **START COLLECTING** is now beside Start learning near the top of
+the page. During collection it becomes **STOP** with completed-check counts.
+**Pace: Standard** preserves the prior timing. Switch to **Fast** to reduce the
+post-confirmation pause from 0.6 to 0.2 seconds, reduced-batch retry pauses from
+0.6 to 0.35 seconds, failed-probe pauses from 0.2 to 0.1 seconds and single-item
+no-progress backoff from 3 to 1 second. The two-second inventory-confirmation
+window, one-item unobserved-slot probes, bounded retries, normal reach, batch
+limits, goals, Stop and single-worker rules are retained. Each run captures its
+pace; changing pace waits for active/in-flight/manual requests to finish. Pace
+is a session preference and starts at Standard.
+
+**Use learned slots only** switches off discovery and whole-chest scanning,
+preserving the current item checklist and explicit chest selection. It previews
+the resulting targets without starting collection. Use it when the wanted slots
+are already learned; it intentionally omits unlearned slots and discovered chests.
+Scope and Whole chest controls can restore broader collection. This shortcut
+also waits for request cleanup. Live results now identify each attempted batch
+and show when inventory confirmation is pending. Fast shortens local pauses;
+network/server response times and confirmations still determine actual speed.
+
+The full suite covers nearest rotated-ghost picking, obstruction/layer filters,
+mouse/touch/UI/chat guards, actual editor and chest callbacks, single-cell edits,
+multiple Undo/Redo sequences after transforms, history bounds and lifecycle,
+pace snapshots, identical confirmed totals, unchanged confirmation windows and
+bounded no-progress behavior. Existing v41–v51 regressions remain covered. Live
+Roblox/Studio behavior and observed server throughput remain unverified.

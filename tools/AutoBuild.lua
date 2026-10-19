@@ -107,10 +107,29 @@ function AutoBuild.ValidateFavorites(data)
     end
     return result
 end
+function AutoBuild.RayBox(cf,origin,direction,half,limit)
+    local c={cf:GetComponents()}
+    local x,y,z=origin.X-c[1],origin.Y-c[2],origin.Z-c[3]
+    local o={x*c[4]+y*c[7]+z*c[10],x*c[5]+y*c[8]+z*c[11],x*c[6]+y*c[9]+z*c[12]}
+    local d={direction.X*c[4]+direction.Y*c[7]+direction.Z*c[10],direction.X*c[5]+direction.Y*c[8]+direction.Z*c[11],direction.X*c[6]+direction.Y*c[9]+direction.Z*c[12]}
+    local near,far=0,limit or 1000
+    if d[1]^2+d[2]^2+d[3]^2<1e-12 then return nil end
+    for axis=1,3 do
+        if o[axis]~=o[axis] or d[axis]~=d[axis] or math.abs(o[axis])==math.huge or math.abs(d[axis])==math.huge then return nil end
+        if math.abs(d[axis])<1e-8 then
+            if math.abs(o[axis])>half then return nil end
+        else
+            local a,b=(-half-o[axis])/d[axis],(half-o[axis])/d[axis]
+            near=math.max(near,math.min(a,b));far=math.min(far,math.max(a,b))
+            if near>far then return nil end
+        end
+    end
+    return near
+end
 function AutoBuild.new(ctx)
     local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons,commits={},{},{}
-    self.Favorites={};self.History={}
+    self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
     local now=ctx.Now or os.clock
@@ -122,6 +141,9 @@ function AutoBuild.new(ctx)
     function self:ClearPreview()
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
         self.Cells=nil;self.BuildReport=nil;self.LayerIndex=nil;self.BaseAnchor=nil
+        self.SelectedCell=nil;self.Picking=false
+        if buttons.Pick then buttons.Pick.Text="Pick block: OFF" end
+        if self.SelectionLabel then self.SelectionLabel.Text="No preview block selected." end
         if buttons.Layer then buttons.Layer.Text="Build: All layers" end
         self.ReachCounts=nil
         if buttons.Reach then buttons.Reach.Text=self.RangeMarkers and "Mark reach: ON" or "Mark reach: OFF" end
@@ -188,6 +210,50 @@ function AutoBuild.new(ctx)
         end
         return selected
     end
+    function self:RefreshSelection()
+        local included={}
+        for _,cell in ipairs(self:SelectedCells()) do included[cell]=true end
+        if self.SelectedCell and (not included[self.SelectedCell] or not self.SelectedCell.Preview) then self.SelectedCell=nil end
+        for _,cell in ipairs(self.Cells or {}) do
+            if cell.Preview then cell.Preview.Transparency=cell==self.SelectedCell and .25 or included[cell] and .65 or .94 end
+        end
+        if self.SelectionLabel then
+            local cell=self.SelectedCell
+            self.SelectionLabel.Text=cell and ("Selected block #"..tostring(table.find(self.Cells,cell))..": "..cell.Material..". Use the replacement field, then Replace selected; or Remove selected.") or "No preview block selected. Enable Pick block, then click/tap a ghost outside the hub, or use Next block."
+        end
+    end
+    function self:SelectCell(index)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before selecting a block.");return false end
+        local cell=index
+        if type(index)=="number" then cell=self.Cells and self.Cells[index] end
+        if type(cell)~="table" or not cell.Preview or not table.find(self:SelectedCells(),cell) then return false end
+        self.SelectedCell=cell;self:RefreshSelection();return true
+    end
+    function self:SetPicking(on)
+        if on and (self.Running or self.WorkerToken or not self.Cells) then status("Preview a blueprint and wait for the worker before picking blocks.");return false end
+        self.Picking=on==true;buttons.Pick.Text=self.Picking and "Pick block: ON" or "Pick block: OFF"
+        return true
+    end
+    function self:PickRay(origin,direction,limit)
+        if not self.Picking or self.Running or self.WorkerToken or not ctx.Alive() then return false end
+        local nearest,best=limit or 1000,nil
+        for _,cell in ipairs(self:SelectedCells()) do
+            if cell.Preview then
+                local distance=AutoBuild.RayBox(cell.CFrame,origin,direction,(self.BlockSize-.15)/2,nearest)
+                if distance and (not best or distance<nearest) then nearest=distance;best=cell end
+            end
+        end
+        self.SelectedCell=best;self:RefreshSelection()
+        return best~=nil
+    end
+    function self:NextBlock()
+        if self.Running or self.WorkerToken then return false end
+        local candidates={}
+        for _,cell in ipairs(self:SelectedCells()) do if cell.Preview then table.insert(candidates,cell) end end
+        if #candidates==0 then status("Preview some blocks before selecting one.");return false end
+        local index=table.find(candidates,self.SelectedCell) or 0
+        return self:SelectCell(candidates[index%#candidates+1])
+    end
     function self:RefreshReach()
         if not self.RangeMarkers then
             if self.ReachCounts then
@@ -238,6 +304,7 @@ function AutoBuild.new(ctx)
         self.LayerIndex=index<=#heights and index or nil
         self.BuildReport=nil
         local selected=self:SelectedCells()
+        self:RefreshSelection()
         local included={}
         for _,cell in ipairs(selected) do included[cell]=true end
         for _,cell in ipairs(self.Cells) do
@@ -245,7 +312,7 @@ function AutoBuild.new(ctx)
         end
         buttons.Layer.Text=self.LayerIndex and ("Build: Layer "..self.LayerIndex.."/"..#heights.." · "..#selected.." blocks") or ("Build: All layers · "..#selected.." blocks")
         self:UpdateMaterials(selected)
-        self:RefreshReach()
+        self:RefreshSelection();self:RefreshReach()
         status("Selected "..#selected.." of "..#self.Cells.." blocks. Faint preview blocks are excluded. Save preview still saves the full layout.")
         return true
     end
@@ -401,6 +468,8 @@ function AutoBuild.new(ctx)
         self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building"}
         local progress=self.Progress
         local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now()}
+        self.Picking=false;self.SelectedCell=nil;self:RefreshSelection()
+        if buttons.Pick then buttons.Pick.Text="Pick block: OFF" end
         self.Running=true;buttons.Start.Text="Building…"
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
@@ -614,6 +683,9 @@ function AutoBuild.new(ctx)
         if not data then status("Select a valid saved source slot before copying it.");return false end
         return self:StoreBlueprint(data,target)
     end
+    local function positionKey(c)
+        return string.format("%d,%d,%d",math.round(c[1]*1000),math.round(c[2]*1000),math.round(c[3]*1000))
+    end
     local function workingPlan()
         if self.SavedPlan then return AutoBuild.Validate(self.SavedPlan) end
         assert(self.Cells and self.Anchor,"Preview or load a blueprint before editing blocks.")
@@ -628,34 +700,59 @@ function AutoBuild.new(ctx)
         self.Preset="Saved: "..self.SavedPlan.Name.." *";buttons.Preset.Text=self.Preset.."  ▼"
         self:UpdateMaterials(self.Cells and self:SelectedCells() or self.SavedPlan.Cells)
     end
-    function self:RemoveBlocks(material,selectedLayer)
+    function self:RefreshEdits()
+        self.MaterialUndo=self.UndoStack[#self.UndoStack]
+        if buttons.UndoMaterial then buttons.UndoMaterial.Text="Undo ("..#self.UndoStack..")" end
+        if buttons.Redo then buttons.Redo.Text="Redo ("..#self.RedoStack..")" end
+    end
+    function self:ClearEdits()
+        self.UndoStack={};self.RedoStack={};self:RefreshEdits()
+    end
+    local function editSnapshot(plan,removal)
+        local materials={}
+        for _,cell in ipairs(self.Cells or {}) do materials[cell]=cell.Material end
+        return {Plan=plan,Dirty=self.PlanDirty,Removal=removal,CellList=self.Cells,Materials=materials}
+    end
+    local function pushEdit(plan,removal)
+        table.insert(self.UndoStack,editSnapshot(plan,removal))
+        if #self.UndoStack>20 then table.remove(self.UndoStack,1) end
+        self.RedoStack={};self:RefreshEdits()
+    end
+    function self:RemoveBlocks(material,selectedLayer,onlyCell)
         if self.Running or self.WorkerToken then status("Wait for the build worker before removing blueprint blocks.");return false end
         local ok,original=pcall(workingPlan)
         if not ok then status(original);return false end
         material=type(material)=="string" and material:match("^%s*(.-)%s*$") or ""
-        local height
+        local height,cellKey
+        if onlyCell then
+            if not table.find(self:SelectedCells(),onlyCell) or not onlyCell.Preview then status("Select a preview block first.");return false end
+            local c={self.Anchor:ToObjectSpace(onlyCell.CFrame):GetComponents()}
+            cellKey=positionKey(c)
+        end
         if selectedLayer then
             local heights=self:Layers();height=self.LayerIndex and heights and heights[self.LayerIndex]
             if not height then status("Choose one layer with the Build layer control before removing it.");return false end
-        elseif material=="" or #material>128 then status("Enter an existing block name in the first edit field.");return false end
+        elseif not onlyCell and (material=="" or #material>128) then status("Enter an existing block name in the first edit field.");return false end
         local function matches(name,y)
             return selectedLayer and math.round(y*1000)/1000==height or not selectedLayer and name==material
         end
         local copy=AutoBuild.Validate(original);local remaining={}
         for _,cell in ipairs(copy.Cells) do
-            if not matches(cell.Material,cell.Components[2]) then table.insert(remaining,cell) end
+            local c=cell.Components
+            local match=onlyCell and positionKey(c)==cellKey or not onlyCell and matches(cell.Material,c[2])
+            if not match then table.insert(remaining,cell) end
         end
         local removed=#copy.Cells-#remaining
         if removed==0 then status("No matching blocks in the working blueprint.");return false end
         if #remaining==0 then status("Keep at least one blueprint block. Use Clear preview to hide the whole plan.");return false end
         copy.Cells=remaining
-        self.MaterialUndo={Plan=original,Dirty=self.PlanDirty,Removal=true}
+        pushEdit(original,true)
         self.SavedPlan=copy
         if self.Cells then
             local kept={}
             for _,cell in ipairs(self.Cells) do
                 local y=cell.LayerY or self.Anchor:ToObjectSpace(cell.CFrame).Position.Y
-                if matches(cell.Material,y) then
+                if onlyCell and cell==onlyCell or not onlyCell and matches(cell.Material,y) then
                     if cell.Preview then cell.Preview:Destroy() end
                 else table.insert(kept,cell) end
             end
@@ -663,11 +760,11 @@ function AutoBuild.new(ctx)
         end
         self.LayerIndex=nil;buttons.Layer.Text="Build: All layers"
         for _,cell in ipairs(self.Cells or {}) do if cell.Preview then cell.Preview.Transparency=.65 end end
-        markEdited();self:RefreshReach()
+        self.SelectedCell=nil;markEdited();self:RefreshSelection();self:RefreshReach()
         status("Removed "..removed.." blueprint blocks. Undo restores this edit; Save preview updates the selected slot.")
         return true,removed
     end
-    function self:ReplaceMaterial(from,to)
+    function self:ReplaceMaterial(from,to,onlyCell)
         if self.Running or self.WorkerToken then status("Wait for the build worker before replacing materials.");return false end
         from=type(from)=="string" and from:match("^%s*(.-)%s*$") or ""
         to=type(to)=="string" and to:match("^%s*(.-)%s*$") or ""
@@ -677,27 +774,35 @@ function AutoBuild.new(ctx)
         local ok,original=pcall(workingPlan)
         if not ok then status(original);return false end
         local copy=AutoBuild.Validate(original)
-        local changed=0
+        local changed,cellKey=0,nil
+        if onlyCell then
+            if not table.find(self:SelectedCells(),onlyCell) or not onlyCell.Preview then status("Select a preview block first.");return false end
+            local c={self.Anchor:ToObjectSpace(onlyCell.CFrame):GetComponents()}
+            cellKey=positionKey(c)
+        end
         for _,cell in ipairs(copy.Cells) do
-            if cell.Material==from then cell.Material=to;changed+=1 end
+            local c=cell.Components
+            if cell.Material==from and (not onlyCell or positionKey(c)==cellKey) then cell.Material=to;changed+=1 end
         end
         if changed==0 then status("No blocks named "..from.." in the loaded blueprint.");return false end
-        local materials={}
-        for _,cell in ipairs(self.Cells or {}) do materials[cell]=cell.Material end
-        self.MaterialUndo={Plan=original,Dirty=self.PlanDirty,CellList=self.Cells,Materials=materials}
+        pushEdit(original,false)
         self.SavedPlan=copy
         if self.Cells then
-            for _,cell in ipairs(self.Cells) do if cell.Material==from then cell.Material=to end end
+            for _,cell in ipairs(self.Cells) do if cell.Material==from and (not onlyCell or cell==onlyCell) then cell.Material=to end end
         end
-        markEdited()
+        markEdited();self:RefreshSelection()
         status("Changed "..changed.." blocks in the working blueprint. Saved slots are unchanged; Preview then Save preview to keep this edit.")
         return true,changed
     end
-    function self:UndoMaterial()
-        if self.Running or self.WorkerToken then status("Wait for the build worker before undoing material edits.");return false end
-        if not self.MaterialUndo then status("No material edit to undo.");return false end
-        local undo=self.MaterialUndo
-        self.SavedPlan=undo.Plan;self.PlanDirty=undo.Dirty;self.MaterialUndo=nil;self.BuildReport=nil
+    local function restoreEdit(source,destination,verb)
+        if self.Running or self.WorkerToken then status("Wait for the build worker before Undo/Redo.");return false end
+        local undo=source[#source]
+        if not undo then status("No blueprint edit to "..verb..".");return false end
+        local ok,current=pcall(workingPlan)
+        if not ok then status(current);return false end
+        table.remove(source)
+        table.insert(destination,editSnapshot(current,undo.Removal))
+        self.SavedPlan=AutoBuild.Validate(undo.Plan);self.PlanDirty=undo.Dirty;self.BuildReport=nil
         if self.Cells then
             if undo.Removal then
                 for _,cell in ipairs(self.Cells) do if cell.Preview then cell.Preview:Destroy() end end
@@ -710,14 +815,31 @@ function AutoBuild.new(ctx)
                 end
                 self.LayerIndex=nil;buttons.Layer.Text="Build: All layers"
             else
-                for index,cell in ipairs(self.Cells) do cell.Material=undo.CellList==self.Cells and undo.Materials[cell] or self.SavedPlan.Cells[index].Material end
+                local byPosition={}
+                for _,cell in ipairs(self.SavedPlan.Cells) do
+                    local c=cell.Components;byPosition[positionKey(c)]=cell.Material
+                end
+                for index,cell in ipairs(self.Cells) do
+                    local c=self.Anchor and {self.Anchor:ToObjectSpace(cell.CFrame):GetComponents()} or {0,0,0}
+                    cell.Material=undo.CellList==self.Cells and undo.Materials[cell] or byPosition[positionKey(c)] or self.SavedPlan.Cells[index].Material
+                end
             end
         end
         self.Preset="Saved: "..self.SavedPlan.Name..(self.PlanDirty and " *" or "");buttons.Preset.Text=self.Preset.."  ▼"
-        self:UpdateMaterials(self.Cells and self:SelectedCells() or self.SavedPlan.Cells)
-        self:RefreshReach()
-        status("Last blueprint edit undone. No saved slot or placed block was changed.")
+        self:RefreshEdits();self:UpdateMaterials(self.Cells and self:SelectedCells() or self.SavedPlan.Cells)
+        self:RefreshSelection();self:RefreshReach()
+        status("Blueprint edit "..verb.." complete. Saved slots are unchanged.")
         return true
+    end
+    function self:UndoMaterial() return restoreEdit(self.UndoStack,self.RedoStack,"undo") end
+    function self:RedoEdit() return restoreEdit(self.RedoStack,self.UndoStack,"redo") end
+    function self:RemoveSelected()
+        if not self.SelectedCell then status("Select a preview block first.");return false end
+        return self:RemoveBlocks(nil,false,self.SelectedCell)
+    end
+    function self:ReplaceSelected(to)
+        if not self.SelectedCell then status("Select a preview block first.");return false end
+        return self:ReplaceMaterial(self.SelectedCell.Material,to,self.SelectedCell)
     end
     function self:SavePreview()
         if self.Running then status("Stop the build before saving a blueprint.");return false end
@@ -728,7 +850,7 @@ function AutoBuild.new(ctx)
         end
         local saved=self:StoreBlueprint(data)
         if saved and self.SavedPlan then
-            self.SavedPlan=self.Library[self.Slot];self.PlanDirty=false;self.MaterialUndo=nil
+            self.SavedPlan=self.Library[self.Slot];self.PlanDirty=false;self:ClearEdits()
             self.Preset="Saved: "..self.SavedPlan.Name;buttons.Preset.Text=self.Preset.."  ▼"
         end
         return saved
@@ -744,7 +866,7 @@ function AutoBuild.new(ctx)
         if not ok then status("Cannot load slot "..self.Slot..": "..tostring(copy));return false end
         self:ClearPreview()
         if not self.Library[self.Slot] then self.Persistence[self.Slot]="Loaded from file" end
-        self.Library[self.Slot]=copy;self.SavedPlan=copy;self.PlanDirty=false;self.MaterialUndo=nil
+        self.Library[self.Slot]=copy;self.SavedPlan=copy;self.PlanDirty=false;self:ClearEdits()
         self:RefreshLibrary(false)
         self.Preset="Saved: "..copy.Name;buttons.Preset.Text=self.Preset.."  ▼"
         inputs.Name.Text=copy.Name
@@ -781,7 +903,7 @@ function AutoBuild.new(ctx)
         end
         return self:StoreBlueprint(data)
     end
-    function self:Destroy() self:Stop();self:ClearPreview() end
+    function self:Destroy() self:Stop();self:ClearPreview();self:ClearEdits() end
     local layoutItems={}
     local function register(control,y,height,x,offset,section,field)
         table.insert(layoutItems,{Control=control,Y=y,Height=height,X=x or 0,Offset=offset or 6,Section=section,Field=field})
@@ -842,8 +964,8 @@ function AutoBuild.new(ctx)
         local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(.5,-4,0,34),Position=UDim2.new((index-1)%2*.5,2,0,math.floor((index-1)/2)*36)})
         option.ZIndex=36
         ctx.Track(option.Activated:Connect(function()
-            if self.Running then return end
-            self.SavedPlan=nil;self.PlanDirty=false;self.MaterialUndo=nil
+            if self.Running or self.WorkerToken then return end
+            self.SavedPlan=nil;self.PlanDirty=false;self:ClearEdits()
             self.Preset=preset;buttons.Preset.Text=preset.."  ▼";presetMenu.Visible=false;invalidate()
         end))
     end
@@ -947,32 +1069,42 @@ function AutoBuild.new(ctx)
         inputs[key]=field;register(field,layoutY(1578),32,(index-1)*.5,6,nil,true)
     end
     button("Replace","Replace material",0,1618,.5,function() self:ReplaceMaterial(inputs.ReplaceFrom.Text,inputs.ReplaceTo.Text) end)
-    button("UndoMaterial","Undo last edit",.5,1618,.5,function() self:UndoMaterial() end)
+    button("UndoMaterial","Undo (0)",.5,1618,.25,function() self:UndoMaterial() end)
+    button("Redo","Redo (0)",.75,1618,.25,function() self:RedoEdit() end)
     button("RemoveMaterial","Remove named blocks",0,1660,.5,function() self:RemoveBlocks(inputs.ReplaceFrom.Text,false) end)
     button("RemoveLayer","Remove selected layer",.5,1660,.5,function() self:RemoveBlocks(nil,true) end)
-    local replaceHint=label("Edit a loaded or visible blueprint. The first field selects the material to replace/remove. Layer removal needs one selected layer. Undo keeps one edit; Save preview commits the layout.",1700,84)
+    button("Pick","Pick block: OFF",0,1700,.5,function() self:SetPicking(not self.Picking) end)
+    button("NextBlock","Next block",.5,1700,.5,function() self:NextBlock() end)
+    self.SelectionLabel=label("No preview block selected. Enable Pick block, then click/tap a ghost outside the hub, or use Next block.",1740,48)
+    self.SelectionLabel.TextWrapped=true
+    button("RemoveSelected","Remove selected",0,1796,.5,function() self:RemoveSelected() end)
+    button("ReplaceSelected","Replace selected",.5,1796,.5,function() self:ReplaceSelected(inputs.ReplaceTo.Text) end)
+    local replaceHint=label("Named edits affect all matching blocks. Selected edits affect one highlighted ghost. Undo/Redo keeps up to 20 edits. Save preview commits the layout and clears edit history.",1836,84)
     replaceHint.TextWrapped=true
-    button("History","View next build result",0,1828,.5,function() self:ShowHistory() end)
-    button("CopyHistory","Copy build result",.5,1828,.5,function()
+    button("History","View next build result",0,1964,.5,function() self:ShowHistory() end)
+    button("CopyHistory","Copy build result",.5,1964,.5,function()
         if not self.HistoryReport and not self:ShowHistory() then return end
         if ctx.CopyReport then ctx.CopyReport(self.HistoryReport) else status("Report copying is unavailable.") end
     end)
     local historyView=Instance.new("ScrollingFrame")
-    historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(1872))
+    historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(2008))
     historyView.BackgroundTransparency=1;historyView.BorderSizePixel=0;historyView.ScrollBarThickness=5
     historyView.CanvasSize=UDim2.new();historyView.AutomaticCanvasSize=Enum.AutomaticSize.Y;historyView.Parent=ctx.Parent
-    register(historyView,layoutY(1872),216)
+    register(historyView,layoutY(2008),216)
     self.HistoryLabel=ctx.Label({Parent=historyView,Text="No builds recorded this session.",TextSize=12,
         Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
     self.HistoryLabel.TextWrapped=true;self.HistoryLabel.AutomaticSize=Enum.AutomaticSize.Y;self.HistoryLabel.TextTruncate=Enum.TextTruncate.None
     self.Sections={
         {Key="Settings",Title="Build settings",Header=90,Start=90,Finish=392,Expanded=40,Collapsed=-262,Open=false},
         {Key="Library",Title="Saved blueprints & checks",Header=768,Start=808,Finish=1572,Expanded=0,Collapsed=-764,Open=false},
-        {Key="Materials",Title="Blueprint block editing",Header=1580,Start=1620,Finish=1828,Expanded=0,Collapsed=-208,Open=false},
-        {Key="History",Title="Recent build results",Header=1832,Start=1872,Finish=2144,Expanded=0,Collapsed=-272,Open=false},
+        {Key="Materials",Title="Blueprint block editing",Header=1580,Start=1620,Finish=1964,Expanded=0,Collapsed=-344,Open=false},
+        {Key="History",Title="Recent build results",Header=1968,Start=2008,Finish=2280,Expanded=0,Collapsed=-272,Open=false},
     }
     self.SectionButtons={}
-    function self:CloseMenus() presetMenu.Visible=false;moveMenu.Visible=false end
+    function self:CloseMenus()
+        presetMenu.Visible=false;moveMenu.Visible=false
+        self.Picking=false;if buttons.Pick then buttons.Pick.Text="Pick block: OFF" end
+    end
     function self:LayoutSections()
         local bottom=0
         for _,item in ipairs(layoutItems) do
@@ -1016,6 +1148,7 @@ function AutoBuild.new(ctx)
         self.SectionButtons[section.Key]=control
         ctx.Track(control.Activated:Connect(function() self:ToggleSection(section.Key) end))
     end
+    if ctx.RegisterPicker then ctx.RegisterPicker(function(origin,direction,limit) return self:PickRay(origin,direction,limit) end) end
     if ctx.RegisterMenuCloser then ctx.RegisterMenuCloser(function() self:CloseMenus() end) end
     self:LayoutSections()
     self.Buttons=buttons;self.Inputs=inputs

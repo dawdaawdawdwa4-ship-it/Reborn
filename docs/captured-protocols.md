@@ -267,3 +267,17 @@ confirmed before cancellation are counted; in-flight cleanup precedes recording.
 No request payloads, live instances, session identifiers or new server fields are
 persisted by either feature. Actual placement still uses normal reach,
 occupied-cell checks, single-worker ownership and observed block confirmation.
+
+### Individual editing and chest pacing (editor-chests-52)
+
+Preview block selection uses local oriented-box ray intersections and a world
+occlusion distance. It does not change ghost query/collision properties or add
+placement/demolition requests. Single-cell changes and bounded Undo/Redo use the
+existing version-1 working blueprint schema; saved slots change only on Save.
+
+Optional Fast chest pacing changes local waits after attempts/confirmation.
+Standard remains the default. Inventory confirmation, reach, captured payloads,
+learned batch ceilings, unobserved-slot probes, goals, retries and cancellation
+remain on their existing paths. The learned-slots shortcut narrows target
+selection and previews it without sending requests. No remote format, session
+envelope or additional server field is introduced.

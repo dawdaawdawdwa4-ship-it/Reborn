@@ -7,7 +7,8 @@ local gui={Parent=true}
 local COLORS={on=1,off=2}
 local RemoteCatalog={ChestAutoButton={},ChestResultLabel={},Navigation={Stop=function(owner) assert(owner=="Chest") end}}
 local worker
-local task={spawn=function(fn) worker=coroutine.create(fn);local ok,err=coroutine.resume(worker);assert(ok,err) end,wait=function(dt) coroutine.yield(dt) end}
+local waits={}
+local task={spawn=function(fn) worker=coroutine.create(fn);local ok,err=coroutine.resume(worker);assert(ok,err) end,wait=function(dt) table.insert(waits,dt);coroutine.yield(dt) end}
 local inventory,chest,calls,readable=0,75,{},true
 local valid,reached=true,true
 local binding={Amount=30}
@@ -253,6 +254,32 @@ RemoteCatalog.ChestAutoItems.wood=999
 assert(historical.Items.wood==4,'history must snapshot totals instead of retaining mutable run state')
 for index=1,8 do RemoteCatalog.RecordChestRun('Stopped',index,{wood=index}) end
 assert(#RemoteCatalog.ChestHistory==5 and RemoteCatalog.ChestHistory[1].Total==8 and RemoteCatalog.ChestHistory[5].Total==4,'history must keep only the newest five runs in order')
+-- Fast pacing shortens confirmed-transfer waits without weakening confirmation or retries.
+do
+ local function run(pace,confirmed)
+  RemoteCatalog.ChestSpeed=pace;RemoteCatalog.ChestGoal=confirmed and 60 or 1
+  RemoteCatalog.SelectedChestTargets=function() return {{Recorder=recorder,Binding={Amount=30,Item='wood'}}} end
+  RemoteCatalog.OwnedTools=function() return {{Name='wood'}} end
+  RemoteCatalog.BaitCount=function() return inventory end
+  inventory=0;calls={};waits={}
+  RemoteCatalog.WithdrawCarrots=function(amount) table.insert(calls,amount);if confirmed then inventory+=amount end;return true end
+  assert(RemoteCatalog.SetChestAuto(true));drain()
+  local total,polls=0,0
+  for _,dt in ipairs(waits) do total+=dt;if dt==.1 then polls+=1 end end
+  return total,polls,#calls,RemoteCatalog.ChestAutoTotal
+ end
+ local standard=run('Standard',true)
+ local fast,_,count,total=run('Fast',true)
+ assert(standard>fast and count==2 and total==60,'Fast must reduce waits for the same two confirmed batches')
+ local _,polls,unconfirmed,total=run('Fast',false)
+ assert(unconfirmed==3 and total==0 and polls>=60,'Fast must retain the full two-second confirmation window and bounded no-progress attempts')
+ -- A running worker keeps its captured pace even if external code changes the preference.
+ RemoteCatalog.ChestSpeed='Standard';RemoteCatalog.ChestGoal=60;inventory=0;waits={}
+ RemoteCatalog.WithdrawCarrots=function(amount) inventory+=amount;return true end
+ assert(RemoteCatalog.SetChestAuto(true));RemoteCatalog.ChestSpeed='Fast';drain()
+ for _,dt in ipairs(waits) do assert(dt==.6,'pacing must be stable throughout a run') end
+ RemoteCatalog.ChestSpeed='Standard';RemoteCatalog.ChestGoal=nil
+end
 return 'Chest Auto Max: batches/remainder, inventory confirmation, range wait/resume, one worker, bounded no-progress, Stop/in-flight restart, errors/session/GUI cleanup passed'
 `;
 const state=await LuauState.createAsync();

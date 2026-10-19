@@ -534,6 +534,68 @@ do
  assert(h:ToggleSection('History') and h.Buttons.History.Visible and h:ToggleSection('History') and not h.Buttons.History.Visible and h.LayoutHeight<650,'history must use its own collapsed section and preserve compact defaults')
  ctx.Place,ctx.CopyReport=oldPlace,oldCopy
 end
+-- Individual picking resolves the nearest visible-layer ghost without world queries.
+do
+ local e=A.new(ctx);local previous=requests;local writes=writes47
+ e.Anchor=CFrame.new(12,6,9,.37);e.BaseAnchor=e.Anchor;e.BlockSize=3
+ e.Cells={
+  {CFrame=e.Anchor*frame(0,0,-3),LayerY=0,Material='grass',Preview=control()},
+  {CFrame=e.Anchor*frame(0,0,-6),LayerY=0,Material='grass',Preview=control()},
+  {CFrame=e.Anchor*frame(0,3,-3),LayerY=3,Material='grass',Preview=control()}}
+ local origin=vector(12,6,9);local direction=vector(-math.sin(.37),0,-math.cos(.37))
+ assert(not e.Picking and not e:PickRay(origin,direction),'picking must start OFF')
+ assert(not e:SelectCell(0) and not e:SelectCell(999) and not e:SelectCell(false),'invalid selections must be harmless')
+ assert(e:SetPicking(true) and e:PickRay(origin,direction) and e.SelectedCell==e.Cells[1],'ray picking must select the nearest rotated ghost')
+ assert(e.Cells[1].Preview.Transparency==.25 and e.Cells[2].Preview.Transparency==.65,'selected ghosts must be highlighted without fading other included cells')
+ assert(not e:PickRay(origin,direction,1) and not e.SelectedCell,'a world obstruction before the ghost must prevent selection')
+ assert(not A.RayBox(CFrame.new(0,0,0),vector(3,0,0),vector(0,0,-1),1),'parallel rays outside the box must miss')
+ assert(not A.RayBox(CFrame.new(0,0,0),vector(0,0,5),vector(0,0,0),1),'zero-length rays must not select')
+ assert(not A.RayBox(CFrame.new(0,0,0),vector(0,0,5),vector(0/0,0,-1),1),'nonfinite rays must be ignored')
+ assert(not A.RayBox(CFrame.new(0,0,0),vector(0,0,5),vector(0,0,1),1),'boxes behind the camera must not be selected')
+ assert(e:CycleLayer() and not e:SelectCell(3),'excluded layers must not be selectable')
+ e.Buttons.NextBlock.Activated:Fire();assert(e.SelectedCell==e.Cells[1])
+ e.Buttons.NextBlock.Activated:Fire();assert(e.SelectedCell==e.Cells[2])
+ assert(e:CycleLayer() and not e.SelectedCell and not e:PickRay(origin,direction),'layer changes must clear an excluded selection and ray picking must respect the filter')
+ assert(e:CycleLayer() and e:PickRay(origin,direction))
+ local chosen=e.SelectedCell;local position=chosen.CFrame
+ assert(e:ReplaceSelected('stone') and chosen.Material=='stone' and e.Cells[2].Material=='grass','selected replacement must affect exactly one same-material cell')
+ assert(e:Move(1,0,0) and e:RotatePreview() and e.SelectedCell==chosen,'selection must follow in-place transforms')
+ local anchor=e.Anchor
+ assert(e:RemoveSelected() and #e.Cells==2 and not e.SelectedCell and #e.UndoStack==2,'selected removal must remove exactly one cell and record a second edit')
+ assert(e:UndoMaterial() and #e.Cells==3 and #e.RedoStack==1,'Undo must restore the removed selected block')
+ assert(e:UndoMaterial() and #e.UndoStack==0 and #e.RedoStack==2 and not e.PlanDirty,'a second Undo must restore the earlier material edit and clean state')
+ for _,cell in ipairs(e.Cells) do
+  assert(cell.Material=='grass')
+  local p=anchor:ToObjectSpace(cell.CFrame).Position
+  assert(math.abs(p.X)<.001 and (math.abs(p.Z+3)<.001 or math.abs(p.Z+6)<.001),'Undo must follow the current moved/rotated anchor')
+ end
+ assert(e:RedoEdit() and #e.RedoStack==1 and e.PlanDirty,'Redo must restore the selected material edit')
+ assert(e:RedoEdit() and #e.Cells==2 and #e.UndoStack==2 and #e.RedoStack==0,'second Redo must remove the same cell again')
+ assert(e:UndoMaterial() and #e.RedoStack==1)
+ local depth=#e.UndoStack
+ assert(not e:ReplaceMaterial('grass','unknown') and #e.RedoStack==1 and #e.UndoStack==depth,'invalid edits must retain both histories')
+ assert(e:ReplaceMaterial('grass','stone') and #e.RedoStack==0 and not e:RedoEdit(),'a new valid edit after Undo must discard the abandoned Redo path')
+ e.WorkerToken=1
+ assert(not e:SelectCell(1) and not e:UndoMaterial() and not e:RedoEdit() and not e:RemoveSelected() and not e:PickRay(origin,direction),'in-flight ownership must lock selection and edit history')
+ e.WorkerToken=nil
+ e:ClearPreview();assert(not e.Picking and not e.SelectedCell and e:UndoMaterial() and not e.Cells,'Undo after Clear must restore data without rebuilding ghosts')
+ assert(e:RedoEdit() and not e.Cells,'Redo after Clear must also remain data-only')
+ assert(requests==previous and writes47==writes,'selection and Undo/Redo must never place blocks or write saved slots')
+end
+-- Edit history is bounded, reversible and cleared by explicit save/load/preset changes.
+do
+ local e=A.new(ctx);e.Anchor=frame(0,0,0);e.BaseAnchor=e.Anchor;e.BlockSize=3
+ e.Cells={{CFrame=frame(0,0,-3),LayerY=0,Material='grass',Preview=control()},{CFrame=frame(0,0,-6),LayerY=0,Material='grass',Preview=control()}}
+ for i=1,25 do assert(e:ReplaceMaterial(i%2==1 and 'grass' or 'stone',i%2==1 and 'stone' or 'grass')) end
+ assert(#e.UndoStack==20 and #e.RedoStack==0,'only the newest 20 edit steps may be retained')
+ for i=1,20 do assert(e:UndoMaterial()) end
+ assert(not e:UndoMaterial() and #e.RedoStack==20 and e.PlanDirty,'evicting older edits must not imply the original clean state was reached')
+ for i=1,20 do assert(e:RedoEdit()) end
+ assert(not e:RedoEdit() and #e.UndoStack==20 and e.Cells[1].Material=='stone')
+ e:SetPicking(true);e:CloseMenus();assert(not e.Picking,'tab/menu cleanup must disable picking')
+ assert(e:SavePreview() and #e.UndoStack==0 and #e.RedoStack==0 and not e.MaterialUndo,'saving must clear both edit histories')
+ assert(e:ReplaceMaterial('stone','grass') and e:LoadBlueprint() and #e.UndoStack==0 and #e.RedoStack==0,'loading a saved blueprint must clear edit history')
+end
 return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}
