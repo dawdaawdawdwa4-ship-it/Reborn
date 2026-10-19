@@ -207,3 +207,12 @@ not contain session envelopes, inventory contents or scripts. Preview reconstruc
 cells at the current character ground anchor. Start uses the existing placement
 wrapper with unchanged `{cframe, blockType}` payloads. Save/load never place
 blocks. The existing 300-block cap, normal reach and confirmation rules remain.
+
+### Build checks and resume (build-checks-46)
+
+No new remote format is introduced. Preflight reads existing world occupancy
+and owned-item counts without requesting placement. The placement worker retains
+its ownership token after Stop until an in-flight call returns; restarting waits
+for cleanup. Resumed passes use the existing request and confirmation path and
+recheck occupied cells before normal-reach placement. Slot inspection reads only
+local validated blueprint data and never starts a build.

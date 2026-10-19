@@ -75,21 +75,27 @@ function AutoBuild.Validate(data)
     return result
 end
 function AutoBuild.new(ctx)
-    local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30}
+    local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons={},{}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
     local now=ctx.Now or os.clock
-    local function status(message) self.Status.Text=tostring(message) end
+    local function status(message)
+        local p=self.Progress
+        local counts=self.Running and p and p.State~="Finished" and string.format("\nRun: %d confirmed · %d skipped · %d failed",p.Placed,p.Skipped,p.Failed) or ""
+        self.Status.Text=tostring(message)..counts
+    end
     function self:ClearPreview()
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
-        self.Cells=nil
+        self.Cells=nil;self.BuildReport=nil
         if self.MaterialSummary then self.MaterialSummary.Text="Preview or load a blueprint to see its material counts." end
     end
     function self:Stop()
         self.Token+=1;self.Running=false
-        buttons.Start.Text="Start build"
-        status("Stopped. Remaining blocks were not sent.")
+        buttons.Start.Text=self.Cells and "Resume build" or "Start build"
+        if self.Progress then self.Progress.State="Stopped" end
+        local p=self.Progress
+        status("Stopped. Remaining blocks were not sent."..(p and string.format(" %d confirmed, %d skipped, %d failed; %d planned.",p.Placed,p.Skipped,p.Failed,p.Total) or ""))
     end
     local function characterRoot()
         local char=ctx.Player.Character
@@ -177,17 +183,21 @@ function AutoBuild.new(ctx)
             cell.CFrame=delta*cell.CFrame
             if cell.Preview then cell.Preview.CFrame=cell.CFrame end
         end
-        self.Anchor=anchor
+        self.Anchor=anchor;self.BuildReport=nil
+        self:UpdateMaterials(self.Cells)
         self.OffsetX+=dx;self.OffsetY+=dy;self.OffsetZ+=dz
         self.MoveLabel.Text=string.format("Offset: right %d / up %d / forward %d blocks",self.OffsetX,self.OffsetY,self.OffsetZ)
         status("Blueprint moved. Start builds the visible preview positions.")
         return true
     end
     function self:Start()
-        if self.Running then return end
+        if self.Running then return false end
+        if self.WorkerToken then status("Wait for the previous build request to finish before resuming.");return false end
         if not self.Cells and not self:Preview() then return end
         self.Token+=1
         local token=self.Token
+        self.WorkerToken=token
+        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#self.Cells,Index=0,State="Building"}
         self.Running=true;buttons.Start.Text="Building…"
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
@@ -196,6 +206,7 @@ function AutoBuild.new(ctx)
             local ok,err=pcall(function()
                 for index,cell in ipairs(self.Cells) do
                     if not active() then return end
+                    self.Progress.Index=index
                     local existing=occupied(cell.CFrame,self.BlockSize)
                     if existing then
                         skipped+=1
@@ -204,6 +215,7 @@ function AutoBuild.new(ctx)
                         local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
                         if type(reach)~="number" then reach=20 end
                         while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
+                            self.Progress.State="Waiting for reach"
                             status(string.format("Move within %d studs of block %d/%d, or press Stop.",reach,index,#self.Cells))
                             scheduler.wait(.2);_,root=characterRoot()
                             if active() then existing=occupied(cell.CFrame,self.BlockSize) end
@@ -213,6 +225,7 @@ function AutoBuild.new(ctx)
                         if existing or occupied(cell.CFrame,self.BlockSize) then
                             skipped+=1
                         else
+                            self.Progress.State="Building"
                             status(string.format("Building %d/%d: %s",index,#self.Cells,cell.Material))
                             local sent,reason=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
                             if not active() then return end
@@ -228,20 +241,24 @@ function AutoBuild.new(ctx)
                             end
                             if confirmed then placed+=1;streak=0
                             else failed+=1;streak+=1 end
+                            self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
                             if streak>=3 then
+                                self.Progress.State="Paused after failures"
                                 status("Build paused after 3 failures: "..tostring(reason or "no block appeared")..". Check materials, support and island access.")
                                 return
                             end
                         end
                     end
+                    self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
                     if cell.Preview then cell.Preview:Destroy();cell.Preview=nil end
                     scheduler.wait(.2)
                 end
-                if active() then status(string.format("Finished: %d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
+                if active() then self.Progress.State="Finished";status(string.format("Finished: %d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
+            if self.WorkerToken==token then self.WorkerToken=nil end
             if self.Token==token then
                 self.Running=false;buttons.Start.Text="Start build"
-                if not ok then status("Build stopped: "..tostring(err)) end
+                if not ok then self.Progress.State="Error";status("Build stopped: "..tostring(err)) end
             end
         end)
     end
@@ -269,8 +286,69 @@ function AutoBuild.new(ctx)
             local ran,result=pcall(ctx.WriteBlueprint,self.Slot,copy)
             persisted=ran and result==true
         end
+        self.Persistence[self.Slot]=persisted and "File + session" or "Session only"
+        self:RefreshLibrary(false)
         status("Saved slot "..self.Slot..": "..copy.Name.." ("..#copy.Cells.." blocks). "..(persisted and "Saved to file." or "Session only; file saving is unavailable or failed."))
         return true
+    end
+    function self:InspectSlot(slot)
+        local data=self.Library[slot]
+        if data then return data,self.Persistence[slot] or "Session" end
+        local function unavailable(reason) self.Persistence[slot]=reason;return nil,reason end
+        if not ctx.ReadBlueprint then return unavailable("No file access") end
+        local ran,result=pcall(ctx.ReadBlueprint,slot)
+        if not ran then return unavailable("Unavailable file") end
+        if result==nil then return unavailable("No saved data") end
+        local valid,copy=pcall(AutoBuild.Validate,result)
+        if not valid then return unavailable("Invalid file") end
+        self.Library[slot]=copy;self.Persistence[slot]="Loaded from file"
+        return copy,"Loaded from file"
+    end
+    function self:RefreshLibrary(readFiles)
+        local lines={"SAVED SLOTS"}
+        for slot=1,5 do
+            local data,source
+            if readFiles then data,source=self:InspectSlot(slot)
+            else data=self.Library[slot];source=self.Persistence[slot] or "Not inspected" end
+            table.insert(lines,(slot==self.Slot and "→ " or "")..slot..": "..(data and (data.Name.." · "..#data.Cells.." blocks · "..source) or source))
+        end
+        if self.LibrarySummary then self.LibrarySummary.Text=table.concat(lines,"\n") end
+        local selected=self.Library[self.Slot]
+        buttons.Slot.Text="Slot "..self.Slot.." / 5"..(selected and (": "..selected.Name) or "")
+        return table.concat(lines,"\n")
+    end
+    function self:CheckMaterials()
+        if self.Running or self.WorkerToken then status("Finish or stop the current build request before checking materials.");return false end
+        if not self.Cells then status("Preview at the intended position before checking materials.");return false end
+        local pending,skipped,reachable={},0,0
+        local _,root=characterRoot()
+        local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
+        if type(reach)~="number" then reach=20 end
+        local ok,err=pcall(function()
+            for _,cell in ipairs(self.Cells) do
+                if occupied(cell.CFrame,self.BlockSize) then skipped+=1
+                else
+                    pending[cell.Material]=(pending[cell.Material] or 0)+1
+                    if root and (root.Position-cell.CFrame.Position).Magnitude<=reach then reachable+=1 end
+                end
+            end
+        end)
+        if not ok then status("Could not check world occupancy: "..tostring(err));return false end
+        local names,total={},0
+        for material,amount in pairs(pending) do table.insert(names,material);total+=amount end
+        table.sort(names)
+        local lines={"BUILD CHECK · snapshot",#self.Cells.." planned · "..skipped.." occupied · "..total.." remaining",reachable.." remaining cells currently in reach"}
+        for _,material in ipairs(names) do
+            local count
+            if ctx.ItemCount then local ran,value=pcall(ctx.ItemCount,material);if ran then count=value end end
+            local valid=type(count)=="number" and count>=0 and count%1==0 and count<=9007199254740991
+            table.insert(lines,material..": need "..pending[material]..(valid and (", owned "..count..", short "..math.max(0,pending[material]-count)) or ", owned quantity unknown"))
+        end
+        table.insert(lines,"Occupied cells may contain a different block. Materials, support and permissions remain server-controlled.")
+        self.BuildReport=table.concat(lines,"\n")
+        self.MaterialSummary.Text=self.BuildReport
+        status("Build check ready. No blocks were placed. Refresh after inventory or world changes.")
+        return {Remaining=total,Occupied=skipped,Reachable=reachable,Materials=pending}
     end
     function self:SavePreview()
         if self.Running then status("Stop the build before saving a blueprint.");return false end
@@ -291,7 +369,9 @@ function AutoBuild.new(ctx)
         local ok,copy=pcall(AutoBuild.Validate,data)
         if not ok then status("Cannot load slot "..self.Slot..": "..tostring(copy));return false end
         self:ClearPreview()
+        if not self.Library[self.Slot] then self.Persistence[self.Slot]="Loaded from file" end
         self.Library[self.Slot]=copy;self.SavedPlan=copy
+        self:RefreshLibrary(false)
         self.Preset="Saved: "..copy.Name;buttons.Preset.Text=self.Preset.."  ▼"
         inputs.Name.Text=copy.Name
         self.OffsetX,self.OffsetY,self.OffsetZ=0,0,0
@@ -416,15 +496,21 @@ function AutoBuild.new(ctx)
     button("Clear","Clear preview",.5,486,.5,function() if not self.Running then self:ClearPreview();status("Preview cleared.") end end)
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
-    self.MaterialSummary=label("Preview or load a blueprint to see its material counts.",616,100)
-    self.MaterialSummary.TextWrapped=true
+    local materialView=Instance.new("ScrollingFrame")
+    materialView.Size=UDim2.new(1,-12,0,100);materialView.Position=UDim2.fromOffset(6,616)
+    materialView.BackgroundTransparency=1;materialView.BorderSizePixel=0;materialView.ScrollBarThickness=5
+    materialView.CanvasSize=UDim2.new();materialView.AutomaticCanvasSize=Enum.AutomaticSize.Y;materialView.Parent=ctx.Parent
+    self.MaterialSummary=ctx.Label({Parent=materialView,Text="Preview or load a blueprint to see its material counts.",TextSize=12,
+        Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
+    self.MaterialSummary.TextWrapped=true;self.MaterialSummary.AutomaticSize=Enum.AutomaticSize.Y;self.MaterialSummary.TextTruncate=Enum.TextTruncate.None
     label("SAVED BLUEPRINTS · own-island block layouts, up to 300 blocks",724,34)
     local name=Instance.new("TextBox");name.Name="BlueprintName";name.Text="My island build";name.PlaceholderText="Blueprint name (1–48 bytes)"
     name.ClearTextOnFocus=false;name.TextSize=14;name.TextColor3=Color3.fromRGB(226,232,240);name.BackgroundColor3=Color3.fromRGB(29,39,48)
     name.Size=UDim2.new(1,-12,0,32);name.Position=UDim2.fromOffset(6,764);name.Parent=ctx.Parent;inputs.Name=name
     button("Slot","Blueprint slot: 1 / 5",0,804,1,function()
         if self.Running then status("Stop the build before changing its blueprint slot.");return end
-        self.Slot=self.Slot%5+1;buttons.Slot.Text="Blueprint slot: "..self.Slot.." / 5"
+        self.Slot=self.Slot%5+1
+        self:InspectSlot(self.Slot);self:RefreshLibrary(false)
     end)
     button("Save","Save preview",0,844,.5,function() self:SavePreview() end)
     button("Capture","Save island area",.5,844,.5,function() self:CaptureIsland() end)
@@ -436,6 +522,14 @@ function AutoBuild.new(ctx)
     end)
     local hint=label("Save preview stores its shape and materials. Save island area stores nearby placed blocks on your own island. Saving overwrites the selected slot. Load never starts building. Chest contents, inventories and scripts are not saved.",966,110)
     hint.TextWrapped=true
+    button("Check","Check remaining materials",0,1088,1,function() self:CheckMaterials() end)
+    button("CopyCheck","Copy build check",0,1128,1,function()
+        if not self.BuildReport then status("Run Check remaining materials first.");return end
+        if ctx.CopyReport then ctx.CopyReport(self.BuildReport) else status("Report copying is unavailable.") end
+    end)
+    button("Inspect","Refresh saved slots",0,1168,1,function() self:RefreshLibrary(true) end)
+    self.LibrarySummary=label("Saved slots have not been inspected. Press Refresh saved slots to read them.",1208,156)
+    self.LibrarySummary.TextWrapped=true
     self.Buttons=buttons;self.Inputs=inputs
     return self
 end

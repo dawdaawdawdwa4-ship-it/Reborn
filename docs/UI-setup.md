@@ -542,3 +542,36 @@ preview/build confirmation, malformed/oversized data, capture radius and source
 adapters, file failure fallback, active-build guards, account-specific file
 paths, search selection isolation and shared inline goal controls. Live Roblox
 rendering, save compatibility and server placement remain unverified.
+
+### Build checks, slot inspection and protected resume (v46)
+
+Auto Build > **Check remaining materials** reads the current preview without
+placing blocks. It reports planned cells, occupied cells, remaining cells and
+how many remaining cells are currently within normal reach. Remaining material
+quantities exclude occupied positions. When owned-item counts are readable, it
+shows owned quantities and shortages; invalid or unavailable reads show unknown.
+The scrollable material panel retains the full report, and **Copy build check**
+copies it or prints it when clipboard access is unavailable. Previewing, moving
+or clearing a plan invalidates its previous check. Checks are snapshots: refresh
+after inventory or world changes. An occupied position can contain a different
+block, and the report does not verify structural support or server permissions.
+
+**Refresh saved slots** inspects all five slots and shows names, block counts,
+selected slot and file/session status. Invalid files and read failures are
+reported separately. Browsing or switching slots does not load a plan, alter
+a preview or start placement. A newer session-only save takes precedence over
+older disk data, so refreshing cannot discard an unsaved in-memory layout.
+
+Stopping a build now retains worker ownership until an in-flight placement
+returns. **Resume build** cannot start a competing worker during that interval.
+Once it settles, resume rechecks all preview cells and skips occupied positions,
+including late-arriving blocks from the stopped request. Counters start fresh
+for the resumed pass, with earlier completed positions counted as skipped. The
+current run tracks confirmed placements, occupied/skipped cells and failures,
+and includes these counts in status and session reports. Stop All retains its
+existing cancellation behavior; an in-flight request still cannot be recalled.
+
+Regression tests cover in-flight stop/restart, settled-block skipping, unreadable
+inventory counts, occupied-cell deductions, reach checks, copy controls and slot
+inspection without placement. Existing v41–v45 regressions remain covered. Live
+Roblox rendering and server behavior remain unverified.

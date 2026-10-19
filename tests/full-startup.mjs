@@ -44,6 +44,17 @@ flush()
  buildController.Library={}
  buildController.Buttons.Load.Activated:Fire()
  assert(buildController.SavedPlan and buildController.SavedPlan.Name=='House' and not buildController.Running and not buildController.Cells,'Load button must validate disk data without starting a build')
+ buildController.Buttons.Inspect.Activated:Fire()
+ assert(string.find(buildController.LibrarySummary.Text,'House',1,true),'slot browser must display the saved layout name')
+ buildController.Buttons.Check.Activated:Fire()
+ assert(string.find(buildController.Status.Text,'Preview at the intended position',1,true),'preflight must request a preview rather than starting one implicitly')
+ local oldCopy=setclipboard
+ local copied
+ setclipboard=function(report) copied=report end
+ buildController.BuildReport='Read-only build check'
+ buildController.Buttons.CopyCheck.Activated:Fire()
+ assert(copied=='Read-only build check' and not buildController.Running,'copy build check must use the host clipboard without starting a build')
+ setclipboard=oldCopy
  buildController.Buttons.Slot.Activated:Fire()
  assert(buildController.Slot==2,'slot button must cycle independently of blueprint names')
  buildController.Buttons.CaptureRange.Activated:Fire()
@@ -637,7 +648,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn island-blueprints-45',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-checks-46',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()

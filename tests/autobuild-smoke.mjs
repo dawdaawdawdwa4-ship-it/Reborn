@@ -46,7 +46,7 @@ local function vector(x,y,z)
 end
 local Vector3={new=vector}
 local RaycastParams={new=function() return {} end}
-local Enum={RaycastFilterType={Exclude=1},Material={ForceField=1}}
+local Enum={RaycastFilterType={Exclude=1},Material={ForceField=1},AutomaticSize={Y=1},TextTruncate={None=1}}
 local definitions={FindFirstChild=function(_,name) return (name=='grass' or name=='stone') and {} end}
 local game={GetService=function() return {FindFirstChild=function() return definitions end} end}
 fm.__index.ToObjectSpace=function(a,b) return a:Inverse()*b end
@@ -84,7 +84,7 @@ assert(string.find(b.Status.Text,'3 failures',1,true))
 ctx.Place=function() requests+=1;return true end
 occupied={};b.Cells=cells(6);before=requests;b:Start();while coroutine.status(worker)~='dead' do step() end
 assert(requests-before==3,'unconfirmed responses must stop after three failures')
-assert(not string.find(b.Status.Text,'confirmed',1,true),'accepted request alone is not a placement')
+assert(b.Progress.Placed==0 and b.Progress.Failed==3 and b.Progress.State=='Paused after failures','accepted responses without observed blocks must remain unconfirmed failures')
 root.Position=setmetatable({},{__sub=function() return {Magnitude=100} end})
 b.Cells=cells(2);before=requests;b:Start();assert(requests==before,'out of reach must pause requests')
 b:Stop();step();assert(requests==before,'stop must cancel a paused build')
@@ -119,7 +119,9 @@ moved.Anchor=frame(10,0,10,math.pi/2);moved.BlockSize=3
 local original=moved.Anchor*frame(0,0,-3)
 local ghost={}
 moved.Cells={{CFrame=original,Material='grass',Preview=ghost}}
+moved.BuildReport='Old check'
 assert(moved:Move(1,1,1))
+assert(not moved.BuildReport and not string.find(moved.MaterialSummary.Text,'Old check',1,true),'moving the blueprint must clear the displayed old build check')
 local p=moved.Cells[1].CFrame.Position
 assert(math.abs(p.X-4)<.001 and math.abs(p.Y-3)<.001 and math.abs(p.Z-7)<.001,'blueprint shifts must follow its rotated axes')
 assert(ghost.CFrame==moved.Cells[1].CFrame,'ghost must follow actual placement coordinates')
@@ -196,6 +198,57 @@ assert(needs.grass==1 and needs.stone==1,'material summary must count each saved
 occupied={};before=requests;loaded:Start()
 while coroutine.status(worker)~='dead' do step() end
 assert(requests-before==2 and string.find(loaded.Status.Text,'2 confirmed',1,true),'saved layouts must build only through the existing confirmed queue')
+-- Stop must retain ownership until an in-flight request really returns.
+occupied={};root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+ctx.Place=function(body)
+ requests+=1;ctx.Scheduler.wait(.1);occupied[body.cframe.Position]=true;return true
+end
+b.Cells=cells(2);before=requests;b:Start()
+local inFlight=worker
+assert(b.WorkerToken and requests==before+1,'fixture must stop inside a pending placement')
+b:Stop()
+assert(not b:Start() and worker==inFlight and requests==before+1,'immediate resume must not overlap a cancelled in-flight request')
+assert(not b:CheckMaterials(),'read-only build checks must wait for the active request to finish')
+step();assert(not b.WorkerToken,'cancelled worker must release ownership when its request returns')
+b:Start()
+while coroutine.status(worker)~='dead' do step() end
+assert(requests-before==2 and b.Progress.Placed==1 and b.Progress.Skipped==1 and b.Progress.Failed==0 and b.Progress.State=='Finished','resume must skip the settled old request and retain accurate new-run counters')
+-- Build checks are read-only snapshots of remaining material and reach needs.
+local check=A.new(ctx)
+check.Cells={{CFrame={Position=1},Material='grass'},{CFrame={Position=2},Material='grass'},{CFrame={Position=3},Material='stone'}}
+check.BlockSize=3
+root.Position=setmetatable({},{__sub=function(_,position) return {Magnitude=position==2 and 5 or 100} end})
+occupied={[1]=true}
+ctx.ItemCount=function(material) return material=='grass' and 0 or 7 end
+before=requests
+local result=check:CheckMaterials()
+assert(result.Occupied==1 and result.Remaining==2 and result.Reachable==1 and result.Materials.grass==1 and result.Materials.stone==1,'preflight must exclude occupied cells and count reach independently')
+assert(requests==before and not check.Running and not check.WorkerToken,'build checks must never send placements or start workers')
+assert(string.find(check.BuildReport,'grass: need 1, owned 0, short 1',1,true),'zero owned stock must show a real shortage')
+assert(string.find(check.BuildReport,'stone: need 1, owned 7, short 0',1,true),'adequate stock must not be labelled missing')
+ctx.ItemCount=function(material) if material=='grass' then return .5 end;error('inventory unavailable') end
+assert(check:CheckMaterials())
+assert(string.find(check.BuildReport,'grass: need 1, owned quantity unknown',1,true) and string.find(check.BuildReport,'stone: need 1, owned quantity unknown',1,true),'invalid and failed inventory reads must be unknown rather than zero')
+occupied={[1]=true,[2]=true,[3]=true}
+result=check:CheckMaterials();assert(result.Remaining==0 and next(result.Materials)==nil,'completed layouts must need no additional material')
+check:ClearPreview();assert(not check.BuildReport and not check:CheckMaterials(),'changing the plan must invalidate the old preflight snapshot')
+-- Slot inspection validates files without selecting their plans or starting work.
+ctx.ReadBlueprint=function(slot)
+ if slot==1 then local data=valid();data.Name='House';return data end
+ if slot==2 then return {Version=999} end
+ if slot==3 then error('read failed') end
+ if slot==5 then local data=valid();data.Name='Barn';return data end
+end
+local browser=A.new(ctx)
+local summary=browser:RefreshLibrary(true)
+assert(browser.Library[1].Name=='House' and browser.Library[5].Name=='Barn' and not browser.SavedPlan and not browser.Cells,'library browsing must cache valid slots without loading a plan')
+assert(string.find(summary,'2: Invalid file',1,true) and string.find(summary,'3: Unavailable file',1,true),'browser must distinguish malformed files from failed reads')
+summary=browser:RefreshLibrary(false)
+assert(string.find(summary,'2: Invalid file',1,true),'known slot diagnostics must remain visible without rereading files')
+assert(browser:StoreBlueprint(valid())) -- file writer still fails; the newest session save wins
+summary=browser:RefreshLibrary(true)
+assert(browser.Library[1].Name=='Test' and string.find(summary,'Session only',1,true),'refresh must preserve a newer session-only save over older disk data')
+assert(requests==before,'slot browsing must never place blocks')
 return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}
