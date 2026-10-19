@@ -410,3 +410,22 @@ Profile version 1 now accepts optional `StockTarget`, validated as 0, 25, 50,
 never current inventory or a request/session envelope. Session history snapshots
 the run's target and observed new transfers. Mock tests verify these limits and
 adapters; actual live server and input behavior remain unverified.
+
+### Delayed food stack quantities (salad-confirmation-59)
+
+No new endpoint, envelope key or packet schema is introduced. The inventory
+adapter can return a pending-metadata reason while a matching Tool lacks readable
+quantity attributes/values. Chest confirmation polls that state inside the
+existing two-second window. A valid increase for the exact requested item permits
+the next learned batch; an invalid count or unresolved timeout stops the run.
+No secondary request is sent while the quantity is unknown. Pre-request/top-up
+waiting uses the same cancellation checks, and late counts after Stop remain
+unconfirmed.
+
+Manual batch defaults to the observed **Learned** count rather than one item.
+Explicit counts still pass through the existing replay validator, and a count of
+1 remains selectable. Captured chest, item, slot, session envelope, reach and
+ownership rules remain in place; unknown quantities are never replaced by a
+guessed stack size. The catalog remains at 145 entries and recorder v28 is
+unchanged. Mock regression tests exercise actual quantity parsing with delayed
+attributes, batch continuation, timeout/Stop and manual 17-versus-1 dispatch.

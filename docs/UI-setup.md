@@ -1101,3 +1101,35 @@ The full mock suite covers per-item/shared-slot deficits, count changes during
 approach, combined goals, partial stock, exact-item confirmation, unknown counts,
 frozen settings, Stop, old/new profiles and actual dropdown/layout/manual adapters.
 Rendering, input dispatch and server behavior remain unverified in live Roblox.
+
+### Salad quantity replication and manual batches (v59)
+
+Auto Take previously stopped after the one-item probe when a newly received food
+Tool appeared before its quantity metadata. The inventory reader now distinguishes
+missing metadata from an invalid numeric count. Pending metadata can settle within
+the existing two-second confirmation window; no further withdrawal is sent while
+waiting. Once the exact item's increase is observed, collection continues with
+the learned batch and existing remainder backoff. Top-up can also wait for a
+pending starting quantity before computing its deficit or approaching a chest.
+
+Malformed returned counts still stop collection. If missing metadata never settles,
+the run stops with a specific timeout message instead of assuming a count or
+issuing another unconfirmed request. Stop cancels the wait, and late replicated
+counts after cancellation do not add confirmed items.
+
+Because the user reported one-item behavior for the manual action too,
+**Manual batch** now starts at **Learned**, using the currently recorded amount
+for each selected withdrawal. This changes the previous one-item default; **1**
+remains an explicit dropdown choice alongside 5, 10 and 25. The action displays
+the actual chosen quantity, such as **Withdraw ×17**, or **Withdraw learned
+batches** for differing recorded quantities. The count updates after a dropdown
+choice and after completion. Learned counts are examples of observed requests,
+not a claim about current chest stock; automatic collection retains the bounded
+remainder handling when a larger batch is rejected.
+
+Regression tests reproduce the original one-item stop with the real quantity
+adapter and delayed food Tool attributes, then verify completion of a 17-item
+stack using the one-item probe and larger batches. They also cover permanently
+missing metadata, Stop while waiting, pending top-up counts, invalid numbers,
+and actual manual controls sending learned 17 versus an explicitly selected 1.
+The full mock suite passes. Live Roblox behavior remains unverified.

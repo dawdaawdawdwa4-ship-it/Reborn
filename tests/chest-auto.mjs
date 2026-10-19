@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const main=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8');
 const source=main.slice(main.indexOf('-- CHEST AUTO BEGIN'),main.indexOf('-- CHEST AUTO END'));
+const quantityAdapter=main.slice(main.indexOf('RemoteCatalog.BaitCount=function(tool)'),main.indexOf('RemoteCatalog.WithBaitTool = function'));
 const code=`
 local gui={Parent=true}
 local COLORS={on=1,off=2}
@@ -310,6 +311,54 @@ do
  assert(RemoteCatalog.SetChestAuto(true));drain()
  assert(#sent==3 and RemoteCatalog.ChestAutoTotal==0 and RemoteCatalog.ChestAutoItems.potatoSalad==nil,'only salad inventory growth can confirm a salad withdrawal')
 end
+-- A first food tool can replicate before its stack quantity becomes readable.
+do
+ local oldWait,oldQuantity=task.wait,RemoteCatalog.BaitCount
+ local stock,quantity,hasTool,ready,ticks=17,0,false,true,0
+ ${quantityAdapter}
+ local tool={Name='potatoSalad',GetAttributes=function() return ready and {Amount=quantity} or {} end,GetChildren=function() return {} end}
+ local sent={}
+ local salad={Chest={},Slot=8,Item='potatoSalad',Amount=17,Probe=true}
+ RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil
+ RemoteCatalog.SelectedChestTargets=function() return {{Recorder=recorder,Binding=salad}} end
+ RemoteCatalog.OwnedTools=function() return hasTool and {tool} or {} end
+ RemoteCatalog.ApproachChest=function() return true end
+ task.wait=function(dt)
+  if not ready then ticks+=1;if ticks>=3 then ready=true end end
+  return oldWait(dt)
+ end
+ RemoteCatalog.WithdrawCarrots=function(amount)
+  assert(ready,'another request must wait until the pending stack quantity is readable')
+  table.insert(sent,amount)
+  if amount>stock then return false,'insufficient salad' end
+  stock-=amount;quantity+=amount;hasTool=true;ready=false;ticks=0
+  return true
+ end
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(quantity==17 and stock==0 and RemoteCatalog.ChestAutoTotal==17,'a tool arriving before its quantity must not stop salad collection after one item')
+ local batch=false
+ for index,amount in ipairs(sent) do if index>1 and amount>1 then batch=true end end
+ assert(sent[1]==1 and batch and #sent<20,'confirmed one-item probe must continue with learned batches and bounded remainder handling')
+ -- Unknown metadata must time out without issuing another unconfirmed request.
+ stock=17;quantity=0;hasTool=false;ready=true;ticks=0;sent={}
+ task.wait=oldWait -- quantity deliberately never becomes readable
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#sent==1 and quantity==1 and RemoteCatalog.ChestAutoTotal==0 and not RemoteCatalog.ChestAutoWorker,'permanently missing quantity must not permit a second withdrawal')
+ assert(string.find(RemoteCatalog.ChestLastDetail,'within 2 seconds',1,true),'timeout must explain why the one-item probe could not continue')
+ -- Stop during metadata confirmation must prevent all late counts and follow-up requests.
+ stock=17;quantity=0;hasTool=false;ready=true;sent={}
+ assert(RemoteCatalog.SetChestAuto(true) and #sent==1 and not ready)
+ RemoteCatalog.SetChestAuto(false);ready=true;drain()
+ assert(#sent==1 and RemoteCatalog.ChestAutoTotal==0 and not RemoteCatalog.ChestBusy,'Stop must cancel a pending quantity wait without counting its late result')
+ -- Top-up can also wait for metadata already pending before the first request.
+ stock=13;quantity=37;hasTool=true;ready=false;ticks=0;sent={}
+ RemoteCatalog.ChestStockTarget=50
+ task.wait=function(dt) if not ready then ticks+=1;if ticks>=3 then ready=true end end;return oldWait(dt) end
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(quantity==50 and stock==0 and RemoteCatalog.ChestAutoTotal==13 and sent[1]==1 and sent[2]==12,'pending starting quantity must settle before top-up computes its deficit')
+ RemoteCatalog.ChestStockTarget=nil
+ task.wait,RemoteCatalog.BaitCount=oldWait,oldQuantity
+end
 -- Optional auto top-up counts existing inventory per item and shares deficits across slots.
 do
  local qty,requests,approaches,remaining
@@ -377,7 +426,7 @@ do
  assert(#requests==1 and RemoteCatalog.ChestAutoTotal==0 and RemoteCatalog.ChestHistory[1].Outcome=='Stopped' and not RemoteCatalog.ChestAutoWorker,'Stop must discard late confirmation and prevent extra top-up requests')
  RemoteCatalog.ChestStockTarget=nil;RemoteCatalog.ChestGoal=nil
 end
-return 'Chest Auto Max: batches/remainder, variable slots, optional per-item inventory top-up, live deficit/goal caps, item confirmation, range waits, Stop/in-flight restart and cleanup passed'
+return 'Chest Auto Max: batches/remainder, variable slots, delayed food quantity replication, optional per-item inventory top-up, live deficit/goal caps, item confirmation, range waits, Stop/in-flight restart and cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-auto',true)());}

@@ -2859,7 +2859,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "inventory-topup-58",
+    Subtitle = "salad-confirmation-59",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3326,7 +3326,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn inventory-topup-58",
+    return table.concat({"Reborn salad-confirmation-59",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -3907,8 +3907,8 @@ RemoteCatalog.ChestAutoButton=button({Parent=RemoteCatalog.ChestPage,Text="START
     Size=UDim2.new(1,-12,0,38),Position=UDim2.fromOffset(6,330)})
 RemoteCatalog.ChestWithdrawButton=button({Parent=RemoteCatalog.ChestPage,Text="Learn chests first",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,376)})
-RemoteCatalog.ChestAmount=1
-RemoteCatalog.ChestAmountButton=button({Parent=RemoteCatalog.ChestPage,Text="Manual batch: 1  ▾",TextSize=13,
+RemoteCatalog.ChestAmount="Learned"
+RemoteCatalog.ChestAmountButton=button({Parent=RemoteCatalog.ChestPage,Text="Manual batch: Learned  ▾",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,376)})
 RemoteCatalog.ChestAmountMenu=Instance.new("Frame")
 RemoteCatalog.ChestAmountMenu.Size=UDim2.new(.5,-9,0,160)
@@ -3927,6 +3927,7 @@ for i,value in ipairs({1,5,10,25,"Learned"}) do
         RemoteCatalog.ChestAmountButton.Text="Manual batch: "..tostring(value).."  ▾"
         RemoteCatalog.ChestAmountMenu.Visible=false
         RemoteCatalog.LayoutChestControls()
+        if RemoteCatalog.UpdateChestSelectionUI then RemoteCatalog.UpdateChestSelectionUI() end
     end))
 end
 track(RemoteCatalog.ChestAmountButton.Activated:Connect(function()
@@ -4940,7 +4941,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn inventory-topup-58", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn salad-confirmation-59", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6598,6 +6599,16 @@ function RemoteCatalog.ChestTargetLabel(binding,all)
     end
     return "Unavailable chest"
 end
+function RemoteCatalog.ChestManualCaption()
+    local targets=RemoteCatalog.SelectedChestTargets()
+    if #targets==0 then return "Learn / select items first" end
+    local amount=RemoteCatalog.ChestAmount
+    if amount=="Learned" then
+        amount=targets[1].Binding.Amount
+        for _,entry in ipairs(targets) do if entry.Binding.Amount~=amount then return "Withdraw learned batches" end end
+    end
+    return "Withdraw ×"..tostring(amount)
+end
 function RemoteCatalog.UpdateChestSelectionUI()
     local all=RemoteCatalog.ChestTargets()
     local seen,count={},0
@@ -6616,7 +6627,7 @@ function RemoteCatalog.UpdateChestSelectionUI()
     for _,entry in ipairs(all) do if not entry.Binding.Generated then learned+=1 end end
     RemoteCatalog.ChestStats.SLOTS.Text=tostring(learned)
     RemoteCatalog.ChestStats["AUTO COLLECTED"].Text=tostring(RemoteCatalog.ChestAutoTotal or 0)
-    if not RemoteCatalog.ChestBusy then RemoteCatalog.ChestWithdrawButton.Text=#all>0 and "Withdraw once" or "Learn chests first" end
+    if not RemoteCatalog.ChestBusy then RemoteCatalog.ChestWithdrawButton.Text=RemoteCatalog.ChestManualCaption() end
     local learning=RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnChestOnly
     RemoteCatalog.ChestIntro.Text=learning and "Learning · withdraw once from each chest" or RemoteCatalog.ChestAutoEnabled and "Collecting · use OFF or Stop All to stop" or "Ready · learn chests, choose targets, then collect"
     RemoteCatalog.ChestLearnButton.Text=learning and "Stop learning" or "Start learning"
@@ -6828,16 +6839,29 @@ function RemoteCatalog.CarrotCount(item)
     for _,tool in ipairs(RemoteCatalog.OwnedTools()) do
         if tool.Name==(item or "carrotHarvested") then
             local count=RemoteCatalog.BaitCount(tool)
-            -- Inventory confirmation needs exact whole-item totals.
-            if type(count)~="number" or count<0 or count%1~=0 or count>9007199254740991-total then return nil end
+            -- A newly replicated Tool can exist before its quantity metadata arrives.
+            if count==nil then return nil,"pending" end
+            -- Invalid quantities must still stop before another request.
+            if type(count)~="number" or count<0 or count%1~=0 or count>9007199254740991-total then return nil,"invalid" end
             total+=count
         end
     end
     return total
 end
+function RemoteCatalog.WaitChestInventory(item,active,previous)
+    local count,reason=RemoteCatalog.CarrotCount(item)
+    for attempt=0,20 do
+        if not active() then return nil,"cancelled" end
+        -- Missing metadata can settle; malformed numbers must never be accepted.
+        if reason~="pending" and (count==nil or previous==nil or count>previous) then return count,reason end
+        if attempt==20 then return count,reason end
+        task.wait(.1)
+        count,reason=RemoteCatalog.CarrotCount(item)
+    end
+end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn inventory-topup-58\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn salad-confirmation-59\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -6954,7 +6978,12 @@ function RemoteCatalog.SetChestAuto(state)
                     continue
                 end
                 if stockTarget then
-                    local current=RemoteCatalog.CarrotCount(binding.Item)
+                    local current,quantityState=RemoteCatalog.CarrotCount(binding.Item)
+                    if current==nil and quantityState=="pending" then
+                        RemoteCatalog.ChestAutoMessage("Waiting for "..tostring(binding.Item or "carrotHarvested").." inventory quantity before top-up…")
+                        current=RemoteCatalog.WaitChestInventory(binding.Item,active)
+                        if not active() then break end
+                    end
                     if current==nil then RemoteCatalog.ChestAutoMessage("Cannot read item inventory count. Use manual withdrawal.");break end
                     if current>=stockTarget then
                         state.Done=true
@@ -6971,7 +7000,12 @@ function RemoteCatalog.SetChestAuto(state)
                     continue
                 end
                 currentChest=binding.Chest
-                local before=RemoteCatalog.CarrotCount(binding.Item)
+                local before,quantityState=RemoteCatalog.CarrotCount(binding.Item)
+                if before==nil and quantityState=="pending" then
+                    RemoteCatalog.ChestAutoMessage("Waiting for "..tostring(binding.Item or "carrotHarvested").." inventory quantity before withdrawal…")
+                    before=RemoteCatalog.WaitChestInventory(binding.Item,active)
+                    if not active() then break end
+                end
                 if before==nil then
                     RemoteCatalog.ChestAutoMessage("Cannot read item inventory count. Use manual withdrawal.")
                     break
@@ -6986,17 +7020,13 @@ function RemoteCatalog.SetChestAuto(state)
                 local ran,sent,response=pcall(RemoteCatalog.WithdrawCarrots,amount,recorder,binding)
                 if not active() then break end
                 if not ran then sent,response=false,sent end
-                local after=RemoteCatalog.CarrotCount(binding.Item)
-                local elapsed=0
-                while sent and active() and after~=nil and after<=before and elapsed<2 do
-                    task.wait(.1);elapsed+=.1
-                    if not active() then break end
-                    after=RemoteCatalog.CarrotCount(binding.Item)
-                end
+                local after,afterState
+                if sent then after,afterState=RemoteCatalog.WaitChestInventory(binding.Item,active,before)
+                else after,afterState=RemoteCatalog.CarrotCount(binding.Item) end
                 RemoteCatalog.ChestBusy=false;ownsBusy=false
                 if not active() then break end
                 if after==nil then
-                    RemoteCatalog.ChestAutoMessage("Item count became unreadable; automatic withdrawal stopped.")
+                    RemoteCatalog.ChestAutoMessage(afterState=="pending" and ("The "..tostring(binding.Item or "carrotHarvested").." stack quantity did not become readable within 2 seconds. No further requests were sent; let inventory settle and try again.") or "Item count became unreadable; automatic withdrawal stopped.")
                     break
                 end
                 local gained=math.max(0,after-before)
@@ -7066,11 +7096,11 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         local ran,ok,reason=pcall(RemoteCatalog.WithdrawSelectedCarrots,generation)
         RemoteCatalog.ChestBusy=false
         if not gui.Parent then return end
-        RemoteCatalog.ChestWithdrawButton.Text="Withdraw once"
+        RemoteCatalog.ChestWithdrawButton.Text=RemoteCatalog.ChestManualCaption()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn inventory-topup-58\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn salad-confirmation-59\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn

@@ -506,7 +506,7 @@ end)()
  local recorder={Records={},MaxCalls=100,Active=false,ChestBinding={Chest=chest,Amount=26},CanUseChestBinding=function() return true end,WithdrawCarrots=function(_,amount) sent+=1;requested=amount;if denied then return false,denied end;return true end}
  RemoteCatalog.LiveRecorder=function() return recorder end
  assert(RemoteCatalog.WithdrawCarrots() and sent==1,'nearby owned chest request must send once')
- assert(requested==1,'chest UI must default to one carrot rather than replaying the old stack amount')
+ assert(requested==26 and RemoteCatalog.ChestAmount=='Learned','manual withdrawal must default to the current learned batch rather than silently requesting one')
  chest.Position=position(50)
  assert(not RemoteCatalog.WithdrawCarrots() and sent==1,'distant chest must not send')
  chest.Position=position(5);chest.Parent=foreign
@@ -829,7 +829,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn inventory-topup-58',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn salad-confirmation-59',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1099,6 +1099,30 @@ end)()
  assert(not r.ChestStockTarget and string.find(r.ChestStockButton.Text,'No limit',1,true),'No limit must restore the v57 collection preference')
  r.SelectedChestTargets,r.CarrotCount,r.ChestRequestReady=oldTargets,oldCount,oldReady
  r.ChestStockTarget=oldTarget;r.ChestStockMenu:Refresh()
+ end)()
+
+ ;(function()
+ local r=RemoteCatalog
+ local targets,ready,amount=r.SelectedChestTargets,r.ChestRequestReady,r.ChestAmount
+ local binding={Chest={},Slot=8,Item='potatoSalad',Amount=17}
+ local requests={}
+ local owner={CanUseChestBinding=function() return true end,WithdrawItems=function(_,quantity,selected) assert(selected==binding);table.insert(requests,quantity);return true end}
+ r.SelectedChestTargets=function() return {{Recorder=owner,Binding=binding}} end
+ r.ChestRequestReady=function() return true end
+ r.ChestAmount='Learned';r.UpdateChestSelectionUI()
+ assert(r.ChestWithdrawButton.Text=='Withdraw ×17','manual action must display the actual learned batch rather than hiding a one-item default')
+ r.ChestWithdrawButton.Activated:Fire()
+ assert(requests[1]==17 and not r.ChestBusy and r.ChestWithdrawButton.Text=='Withdraw ×17','actual manual button must replay the learned seventeen-item batch and restore its caption')
+ r.ChestAmountButton.Activated:Fire()
+ for _,option in ipairs(r.ChestAmountMenu:GetChildren()) do if option.Text=='1' then option.Activated:Fire() end end
+ assert(r.ChestAmount==1 and r.ChestWithdrawButton.Text=='Withdraw ×1','one item must remain an explicit, visible manual choice')
+ r.ChestWithdrawButton.Activated:Fire()
+ assert(requests[2]==1 and not r.ChestBusy,'explicit one-item selection must retain v41 manual behavior')
+ r.ChestAmount='Learned'
+ r.SelectedChestTargets=function() return {{Recorder=owner,Binding=binding},{Recorder=owner,Binding={Amount=9}}} end
+ assert(r.ChestManualCaption()=='Withdraw learned batches','mixed observed amounts must not advertise a single incorrect batch size')
+ r.SelectedChestTargets,r.ChestRequestReady,r.ChestAmount=targets,ready,amount
+ r.UpdateChestSelectionUI()
  end)()
 
 RemoteCatalog.StopTimerButton.Activated:Fire()
