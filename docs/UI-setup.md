@@ -1203,3 +1203,39 @@ wait, one-worker ownership, frozen batch sizes, cumulative goals, top-up after
 consumption, stale targets, Stop/GUI cleanup, profile compatibility and actual
 dropdown/layout/status wiring. The full regression suite passes; live rendering,
 input dispatch and Roblox server behavior remain unverified.
+
+
+### Shorter chest waits and compact controls (v62)
+
+The recording showed a manual withdrawal pass checking hundreds of slots with a
+fixed 0.6-second pause. Both manual and automatic collection now use a
+**0.25-second Standard** pause between batches, or **0.1-second Fast** pause.
+Manual collection snapshots the chosen pace for its whole pass. **Repeat (2s)**
+replaces Repeat (5s); the countdown remains request-free and cancellable every
+0.1 seconds. Auto retry pauses are 0.35/0.2 seconds for Standard/Fast, and
+single-item no-progress backoff is 1/0.5 seconds. Attempts remain bounded.
+
+The collection plan and longer hint start collapsed behind **Show details**.
+Opening details refreshes the read-only preview and inserts it above manual
+collection; closing removes its space. Main action locations, target selection,
+profiles, goals and existing defaults remain. Paired buttons have a 12-pixel
+horizontal gutter. The manual batch dropdown is a full-width scrolling list
+with 38-pixel options and a highlighted selection.
+
+**STOP AUTO TAKE** and **STOP WITHDRAWAL** keep stable action labels. Progress
+appears in the chest status line and footer so it remains visible while scrolling.
+Unavailable batch, pace, shortcut, top-up and run-mode controls are dimmed and
+locked during requests or auto-worker cleanup. Manual collection cannot start
+during cancelled auto-worker cleanup. Starting either collection mode dismisses
+open menus, and cleanup restores the controls.
+
+Auto Take still waits up to two seconds for exact-item inventory confirmation,
+keeps its thirty-item same-stack maximum, reduces remainder/goal/top-up batches,
+and enforces the same ownership, reach and current-session bindings. Manual
+withdrawal sends its chosen batch once per selected slot; use START COLLECTING
+to keep draining a stack. Saved profile schema and packet fields are unchanged.
+
+Mock tests verify exact shorter pauses, frozen pacing, the two-second refill
+interval, Stop before another manual send, compact/detail layout round trips,
+button spacing, full-width dropdowns, visible progress and cleanup locks. The
+full test suite passes. Live Roblox timing and rendering remain unverified.

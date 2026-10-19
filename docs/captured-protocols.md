@@ -471,3 +471,18 @@ version 1 accepts optional boolean `Repeat`, default false; it persists only the
 local preference, not bindings or requests. Tests cover fresh slot selection,
 bounded probes, timing, cumulative goals, top-up, cancellation and profile/UI
 adapters. Live Roblox acceptance remains unverified.
+
+
+### Shorter collection pacing (clean-chests-62)
+
+This version changes local pauses and UI only: 145 catalog entries and recorder
+v28 remain. Manual and confirmed automatic batch pauses are now 0.25 seconds on
+Standard and 0.1 seconds on Fast. Repeat waits two seconds after each completed
+pass. Auto remainder retries pause 0.35/0.2 seconds and single-item no-progress
+retries pause 1/0.5 seconds; the existing retry limits remain.
+
+The two-second inventory confirmation window, exact-item counting, unknown-slot
+probes, same-stack priority and current-session/ownership/reach validation remain.
+Manual replay stays serialized and checks cancellation before each next request.
+No payload, endpoint or profile schema changes. Mock timing, cancellation,
+confirmation and complete regression checks pass; live acceptance is unverified.

@@ -280,7 +280,7 @@ do
  RemoteCatalog.ChestSpeed='Standard';RemoteCatalog.ChestGoal=60;inventory=0;waits={}
  RemoteCatalog.WithdrawCarrots=function(amount) inventory+=amount;return true end
  assert(RemoteCatalog.SetChestAuto(true));RemoteCatalog.ChestSpeed='Fast';drain()
- for _,dt in ipairs(waits) do assert(dt==.6,'pacing must be stable throughout a run') end
+ for _,dt in ipairs(waits) do assert(dt==.25,'pacing must be stable throughout a run') end
  RemoteCatalog.ChestSpeed='Standard';RemoteCatalog.ChestGoal=nil
 end
 -- Potato salad can move between slots; each check must retain the item and learned ceiling.
@@ -507,13 +507,13 @@ do
  untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
  assert(qty==60 and RemoteCatalog.ChestAutoTotal==60 and RemoteCatalog.ChestAutoEnabled and not RemoteCatalog.ChestBusy,'emptying a chest in Repeat must wait ON without holding a request lock')
  local calls,waitBegan=#trace,clock-.1
- resume(30)
+ resume(10)
  assert(#trace==calls and worker==singleWorker,'repeat wait must send no requests or create another worker')
  stock[3]=60;selected={{Recorder=owner,Binding=moved}}
  RemoteCatalog.ChestAutoBatch=1 -- external edits must not change the active run's batch.
  untilTrue(function() return RemoteCatalog.ChestAutoTotal==120 and RemoteCatalog.ChestRepeatWaiting end)
  assert(RemoteCatalog.ChestAutoPass==2 and worker==singleWorker and trace[calls+1].Slot==3 and trace[calls+1].Amount==1,'repeat must refresh moved slots with one-item probes in the same worker')
- assert(trace[calls+1].At-waitBegan>=5-1e-6 and trace[calls+2].Amount==30,'the next pass must wait five seconds and retain its original thirty-item maximum')
+ assert(math.abs(trace[calls+1].At-waitBegan-2)<1e-6 and trace[calls+2].Amount==30,'the next pass must wait two seconds and retain its original thirty-item maximum')
  assert(first.Slot==8 and moved.Slot==3 and moved.Amount==9 and RemoteCatalog.ChestHistory[1]==previousHistory,'repeat must not mutate captures or add history entries for every pass')
  calls=#trace
  RemoteCatalog.SetChestAuto(false)
