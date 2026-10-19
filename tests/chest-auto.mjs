@@ -465,7 +465,91 @@ do
  RemoteCatalog.SetChestAuto(false);drain()
  RemoteCatalog.ChestAutoBatch=oldBatch
 end
-return 'Chest Auto Max: thirty-item batches, same-slot continuation, bounded remainders, delayed quantity replication, per-item top-up/goal limits, range waits, Stop and cleanup passed'
+-- Repeat stays in one worker, waits between passes and discovers a refilled/moved stack.
+do
+ local oldWait=task.wait
+ local clock,qty,stock,trace,selected,usable,approaches=0,0,{}, {},{},true,0
+ local chest={}
+ local first={Chest=chest,Slot=8,Item='potatoSalad',Amount=17,Probe=true}
+ local moved={Chest=chest,Slot=3,Item='potatoSalad',Amount=9}
+ local owner={CanUseChestBinding=function() return usable end}
+ task.wait=function(dt) clock+=dt;return oldWait(dt) end
+ local function prepare(available,inventory,goal,target)
+  clock=0;qty=inventory or 0;stock={[8]=available};trace={};usable=true;approaches=0
+  selected={{Recorder=owner,Binding=first}}
+  RemoteCatalog.ChestRepeat=true;RemoteCatalog.ChestAutoBatch=30;RemoteCatalog.ChestGoal=goal;RemoteCatalog.ChestStockTarget=target
+  RemoteCatalog.SelectedChestTargets=function() return selected end
+  RemoteCatalog.OwnedTools=function() return {{Name='potatoSalad'}} end
+  RemoteCatalog.BaitCount=function() return qty end
+  RemoteCatalog.ApproachChest=function() approaches+=1;return true end
+  RemoteCatalog.WithdrawCarrots=function(amount,rec,binding)
+   assert(rec==owner and binding.Item=='potatoSalad' and amount<=30)
+   table.insert(trace,{Amount=amount,Slot=binding.Slot,At=clock})
+   if (stock[binding.Slot] or 0)<amount then return false,'empty or insufficient' end
+   stock[binding.Slot]-=amount;qty+=amount;return true
+  end
+ end
+ local function untilTrue(predicate,limit)
+  for _=1,limit or 600 do
+   if predicate() then return end
+   assert(worker and coroutine.status(worker)=='suspended','repeat worker stopped before expected state')
+   local ok,e=coroutine.resume(worker);assert(ok,e)
+  end
+  assert(predicate(),'repeat condition did not settle')
+ end
+ local function resume(count)
+  for _=1,count do local ok,e=coroutine.resume(worker);assert(ok,e) end
+ end
+ prepare(60)
+ local previousHistory=RemoteCatalog.ChestHistory[1]
+ assert(RemoteCatalog.SetChestAuto(true))
+ local singleWorker=worker
+ untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
+ assert(qty==60 and RemoteCatalog.ChestAutoTotal==60 and RemoteCatalog.ChestAutoEnabled and not RemoteCatalog.ChestBusy,'emptying a chest in Repeat must wait ON without holding a request lock')
+ local calls,waitBegan=#trace,clock-.1
+ resume(30)
+ assert(#trace==calls and worker==singleWorker,'repeat wait must send no requests or create another worker')
+ stock[3]=60;selected={{Recorder=owner,Binding=moved}}
+ RemoteCatalog.ChestAutoBatch=1 -- external edits must not change the active run's batch.
+ untilTrue(function() return RemoteCatalog.ChestAutoTotal==120 and RemoteCatalog.ChestRepeatWaiting end)
+ assert(RemoteCatalog.ChestAutoPass==2 and worker==singleWorker and trace[calls+1].Slot==3 and trace[calls+1].Amount==1,'repeat must refresh moved slots with one-item probes in the same worker')
+ assert(trace[calls+1].At-waitBegan>=5-1e-6 and trace[calls+2].Amount==30,'the next pass must wait five seconds and retain its original thirty-item maximum')
+ assert(first.Slot==8 and moved.Slot==3 and moved.Amount==9 and RemoteCatalog.ChestHistory[1]==previousHistory,'repeat must not mutate captures or add history entries for every pass')
+ calls=#trace
+ RemoteCatalog.SetChestAuto(false)
+ assert(not RemoteCatalog.SetChestAuto(true),'Stop during repeat wait must retain worker ownership until cleanup')
+ drain()
+ assert(#trace==calls and not RemoteCatalog.ChestAutoWorker and not RemoteCatalog.ChestRepeatWaiting and RemoteCatalog.ChestHistory[1].Total==120,'stopping repeat must preserve cumulative confirmed totals and issue no late requests')
+ -- Combined goals span passes, rather than resetting after each refill.
+ prepare(30,0,40)
+ assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
+ stock[8]=20
+ untilTrue(function() return not RemoteCatalog.ChestAutoWorker end)
+ assert(qty==40 and stock[8]==10 and RemoteCatalog.ChestAutoTotal==40 and RemoteCatalog.ChestHistory[1].Outcome=='Goal reached','a shared goal must end repeat at its cumulative total')
+ -- Top-up repeats wait without withdrawal until inventory is used.
+ prepare(100,50,nil,50)
+ assert(RemoteCatalog.SetChestAuto(true) and RemoteCatalog.ChestRepeatWaiting and #trace==0 and approaches==0)
+ qty=43
+ untilTrue(function() return qty==50 and RemoteCatalog.ChestRepeatWaiting end)
+ assert(#trace==2 and trace[1].Amount==1 and trace[2].Amount==6 and RemoteCatalog.ChestAutoTotal==7,'repeat must top up only the live deficit after consumption')
+ calls=#trace;resume(60)
+ assert(#trace==calls and RemoteCatalog.ChestAutoEnabled,'satisfied repeated top-up must remain idle without extra withdrawals')
+ RemoteCatalog.SetChestAuto(false);drain()
+ -- Expired bindings during the wait stop rather than replaying a stale packet.
+ prepare(0)
+ assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
+ calls=#trace;usable=false
+ untilTrue(function() return not RemoteCatalog.ChestAutoWorker end)
+ assert(#trace==calls and not RemoteCatalog.ChestAutoEnabled and string.find(RemoteCatalog.ChestLastDetail,'no current learned targets',1,true),'repeat must stop explicitly if no current binding survives')
+ -- GUI removal also cancels the repeat delay with no follow-up request.
+ prepare(0)
+ assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
+ calls=#trace;gui.Parent=nil;drain()
+ assert(#trace==calls and not RemoteCatalog.ChestAutoWorker and not RemoteCatalog.ChestBusy,'GUI cleanup must stop repeated polls')
+ gui.Parent=true;task.wait=oldWait
+ RemoteCatalog.ChestRepeat=false;RemoteCatalog.ChestAutoBatch=nil;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=nil
+end
+return 'Chest Auto Max: thirty-item same-slot batches, repeated refill polling/top-up, cumulative goals, quantity replication, bounded retries, Stop and cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-auto',true)());}

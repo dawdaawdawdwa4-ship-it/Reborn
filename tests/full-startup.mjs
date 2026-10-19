@@ -829,7 +829,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn stack-thirty-60',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn repeat-chests-61',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1127,6 +1127,36 @@ end)()
  r.SelectedChestTargets=function() return {{Recorder=owner,Binding=binding},{Recorder=owner,Binding={Amount=9}}} end
  assert(r.ChestManualCaption()=='Withdraw learned batches','mixed observed amounts must not advertise a single incorrect batch size')
  r.SelectedChestTargets,r.ChestRequestReady,r.ChestAmount=targets,ready,amount
+ r.UpdateChestSelectionUI()
+ end)()
+
+ ;(function()
+ local r=RemoteCatalog
+ assert(r.ChestRepeat==false and string.find(r.ChestRepeatButton.Text,'One pass',1,true),'Repeat must default OFF without starting a worker')
+ local y=r.ChestPlanView.Position.Y.Offset
+ for _=1,3 do
+  r.ChestRepeatButton.Activated:Fire()
+  assert(r.ChestRepeatMenu.Menu.Visible and r.ChestPlanView.Position.Y.Offset>=r.ChestRepeatMenu.Menu.Position.Y.Offset+r.ChestRepeatMenu.Menu.Size.Y.Offset,'repeat choices must expand the chest layout without covering its preview')
+  r.ChestRepeatButton.Activated:Fire()
+  assert(not r.ChestRepeatMenu.Menu.Visible and r.ChestPlanView.Position.Y.Offset==y,'closing repeat options must restore the exact layout')
+ end
+ r.ChestRepeatButton.Activated:Fire();r.ChestRepeatMenu.Options[2].Activated:Fire()
+ assert(r.ChestRepeat and not r.ChestAutoEnabled and not r.ChestAutoWorker and string.find(r.ChestPlanLabel.Text,'wait 5 seconds',1,true),'choosing Repeat must only change the preference and read-only preview')
+ r.ChestRepeatButton.Activated:Fire();r.ChestStockButton.Activated:Fire()
+ assert(not r.ChestRepeatMenu.Menu.Visible and r.ChestStockMenu.Menu.Visible,'top-up and repeat options must share single-menu cleanup')
+ r.CloseMenus();assert(r.ChestPlanView.Position.Y.Offset==y)
+ r.ChestRepeatButton.Activated:Fire();r.ChestAutoWorker=77
+ r.ChestRepeatMenu.Options[1].Activated:Fire()
+ assert(r.ChestRepeat and not r.ChestRepeatMenu.Menu.Visible,'a worker starting while a menu is open must freeze its repeat setting')
+ r.ChestRepeatButton.Activated:Fire();assert(not r.ChestRepeatMenu.Menu.Visible,'repeat waiting/cleanup must lock menu opening too')
+ r.ChestAutoWorker=nil
+ r.ChestAutoEnabled=true;r.ChestRepeatWaiting=true;r.UpdateChestSelectionUI()
+ assert(string.find(r.ChestIntro.Text,'Waiting',1,true) and r.ChestWithdrawButton.Text=='Stop Auto Take first','waiting state must explain why a manual action cannot overlap Auto Take')
+ r.ChestAutoEnabled=false;r.ChestRepeatWaiting=false
+ r.ChestRepeatButton.Activated:Fire();UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.Escape},true)
+ assert(not r.ChestRepeatMenu.Menu.Visible and r.ChestPlanView.Position.Y.Offset==y,'Escape must dismiss repeat options and restore their layout')
+ r.ChestRepeatButton.Activated:Fire();r.ChestRepeatMenu.Options[1].Activated:Fire()
+ assert(not r.ChestRepeat and not r.ChestAutoEnabled,'One pass must remain an explicit non-starting choice')
  r.UpdateChestSelectionUI()
  end)()
 

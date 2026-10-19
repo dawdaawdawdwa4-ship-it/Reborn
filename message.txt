@@ -2859,7 +2859,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "stack-thirty-60",
+    Subtitle = "repeat-chests-61",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3326,7 +3326,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn stack-thirty-60",
+    return table.concat({"Reborn repeat-chests-61",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -4057,16 +4057,17 @@ track(RemoteCatalog.ChestLearnedButton.Activated:Connect(function()
 end))
 -- Auto top-up caps each selected item's live inventory, independently of the run goal.
 RemoteCatalog.ChestStockTarget=nil
+RemoteCatalog.ChestRepeat=false
 for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
     if child:IsA("GuiObject") and child~=RemoteCatalog.ChestSelectMenu and child~=RemoteCatalog.ChestAmountMenu and child~=RemoteCatalog.ChestItemMenu and child.Position.Y.Offset>=446 then
         local position=child.Position
         child.Position=UDim2.new(position.X.Scale,position.X.Offset,position.Y.Scale,position.Y.Offset+44)
     end
 end
-RemoteCatalog.ChestStockButton=button({Parent=RemoteCatalog.ChestPage,Text="Auto top-up/item: No limit",TextSize=13,
-    Size=UDim2.new(1,-12,0,36),Position=UDim2.fromOffset(6,446)})
+RemoteCatalog.ChestStockButton=button({Parent=RemoteCatalog.ChestPage,Text="Top-up/item: No limit",TextSize=13,
+    Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,446)})
 RemoteCatalog.ChestStockMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.ChestPage,RemoteCatalog.ChestStockButton,{"No limit","25","50","100","250","500"},{
-    Name="ChestTopUpDropdown",Title="Auto top-up/item",
+    Name="ChestTopUpDropdown",Title="Top-up/item",
     Get=function() return RemoteCatalog.ChestStockTarget and tostring(RemoteCatalog.ChestStockTarget) or "No limit" end,
     Set=function(value)
         RemoteCatalog.ChestStockTarget=tonumber(value)
@@ -4075,6 +4076,22 @@ RemoteCatalog.ChestStockMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.ChestPag
     end,
     Locked=function()
         if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then setStatus("Finish or stop collection before changing its inventory target",COLORS.warn);return true end
+        return false
+    end,
+    Layout=function() if RemoteCatalog.LayoutChestControls then RemoteCatalog.LayoutChestControls() end end,
+})
+RemoteCatalog.ChestRepeatButton=button({Parent=RemoteCatalog.ChestPage,Text="Run: One pass",TextSize=13,
+    Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,446)})
+RemoteCatalog.ChestRepeatMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.ChestPage,RemoteCatalog.ChestRepeatButton,{"One pass","Repeat (5s)"},{
+    Name="ChestRepeatDropdown",Title="Run",
+    Get=function() return RemoteCatalog.ChestRepeat and "Repeat (5s)" or "One pass" end,
+    Set=function(value)
+        RemoteCatalog.ChestRepeat=value=="Repeat (5s)"
+        RemoteCatalog.PreviewChestSelection()
+        setStatus(RemoteCatalog.ChestRepeat and "Repeat enabled. Auto Take waits 5 seconds between passes; Stop cancels it." or "One pass selected. Auto Take stops after its selected slot checks.",COLORS.good)
+    end,
+    Locked=function()
+        if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then setStatus("Stop collection and wait for cleanup before changing its run mode",COLORS.warn);return true end
         return false
     end,
     Layout=function() if RemoteCatalog.LayoutChestControls then RemoteCatalog.LayoutChestControls() end end,
@@ -4115,7 +4132,7 @@ track(RemoteCatalog.ChestProfileSaveButton.Activated:Connect(function() RemoteCa
 track(RemoteCatalog.ChestProfileLoadButton.Activated:Connect(function() RemoteCatalog.LoadChestProfile() end))
 RemoteCatalog.ChestControlPositions={}
 for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
-    if child:IsA("GuiObject") and child~=RemoteCatalog.ChestSelectMenu and child~=RemoteCatalog.ChestAmountMenu and child~=RemoteCatalog.ChestItemMenu and child~=RemoteCatalog.ChestStockMenu.Menu then
+    if child:IsA("GuiObject") and child~=RemoteCatalog.ChestSelectMenu and child~=RemoteCatalog.ChestAmountMenu and child~=RemoteCatalog.ChestItemMenu and child~=RemoteCatalog.ChestStockMenu.Menu and child~=RemoteCatalog.ChestRepeatMenu.Menu then
         RemoteCatalog.ChestControlPositions[child]=child.Position
     end
 end
@@ -4123,7 +4140,8 @@ function RemoteCatalog.LayoutChestControls()
     local selectOffset=RemoteCatalog.ChestSelectMenu.Visible and RemoteCatalog.ChestSelectMenu.Size.Y.Offset+8 or 0
     local amountOffset=RemoteCatalog.ChestAmountMenu.Visible and RemoteCatalog.ChestAmountMenu.Size.Y.Offset+8 or 0
     local itemOffset=RemoteCatalog.ChestItemMenu.Visible and RemoteCatalog.ChestItemMenu.Size.Y.Offset+8 or 0
-    local stockOffset=RemoteCatalog.ChestStockMenu.Menu.Visible and RemoteCatalog.ChestStockMenu.Menu.Size.Y.Offset+12 or 0
+    local stockOffset=RemoteCatalog.ChestStockMenu.Menu.Visible and RemoteCatalog.ChestStockMenu.Menu.Size.Y.Offset+12
+        or RemoteCatalog.ChestRepeatMenu.Menu.Visible and RemoteCatalog.ChestRepeatMenu.Menu.Size.Y.Offset+12 or 0
     for child,base in pairs(RemoteCatalog.ChestControlPositions) do
         local y=base.Y.Offset
         if y>=328 then y+=selectOffset end
@@ -4139,6 +4157,7 @@ function RemoteCatalog.LayoutChestControls()
     RemoteCatalog.ChestItemMenu.Position=UDim2.fromOffset(6,254+profileOffset)
     RemoteCatalog.ChestAmountMenu.Position=UDim2.new(.5,3,0,672+selectOffset+itemOffset+profileOffset+stockOffset)
     RemoteCatalog.ChestStockMenu.Menu.Position=UDim2.fromOffset(6,RemoteCatalog.ChestStockButton.Position.Y.Offset+RemoteCatalog.ChestStockButton.Size.Y.Offset+6)
+    RemoteCatalog.ChestRepeatMenu.Menu.Position=UDim2.fromOffset(6,RemoteCatalog.ChestRepeatButton.Position.Y.Offset+RemoteCatalog.ChestRepeatButton.Size.Y.Offset+6)
     RemoteCatalog.ChestSelectMenu.Position=UDim2.fromOffset(6,326+itemOffset+profileOffset)
 end
 table.insert(RemoteCatalog.MenuClosers,function()
@@ -4942,7 +4961,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn stack-thirty-60", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn repeat-chests-61", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6509,6 +6528,7 @@ function RemoteCatalog.PreviewChestSelection()
             text..="\n"..item..": "..(ok and current~=nil and (current.." in inventory; "..math.max(0,RemoteCatalog.ChestStockTarget-current).." missing") or "inventory count unavailable")
         end
     end
+    text..=RemoteCatalog.ChestRepeat and "\nRun: Repeat; wait 5 seconds between passes. Stop cancels. The combined goal applies to the whole run." or "\nRun: One pass; stop after the selected checks."
     RemoteCatalog.ChestPlanLabel.Text=text
     RemoteCatalog.ChestPlanView.CanvasPosition=Vector2.zero
     return text
@@ -6628,9 +6648,9 @@ function RemoteCatalog.UpdateChestSelectionUI()
     for _,entry in ipairs(all) do if not entry.Binding.Generated then learned+=1 end end
     RemoteCatalog.ChestStats.SLOTS.Text=tostring(learned)
     RemoteCatalog.ChestStats["AUTO COLLECTED"].Text=tostring(RemoteCatalog.ChestAutoTotal or 0)
-    if not RemoteCatalog.ChestBusy then RemoteCatalog.ChestWithdrawButton.Text=RemoteCatalog.ChestManualCaption() end
+    if not RemoteCatalog.ChestBusy then RemoteCatalog.ChestWithdrawButton.Text=RemoteCatalog.ChestAutoEnabled and "Stop Auto Take first" or RemoteCatalog.ChestManualCaption() end
     local learning=RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnChestOnly
-    RemoteCatalog.ChestIntro.Text=learning and "Learning · withdraw once from each chest" or RemoteCatalog.ChestAutoEnabled and "Collecting · use OFF or Stop All to stop" or "Ready · learn chests, choose targets, then collect"
+    RemoteCatalog.ChestIntro.Text=learning and "Learning · withdraw once from each chest" or RemoteCatalog.ChestAutoEnabled and (RemoteCatalog.ChestRepeatWaiting and "Waiting · next scan within 5s; Stop cancels" or "Collecting · use OFF or Stop All to stop") or "Ready · learn chests, choose targets, then collect"
     RemoteCatalog.ChestLearnButton.Text=learning and "Stop learning" or "Start learning"
     RemoteCatalog.ChestLearnButton.BackgroundColor3=learning and COLORS.on or COLORS.off
 end
@@ -6724,8 +6744,9 @@ function RemoteCatalog.ValidateChestProfile(data)
     assert(data.Goal==0 or data.Goal==25 or data.Goal==50 or data.Goal==100 or data.Goal==250 or data.Goal==500,"Invalid profile goal")
     local stock=data.StockTarget==nil and 0 or data.StockTarget
     assert(stock==0 or stock==25 or stock==50 or stock==100 or stock==250 or stock==500,"Invalid inventory top-up target")
+    assert(data.Repeat==nil or type(data.Repeat)=="boolean","Invalid repeat preference")
     return {Version=1,Name=data.Name,ItemMode=data.ItemMode,Items=items,Discover=data.Discover,Whole=data.Whole,
-        Speed=data.Speed,Travel=data.Travel,Range=data.Range,Goal=data.Goal,StockTarget=stock}
+        Speed=data.Speed,Travel=data.Travel,Range=data.Range,Goal=data.Goal,StockTarget=stock,Repeat=data.Repeat==true}
 end
 function RemoteCatalog.ValidateChestProfiles(data)
     assert(type(data)=="table" and data.Version==1 and type(data.Profiles)=="table","Invalid chest profiles file")
@@ -6742,7 +6763,7 @@ function RemoteCatalog.RefreshChestProfiles()
     RemoteCatalog.ChestProfileSlotButton.Text="Profile: "..slot.." / 3"
     if profile then
         local items=profile.ItemMode=="All" and "All learned items" or #profile.Items==0 and "No items selected" or #profile.Items.." selected items"
-        RemoteCatalog.ChestProfileSummary.Text=profile.Name.." · "..(RemoteCatalog.ChestProfilePersistence[slot] or "Session only").."\n"..items.." · "..profile.Speed.." · "..profile.Travel.."\n"..(profile.Discover and "All matching" or "Learned only").." · "..(profile.Whole and "Whole chest" or "Learned slots").." · Goal "..(profile.Goal==0 and "Unlimited" or profile.Goal).." · Top-up/item "..((profile.StockTarget or 0)==0 and "OFF" or profile.StockTarget)
+        RemoteCatalog.ChestProfileSummary.Text=profile.Name.." · "..(RemoteCatalog.ChestProfilePersistence[slot] or "Session only").."\n"..items.." · "..profile.Speed.." · "..profile.Travel.."\n"..(profile.Discover and "All matching" or "Learned only").." · "..(profile.Whole and "Whole chest" or "Learned slots").." · Goal "..(profile.Goal==0 and "Unlimited" or profile.Goal).." · Top-up/item "..((profile.StockTarget or 0)==0 and "OFF" or profile.StockTarget)..(profile.Repeat and " · Repeat 5s" or " · One pass")
     else
         RemoteCatalog.ChestProfileSummary.Text="Empty profile "..slot..". "..(RemoteCatalog.ChestProfilesFileState or "Session only").."\nSave current settings here (overwrites this slot). Load never starts collecting."
     end
@@ -6784,7 +6805,7 @@ function RemoteCatalog.SaveChestProfile()
     local name=RemoteCatalog.ChestProfileName.Text:match("^%s*(.-)%s*$")
     local ok,profile=pcall(RemoteCatalog.ValidateChestProfile,{Version=1,Name=name,ItemMode=mode,Items=selected,
         Discover=RemoteCatalog.ChestDiscover,Whole=RemoteCatalog.ChestWhole,Speed=RemoteCatalog.ChestSpeed,
-        Travel=RemoteCatalog.ChestTravel,Range=RemoteCatalog.ChestScanRange,Goal=RemoteCatalog.ChestGoal or 0,StockTarget=RemoteCatalog.ChestStockTarget or 0})
+        Travel=RemoteCatalog.ChestTravel,Range=RemoteCatalog.ChestScanRange,Goal=RemoteCatalog.ChestGoal or 0,StockTarget=RemoteCatalog.ChestStockTarget or 0,Repeat=RemoteCatalog.ChestRepeat==true})
     if not ok then setStatus("Profile not saved: "..tostring(profile),COLORS.warn);return false end
     local slot=RemoteCatalog.ChestProfileSlot
     RemoteCatalog.ChestProfiles[slot]=profile;RemoteCatalog.ChestProfileName.Text=profile.Name
@@ -6816,7 +6837,9 @@ function RemoteCatalog.LoadChestProfile()
     RemoteCatalog.ChestDiscover=profile.Discover;RemoteCatalog.ChestWhole=profile.Whole;RemoteCatalog.ChestSpeed=profile.Speed
     RemoteCatalog.ChestTravel=profile.Travel;RemoteCatalog.ChestScanRange=profile.Range;RemoteCatalog.ChestGoal=profile.Goal>0 and profile.Goal or nil
     RemoteCatalog.ChestStockTarget=profile.StockTarget>0 and profile.StockTarget or nil
-    RemoteCatalog.ChestStockButton.Text="Auto top-up/item: "..(RemoteCatalog.ChestStockTarget or "No limit").."  ▼"
+    RemoteCatalog.ChestStockButton.Text="Top-up/item: "..(RemoteCatalog.ChestStockTarget or "No limit").."  ▼"
+    RemoteCatalog.ChestRepeat=profile.Repeat
+    if RemoteCatalog.ChestRepeatMenu then RemoteCatalog.ChestRepeatMenu:Refresh() end
     RemoteCatalog.ChestProfileName.Text=profile.Name
     RemoteCatalog.ChestSpeedButton.Text="Pace: "..profile.Speed
     RemoteCatalog.ChestTravelButton.Text="Movement: "..profile.Travel
@@ -6862,7 +6885,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn stack-thirty-60\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn repeat-chests-61\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -6881,11 +6904,23 @@ function RemoteCatalog.RecordChestRun(outcome,total,items,goal,stockTarget)
     RemoteCatalog.ChestHistoryIndex=0
     if RemoteCatalog.ChestHistoryButton then RemoteCatalog.ChestHistoryButton.Text="Previous runs ("..#history..")" end
 end
+function RemoteCatalog.ChestAutoStates(targets,batch,probe)
+    local states={}
+    for _,entry in ipairs(targets) do
+        local maximum=batch or entry.Binding.Amount
+        if type(maximum)=="number" and maximum>=1 and maximum%1==0 and maximum<=1000000 then
+            local unconfirmed=probe or entry.Binding.Probe
+            table.insert(states,{Recorder=entry.Recorder,Binding=entry.Binding,Maximum=maximum,Amount=unconfirmed and 1 or maximum,Probe=unconfirmed,NoProgress=0})
+        end
+    end
+    return states
+end
 function RemoteCatalog.SetChestAuto(state)
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);RemoteCatalog.ChestAutoMessage("Wait for Auto Plow input cleanup");return false end
     if not state then
         RemoteCatalog.Navigation.Stop("Chest")
         RemoteCatalog.ChestAutoEnabled=false
+        RemoteCatalog.ChestRepeatWaiting=false
         RemoteCatalog.ChestAutoGeneration=(RemoteCatalog.ChestAutoGeneration or 0)+1
         if gui.Parent then
             RemoteCatalog.ChestAutoButton.Text="START COLLECTING"
@@ -6902,14 +6937,9 @@ function RemoteCatalog.SetChestAuto(state)
     if stockTarget~=nil and stockTarget~=25 and stockTarget~=50 and stockTarget~=100 and stockTarget~=250 and stockTarget~=500 then
         RemoteCatalog.ChestAutoMessage("Choose a valid inventory top-up target before collecting");return false
     end
-    local targets=RemoteCatalog.SelectedChestTargets()
-    local states={}
-    for _,entry in ipairs(targets) do
-        local maximum=RemoteCatalog.ChestAutoBatch or entry.Binding.Amount
-        if type(maximum)=="number" and maximum>=1 and maximum%1==0 and maximum<=1000000 then
-            table.insert(states,{Recorder=entry.Recorder,Binding=entry.Binding,Maximum=maximum,Amount=entry.Binding.Probe and 1 or maximum,Probe=entry.Binding.Probe,NoProgress=0})
-        end
-    end
+    local batch=RemoteCatalog.ChestAutoBatch
+    local repeating=RemoteCatalog.ChestRepeat==true
+    local states=RemoteCatalog.ChestAutoStates(RemoteCatalog.SelectedChestTargets(),batch,false)
     if #states==0 then
         RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestItems and next(RemoteCatalog.ChestItems)==nil and "No items selected. Choose items or All learned items." or "Learn and select at least one valid item withdrawal first")
         return false
@@ -6920,6 +6950,8 @@ function RemoteCatalog.SetChestAuto(state)
     RemoteCatalog.ChestAutoEnabled=true
     RemoteCatalog.ChestAutoTotal=0
     RemoteCatalog.ChestAutoItems={}
+    RemoteCatalog.ChestAutoPass=1
+    RemoteCatalog.ChestRepeatWaiting=false
     if RemoteCatalog.ChestStats then RemoteCatalog.ChestStats["AUTO COLLECTED"].Text="0" end
     local goal=RemoteCatalog.ChestGoal
     local fast=RemoteCatalog.ChestSpeed=="Fast"
@@ -6962,7 +6994,33 @@ function RemoteCatalog.SetChestAuto(state)
                             end
                         end
                     end
-                    break
+                    if not repeating then break end
+                    -- Keep one worker and the cumulative goal while the chest refills.
+                    local atTarget=stockMet
+                    completed=false;stockMet=false
+                    RemoteCatalog.ChestRepeatWaiting=true
+                    for seconds=5,1,-1 do
+                        if not active() then return end
+                        RemoteCatalog.ChestAutoButton.Text="STOP · next scan "..seconds.."s"
+                        RemoteCatalog.ChestAutoMessage((atTarget and "Inventory target met; watching for items you use." or "Waiting for chest refill.").."\nNext pass in "..seconds.."s · "..RemoteCatalog.ChestAutoTotal.." confirmed items · pass "..RemoteCatalog.ChestAutoPass..". Stop cancels.")
+                        for _=1,10 do if not active() then return end;task.wait(.1) end
+                    end
+                    if not active() then return end
+                    RemoteCatalog.ChestRepeatWaiting=false
+                    local refreshed=RemoteCatalog.ChestAutoStates(RemoteCatalog.SelectedChestTargets(),batch,true)
+                    local valid=false
+                    for _,state in ipairs(refreshed) do
+                        if state.Recorder:CanUseChestBinding(state.Binding) then valid=true;break end
+                    end
+                    if not valid then RemoteCatalog.ChestAutoMessage("Repeat stopped: no current learned targets remain. Learn/select a withdrawal again.");return end
+                    states=refreshed
+                    RemoteCatalog.ChestAutoPass+=1
+                    index=0;currentChest=nil;preferredSlot=nil
+                    for _,state in ipairs(states) do
+                        local chest=state.Binding.Chest
+                        if chest and not chestNumbers[chest] then chestCount+=1;chestNumbers[chest]=chestCount end
+                    end
+                    continue
                 end
                 index=index%#states+1
                 if preferredSlot and states[preferredSlot].Done then preferredSlot=nil end
@@ -7061,6 +7119,7 @@ function RemoteCatalog.SetChestAuto(state)
             end
         end)
         if ownsBusy then RemoteCatalog.ChestBusy=false end
+        RemoteCatalog.ChestRepeatWaiting=false
         RemoteCatalog.ChestAutoWorker=nil
         if gui.Parent then
             local outcome=not ok and "Failed" or goalReached and "Goal reached" or stockMet and "Inventory targets met" or completed and "Pass finished" or "Stopped"
@@ -7106,7 +7165,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn stack-thirty-60\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn repeat-chests-61\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn

@@ -33,6 +33,7 @@ assert(RemoteCatalog.ChestSpeed=='Standard' and RemoteCatalog.ChestTravel=='Stay
 assert(previews==0 and updates==0 and writes==0,'startup must remain read-only')
 local validated=RemoteCatalog.ValidateChestProfile(template())
 assert(validated.StockTarget==0,'v57 profiles without an inventory target must default to no limit')
+assert(validated.Repeat==false,'older profiles must retain one-pass behavior')
 local input=template();input.Binding={Session='secret'};local copy=RemoteCatalog.ValidateChestProfile(input)
 copy.Items[1]='other'
 assert(input.Items[1]=='wood' and not copy.Binding,'validation must copy names and discard non-profile fields')
@@ -41,7 +42,8 @@ for _,change in ipairs({
  {'ItemMode','Unknown'},{'Items',{'wood','wood'}},{'Items',{[1]='wood',[3]='stone'}},{'Items',{''}},
  {'Items',{' bad'}},{'Items',{string.rep('x',129)}},{'Discover','true'},{'Whole',1},
  {'Speed','Turbo'},{'Travel','Teleport'},{'Range',15},{'Goal',-1},{'Goal',0/0},{'Goal',math.huge},{'Goal',25.5},
- {'StockTarget',-1},{'StockTarget','50'},{'StockTarget',true},{'StockTarget',0/0},{'StockTarget',math.huge},{'StockTarget',25.5}
+ {'StockTarget',-1},{'StockTarget','50'},{'StockTarget',true},{'StockTarget',0/0},{'StockTarget',math.huge},{'StockTarget',25.5},
+ {'Repeat','true'},{'Repeat',1},{'Repeat',{}}
 }) do
  local bad=template();bad[change[1]]=change[2]
  assert(not pcall(RemoteCatalog.ValidateChestProfile,bad),'invalid '..change[1]..' must be rejected')
@@ -60,18 +62,24 @@ assert(RemoteCatalog.ChestSpeed=='Fast' and RemoteCatalog.ChestTravel=='Walk' an
 assert(previews==1 and closes==1 and updates==1 and not RemoteCatalog.ChestAutoEnabled and writes==0,'loading must not send requests, start automation or write files')
 assert(RemoteCatalog.ChestSpeedButton.Text=='Pace: Fast' and RemoteCatalog.ChestGoalButton.Text=='Auto goal: 100 items','loaded settings must update their actual control labels')
 RemoteCatalog.ChestStockTarget=50
+RemoteCatalog.ChestRepeat=true
 assert(RemoteCatalog.LoadChestProfile() and not RemoteCatalog.ChestStockTarget,'loading an older profile must clear a previously selected top-up cap')
+assert(not RemoteCatalog.ChestRepeat,'loading an older profile must also clear Repeat')
 RemoteCatalog.ChestItems.wood=nil
 assert(#RemoteCatalog.ChestProfiles[1].Items==2,'loaded item filters must not alias saved data')
 -- Save normalizes names and serializes only preference data.
 RemoteCatalog.ChestProfileName.Text='  Stone run  '
 RemoteCatalog.ChestStockTarget=50
+RemoteCatalog.ChestRepeat=true
 assert(RemoteCatalog.SaveChestProfile() and writes==1 and RemoteCatalog.ChestProfiles[1].Name=='Stone run')
 local disk=db[file]
 assert(disk.Version==1 and disk.Profiles['1'].Items[1]=='stone' and not disk.Profiles['1'].Binding and not disk.Profiles['1'].Selection,'only validated preference fields may be saved')
 assert(disk.Profiles['1'].StockTarget==50,'profile files must retain the inventory preference')
+assert(disk.Profiles['1'].Repeat==true,'profile files must retain the explicit repeat preference')
 RemoteCatalog.ChestStockTarget=nil
+RemoteCatalog.ChestRepeat=false
 assert(RemoteCatalog.LoadChestProfile() and RemoteCatalog.ChestStockTarget==50 and string.find(RemoteCatalog.ChestStockButton.Text,'50',1,true),'loading must restore the saved cap and label without starting collection')
+assert(RemoteCatalog.ChestRepeat and not RemoteCatalog.ChestAutoEnabled,'loading a repeat profile must not start a worker')
 RemoteCatalog.ChestProfiles[1].Items[1]='wood'
 assert(disk.Profiles['1'].Items[1]=='stone','file snapshots must not alias session profiles')
 local saved=RemoteCatalog.ChestProfiles[1]

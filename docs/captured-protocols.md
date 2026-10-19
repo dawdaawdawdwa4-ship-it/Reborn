@@ -447,3 +447,27 @@ request below 30 and stop collection before the stack empties. Session, ownershi
 reach, exact-item confirmation and cancellation checks remain. Tests exercise
 same-slot request order, thirty-item payload amounts and smaller remainders;
 actual live acceptance remains unverified.
+
+### Optional repeat passes (repeat-chests-61)
+
+Repeat collection introduces no remote or packet fields; the catalog remains at
+145 entries and recorder v28 is unchanged. One pass stays the default. An
+explicitly started Repeat worker waits five seconds between completed passes,
+with no withdrawal requests during that interval. It then rebuilds states from
+current selected/valid learned targets and starts refreshed checks with one-item
+probes. Confirmed stacks retain the thirty-item maximum and same-slot priority.
+Empty probes do not inherit a sequence of large rejected batch attempts.
+
+The worker retains its original batch, run goal and top-up preference. Confirmed
+totals are cumulative across passes, while each request is limited by the live
+per-item deficit and remaining combined goal. If top-up is already satisfied,
+the worker can wait without approach or withdrawal until a later check observes
+consumption. It stops if no current learned targets survive or inventory becomes
+unreadable; session, ownership, reach and confirmation checks remain in place.
+
+The repeat delay checks cancellation every 0.1 seconds. Stop invalidates the
+generation, and the single-worker lock remains through cleanup. Profile schema
+version 1 accepts optional boolean `Repeat`, default false; it persists only the
+local preference, not bindings or requests. Tests cover fresh slot selection,
+bounded probes, timing, cumulative goals, top-up, cancellation and profile/UI
+adapters. Live Roblox acceptance remains unverified.

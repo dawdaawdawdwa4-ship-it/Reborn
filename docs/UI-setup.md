@@ -1163,3 +1163,43 @@ after moving to the second, check one-item probe → 30-item continuation, prese
 the original recorded amount, and verify range loss, smaller remainders, goals
 and manual thirty-item dispatch. The full suite passes; live Roblox behavior
 remains unverified.
+
+### Optional repeated chest collection (v61)
+
+**Chests > Run** offers **One pass** (default) and **Repeat (5s)**. Choosing a mode
+updates the read-only preview; press **START COLLECTING** to run it. Repeat stays
+ON after a pass, waits five seconds without sending withdrawal requests, then
+refreshes the selected targets from current learned bindings. This can find a
+refilled stack or the selected item in another learned/supported slot. Each new
+pass probes unconfirmed slots with one item before continuing the same stack in
+batches of up to 30. Empty probes remain bounded to one attempt per refreshed
+slot/check. The countdown begins after the preceding pass finishes.
+
+Repeat uses one worker and cumulative confirmed totals. A combined Auto goal
+applies across every pass and stops the run when reached. With an inventory
+top-up target, satisfied items need no approach or withdrawal: the worker waits
+and checks again, topping up only the live deficit after you use some items.
+This explicitly enabled mode extends v58's finite top-up operation; One pass
+retains its existing behavior.
+
+The result panel and action button show the next-pass countdown, pass number
+and cumulative total. The manual button says **Stop Auto Take first** during
+automatic collection. Stop, Stop All and GUI destruction cancel the wait; the
+worker lock remains held until cleanup, preventing overlapping restarts. Targets
+are refreshed after the wait and must still have current usable bindings. If no
+current learned targets remain, Repeat stops with a reason. Quantity timeouts
+and invalid inventory counts still stop the run without automatically retrying
+an unreadable transfer.
+
+Run mode and inventory target dropdowns share menu cleanup and push the preview
+below their options. Run mode is locked during collection and cancelled worker
+cleanup. Profiles save optional boolean `Repeat`; older version-1 profiles
+default to One pass. Loading a Repeat profile changes preferences and the preview
+without starting collection. History receives one final run snapshot, not an
+entry after every pass.
+
+Mock tests cover refill polling in another slot, the five-second request-free
+wait, one-worker ownership, frozen batch sizes, cumulative goals, top-up after
+consumption, stale targets, Stop/GUI cleanup, profile compatibility and actual
+dropdown/layout/status wiring. The full regression suite passes; live rendering,
+input dispatch and Roblox server behavior remain unverified.
