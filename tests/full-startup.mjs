@@ -808,7 +808,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn blueprint-plow-54',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn captured-plow-55',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -963,6 +963,36 @@ end)()
  RemoteCatalog.PlowWorker=nil
  stopAllButton.Activated:Fire()
  assert(not RemoteCatalog.PlowEnabled,'Stop All must stop Auto Plow too')
+ end)()
+
+ ;(function()
+ local r=RemoteCatalog
+ assert(r.PlowMode=='Auto','Auto must preserve normal-input fallback as the default')
+ r.PlowModeButton.Activated:Fire();assert(r.PlowMode=='Captured')
+ r.PlowModeButton.Activated:Fire();assert(r.PlowMode=='Input')
+ r.PlowModeButton.Activated:Fire();assert(r.PlowMode=='Auto')
+ r.PlowWorker=55;r.PlowModeButton.Activated:Fire();assert(r.PlowMode=='Auto','in-flight workers must freeze method selection');r.PlowWorker=nil
+ local oldRecorder,oldStart,oldAttempted=r.Recorder,r.StartCapture,r.CaptureAttempted
+ local learner={Version=27,Active=false,Stopped=false,Records={},MaxCalls=100,RequestIds={}}
+ function learner:Stop() self.Stopped=true;self.LearnPlowOnly=false end
+ function learner:CanUsePlowBinding() return self.Ready==true end
+ function learner:Plow() error('learning controls must never send') end
+ r.Recorder=nil;r.StartCapture=function() learner.Stopped=false;return learner end
+ r.PlowLearnButton.Activated:Fire()
+ assert(learner.LearnPlowOnly and not learner.Active and r.PlowLearning and not r.PlowEnabled,'Learn button must enable quiet manual capture without plowing')
+ learner.LearnBaitOnly=true;r.StopBaitLearning()
+ learner.LearnWoodOnly=true;r.StopWoodLearning()
+ learner.LearnChestOnly=true;r.StopChestLearning()
+ assert(learner.LearnPlowOnly and not learner.Stopped,'stopping other quiet learners must preserve an active plow learner')
+ learner.Ready=true;learner.LearnPlowOnly=false;learner.Stopped=true
+ learner.PlowBinding={Remote={Name='PdqfVEBKHDSMfE',Parent=true}}
+ updateBoard()
+ assert(not r.PlowLearning and string.find(r.PlowInfo.Text,'Hoe request learned',1,true) and not r.PlowEnabled,'manual capture completion must refresh readiness without starting Auto Plow')
+ r.PlowLearnButton.Activated:Fire();assert(learner.LearnPlowOnly)
+ r.PlowLearnButton.Activated:Fire();assert(not learner.LearnPlowOnly and not r.PlowLearning,'Learn button must also cancel a pending learner')
+ r.PlowLearnButton.Activated:Fire();assert(learner.LearnPlowOnly)
+ r.StopAllAutomation();assert(not learner.LearnPlowOnly and not r.PlowLearning,'Stop All must cancel hoe learning as well as plowing')
+ r.Recorder,r.StartCapture,r.CaptureAttempted=oldRecorder,oldStart,oldAttempted
  end)()
 
 RemoteCatalog.StopTimerButton.Activated:Fire()

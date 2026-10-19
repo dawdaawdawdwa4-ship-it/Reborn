@@ -309,3 +309,35 @@ checks. Only observed owned `soil` replacements count. Input-release and worker
 ownership cover Stop, errors, GUI cleanup and handoffs to other modes. Existing
 resource input exposes its held-input lock so Plow cannot overlap its cleanup.
 Actual native hoe effects and server acceptance remain unverified.
+
+### Captured plowing (captured-plow-55)
+
+The supplied hoe capture adds RemoteFunction
+`out.Pyrlndnwplmt4r.PdqfVEBKHDSMfE` under
+`ReplicatedStorage.rbxts_include.node_modules["@rbxts"].net`. Its observed
+InvokeServer packet has a live context field `zt6b4gE9dQAF6k` and nested body
+`rB3z9j3yJfeiRZ={block=grassInstance}`. Neither the pasted context value nor
+the nil-instance debug ID is embedded. The catalog now contains 144 endpoints.
+
+Recorder v27 learns the actual packet while a hoe Tool is equipped. Known plow
+endpoints can be recognized during normal capture; rotated endpoint names are
+learned only during explicit quiet hoe learning and must reside in an `out`
+group. The packet must contain a grass/dirt BasePart as `block`, directly or in
+one nested table. Learning accepts a detached sample, since normal game code may
+remove it before the call. Replay clones the original complete argument list,
+preserves envelope keys, context and nil positions, and replaces only that sample
+instance with a live grass/dirt block in the current player's owned Blocks
+folder. The nested `Character.hoe.hoe` asset is not a further request argument.
+
+Bindings require the same user, character, JobId and a parented RemoteFunction.
+The Auto Plow adapter additionally checks the equipped selected hoe, owned
+exposed surface, radius and normal reach before each request. Auto chooses its
+transport before starting a pass; Input preserves v54 behavior and Captured
+requires a current binding. A captured rejection, exception or expiry does not
+trigger native input. Only an observed owned `soil` replacement counts; Stop
+invalidates the worker and retains its lock until any in-flight request returns.
+Quiet learning, Stop All and GUI cleanup send no plow requests themselves.
+
+Regression tests preserve the v41–v54 behaviors and exercise this protocol with
+mock instances and placeholder context. Actual server acceptance remains
+unverified in live Roblox.

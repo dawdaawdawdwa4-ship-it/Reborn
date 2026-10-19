@@ -152,6 +152,7 @@ local RemoteCatalog = (function()
         { Path = "RobloxReplicatedStorage.UpdateLocalPlayerBlockList", Class = "RemoteEvent" },
         { Path = "RobloxReplicatedStorage.UpdatePlayerBlockList", Class = "RemoteEvent" },
         { Path = "RobloxReplicatedStorage.UpdatePlayerProfileSettings", Class = "RemoteEvent" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Pyrlndnwplmt4r.PdqfVEBKHDSMfE", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.mEn0GOcgVLtb4o.COtnYCOPUThadM", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.wRLHwn9X7tFCOv.UctIHHAfsCxxzj", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.XPQExfDjDSUkYv", Class = "RemoteFunction" },
@@ -252,6 +253,7 @@ local RemoteCatalog = (function()
         local localValid=binding and binding.Remote and binding.Remote.Parent
             and (bindingName~="BaitBinding" or catalog.BaitRecorderValid(recorder))
             and (bindingName~="ChestBinding" or recorder.CanUseChestBinding and recorder:CanUseChestBinding())
+            and (bindingName~="PlowBinding" or recorder.CanUsePlowBinding and recorder:CanUsePlowBinding())
         if bindingName~="BaitBinding" and localValid then return recorder end
         local ok,existing=pcall(function()
             local environment=type(getgenv)=="function" and getgenv() or _G
@@ -261,6 +263,7 @@ local RemoteCatalog = (function()
         local otherValid=other and other.Remote and other.Remote.Parent
             and (bindingName~="BaitBinding" or catalog.BaitRecorderValid(existing))
             and (bindingName~="ChestBinding" or existing.CanUseChestBinding and existing:CanUseChestBinding())
+            and (bindingName~="PlowBinding" or existing.CanUsePlowBinding and existing:CanUsePlowBinding())
         if otherValid and (not localValid or bindingName~="BaitBinding" or (other.ObservedAt or 0)>=(binding.ObservedAt or 0)) then return existing end
         if localValid then return recorder end
     end
@@ -494,19 +497,20 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 26 and previous.Resume then
+if previous and previous.Version == 27 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 26, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 27, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
     capture.BaitBinding = previous.BaitBinding
     capture.PlacementBinding = previous.PlacementBinding
+    capture.PlowBinding = previous.PlowBinding
     capture.WoodHitBinding = previous.WoodHitBinding
     capture.MineHitBinding = previous.MineHitBinding
     capture.AutoReplantBinding = previous.AutoReplantBinding
@@ -520,6 +524,7 @@ if previous then
 end
 capture.ChestBindings=capture.ChestBindings or {}
 local exactNames = {
+    PdqfVEBKHDSMfE = true, -- Supplied hoe/plow endpoint; context is learned live.
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
     T5XIZMc0DxnCFt = true, -- Most recent rotated block-hit endpoint.
@@ -674,6 +679,7 @@ function capture:CopyAll()
 end
 function capture:Stop()
     self.Active, self.Stopped = false, true
+    self.LearnPlowOnly = false
     self.LearnWoodOnly = false
     self.LearnBaitOnly = false
     self.LearnChestOnly = false
@@ -761,6 +767,59 @@ function capture:SetAutoReplant(value)
     end)
     if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     self.AutoReplantState=value
+    return true,result
+end
+local function equippedHoe(owner)
+    local char=owner and owner.Character
+    if not char or type(char.FindFirstChildOfClass)~="function" then return nil end
+    local tool=char:FindFirstChildOfClass("Tool")
+    if not tool or not tool:IsA("Tool") then return nil end
+    local name=string.lower(tool.Name)
+    return (name=="hoe" or name=="plow" or name:match("hoe$")) and tool or nil
+end
+local function learnPlow(remote,method,args)
+    if method~="InvokeServer" or type(args[1])~="table" then return false end
+    local known=remote.Name=="PdqfVEBKHDSMfE" or string.find(string.lower(remote.Name),"plow",1,true)
+    local group=remote.Parent
+    if not known and (not capture.LearnPlowOnly or not group or not group.Parent or group.Parent.Name~="out") then return false end
+    local body=args[1]
+    if typeof(body.block)~="Instance" then
+        body=nil
+        for _,value in pairs(args[1]) do if type(value)=="table" and typeof(value.block)=="Instance" then body=value;break end end
+    end
+    local target=body and body.block
+    if typeof(target)~="Instance" or not target:IsA("BasePart") or (target.Name~="grass" and target.Name~="dirt") then return false end
+    local owner=game:GetService("Players").LocalPlayer
+    if not equippedHoe(owner) then return false end
+    capture.PlowBinding={Remote=remote,Method=method,Args=cloneArguments(args),Target=target,
+        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
+    return true
+end
+function capture:CanUsePlowBinding()
+    local b=self.PlowBinding
+    local owner=game:GetService("Players").LocalPlayer
+    return b~=nil and b.Remote~=nil and b.Remote.Parent~=nil and b.Remote:IsA("RemoteFunction") and b.Method=="InvokeServer"
+        and owner~=nil and owner.Character~=nil and b.OwnerCharacter==owner.Character and b.OwnerUserId==owner.UserId and b.JobId==game.JobId
+end
+function capture:Plow(block)
+    if not self:CanUsePlowBinding() then return false,"Plow once manually on this character/server to learn the current request" end
+    local owner=game:GetService("Players").LocalPlayer
+    if not equippedHoe(owner) then return false,"Keep an owned hoe equipped" end
+    if typeof(block)~="Instance" or not block:IsA("BasePart") or not block.Parent or (block.Name~="grass" and block.Name~="dirt") then return false,"Choose a live grass/dirt block" end
+    local world=game:GetService("Workspace")
+    local islands=world and world:FindFirstChild("Islands")
+    local island=islands and islands:FindFirstChild(tostring(owner.UserId).."-island")
+    if not island and islands then
+        for _,candidate in ipairs(islands:GetChildren()) do if candidate:GetAttribute("OwnerUserId")==owner.UserId then island=candidate;break end end
+    end
+    local blocks=island and island:FindFirstChild("Blocks")
+    if not blocks or block.Parent~=blocks then return false,"Plow targets must belong to your own island Blocks folder" end
+    local b=self.PlowBinding
+    local ok,result=pcall(function()
+        local args=cloneArguments(b.Args,b.Target,block)
+        return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     return true,result
 end
 local function learnBlockHit(remote, method, args)
@@ -982,11 +1041,12 @@ local original
 local function intercept(remote, ...)
     if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
-    if capture.LearnWoodOnly or capture.LearnBaitOnly or capture.LearnChestOnly then
+    if capture.LearnWoodOnly or capture.LearnBaitOnly or capture.LearnChestOnly or capture.LearnPlowOnly then
         if method == "InvokeServer" then
             local args = table.pack(...)
             pcall(function()
                 if typeof(remote)=="Instance" and remote:IsA("RemoteFunction") then
+                    if capture.LearnPlowOnly and learnPlow(remote,method,args) then capture.LearnPlowOnly=false end
                     if capture.LearnWoodOnly then
                         local previousWood=capture.WoodHitBinding
                         learnBlockHit(remote,method,args)
@@ -995,7 +1055,7 @@ local function intercept(remote, ...)
                     end
                     if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
                     if capture.LearnChestOnly and learnChest(remote,method,args) and not capture.LearnChestMany then capture.LearnChestOnly=false end
-                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly then capture:Stop() end
+                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly and not capture.LearnPlowOnly then capture:Stop() end
                 end
             end)
         end
@@ -1011,7 +1071,7 @@ local function intercept(remote, ...)
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
                 learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args)
                 if not learned then learned,autoReplantValue=learnAutoReplant(remote, method, args) end
-                learned = learned or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learned or learnPlow(remote,method,args) or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.
@@ -2791,7 +2851,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "blueprint-plow-54",
+    Subtitle = "captured-plow-55",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3195,7 +3255,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn blueprint-plow-54",
+    return table.concat({"Reborn captured-plow-55",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
         "Last result: "..tostring(RemoteCatalog.BaitLastResult or "none"),
@@ -4596,7 +4656,7 @@ function RemoteCatalog.UpdateCaptureUI()
         RemoteCatalog.CaptureToggle.Text = RemoteCatalog.CaptureAttempted and "Retry capture setup" or "Start capture (optional)"
         return
     end
-    local state = recorder.LearnChestOnly and "Learning chests; press Stop learning when finished" or recorder.LearnBaitOnly and "Waiting for one bait use (no call log)" or recorder.LearnWoodOnly and "Learning axe request; normal input stays available (no call log)" or (recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused"))
+    local state = recorder.LearnPlowOnly and "Waiting for one manual hoe action (no call log)" or recorder.LearnChestOnly and "Learning chests; press Stop learning when finished" or recorder.LearnBaitOnly and "Waiting for one bait use (no call log)" or recorder.LearnWoodOnly and "Learning axe request; normal input stays available (no call log)" or (recorder.Stopped and "Stopped" or (recorder.Active and "Recording" or "Paused"))
     local learned = {}
     for _, name in ipairs({"OEzzgCCBzocxJw", "ohy6O10QKzyGZE", "raqRasAwcny1zh", "RZQQNNDRUvfj1N"}) do
         if RemoteCatalog.RequestId(name) then table.insert(learned, RemoteCatalog.VerifiedRequests[name]) end
@@ -4604,6 +4664,7 @@ function RemoteCatalog.UpdateCaptureUI()
     if recorder.HarvestBinding then table.insert(learned, "crop harvest") end
     if recorder.BaitBinding then table.insert(learned, "bait (current remote)") end
     if recorder.PlacementBinding then table.insert(learned, "placement (current remote)") end
+    if recorder.PlowBinding then table.insert(learned, "hoe / plow") end
     if recorder.WoodHitBinding then table.insert(learned, "axe / wood hit") end
     if recorder.MineHitBinding then table.insert(learned, "mining hit") end
     if recorder.AutoReplantBinding then table.insert(learned, "game AutoReplant") end
@@ -4637,7 +4698,7 @@ function RemoteCatalog.StopBaitLearning()
     local recorder=RemoteCatalog.Recorder
     if recorder and recorder.LearnBaitOnly then
         recorder.LearnBaitOnly=false
-        if not recorder.LearnWoodOnly and not recorder.LearnChestOnly then recorder:Stop() end
+        if not recorder.LearnWoodOnly and not recorder.LearnChestOnly and not recorder.LearnPlowOnly then recorder:Stop() end
     end
 end
 function RemoteCatalog.PrepareWoodLearning()
@@ -4654,11 +4715,11 @@ function RemoteCatalog.PrepareWoodLearning()
 end
 function RemoteCatalog.StopWoodLearning()
     local recorder=RemoteCatalog.Recorder
-    if recorder and recorder.LearnWoodOnly then recorder.LearnWoodOnly=false;if not recorder.LearnBaitOnly and not recorder.LearnChestOnly then recorder:Stop() end end
+    if recorder and recorder.LearnWoodOnly then recorder.LearnWoodOnly=false;if not recorder.LearnBaitOnly and not recorder.LearnChestOnly and not recorder.LearnPlowOnly then recorder:Stop() end end
 end
 track(RemoteCatalog.CaptureToggle.Activated:Connect(function()
     RemoteCatalog.CopyNotice = nil
-    if RemoteCatalog.Recorder then RemoteCatalog.Recorder.LearnWoodOnly=false;RemoteCatalog.Recorder.LearnBaitOnly=false;RemoteCatalog.Recorder.LearnChestOnly=false end
+    if RemoteCatalog.Recorder then RemoteCatalog.Recorder.LearnWoodOnly=false;RemoteCatalog.Recorder.LearnBaitOnly=false;RemoteCatalog.Recorder.LearnChestOnly=false;RemoteCatalog.Recorder.LearnPlowOnly=false end
     local recorder = RemoteCatalog.Recorder
     if not recorder then
         RemoteCatalog.EnableCapture()
@@ -4778,7 +4839,7 @@ local function getTopFish()
 end
 
 function RemoteCatalog.SessionReport()
-    local text={"Reborn blueprint-plow-54", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn captured-plow-55", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -4813,6 +4874,7 @@ local function updateBoard()
     if RemoteCatalog.UpdateTeleportLabels then RemoteCatalog.UpdateTeleportLabels() end
     RemoteCatalog.BaitNativeLabel.Text=RemoteCatalog.BaitNativeStatus or "Food API: not checked yet"
     RemoteCatalog.UpdateCaptureUI()
+    if RemoteCatalog.UpdatePlowUI then RemoteCatalog.UpdatePlowUI() end
 	local t = getActiveTime()
 
 	rows.harvests.Text = tostring(stats.harvests)
@@ -6101,7 +6163,7 @@ function RemoteCatalog.StopChestLearning()
     if RemoteCatalog.ChestLearnButton then RemoteCatalog.ChestLearnButton.Text="Start learning" end
     if recorder and recorder.LearnChestOnly then
         recorder.LearnChestOnly=false;recorder.LearnChestMany=false
-        if not recorder.LearnWoodOnly and not recorder.LearnBaitOnly then recorder:Stop() end
+        if not recorder.LearnWoodOnly and not recorder.LearnBaitOnly and not recorder.LearnPlowOnly then recorder:Stop() end
     end
 end
 track(RemoteCatalog.ChestLearnButton.Activated:Connect(function()
@@ -6650,7 +6712,7 @@ function RemoteCatalog.CarrotCount(item)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn blueprint-plow-54\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn captured-plow-55\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -6848,7 +6910,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn blueprint-plow-54\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn captured-plow-55\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -6987,8 +7049,44 @@ end
 RemoteCatalog.PlowEnabled=false
 RemoteCatalog.PlowGeneration=0
 RemoteCatalog.PlowRadius=15
+RemoteCatalog.PlowMode="Auto"
 function RemoteCatalog.PlowMessage(text)
     if gui.Parent and RemoteCatalog.PlowInfo then RemoteCatalog.PlowInfo.Text=text end
+end
+function RemoteCatalog.PlowRecorder()
+    if type(RemoteCatalog.LiveRecorder)~="function" then return nil end
+    local recorder=RemoteCatalog.LiveRecorder("PlowBinding")
+    if recorder and type(recorder.CanUsePlowBinding)=="function" and type(recorder.Plow)=="function" and recorder:CanUsePlowBinding() then return recorder end
+end
+function RemoteCatalog.StopPlowLearning()
+    local recorder=RemoteCatalog.Recorder
+    if recorder and recorder.LearnPlowOnly then
+        recorder.LearnPlowOnly=false
+        if not recorder.LearnWoodOnly and not recorder.LearnBaitOnly and not recorder.LearnChestOnly and not recorder.Active then recorder:Stop() end
+    end
+    RemoteCatalog.PlowLearning=false
+    if RemoteCatalog.PlowLearnButton then RemoteCatalog.PlowLearnButton.Text="Learn hoe request" end
+end
+function RemoteCatalog.UpdatePlowUI()
+    local recorder=RemoteCatalog.Recorder
+    local learning=recorder and not recorder.Stopped and recorder.LearnPlowOnly
+    if RemoteCatalog.PlowLearnButton then RemoteCatalog.PlowLearnButton.Text=learning and "Cancel hoe learning" or "Learn hoe request" end
+    if RemoteCatalog.PlowLearning and not learning then
+        RemoteCatalog.PlowLearning=false
+        RemoteCatalog.PlowMessage(RemoteCatalog.PlowRecorder() and "Hoe request learned for this character/server. Auto uses it; enable Auto Plow when ready." or "Hoe learning ended without a usable current binding. Input mode remains available.")
+    end
+end
+function RemoteCatalog.BeginPlowLearning()
+    if RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);RemoteCatalog.PlowMessage("Wait for Plow cleanup, then click Learn hoe request again.");return false end
+    if RemoteCatalog.PlowOtherBusy() then RemoteCatalog.PlowMessage("Stop other automation and blueprint picking before learning a hoe request.");return false end
+    if RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnPlowOnly then RemoteCatalog.StopPlowLearning();RemoteCatalog.PlowMessage("Hoe learning cancelled.");return true end
+    RemoteCatalog.CaptureAttempted=true
+    local ok,recorder=pcall(RemoteCatalog.StartCapture)
+    if not ok or not recorder then RemoteCatalog.PlowMessage("This host cannot learn requests. Input mode still uses the hoe normally.");return false end
+    RemoteCatalog.Recorder=recorder;recorder.LearnPlowOnly=true;recorder.Active=false;RemoteCatalog.PlowLearning=true
+    RemoteCatalog.PlowMessage("Hoe learning ready. Hide/move the hub, equip your hoe and plow one grass/dirt block manually. Then enable Auto Plow. Learning sends no extra requests.")
+    RemoteCatalog.UpdatePlowUI();RemoteCatalog.UpdateCaptureUI()
+    return true
 end
 function RemoteCatalog.PlowOtherBusy()
     return enabled or baitEnabled or baitBusy or harvestEnabled or woodEnabled or mineEnabled or RemoteCatalog.Planting
@@ -7072,6 +7170,21 @@ function RemoteCatalog.PlowClick(block,blocks,tool,active)
     if not pressed or not held or not released then return false,"Hoe input failed" end
     return active(),"Hoe click sent"
 end
+function RemoteCatalog.PlowAction(block,blocks,tool,active,recorder)
+    if not recorder then return RemoteCatalog.PlowClick(block,blocks,tool,active) end
+    if not active() or not recorder:CanUsePlowBinding() then return false,"Current hoe binding expired; learn a fresh manual action" end
+    local char=player.Character;local root=char and char:FindFirstChild("HumanoidRootPart")
+    if not root or tool.Parent~=char or char:FindFirstChildOfClass("Tool")~=tool then return false,"Keep the hoe equipped" end
+    local position=RemoteCatalog.PlowSurface(block,blocks,root)
+    if not position then return false,"Block is covered, changed or outside the selected area" end
+    local reach=RemoteCatalog.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
+    if type(reach)~="number" or reach~=reach or reach<=0 or reach==math.huge then reach=20 end
+    if (position-root.Position).Magnitude>reach then return false,"Move within normal hoe reach" end
+    if not active() then return false,"Plowing stopped" end
+    local ran,sent,result=pcall(recorder.Plow,recorder,block)
+    if not ran then return false,sent end
+    return sent==true,result
+end
 function RemoteCatalog.SetPlowEnabled(state)
     if not state then
         RemoteCatalog.PlowEnabled=false;RemoteCatalog.PlowGeneration+=1
@@ -7082,6 +7195,9 @@ function RemoteCatalog.SetPlowEnabled(state)
     if RemoteCatalog.PlowEnabled then return true end
     if RemoteCatalog.PlowWorker then RemoteCatalog.PlowMessage("Wait for the previous hoe input to finish.");return false end
     if RemoteCatalog.PlowOtherBusy() then RemoteCatalog.PlowMessage("Stop other automation and blueprint picking before Auto Plow.");return false end
+    if RemoteCatalog.PlowLearning or RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnPlowOnly then RemoteCatalog.PlowMessage("Plow one block manually to finish learning, or cancel hoe learning first.");return false end
+    local recorder=RemoteCatalog.PlowMode~="Input" and RemoteCatalog.PlowRecorder() or nil
+    if RemoteCatalog.PlowMode=="Captured" and not recorder then RemoteCatalog.PlowMessage("Learn hoe request first: equip your hoe and plow one grass/dirt block manually.");return false end
     local targets,blocks,char=RemoteCatalog.ScanPlowArea()
     if not targets or #targets==0 then return false end
     local previous=char:FindFirstChildOfClass("Tool")
@@ -7096,6 +7212,7 @@ function RemoteCatalog.SetPlowEnabled(state)
     RemoteCatalog.PlowGeneration+=1;local token=RemoteCatalog.PlowGeneration
     RemoteCatalog.PlowWorker=token;RemoteCatalog.PlowEnabled=true
     RemoteCatalog.PlowConfirmed=0;RemoteCatalog.PlowFailed=0;RemoteCatalog.PlowSkipped=0
+    RemoteCatalog.PlowBackend=recorder and "Captured request" or "Hoe input"
     RemoteCatalog.PlowButton.Text="AUTO PLOW: ON";RemoteCatalog.PlowButton.BackgroundColor3=COLORS.on
     task.spawn(function()
         local function active()
@@ -7112,8 +7229,8 @@ function RemoteCatalog.SetPlowEnabled(state)
                 if not active() then return end
                 local root=char:FindFirstChild("HumanoidRootPart")
                 if not RemoteCatalog.PlowSurface(entry.Block,blocks,root) then RemoteCatalog.PlowSkipped+=1;continue end
-                RemoteCatalog.PlowMessage("Plowing "..index.."/"..#targets.." · "..RemoteCatalog.PlowConfirmed.." observed soil conversions. Face the area; OFF cancels.")
-                local sent,reason=RemoteCatalog.PlowClick(entry.Block,blocks,hoe,active)
+                RemoteCatalog.PlowMessage("Plowing "..index.."/"..#targets.." · "..RemoteCatalog.PlowConfirmed.." observed soil conversions · "..RemoteCatalog.PlowBackend..". OFF cancels.")
+                local sent,reason=RemoteCatalog.PlowAction(entry.Block,blocks,hoe,active,recorder)
                 if not active() then return end
                 local confirmed=false
                 if sent then
@@ -7151,6 +7268,7 @@ end
 
 function RemoteCatalog.StopAllAutomation()
     RemoteCatalog.SetPlowEnabled(false)
+    RemoteCatalog.StopPlowLearning()
     RemoteCatalog.StopTimerDeadline=nil
     RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
     RemoteCatalog.SetChestAuto(false)
@@ -7450,9 +7568,20 @@ do
         Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,bottom+48)})
     RemoteCatalog.PlowRadiusButton=button({Parent=harvestPage,Text="Plow area: 15 studs",TextSize=12,
         Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,bottom+90)})
-    RemoteCatalog.PlowInfo=label({Parent=harvestPage,Text="Own a hoe. Scan exposed grass/dirt on your own island, face the area, then enable. One pass, up to 100 blocks; observed soil conversions only. No walking or planting.",TextSize=12,Color=COLORS.muted,
-        Size=UDim2.new(1,-16,0,84),Position=UDim2.fromOffset(8,bottom+130)})
+    RemoteCatalog.PlowLearnButton=button({Parent=harvestPage,Text="Learn hoe request",TextSize=12,
+        Size=UDim2.new(.5,-9,0,32),Position=UDim2.fromOffset(6,bottom+130)})
+    RemoteCatalog.PlowModeButton=button({Parent=harvestPage,Text="Method: Auto",TextSize=12,
+        Size=UDim2.new(.5,-9,0,32),Position=UDim2.new(.5,3,0,bottom+130)})
+    RemoteCatalog.PlowInfo=label({Parent=harvestPage,Text="Own a hoe. Auto uses a current learned hoe request, otherwise normal input. Learn one manual hoe action for captured mode. Scan owned grass/dirt first. One pass, up to 100 blocks; no walking or planting.",TextSize=12,Color=COLORS.muted,
+        Size=UDim2.new(1,-16,0,84),Position=UDim2.fromOffset(8,bottom+170)})
     RemoteCatalog.PlowInfo.TextWrapped=true
+    track(RemoteCatalog.PlowLearnButton.Activated:Connect(function() RemoteCatalog.BeginPlowLearning() end))
+    track(RemoteCatalog.PlowModeButton.Activated:Connect(function()
+        if RemoteCatalog.PlowWorker then RemoteCatalog.PlowMessage("Finish the current pass before changing its method.");return end
+        local modes={"Auto","Captured","Input"}
+        RemoteCatalog.PlowMode=modes[(table.find(modes,RemoteCatalog.PlowMode) or 1)%#modes+1]
+        RemoteCatalog.PlowModeButton.Text="Method: "..RemoteCatalog.PlowMode
+    end))
     track(RemoteCatalog.PlowButton.Activated:Connect(function() RemoteCatalog.SetPlowEnabled(not RemoteCatalog.PlowEnabled) end))
     track(RemoteCatalog.PlowScanButton.Activated:Connect(function() RemoteCatalog.ScanPlowArea() end))
     track(RemoteCatalog.PlowRadiusButton.Activated:Connect(function()
@@ -7482,6 +7611,7 @@ end)
 
 gui.Destroying:Connect(function()
     RemoteCatalog.SetPlowEnabled(false)
+    RemoteCatalog.StopPlowLearning()
     RemoteCatalog.StopTimerDeadline=nil
     for _,connection in ipairs(RemoteCatalog.ChestItemConnections) do connection:Disconnect() end
     table.clear(RemoteCatalog.ChestItemConnections)

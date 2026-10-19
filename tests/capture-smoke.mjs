@@ -459,6 +459,62 @@ end)()
  sent=nil;assert(not capture:WithdrawItems(1,original) and not sent,'item metadata must match observed packet; never substitute arbitrary item')
  capture:Stop()
 end)()
+;(function()
+ local oldCharacter,oldJob,oldService=gamePlayer.Character,game.JobId,game.GetService
+ local blocks,foreign={},{}
+ local islands={}
+ local own={FindFirstChild=function(_,name) if name=='Blocks' then return blocks end end,GetAttribute=function(_,name) if name=='OwnerUserId' then return gamePlayer.UserId end end}
+ function islands:FindFirstChild(name) if name==tostring(gamePlayer.UserId)..'-island' then return own end end
+ function islands:GetChildren() return {own} end
+ local world={FindFirstChild=function(_,name) if name=='Islands' then return islands end end}
+ game.GetService=function(self,name) if name=='Workspace' then return world end;return oldService(self,name) end
+ local hoe={_type='Instance',Name='hoe',IsA=function(_,kind) return kind=='Tool' end}
+ local char={FindFirstChildOfClass=function() return hoe end};hoe.Parent=char;gamePlayer.Character=char
+ local function ground(name,parent) return {_type='Instance',Name=name,Parent=parent,IsA=function(_,kind) return kind=='BasePart' end} end
+ local detached=ground('grass',nil);local live=ground('grass',blocks)
+ local endpoint=remote('PdqfVEBKHDSMfE')
+ local replay,requests=nil,0
+ endpoint.InvokeServer=function(_,...) requests+=1;replay=table.pack(...);return true end
+ local packet={zt6b4gE9dQAF6k='test-live-plow-context',rB3z9j3yJfeiRZ={block=detached,extra=17}}
+ capture:Resume();capture.Active=false;capture.LearnPlowOnly=true
+ local logCount,originalCalls=#capture.Records,#calls
+ installedHook(endpoint,packet,nil,'tail',nil)
+ assert(capture.PlowBinding and capture.PlowBinding.Remote==endpoint and capture:CanUsePlowBinding(),'supplied endpoint must learn a detached grass target while the hoe is equipped')
+ assert(capture.Stopped and not capture.LearnPlowOnly and #capture.Records==logCount and #calls==originalCalls+1 and requests==0,'quiet learning must forward only the manual call and end without log/replay traffic')
+ assert(capture:Plow(live) and requests==1 and replay.n==4 and replay[3]=='tail' and replay[4]==nil,'plow replay must preserve all argument positions')
+ assert(replay[1].zt6b4gE9dQAF6k=='test-live-plow-context' and replay[1].rB3z9j3yJfeiRZ.block==live and replay[1].rB3z9j3yJfeiRZ.extra==17,'plow must replace only the block and retain the observed session envelope')
+ assert(packet.rB3z9j3yJfeiRZ.block==detached and capture.PlowBinding.Args[1].rB3z9j3yJfeiRZ.block==detached,'replay must not mutate the manual sample')
+ for _,target in ipairs({ground('grass',nil),ground('grass',foreign),ground('soil',blocks),ground('stone',blocks)}) do
+  local before=requests;assert(not capture:Plow(target) and requests==before,'invalid/nonowned plow targets must not send')
+ end
+ local binding=capture.PlowBinding
+ hoe.Name='stonePickaxe';capture:Resume();capture.Active=false;capture.LearnPlowOnly=true
+ installedHook(endpoint,packet)
+ assert(capture.PlowBinding==binding and capture.LearnPlowOnly and not capture:Plow(live),'mining tools must not learn or replay a plow request')
+ hoe.Name='hoe'
+ currentMethod='FireServer';installedHook(endpoint,packet);currentMethod='InvokeServer'
+ assert(capture.PlowBinding==binding and capture.LearnPlowOnly,'plow learning must require InvokeServer')
+ capture:Stop()
+ local rotated=remote('freshRotatedEndpoint');rotated.Parent={Name='newGroup',Parent={Name='out',Parent=game}}
+ rotated.InvokeServer=endpoint.InvokeServer
+ capture:Resume();capture.Active=true
+ installedHook(rotated,{newContext='rotated-context',newBody={block=detached}})
+ assert(capture.PlowBinding==binding,'unknown endpoint names must not infer plow outside explicit learning')
+ capture.Active=false;capture.LearnPlowOnly=true;capture.LearnBaitOnly=true
+ installedHook(rotated,{newContext='rotated-context',newBody={block=detached}})
+ assert(capture.PlowBinding.Remote==rotated and not capture.LearnPlowOnly and capture.LearnBaitOnly and not capture.Stopped,'explicit plow learning must accept rotated envelope keys/names without stopping another learner')
+ assert(capture:Plow(live) and replay[1].newBody.block==live and replay[1].newContext=='rotated-context','rotated replay must use its own complete envelope')
+ local before=requests
+ gamePlayer.Character={};assert(not capture:CanUsePlowBinding() and not capture:Plow(live));gamePlayer.Character=char
+ local id=gamePlayer.UserId;gamePlayer.UserId=9;assert(not capture:Plow(live));gamePlayer.UserId=id
+ game.JobId='another-server';assert(not capture:Plow(live));game.JobId=oldJob
+ local parent=rotated.Parent;rotated.Parent=nil;assert(not capture:Plow(live));rotated.Parent=parent
+ assert(requests==before,'stale character/account/server/remote bindings must never send')
+ for _,response in ipairs({false,{success=false}}) do rotated.InvokeServer=function() return response end;assert(not capture:Plow(live),'server rejection must remain a failure') end
+ rotated.InvokeServer=function() error('request failed') end;assert(not capture:Plow(live),'transport errors must remain failures')
+ capture:Stop();assert(not capture.LearnPlowOnly,'Stop must clear plow learning')
+ gamePlayer.Character=oldCharacter;game.JobId=oldJob;game.GetService=oldService
+ end)()
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'
 `;
 const state=await LuauState.createAsync();

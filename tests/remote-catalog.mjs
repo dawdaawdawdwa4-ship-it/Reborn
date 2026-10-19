@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==143)
+assert(#RemoteCatalog.Entries==144)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -301,7 +301,20 @@ do
  RemoteCatalog.GameEndpoint,RemoteCatalog.ActivateBait=oldEndpoint,oldActivate
  RemoteCatalog.BaitNativeFailed=nil
 end
-return '143 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+do
+ local oldLocal,oldGlobal=RemoteCatalog.Recorder,context.RebornCapture
+ local valid=false
+ local localPlow={PlowBinding={Remote={Parent=true}},CanUsePlowBinding=function() return valid end}
+ RemoteCatalog.Recorder=localPlow;context.RebornCapture={}
+ assert(not RemoteCatalog.LiveRecorder('PlowBinding'),'stale local plow bindings must not be exposed')
+ valid=true;assert(RemoteCatalog.LiveRecorder('PlowBinding')==localPlow,'valid local plow binding must be exposed')
+ valid=false
+ local globalPlow={PlowBinding={Remote={Parent=true}},CanUsePlowBinding=function() return true end}
+ context.RebornCapture=globalPlow
+ assert(RemoteCatalog.LiveRecorder('PlowBinding')==globalPlow,'valid standalone plow binding must remain available when the local sample is stale')
+ RemoteCatalog.Recorder,context.RebornCapture=oldLocal,oldGlobal
+end
+return '144 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}

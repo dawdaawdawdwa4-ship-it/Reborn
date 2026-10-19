@@ -8,19 +8,20 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 26 and previous.Resume then
+if previous and previous.Version == 27 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 26, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 27, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
     capture.HarvestBinding = previous.HarvestBinding
     capture.BaitBinding = previous.BaitBinding
     capture.PlacementBinding = previous.PlacementBinding
+    capture.PlowBinding = previous.PlowBinding
     capture.WoodHitBinding = previous.WoodHitBinding
     capture.MineHitBinding = previous.MineHitBinding
     capture.AutoReplantBinding = previous.AutoReplantBinding
@@ -34,6 +35,7 @@ if previous then
 end
 capture.ChestBindings=capture.ChestBindings or {}
 local exactNames = {
+    PdqfVEBKHDSMfE = true, -- Supplied hoe/plow endpoint; context is learned live.
     OEzzgCCBzocxJw = true, hFuV0Z1w601mXP = true,
     RZQQNNDRUvfj1N = true, ohy6O10QKzyGZE = true, raqRasAwcny1zh = true,
     T5XIZMc0DxnCFt = true, -- Most recent rotated block-hit endpoint.
@@ -188,6 +190,7 @@ function capture:CopyAll()
 end
 function capture:Stop()
     self.Active, self.Stopped = false, true
+    self.LearnPlowOnly = false
     self.LearnWoodOnly = false
     self.LearnBaitOnly = false
     self.LearnChestOnly = false
@@ -275,6 +278,59 @@ function capture:SetAutoReplant(value)
     end)
     if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     self.AutoReplantState=value
+    return true,result
+end
+local function equippedHoe(owner)
+    local char=owner and owner.Character
+    if not char or type(char.FindFirstChildOfClass)~="function" then return nil end
+    local tool=char:FindFirstChildOfClass("Tool")
+    if not tool or not tool:IsA("Tool") then return nil end
+    local name=string.lower(tool.Name)
+    return (name=="hoe" or name=="plow" or name:match("hoe$")) and tool or nil
+end
+local function learnPlow(remote,method,args)
+    if method~="InvokeServer" or type(args[1])~="table" then return false end
+    local known=remote.Name=="PdqfVEBKHDSMfE" or string.find(string.lower(remote.Name),"plow",1,true)
+    local group=remote.Parent
+    if not known and (not capture.LearnPlowOnly or not group or not group.Parent or group.Parent.Name~="out") then return false end
+    local body=args[1]
+    if typeof(body.block)~="Instance" then
+        body=nil
+        for _,value in pairs(args[1]) do if type(value)=="table" and typeof(value.block)=="Instance" then body=value;break end end
+    end
+    local target=body and body.block
+    if typeof(target)~="Instance" or not target:IsA("BasePart") or (target.Name~="grass" and target.Name~="dirt") then return false end
+    local owner=game:GetService("Players").LocalPlayer
+    if not equippedHoe(owner) then return false end
+    capture.PlowBinding={Remote=remote,Method=method,Args=cloneArguments(args),Target=target,
+        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
+    return true
+end
+function capture:CanUsePlowBinding()
+    local b=self.PlowBinding
+    local owner=game:GetService("Players").LocalPlayer
+    return b~=nil and b.Remote~=nil and b.Remote.Parent~=nil and b.Remote:IsA("RemoteFunction") and b.Method=="InvokeServer"
+        and owner~=nil and owner.Character~=nil and b.OwnerCharacter==owner.Character and b.OwnerUserId==owner.UserId and b.JobId==game.JobId
+end
+function capture:Plow(block)
+    if not self:CanUsePlowBinding() then return false,"Plow once manually on this character/server to learn the current request" end
+    local owner=game:GetService("Players").LocalPlayer
+    if not equippedHoe(owner) then return false,"Keep an owned hoe equipped" end
+    if typeof(block)~="Instance" or not block:IsA("BasePart") or not block.Parent or (block.Name~="grass" and block.Name~="dirt") then return false,"Choose a live grass/dirt block" end
+    local world=game:GetService("Workspace")
+    local islands=world and world:FindFirstChild("Islands")
+    local island=islands and islands:FindFirstChild(tostring(owner.UserId).."-island")
+    if not island and islands then
+        for _,candidate in ipairs(islands:GetChildren()) do if candidate:GetAttribute("OwnerUserId")==owner.UserId then island=candidate;break end end
+    end
+    local blocks=island and island:FindFirstChild("Blocks")
+    if not blocks or block.Parent~=blocks then return false,"Plow targets must belong to your own island Blocks folder" end
+    local b=self.PlowBinding
+    local ok,result=pcall(function()
+        local args=cloneArguments(b.Args,b.Target,block)
+        return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n))
+    end)
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     return true,result
 end
 local function learnBlockHit(remote, method, args)
@@ -496,11 +552,12 @@ local original
 local function intercept(remote, ...)
     if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
-    if capture.LearnWoodOnly or capture.LearnBaitOnly or capture.LearnChestOnly then
+    if capture.LearnWoodOnly or capture.LearnBaitOnly or capture.LearnChestOnly or capture.LearnPlowOnly then
         if method == "InvokeServer" then
             local args = table.pack(...)
             pcall(function()
                 if typeof(remote)=="Instance" and remote:IsA("RemoteFunction") then
+                    if capture.LearnPlowOnly and learnPlow(remote,method,args) then capture.LearnPlowOnly=false end
                     if capture.LearnWoodOnly then
                         local previousWood=capture.WoodHitBinding
                         learnBlockHit(remote,method,args)
@@ -509,7 +566,7 @@ local function intercept(remote, ...)
                     end
                     if capture.LearnBaitOnly and learnBait(remote,method,args) then capture.LearnBaitOnly=false end
                     if capture.LearnChestOnly and learnChest(remote,method,args) and not capture.LearnChestMany then capture.LearnChestOnly=false end
-                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly then capture:Stop() end
+                    if not capture.LearnWoodOnly and not capture.LearnBaitOnly and not capture.LearnChestOnly and not capture.LearnPlowOnly then capture:Stop() end
                 end
             end)
         end
@@ -525,7 +582,7 @@ local function intercept(remote, ...)
             if typeof(remote) == "Instance" and (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
                 learned = learnHotbar(remote, method, args) or learnFruit(remote, method, args)
                 if not learned then learned,autoReplantValue=learnAutoReplant(remote, method, args) end
-                learned = learned or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
+                learned = learned or learnPlow(remote,method,args) or learnChest(remote,method,args) or learnBlockHit(remote, method, args) or learnPlacement(remote, method, args) or learnBait(remote, method, args) or learnHarvest(remote, method, args)
             end
             if not learned and not wanted(remote) then return end
             -- Keep the observed per-remote request ID in memory for this session.

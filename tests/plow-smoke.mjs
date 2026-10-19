@@ -80,7 +80,7 @@ local function reset()
  RemoteCatalog.BuildIslandBlocks=function() return blocks end
  RemoteCatalog.PlowRadius=15;events={};equipped={};hook=nil;confirm=true;failPress=false;failHold=false
  focused=false;uiBlocked=false;hub.Root.Visible=false;visible=true;obstructed=false;covered=false;tools={hoe,previous}
- enabled=false;RemoteCatalog.ResourceInputBusy=nil
+ enabled=false;RemoteCatalog.ResourceInputBusy=nil;RemoteCatalog.LiveRecorder=nil;RemoteCatalog.Recorder=nil;RemoteCatalog.PlowLearning=false;RemoteCatalog.PlowMode="Auto"
 end
 assert(not RemoteCatalog.PlowEnabled and not RemoteCatalog.PlowWorker,'Auto Plow must start OFF')
 local scan=RemoteCatalog.ScanPlowArea()
@@ -130,6 +130,43 @@ assert(RemoteCatalog.SetPlowEnabled(true));drain();assert(char.Tool==manual,'man
 reset();local replacement={FindFirstChild=function() return root end,FindFirstChildOfClass=function() return nil end}
 hook=function(dt) if dt==.03 then player.Character=replacement end end
 assert(RemoteCatalog.SetPlowEnabled(true));drain();assert(#equipped==1 and not RemoteCatalog.PlowWorker,'respawn must cancel without equipping the old previous tool')
+-- Captured mode replaces mouse input while preserving target/worker/confirmation rules.
+do
+ local capture={valid=true,calls=0,CanUsePlowBinding=function(self) return self.valid end,
+  Plow=function(self,part) self.calls+=1;part.Name='soil';return true end}
+ reset();RemoteCatalog.LiveRecorder=function(name) assert(name=='PlowBinding');return capture end
+ focused=true;hub.Root.Visible=true;visible=false
+ assert(RemoteCatalog.SetPlowEnabled(true));drain()
+ assert(capture.calls==2 and #events==0 and RemoteCatalog.PlowConfirmed==2 and RemoteCatalog.PlowBackend=='Captured request','Auto must use a valid captured request without moving/pressing the mouse or requiring a visible screen point')
+ reset();capture.calls=0;RemoteCatalog.LiveRecorder=function() return capture end;RemoteCatalog.PlowMode='Input'
+ assert(RemoteCatalog.SetPlowEnabled(true));drain()
+ assert(capture.calls==0 and RemoteCatalog.PlowConfirmed==2 and #events>0,'explicit Input must retain native hoe behavior even with a valid binding')
+ reset();RemoteCatalog.PlowMode='Captured'
+ assert(not RemoteCatalog.SetPlowEnabled(true) and #events==0 and #equipped==0,'Captured mode without a current binding must not click or equip')
+ reset();capture.calls=0;capture.valid=true;RemoteCatalog.LiveRecorder=function() return capture end
+ capture.Plow=function(self) self.calls+=1;return false,'rejected' end
+ children={a,b,block('grass',-3,-3),block('grass',-6,-3)}
+ assert(RemoteCatalog.SetPlowEnabled(true));drain()
+ assert(capture.calls==3 and RemoteCatalog.PlowFailed==3 and #events==0,'rejected remote attempts must stop at three failures without falling through to mouse input')
+ reset();capture.calls=0;capture.valid=true;RemoteCatalog.LiveRecorder=function() return capture end
+ capture.Plow=function(self) self.calls+=1;self.valid=false;return true end
+ assert(RemoteCatalog.SetPlowEnabled(true));drain()
+ assert(capture.calls==1 and #events==0 and RemoteCatalog.PlowConfirmed==0,'a binding expiring mid-pass must not switch transports or falsely count an accepted result')
+ reset();capture.calls=0;capture.valid=true;RemoteCatalog.LiveRecorder=function() return capture end
+ capture.Plow=function(self,part) self.calls+=1;task.wait(.25);part.Name='soil';return true end
+ assert(RemoteCatalog.SetPlowEnabled(true));local ok,e=coroutine.resume(worker);assert(ok,e)
+ assert(capture.calls==1 and RemoteCatalog.PlowWorker)
+ RemoteCatalog.SetPlowEnabled(false);assert(not RemoteCatalog.SetPlowEnabled(true),'cancelled in-flight remote calls must retain the single worker lock')
+ drain();assert(not RemoteCatalog.PlowWorker and RemoteCatalog.PlowConfirmed==0 and #events==0,'late remote returns after Stop must remain unconfirmed and release ownership')
+ reset()
+ local learner={Stopped=false,Stop=function(self) self.Stopped=true;self.LearnPlowOnly=false end}
+ RemoteCatalog.StartCapture=function() return learner end;RemoteCatalog.UpdateCaptureUI=function() end
+ assert(RemoteCatalog.BeginPlowLearning() and learner.LearnPlowOnly and not learner.Active and RemoteCatalog.PlowLearning,'manual learning must enable only the quiet observer')
+ assert(not RemoteCatalog.SetPlowEnabled(true) and #events==0,'automation must wait for a manual learning action')
+ RemoteCatalog.StopPlowLearning();assert(not learner.LearnPlowOnly and learner.Stopped and not RemoteCatalog.PlowLearning,'cancel must stop a dedicated learner')
+ RemoteCatalog.StartCapture=function() return nil end
+ assert(not RemoteCatalog.BeginPlowLearning() and #events==0,'unsupported capture must retain native-input availability without sending requests')
+end
 reset();hook=function(dt) if dt==.06 then gui.Parent=nil end end
 assert(RemoteCatalog.SetPlowEnabled(true));drain();assert(events[#events]=='up' and not RemoteCatalog.PlowWorker,'destroyed GUI must release held input')
 return 'Auto Plow: owned surface scan, cap, hoe selection, native input guards, observed soil confirmation, bounded failures, Stop/error release and tool/character cleanup passed'

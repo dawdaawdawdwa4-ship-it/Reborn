@@ -956,3 +956,33 @@ three-failure stopping, Stop/in-flight ownership, error/GUI release, manual tool
 preservation, respawn cleanup and real UI handoffs. The full v41–v53 regressions
 remain covered. Live Roblox plow behavior, native hoe area effects and all new
 file/clipboard behavior on the user's host remain unverified.
+
+### Learned hoe requests (v55)
+
+**Harvest > Auto Plow** now offers **Learn hoe request** and a **Method** button.
+Click Learn, hide/move the hub, equip the hoe and plow one grass/dirt block
+manually. Learning observes that normal action without sending an extra request.
+Once the panel reports readiness, enable Auto Plow. Click Learn again to cancel;
+Stop All and closing the GUI also cancel learning.
+
+Method cycles **Auto → Captured → Input**. Auto uses a valid learned request when
+the pass starts, otherwise it retains v54's normal hoe-input behavior. Captured
+requires learning first; Input always uses normal input. The selected method is
+locked until an active or cancelled worker finishes cleanup. Captured mode sends
+no synthetic mouse input, so camera visibility and overlapping UI do not control
+its targeting. It still requires an equipped owned hoe, exposed owned grass/dirt,
+the selected radius and normal tool reach. Rejected or expired captured requests
+never fall through to a second input attempt.
+
+Bindings remain in memory for the current account, character and server. Learn
+again after respawning, switching servers or a server-side protocol change. The
+recorded grass instance may already be detached; each replay substitutes a fresh
+live block from the owned island. No pasted session token or debug ID is saved.
+`Character.hoe.hoe` identifies the hoe's nested asset; keep the enclosing hoe Tool
+equipped rather than adding that asset as another request argument.
+
+All v54 pass limits, soil-observation counts, failure stopping and Stop/worker
+guards remain. New tests cover learned-packet preservation, detached samples,
+ownership/session expiry, method selection, rejection without duplicate input,
+and Stop during an in-flight request. The full regression suite passes in mocks;
+live Roblox acceptance and hoe behavior remain unverified.
