@@ -285,6 +285,40 @@ editor.WorkerToken=99
 assert(not editor:ReplaceMaterial('stone','grass') and not editor:RenameSlot('No') and not editor:CopySlot(3) and not editor:StoreBlueprint(valid()),'in-flight worker ownership must guard edits and writes after Stop')
 assert(writes47==guard47,'blocked edits must not write files')
 editor.WorkerToken=nil
+-- Layer selection filters the queue without cutting the saved blueprint.
+local layered=A.new(ctx)
+layered.Anchor=frame(0,0,0);layered.BlockSize=3
+local function layerCell(x,y,material)
+ return {CFrame=frame(x,y,0),LayerY=y,Material=material,Preview={Transparency=.65,Destroy=function(self) self.Destroyed=true end}}
+end
+layered.Cells={layerCell(0,0,'grass'),layerCell(3,0,'grass'),layerCell(0,3,'stone'),layerCell(0,6,'grass')}
+local full48=layered.Cells
+local upper48=layered.Cells[3].Preview
+assert(#layered:SelectedCells()==4 and not layered.LayerIndex,'default selection must include every block')
+layered.BuildReport='Old full-plan check'
+assert(layered:CycleLayer() and layered.LayerIndex==1 and #layered:SelectedCells()==2 and not layered.BuildReport,'first layer must include only its matching cells and invalidate the old check')
+assert(layered.Cells[1].Preview.Transparency==.65 and upper48.Transparency==.94,'excluded preview layers must be visibly faint')
+occupied={};root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+local check48=layered:CheckMaterials()
+assert(check48.Selected==2 and check48.Excluded==2 and check48.Materials.grass==2 and not check48.Materials.stone,'material checks must use only selected layers')
+assert(layered:SavePreview() and #disk[1].Cells==4 and layered.Cells==full48 and layered.LayerIndex==1,'Save preview must preserve the full blueprint and current layer selection')
+before=requests;layered:Start()
+assert(layered.Progress.Total==2 and not layered:CycleLayer() and layered.LayerIndex==1,'active builds must freeze their selected layer')
+layered:Stop()
+assert(not layered:CycleLayer() and layered.LayerIndex==1,'cancelled in-flight requests must also protect layer selection')
+while coroutine.status(worker)~='dead' do step() end
+layered:Start()
+while coroutine.status(worker)~='dead' do step() end
+assert(requests-before==2 and layered.Progress.Total==2 and layered.Progress.Placed==1 and layered.Progress.Skipped==1,'resume must complete only the selected layer, skipping its settled old request')
+assert(not upper48.Destroyed,'building one layer must retain the unbuilt upper preview')
+assert(layered:CycleLayer() and layered.LayerIndex==2 and #layered:SelectedCells()==1 and upper48.Transparency==.65,'next layer must select its own cells and restore their ghost visibility')
+before=requests;layered:Start()
+while coroutine.status(worker)~='dead' do step() end
+assert(requests-before==1 and layered.Progress.Total==1 and layered.Progress.Placed==1,'upper-layer builds must not revisit lower or higher layers')
+assert(layered:CycleLayer() and layered.LayerIndex==3 and #layered:SelectedCells()==1,'all distinct heights must be selectable bottom-up')
+assert(layered:CycleLayer() and not layered.LayerIndex and #layered:SelectedCells()==4,'layer selector must cycle back to the complete layout')
+layered:ClearPreview()
+assert(not layered.LayerIndex and not layered:CycleLayer(),'clearing the plan must reset layer selection and require a new preview')
 return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

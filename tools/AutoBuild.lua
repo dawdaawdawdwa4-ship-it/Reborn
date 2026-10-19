@@ -87,7 +87,8 @@ function AutoBuild.new(ctx)
     end
     function self:ClearPreview()
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
-        self.Cells=nil;self.BuildReport=nil
+        self.Cells=nil;self.BuildReport=nil;self.LayerIndex=nil
+        if buttons.Layer then buttons.Layer.Text="Build: All layers" end
         if self.MaterialSummary then self.MaterialSummary.Text="Preview or load a blueprint to see its material counts." end
     end
     function self:Stop()
@@ -122,6 +123,53 @@ function AutoBuild.new(ctx)
             if part.CanCollide then return true end
         end
         return false
+    end
+    function self:Layers()
+        local heights,seen={},{}
+        for _,cell in ipairs(self.Cells or {}) do
+            local y=cell.LayerY
+            if y==nil then
+                local ok,value=pcall(function() return cell.CFrame.Position.Y end)
+                if ok then y=value end
+            end
+            if type(y)~="number" or y~=y or math.abs(y)==math.huge then return nil end
+            local key=math.round(y*1000)/1000
+            if not seen[key] then seen[key]=true;table.insert(heights,key) end
+        end
+        table.sort(heights)
+        return heights
+    end
+    function self:SelectedCells()
+        if not self.LayerIndex then return self.Cells or {} end
+        local heights=self:Layers()
+        local height=heights and heights[self.LayerIndex]
+        if height==nil then return {} end
+        local selected={}
+        for _,cell in ipairs(self.Cells or {}) do
+            local y=cell.LayerY
+            if y==nil then y=cell.CFrame.Position.Y end
+            if math.round(y*1000)/1000==height then table.insert(selected,cell) end
+        end
+        return selected
+    end
+    function self:CycleLayer()
+        if self.Running or self.WorkerToken then status("Wait for the build worker before changing layers.");return false end
+        if not self.Cells then status("Preview a blueprint before selecting a layer.");return false end
+        local heights=self:Layers()
+        if not heights or #heights==0 then status("Layer information is unavailable; create a new preview.");return false end
+        local index=(self.LayerIndex or 0)+1
+        self.LayerIndex=index<=#heights and index or nil
+        self.BuildReport=nil
+        local selected=self:SelectedCells()
+        local included={}
+        for _,cell in ipairs(selected) do included[cell]=true end
+        for _,cell in ipairs(self.Cells) do
+            if cell.Preview then cell.Preview.Transparency=included[cell] and .65 or .94 end
+        end
+        buttons.Layer.Text=self.LayerIndex and ("Build: Layer "..self.LayerIndex.."/"..#heights.." · "..#selected.." blocks") or ("Build: All layers · "..#selected.." blocks")
+        self:UpdateMaterials(selected)
+        status("Selected "..#selected.." of "..#self.Cells.." blocks. Faint preview blocks are excluded. Save preview still saves the full layout.")
+        return true
     end
     function self:Preview()
         if self.Running then status("Stop the build before changing its plan.");return false end
@@ -167,10 +215,10 @@ function AutoBuild.new(ctx)
             part.Transparency=.65;part.Material=Enum.Material.ForceField
             part.Color=cell.role=="path" and Color3.fromRGB(210,180,100) or Color3.fromRGB(100,160,255)
             part.Parent=folder
-            table.insert(self.Cells,{CFrame=cf,Material=self.SavedPlan and cell.Material or cell.role=="path" and pathMaterial or material,Preview=part})
+            table.insert(self.Cells,{CFrame=cf,Material=self.SavedPlan and cell.Material or cell.role=="path" and pathMaterial or material,Preview=part,LayerY=self.SavedPlan and cell.Components[2] or cell.y*size})
         end
         self.BlockSize=size
-        self:UpdateMaterials(self.Cells)
+        self:UpdateMaterials(self:SelectedCells())
         status(string.format("Preview: %s, %d blocks. Blue = build/beds; gold = paths.",self.Preset,#self.Cells))
         return true
     end
@@ -184,7 +232,7 @@ function AutoBuild.new(ctx)
             if cell.Preview then cell.Preview.CFrame=cell.CFrame end
         end
         self.Anchor=anchor;self.BuildReport=nil
-        self:UpdateMaterials(self.Cells)
+        self:UpdateMaterials(self:SelectedCells())
         self.OffsetX+=dx;self.OffsetY+=dy;self.OffsetZ+=dz
         self.MoveLabel.Text=string.format("Offset: right %d / up %d / forward %d blocks",self.OffsetX,self.OffsetY,self.OffsetZ)
         status("Blueprint moved. Start builds the visible preview positions.")
@@ -194,17 +242,19 @@ function AutoBuild.new(ctx)
         if self.Running then return false end
         if self.WorkerToken then status("Wait for the previous build request to finish before resuming.");return false end
         if not self.Cells and not self:Preview() then return end
+        local cells=self:SelectedCells()
+        if #cells==0 then status("No blocks selected. Choose All layers or create a new preview.");return false end
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
-        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#self.Cells,Index=0,State="Building"}
+        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building"}
         self.Running=true;buttons.Start.Text="Building…"
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
         scheduler.spawn(function()
             local placed,skipped,failed,streak=0,0,0,0
             local ok,err=pcall(function()
-                for index,cell in ipairs(self.Cells) do
+                for index,cell in ipairs(cells) do
                     if not active() then return end
                     self.Progress.Index=index
                     local existing=occupied(cell.CFrame,self.BlockSize)
@@ -216,7 +266,7 @@ function AutoBuild.new(ctx)
                         if type(reach)~="number" then reach=20 end
                         while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
                             self.Progress.State="Waiting for reach"
-                            status(string.format("Move within %d studs of block %d/%d, or press Stop.",reach,index,#self.Cells))
+                            status(string.format("Move within %d studs of block %d/%d, or press Stop.",reach,index,#cells))
                             scheduler.wait(.2);_,root=characterRoot()
                             if active() then existing=occupied(cell.CFrame,self.BlockSize) end
                             if existing then break end
@@ -226,7 +276,7 @@ function AutoBuild.new(ctx)
                             skipped+=1
                         else
                             self.Progress.State="Building"
-                            status(string.format("Building %d/%d: %s",index,#self.Cells,cell.Material))
+                            status(string.format("Building %d/%d: %s",index,#cells,cell.Material))
                             local sent,reason=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
                             if not active() then return end
                             local confirmed=false
@@ -323,12 +373,14 @@ function AutoBuild.new(ctx)
     function self:CheckMaterials()
         if self.Running or self.WorkerToken then status("Finish or stop the current build request before checking materials.");return false end
         if not self.Cells then status("Preview at the intended position before checking materials.");return false end
+        local cells=self:SelectedCells()
+        if #cells==0 then status("No blocks selected. Choose All layers or refresh the preview.");return false end
         local pending,skipped,reachable={},0,0
         local _,root=characterRoot()
         local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
         if type(reach)~="number" then reach=20 end
         local ok,err=pcall(function()
-            for _,cell in ipairs(self.Cells) do
+            for _,cell in ipairs(cells) do
                 if occupied(cell.CFrame,self.BlockSize) then skipped+=1
                 else
                     pending[cell.Material]=(pending[cell.Material] or 0)+1
@@ -340,7 +392,7 @@ function AutoBuild.new(ctx)
         local names,total={},0
         for material,amount in pairs(pending) do table.insert(names,material);total+=amount end
         table.sort(names)
-        local lines={"BUILD CHECK · snapshot",#self.Cells.." planned · "..skipped.." occupied · "..total.." remaining",reachable.." remaining cells currently in reach"}
+        local lines={"BUILD CHECK · snapshot",#cells.." selected of "..#self.Cells.." planned · "..skipped.." occupied · "..total.." remaining",reachable.." remaining cells currently in reach"}
         for _,material in ipairs(names) do
             local count
             if ctx.ItemCount then local ran,value=pcall(ctx.ItemCount,material);if ran then count=value end end
@@ -351,7 +403,7 @@ function AutoBuild.new(ctx)
         self.BuildReport=table.concat(lines,"\n")
         self.MaterialSummary.Text=self.BuildReport
         status("Build check ready. No blocks were placed. Refresh after inventory or world changes.")
-        return {Remaining=total,Occupied=skipped,Reachable=reachable,Materials=pending}
+        return {Remaining=total,Occupied=skipped,Reachable=reachable,Materials=pending,Selected=#cells,Excluded=#self.Cells-#cells}
     end
     function self:RenameSlot(name)
         if self.Running or self.WorkerToken then status("Wait for the build worker before renaming a slot.");return false end
@@ -389,7 +441,7 @@ function AutoBuild.new(ctx)
             for _,cell in ipairs(self.Cells) do if cell.Material==from then cell.Material=to end end
         end
         self.Preset="Saved: "..copy.Name.." *";buttons.Preset.Text=self.Preset.."  ▼"
-        self:UpdateMaterials(self.Cells or copy.Cells)
+        self:UpdateMaterials(self.Cells and self:SelectedCells() or copy.Cells)
         status("Changed "..changed.." blocks in the working blueprint. Saved slots are unchanged; Preview then Save preview to keep this edit.")
         return true,changed
     end
@@ -401,7 +453,7 @@ function AutoBuild.new(ctx)
             for index,cell in ipairs(self.Cells) do cell.Material=self.SavedPlan.Cells[index].Material end
         end
         self.Preset="Saved: "..self.SavedPlan.Name..(self.PlanDirty and " *" or "");buttons.Preset.Text=self.Preset.."  ▼"
-        self:UpdateMaterials(self.Cells or self.SavedPlan.Cells)
+        self:UpdateMaterials(self.Cells and self:SelectedCells() or self.SavedPlan.Cells)
         status("Last material edit undone. No saved slot or placed block was changed.")
         return true
     end
@@ -468,11 +520,12 @@ function AutoBuild.new(ctx)
         return self:StoreBlueprint(data)
     end
     function self:Destroy() self:Stop();self:ClearPreview() end
+    local function layoutY(y) return y>=446 and y+44 or y end
     local function label(text,y,height)
-        return ctx.Label({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(1,-12,0,height or 24),Position=UDim2.fromOffset(6,y)})
+        return ctx.Label({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(1,-12,0,height or 24),Position=UDim2.fromOffset(6,layoutY(y))})
     end
     local function button(name,text,x,y,width,callback)
-        local b=ctx.Button({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(width or 1,-12,0,32),Position=UDim2.new(x or 0,6,0,y)})
+        local b=ctx.Button({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(width or 1,-12,0,32),Position=UDim2.new(x or 0,6,0,layoutY(y))})
         buttons[name]=b
         ctx.Track(b.Activated:Connect(callback));return b
     end
@@ -550,6 +603,8 @@ function AutoBuild.new(ctx)
         if self.Running then return end
         self.Rotation=(self.Rotation+90)%360;buttons.Rotate.Text="Rotate: "..self.Rotation.."°";invalidate()
     end)
+    buttons.Layer=ctx.Button({Parent=ctx.Parent,Text="Build: All layers",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,446)})
+    ctx.Track(buttons.Layer.Activated:Connect(function() self:CycleLayer() end))
     button("Preview","Preview",0,446,.5,function() self:Preview() end)
     button("Start","Start build",.5,446,.5,function() self:Start() end)
     button("Stop","Stop build",0,486,.5,function() self:Stop() end)
@@ -557,7 +612,7 @@ function AutoBuild.new(ctx)
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
     local materialView=Instance.new("ScrollingFrame")
-    materialView.Size=UDim2.new(1,-12,0,100);materialView.Position=UDim2.fromOffset(6,616)
+    materialView.Size=UDim2.new(1,-12,0,100);materialView.Position=UDim2.fromOffset(6,layoutY(616))
     materialView.BackgroundTransparency=1;materialView.BorderSizePixel=0;materialView.ScrollBarThickness=5
     materialView.CanvasSize=UDim2.new();materialView.AutomaticCanvasSize=Enum.AutomaticSize.Y;materialView.Parent=ctx.Parent
     self.MaterialSummary=ctx.Label({Parent=materialView,Text="Preview or load a blueprint to see its material counts.",TextSize=12,
@@ -566,7 +621,7 @@ function AutoBuild.new(ctx)
     label("SAVED BLUEPRINTS · own-island block layouts, up to 300 blocks",724,34)
     local name=Instance.new("TextBox");name.Name="BlueprintName";name.Text="My island build";name.PlaceholderText="Blueprint name (1–48 bytes)"
     name.ClearTextOnFocus=false;name.TextSize=14;name.TextColor3=Color3.fromRGB(226,232,240);name.BackgroundColor3=Color3.fromRGB(29,39,48)
-    name.Size=UDim2.new(1,-12,0,32);name.Position=UDim2.fromOffset(6,764);name.Parent=ctx.Parent;inputs.Name=name
+    name.Size=UDim2.new(1,-12,0,32);name.Position=UDim2.fromOffset(6,layoutY(764));name.Parent=ctx.Parent;inputs.Name=name
     button("Slot","Blueprint slot: 1 / 5",0,804,1,function()
         if self.Running then status("Stop the build before changing its blueprint slot.");return end
         self.Slot=self.Slot%5+1
@@ -603,7 +658,7 @@ function AutoBuild.new(ctx)
     for index,key in ipairs({"ReplaceFrom","ReplaceTo"}) do
         local field=Instance.new("TextBox");field.Name=key;field.Text="";field.PlaceholderText=index==1 and "Existing block name" or "Replacement block name"
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240);field.BackgroundColor3=Color3.fromRGB(29,39,48)
-        field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,1578);field.Parent=ctx.Parent
+        field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,layoutY(1578));field.Parent=ctx.Parent
         inputs[key]=field
     end
     button("Replace","Replace material",0,1618,.5,function() self:ReplaceMaterial(inputs.ReplaceFrom.Text,inputs.ReplaceTo.Text) end)

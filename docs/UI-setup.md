@@ -608,3 +608,31 @@ requests. Regression tests exercise actual controls, source/destination isolatio
 invalid targets/names, unknown materials, full rotation preservation, Undo state,
 preflight invalidation and in-flight guards. Live Roblox behavior remains
 unverified.
+
+### Layer-by-layer building (v48)
+
+Auto Build now has a **Build: All layers** control above Preview/Start. Preview a
+layout, then cycle All layers → Layer 1 → Layer 2 → … → All layers. Layers are
+distinct relative block heights sorted from bottom to top (grouped to 0.001
+stud), so irregular captured layouts can have more layers than grid floors.
+The default remains the complete blueprint.
+
+Only cells in the selected layer are queued by Start. Remaining-material checks
+and the material summary use that same selection and show selected versus total
+planned cells. Unselected preview parts become faint; they remain in the plan
+for later layers. Switching layers does not move the blueprint or start a build.
+Saving, copying and renaming still operate on the full blueprint: the layer
+filter never cuts down a saved island layout. Material replacement retains its
+existing whole-working-blueprint scope, with selected-layer totals refreshed.
+
+The selection is frozen while the worker is active or a stopped request is still
+finishing. Resume keeps the selected layer, rechecks its occupied cells and skips
+late-arriving completed blocks. After the worker finishes, select another layer
+and Start again. A fresh preview, Clear, loading another layout or changing the
+generated plan resets the selection to All layers. Moving a preview retains the
+selection. Layer changes invalidate previous material-check snapshots.
+
+Mock tests cover the actual selector control, preview fading, selected material
+counts, lower/upper-layer dispatch, stop/in-flight guards, resume totals, full
+blueprint saving and reset to All. Existing v41–v47 regressions remain covered.
+Live Roblox rendering, structural support and server acceptance are unverified.

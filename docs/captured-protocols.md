@@ -224,3 +224,12 @@ its relative CFrames; it does not change saved files until Save preview. Rename
 and copy use the same local JSON schema and fixed account/slot filenames. No new
 remote requests or session fields are introduced. Placement still occurs only
 through Start and the existing reach, occupancy and confirmation checks.
+
+### Layer selection (build-layers-48)
+
+Layer filters introduce no saved-file or remote-schema changes. The full layout
+is retained while a stable selected-cell list feeds the existing placement
+worker. Read-only material checks use the same filter. Start still applies
+normal reach, occupied-cell skipping and placement confirmation. Selection is
+locked through active and cancelled in-flight worker cleanup. Save preview
+continues to serialize every planned cell, including unselected layers.

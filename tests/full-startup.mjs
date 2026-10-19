@@ -71,6 +71,17 @@ flush()
  buildController.Buttons.CopyCheck.Activated:Fire()
  assert(copied=='Read-only build check' and not buildController.Running,'copy build check must use the host clipboard without starting a build')
  setclipboard=oldCopy
+ assert(not buildController.LayerIndex and buildController.Buttons.Layer.Text=='Build: All layers','layer filter must default to the complete plan')
+ assert(buildController.Buttons.Layer.Position.Y.Offset+buildController.Buttons.Layer.Size.Y.Offset<=buildController.Buttons.Preview.Position.Y.Offset,'layer control must fit above the build actions')
+ local upperGhost={}
+ buildController.Cells={{LayerY=0,Material='grass'},{LayerY=3,Material='stone',Preview=upperGhost}}
+ buildController.Buttons.Layer.Activated:Fire()
+ assert(buildController.LayerIndex==1 and #buildController:SelectedCells()==1 and upperGhost.Transparency==.94,'actual layer button must filter selection and fade excluded ghosts')
+ buildController.Buttons.Layer.Activated:Fire()
+ assert(buildController.LayerIndex==2 and upperGhost.Transparency==.65,'actual button must restore the selected layer visibility')
+ buildController.Buttons.Layer.Activated:Fire()
+ assert(not buildController.LayerIndex and #buildController:SelectedCells()==2,'actual layer button must restore All layers')
+ buildController.Cells=nil
  buildController.Buttons.Slot.Activated:Fire()
  assert(buildController.Slot==2,'slot button must cycle independently of blueprint names')
  buildController.Buttons.CaptureRange.Activated:Fire()
@@ -664,7 +675,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn blueprint-editing-47',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-layers-48',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
