@@ -388,3 +388,25 @@ item's inventory total confirms collection. Existing ownership, reach, actor,
 server, character, cancellation and bounded-retry rules are unchanged. Mock tests
 cover the supplied schema, varying slots and counts, newest-template selection,
 food-name search and item-specific confirmation; live acceptance is unverified.
+
+### Inventory top-up limits (inventory-topup-58)
+
+Optional Auto Take top-up targets add no remotes or request fields. The catalog
+remains at 145 entries and recorder v28 retains the observed per-item packet.
+The collector uses the exact requested item's current inventory count before
+approach and reads it again afterward. The request amount is bounded by that
+item's remaining deficit, the learned batch/remainder ceiling and the shared run
+goal. Unobserved slots keep the existing one-item probe. Explicit manual batches
+do not apply the auto cap, and No limit preserves v57 behavior.
+
+Stock already at target skips approach/request work. Unreadable counts are not
+converted to zero, and a response alone cannot confirm a transfer. Different
+slots of one item share its live inventory count, while different items have
+independent deficits. The target is frozen for the worker and does not alter
+Stop, ownership, reach, current-session checks or in-flight cancellation.
+
+Profile version 1 now accepts optional `StockTarget`, validated as 0, 25, 50,
+100, 250 or 500; an absent value means 0. Only this local preference is saved,
+never current inventory or a request/session envelope. Session history snapshots
+the run's target and observed new transfers. Mock tests verify these limits and
+adapters; actual live server and input behavior remain unverified.

@@ -829,7 +829,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn salad-chests-57',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn inventory-topup-58',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1057,6 +1057,48 @@ end)()
  r.PlowStopButton.Activated:Fire();assert(not r.PlowPendingStart,'Stop must cancel pending restart intent')
  r.PlowWorker=nil;r.UpdatePlowControls()
  methods.GetGuiObjectsAtPosition=oldObjects
+ end)()
+
+ ;(function()
+ local r=RemoteCatalog
+ local oldTargets,oldCount,oldReady=r.SelectedChestTargets,r.CarrotCount,r.ChestRequestReady
+ local oldTarget=r.ChestStockTarget
+ local chest={Name='chestMediumIndustrialIO'}
+ local binding={Chest=chest,Slot=8,Item='potatoSalad',Amount=17}
+ r.SelectedChestTargets=function() return {{Binding=binding}} end
+ r.CarrotCount=function(item) assert(item=='potatoSalad');return 37 end
+ r.ChestRequestReady=function() return true end
+ local before=r.ChestPlanView.Position.Y.Offset
+ for _=1,3 do
+  r.ChestStockButton.Activated:Fire()
+  assert(r.ChestStockMenu.Menu.Visible and r.ChestPlanView.Position.Y.Offset>=r.ChestStockMenu.Menu.Position.Y.Offset+r.ChestStockMenu.Menu.Size.Y.Offset,'top-up dropdown must push the plan below every choice')
+  r.ChestStockButton.Activated:Fire()
+  assert(not r.ChestStockMenu.Menu.Visible and r.ChestPlanView.Position.Y.Offset==before,'top-up layout must restore without drift')
+ end
+ r.ChestStockButton.Activated:Fire();r.ChestStockMenu.Options[3].Activated:Fire()
+ assert(r.ChestStockTarget==50 and not r.ChestAutoEnabled and not r.ChestBusy,'choosing 50 must only update preferences and the read-only preview')
+ assert(string.find(r.ChestPlanLabel.Text,'37 in inventory; 13 missing',1,true) and string.find(r.ChestPlanLabel.Text,'manual batch unchanged',1,true),'preview must explain the actual inventory deficit and manual scope')
+ local manualAmount
+ local owner={CanUseChestBinding=function() return true end,WithdrawItems=function(_,amount,chosen) assert(chosen==binding);manualAmount=amount;return true end}
+ assert(r.WithdrawCarrots(25,owner,binding) and manualAmount==25,'an explicit manual batch must retain its selected amount instead of using the auto top-up deficit')
+ r.ChestStockButton.Activated:Fire();r.ChestAutoWorker=55
+ r.ChestStockMenu.Options[4].Activated:Fire()
+ assert(r.ChestStockTarget==50 and not r.ChestStockMenu.Menu.Visible,'an in-flight worker must lock an already open top-up menu')
+ r.ChestStockButton.Activated:Fire();assert(not r.ChestStockMenu.Menu.Visible,'in-flight cleanup must also lock menu opening')
+ r.ChestAutoWorker=nil
+ r.ChestStockButton.Activated:Fire();r.ChestAmountButton.Activated:Fire()
+ assert(not r.ChestStockMenu.Menu.Visible and r.ChestAmountMenu.Visible,'manual batch menu must dismiss the top-up menu')
+ assert(r.ChestRangeButton.Position.Y.Offset>=r.ChestAmountMenu.Position.Y.Offset+r.ChestAmountMenu.Size.Y.Offset,'manual batch layout must still push later controls below all options')
+ r.CloseMenus();assert(r.ChestPlanView.Position.Y.Offset==before,'shared menu cleanup must restore the complete chest layout')
+ r.ChestStockButton.Activated:Fire();r.ChestProfilesButton.Activated:Fire()
+ assert(not r.ChestStockMenu.Menu.Visible and r.ChestProfilesPanel.Visible,'opening saved profiles must dismiss top-up options')
+ r.CloseMenus();assert(r.ChestPlanView.Position.Y.Offset==before)
+ r.CarrotCount=function() return nil end;r.PreviewChestSelection()
+ assert(string.find(r.ChestPlanLabel.Text,'inventory count unavailable',1,true),'preview must show an unknown count instead of assuming zero')
+ r.ChestStockButton.Activated:Fire();r.ChestStockMenu.Options[1].Activated:Fire()
+ assert(not r.ChestStockTarget and string.find(r.ChestStockButton.Text,'No limit',1,true),'No limit must restore the v57 collection preference')
+ r.SelectedChestTargets,r.CarrotCount,r.ChestRequestReady=oldTargets,oldCount,oldReady
+ r.ChestStockTarget=oldTarget;r.ChestStockMenu:Refresh()
  end)()
 
 RemoteCatalog.StopTimerButton.Activated:Fire()

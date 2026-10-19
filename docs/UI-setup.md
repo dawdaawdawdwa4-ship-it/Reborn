@@ -1060,3 +1060,44 @@ owned-island, reach, session/character, cancellation, batch and retry checks rem
 Tests cover the supplied packet, slot changes, newest-template selection, salad in
 multiple slots and unrelated inventory changes. The full mock suite passes;
 live Roblox behavior remains unverified.
+
+### Auto Take inventory top-up (v58)
+
+**Chests > Auto top-up/item** offers **No limit**, **25**, **50**, **100**, **250**
+and **500**. No limit is the default and retains v57 collection behavior. Select
+a target to request only the missing amount of each selected item: with 37
+`potatoSalad` already in inventory and a target of 50, Auto Take requests at most
+13 more. Separate salad slots/chests share the same live deficit; selected wood
+has its own deficit. The preview displays the current inventory and missing
+amount for up to four item names without sending requests or moving.
+
+Items already at or above the target need no approach or withdrawal. Counts are
+read again after approaching a chest, since inventory can change while moving.
+Each request is capped by the current deficit, learned batch/remainder limits
+and the existing combined Auto goal. The target is captured when the run starts
+and its dropdown remains locked through active or cancelled worker cleanup.
+Unobserved slots still start with a one-item probe. Unknown inventory counts stop
+automation before a top-up approach/request; they are not assumed to be zero.
+
+This is a finite top-up run, not a background restocking service. Spending items
+after a completed check may require another run. The cap controls the amount
+requested using the latest observed count; simultaneous manual inventory changes
+and actual server transfers are observed separately. Explicit manual batches keep
+their selected amounts and do not use the auto cap.
+
+Results distinguish **Inventory targets met**, the combined **Goal reached** and
+a completed pass with some items still below target. Run history retains the
+target and only newly observed transfer totals, excluding starting inventory.
+Stop and session/ownership/reach checks remain on their existing paths; late
+returns after cancellation do not count as new confirmed transfers.
+
+Chest profiles save the optional numeric `StockTarget` preference using the same
+version-1 schema. Older profiles default it to 0/No limit, and loading one clears
+a previously selected cap. Profile loading updates the label and read-only
+preview without starting collection. No inventory counts, live bindings or
+session packets are saved in profiles.
+
+The full mock suite covers per-item/shared-slot deficits, count changes during
+approach, combined goals, partial stock, exact-item confirmation, unknown counts,
+frozen settings, Stop, old/new profiles and actual dropdown/layout/manual adapters.
+Rendering, input dispatch and server behavior remain unverified in live Roblox.

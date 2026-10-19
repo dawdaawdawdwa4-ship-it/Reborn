@@ -310,7 +310,74 @@ do
  assert(RemoteCatalog.SetChestAuto(true));drain()
  assert(#sent==3 and RemoteCatalog.ChestAutoTotal==0 and RemoteCatalog.ChestAutoItems.potatoSalad==nil,'only salad inventory growth can confirm a salad withdrawal')
 end
-return 'Chest Auto Max: batches/remainder, potato salad in varying slots, item-specific inventory confirmation, range wait/resume, one worker, bounded no-progress, Stop/in-flight restart, errors/session/GUI cleanup passed'
+-- Optional auto top-up counts existing inventory per item and shares deficits across slots.
+do
+ local qty,requests,approaches,remaining
+ local salad={Chest={},Slot=8,Item='potatoSalad',Amount=17}
+ local otherSalad={Chest=salad.Chest,Slot=3,Item='potatoSalad',Amount=17}
+ local wood={Chest=salad.Chest,Slot=1,Item='wood',Amount=30}
+ local function prepare(count,targets)
+  qty={potatoSalad=count,wood=0};requests={};approaches=0;remaining=100
+  gui.Parent=true;valid=true;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=50
+  RemoteCatalog.SelectedChestTargets=function() return targets or {{Recorder=recorder,Binding=salad},{Recorder=recorder,Binding=otherSalad}} end
+  RemoteCatalog.OwnedTools=function() return {{Name='potatoSalad'},{Name='wood'}} end
+  RemoteCatalog.BaitCount=function(tool) return qty[tool.Name] end
+  RemoteCatalog.ApproachChest=function() approaches+=1;return true end
+  RemoteCatalog.WithdrawCarrots=function(amount,owner,binding)
+   assert(owner==recorder)
+   table.insert(requests,{Amount=amount,Item=binding.Item})
+   if remaining<amount then return false,'insufficient stock' end
+   remaining-=amount;qty[binding.Item]+=amount;return true
+  end
+ end
+ prepare(37)
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#requests==1 and requests[1].Amount==13 and approaches==1 and qty.potatoSalad==50,'37 existing salads must require only 13, without approaching a second slot after the shared target is met')
+ assert(RemoteCatalog.ChestAutoTotal==13 and RemoteCatalog.ChestAutoItems.potatoSalad==13,'top-up must count new confirmed items, excluding existing inventory')
+ assert(RemoteCatalog.ChestHistory[1].Outcome=='Inventory targets met' and RemoteCatalog.ChestHistory[1].StockTarget==50,'run history must retain the actual target and outcome')
+ prepare(60)
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#requests==0 and approaches==0 and RemoteCatalog.ChestAutoTotal==0,'satisfied inventory must send no requests or approach calls')
+ prepare(47,{{Recorder=recorder,Binding=salad},{Recorder=recorder,Binding=wood}});qty.wood=49
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#requests==2 and requests[1].Amount==3 and requests[2].Amount==1 and qty.potatoSalad==50 and qty.wood==50 and RemoteCatalog.ChestAutoTotal==4,'each selected item must have its own current-inventory deficit')
+ prepare(37)
+ RemoteCatalog.ApproachChest=function() approaches+=1;task.wait(.1);qty.potatoSalad=49;return true end
+ assert(RemoteCatalog.SetChestAuto(true));RemoteCatalog.ChestStockTarget=25;drain()
+ assert(requests[1].Amount==1 and qty.potatoSalad==50 and RemoteCatalog.ChestHistory[1].StockTarget==50,'count must be re-read after approach, while the run retains its original target')
+ prepare(37)
+ RemoteCatalog.ApproachChest=function() approaches+=1;task.wait(.1);qty.potatoSalad=50;return true end
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#requests==0 and approaches==1,'inventory reaching the target during approach must prevent the next request')
+ prepare(37);RemoteCatalog.ChestGoal=10
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#requests==1 and requests[1].Amount==10 and qty.potatoSalad==47 and RemoteCatalog.ChestAutoTotal==10,'combined collection goal must cap top-up when it is the smaller limit')
+ assert(RemoteCatalog.ChestHistory[1].Outcome=='Goal reached','aggregate goal must remain distinct from per-item stock targets')
+ prepare(37);remaining=5
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(qty.potatoSalad==42 and remaining==0 and RemoteCatalog.ChestAutoTotal==5 and #requests<25,'partial stock must retain bounded remainder handling')
+ assert(RemoteCatalog.ChestHistory[1].Outcome=='Pass finished' and string.find(RemoteCatalog.ChestLastDetail,'remain below 50',1,true),'empty stock must never be reported as a satisfied inventory target')
+ prepare(49)
+ RemoteCatalog.WithdrawCarrots=function(amount) table.insert(requests,amount);qty.wood+=amount;return true end
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#requests==6 and qty.potatoSalad==49 and RemoteCatalog.ChestAutoTotal==0,'top-up still needs exact item confirmation and bounded retries for each selected slot')
+ prepare(nil)
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#requests==0 and approaches==0 and string.find(RemoteCatalog.ChestLastDetail,'Cannot read',1,true),'unreadable inventory must stop before top-up navigation or withdrawal')
+ for _,invalid in ipairs({0,-1,25.5,'50',true,math.huge,0/0}) do
+  prepare(37);RemoteCatalog.ChestStockTarget=invalid
+  assert(not RemoteCatalog.SetChestAuto(true) and #requests==0 and not RemoteCatalog.ChestAutoWorker,'invalid stock preferences must not start a worker')
+ end
+ prepare(37)
+ RemoteCatalog.WithdrawCarrots=function(amount,_,binding) table.insert(requests,amount);task.wait(.2);qty[binding.Item]+=amount;return true end
+ assert(RemoteCatalog.SetChestAuto(true) and requests[1]==13)
+ RemoteCatalog.SetChestAuto(false)
+ assert(not RemoteCatalog.SetChestAuto(true),'cancelled top-up must retain the in-flight lock')
+ drain()
+ assert(#requests==1 and RemoteCatalog.ChestAutoTotal==0 and RemoteCatalog.ChestHistory[1].Outcome=='Stopped' and not RemoteCatalog.ChestAutoWorker,'Stop must discard late confirmation and prevent extra top-up requests')
+ RemoteCatalog.ChestStockTarget=nil;RemoteCatalog.ChestGoal=nil
+end
+return 'Chest Auto Max: batches/remainder, variable slots, optional per-item inventory top-up, live deficit/goal caps, item confirmation, range waits, Stop/in-flight restart and cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-auto',true)());}
