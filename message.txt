@@ -2923,7 +2923,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "sturdy-chests-75",
+    Subtitle = "chest-exclusions-76",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3414,7 +3414,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn sturdy-chests-75",
+    return table.concat({"Reborn chest-exclusions-76",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -4317,6 +4317,21 @@ track(RemoteCatalog.ChestConveyorButton.Activated:Connect(function()
     RemoteCatalog.CloseMenus();RemoteCatalog.UpdateChestSelectionUI();RemoteCatalog.PreviewChestSelection()
     setStatus(RemoteCatalog.ChestIncludeConveyor and "Conveyor I/O chests included: withdrawals can compete with the belt." or "Conveyor I/O chests skipped: no automatic or manual hub withdrawal from them.",COLORS.good)
 end))
+RemoteCatalog.ChestExclusionPanel=Instance.new("Frame")
+RemoteCatalog.ChestExclusionPanel.Name="ChestProtection";RemoteCatalog.ChestExclusionPanel.Size=UDim2.new(1,-12,0,122)
+RemoteCatalog.ChestExclusionPanel.Position=UDim2.fromOffset(6,0);RemoteCatalog.ChestExclusionPanel.BackgroundColor3=COLORS.panel
+RemoteCatalog.ChestExclusionPanel.BorderSizePixel=0;RemoteCatalog.ChestExclusionPanel.Parent=RemoteCatalog.ChestPage;corner(RemoteCatalog.ChestExclusionPanel,8)
+RemoteCatalog.ChestExclusionHeading=label({Parent=RemoteCatalog.ChestExclusionPanel,Text="CHEST PROTECTION · SESSION ONLY",TextSize=12,Color=COLORS.accent,Size=UDim2.new(1,-12,0,22),Position=UDim2.fromOffset(6,4)})
+RemoteCatalog.ChestExclusionButton=button({Parent=RemoteCatalog.ChestExclusionPanel,Text="Choose one chest above",TextSize=13,Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,30)})
+RemoteCatalog.ChestExclusionButton.Active=false
+RemoteCatalog.ChestExclusionSummary=label({Parent=RemoteCatalog.ChestExclusionPanel,Text="0 excluded chests · this hub session only. Choose an individual chest in Targets.",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-12,0,48),Position=UDim2.fromOffset(6,70)})
+RemoteCatalog.ChestExclusionSummary.TextWrapped=true
+track(RemoteCatalog.ChestExclusionButton.Activated:Connect(function()
+    if not RemoteCatalog.SetChestExcluded then return end
+    local selected=RemoteCatalog.ChestSelection
+    local ok,reason=RemoteCatalog.SetChestExcluded(selected and selected.Chest,not RemoteCatalog.ChestIsExcluded(selected))
+    setStatus(reason,ok and COLORS.good or COLORS.warn)
+end))
 RemoteCatalog.ChestControlPositions={}
 for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
     if child:IsA("GuiObject") and child~=RemoteCatalog.ChestSelectMenu and child~=RemoteCatalog.ChestAmountMenu and child~=RemoteCatalog.ChestItemMenu and child~=RemoteCatalog.ChestStockMenu.Menu and child~=RemoteCatalog.ChestRepeatMenu.Menu and child~=RemoteCatalog.ChestBatchMenu.Menu and child~=RemoteCatalog.ChestOrderMenu.Menu then
@@ -4324,6 +4339,7 @@ for _,child in ipairs(RemoteCatalog.ChestPage:GetChildren()) do
     end
 end
 function RemoteCatalog.LayoutChestControls()
+    local exclusionOffset=RemoteCatalog.ChestExclusionPanel.Size.Y.Offset+12
     local orderOffset=RemoteCatalog.ChestOrderMenu.Menu.Visible and RemoteCatalog.ChestOrderMenu.Menu.Size.Y.Offset+12 or 0
     local batchOffset=RemoteCatalog.ChestBatchMenu.Menu.Visible and RemoteCatalog.ChestBatchMenu.Menu.Size.Y.Offset+12 or 0
     local selectOffset=RemoteCatalog.ChestSelectMenu.Visible and RemoteCatalog.ChestSelectMenu.Size.Y.Offset+8 or 0
@@ -4337,7 +4353,7 @@ function RemoteCatalog.LayoutChestControls()
         if base.Y.Offset>=214 then y+=batchOffset end
         if base.Y.Offset>=534 then y+=orderOffset end
         if not RemoteCatalog.ChestDetailsOpen and base.Y.Offset>=676 then y-=134 end
-        if base.Y.Offset>=328 then y+=selectOffset end
+        if base.Y.Offset>=328 then y+=selectOffset+exclusionOffset end
         if base.Y.Offset>=730 then y+=amountOffset end
         if base.Y.Offset>=490 then y+=stockOffset end
         if base.Y.Offset>=260 then y+=itemOffset end
@@ -4348,12 +4364,13 @@ function RemoteCatalog.LayoutChestControls()
     end
     local profileOffset=88+batchOffset+(RemoteCatalog.ChestProfilesPanel.Visible and 160 or 0)
     RemoteCatalog.ChestItemMenu.Position=UDim2.fromOffset(6,254+profileOffset)
-    RemoteCatalog.ChestAmountMenu.Position=UDim2.new(0,6,0,716+selectOffset+itemOffset+profileOffset+stockOffset+orderOffset-(RemoteCatalog.ChestDetailsOpen and 0 or 134))
+    RemoteCatalog.ChestAmountMenu.Position=UDim2.new(0,6,0,716+selectOffset+itemOffset+profileOffset+stockOffset+orderOffset+exclusionOffset-(RemoteCatalog.ChestDetailsOpen and 0 or 134))
     RemoteCatalog.ChestOrderMenu.Menu.Position=UDim2.fromOffset(6,RemoteCatalog.ChestOrderButton.Position.Y.Offset+RemoteCatalog.ChestOrderButton.Size.Y.Offset+6)
     RemoteCatalog.ChestBatchMenu.Menu.Position=UDim2.fromOffset(6,RemoteCatalog.ChestBatchButton.Position.Y.Offset+RemoteCatalog.ChestBatchButton.Size.Y.Offset+6)
     RemoteCatalog.ChestStockMenu.Menu.Position=UDim2.fromOffset(6,RemoteCatalog.ChestStockButton.Position.Y.Offset+RemoteCatalog.ChestStockButton.Size.Y.Offset+6)
     RemoteCatalog.ChestRepeatMenu.Menu.Position=UDim2.fromOffset(6,RemoteCatalog.ChestRepeatButton.Position.Y.Offset+RemoteCatalog.ChestRepeatButton.Size.Y.Offset+6)
     RemoteCatalog.ChestSelectMenu.Position=UDim2.fromOffset(6,326+itemOffset+profileOffset)
+    RemoteCatalog.ChestExclusionPanel.Position=UDim2.fromOffset(6,RemoteCatalog.ChestSelectButton.Position.Y.Offset+RemoteCatalog.ChestSelectButton.Size.Y.Offset+6+selectOffset)
 end
 table.insert(RemoteCatalog.MenuClosers,function()
     RemoteCatalog.ChestSelectMenu.Visible=false;RemoteCatalog.ChestAmountMenu.Visible=false;RemoteCatalog.ChestItemMenu.Visible=false
@@ -5225,7 +5242,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn sturdy-chests-75 · Propeller tracker",
+    return table.concat({"Reborn chest-exclusions-76 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -5250,7 +5267,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn sturdy-chests-75", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-exclusions-76", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6608,6 +6625,16 @@ function RemoteCatalog.ChestConveyorProtected(binding)
     return RemoteCatalog.ChestIncludeConveyor~=true and chest~=nil and type(chest.Name)=="string"
         and string.lower(chest.Name)=="chestmediumindustrialio"
 end
+-- CHEST EXCLUSIONS BEGIN
+RemoteCatalog.ChestExcludedChests=setmetatable({}, {__mode="k"})
+function RemoteCatalog.ChestIsExcluded(binding)
+    local chest=binding and binding.Chest
+    return chest~=nil and RemoteCatalog.ChestExcludedChests[chest]==true
+end
+function RemoteCatalog.ChestTargetProtected(binding)
+    return RemoteCatalog.ChestIsExcluded(binding) or RemoteCatalog.ChestConveyorProtected(binding)
+end
+-- CHEST EXCLUSIONS END
 -- CHEST CONVEYOR GUARD END
 function RemoteCatalog.ChestTargets()
     local recorders={}
@@ -6679,7 +6706,7 @@ function RemoteCatalog.SelectedChestTargets(includeProtected)
         local binding=entry.Binding
         local selected=RemoteCatalog.ChestSelection
         local item=binding.Item or "carrotHarvested"
-        if (includeProtected==true or not RemoteCatalog.ChestConveyorProtected(binding)) and (not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[item]) and (not RemoteCatalog.ChestItem or RemoteCatalog.ChestItem==item) and (not selected or selected.Chest==binding.Chest and (RemoteCatalog.ChestWhole or selected.Slot==binding.Slot)) then
+        if (includeProtected==true or not RemoteCatalog.ChestTargetProtected(binding)) and (not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[item]) and (not RemoteCatalog.ChestItem or RemoteCatalog.ChestItem==item) and (not selected or selected.Chest==binding.Chest and (RemoteCatalog.ChestWhole or selected.Slot==binding.Slot)) then
             if RemoteCatalog.ChestWhole and entry.Recorder.MakeChestTarget and string.lower(binding.Chest.Name)=="chestmediumindustrialio" then
                 seen[binding.Chest]=seen[binding.Chest] or {}
                 if newest[binding.Chest][item]==entry and not seen[binding.Chest][item] then
@@ -6714,6 +6741,43 @@ function RemoteCatalog.SelectedChestTargets(includeProtected)
     return targets
 end
 -- CHEST TARGETS END
+-- CHEST EXCLUSION UI LOGIC BEGIN
+function RemoteCatalog.RefreshChestExclusions()
+    if not gui.Parent or not RemoteCatalog.ChestExclusionButton then return end
+    local count=0;for _ in pairs(RemoteCatalog.ChestExcludedChests) do count+=1 end
+    local selected=RemoteCatalog.ChestSelection
+    local chest=selected and selected.Chest
+    local excluded=RemoteCatalog.ChestIsExcluded(selected)
+    local locked=RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker~=nil or RemoteCatalog.ChestBusy or RemoteCatalog.ChestManualRunning
+    local available=not locked and chest~=nil and chest.Parent~=nil
+    RemoteCatalog.ChestExclusionButton.Text=not chest and "Choose one chest above" or excluded and "Allow selected chest" or "Exclude selected chest"
+    RemoteCatalog.ChestExclusionButton.Active=available==true
+    RemoteCatalog.ChestExclusionButton.Selectable=available==true
+    RemoteCatalog.ChestExclusionButton.AutoButtonColor=available==true
+    RemoteCatalog.ChestExclusionButton.TextColor3=available and COLORS.text or COLORS.muted
+    RemoteCatalog.ChestExclusionButton.BackgroundColor3=excluded and COLORS.on or COLORS.panel
+    if RemoteCatalog.ChestExclusionSummary then
+        RemoteCatalog.ChestExclusionSummary.Text=count.." excluded chests · this hub session only. "..(locked and "Stop collection and wait for cleanup to edit." or not chest and "Choose a single chest in Targets, then exclude it." or excluded and "Selected chest: EXCLUDED, all slots/items." or "Selected chest: allowed by this list; conveyor protection still applies.")
+    end
+end
+function RemoteCatalog.SetChestExcluded(chest,excluded)
+    if not gui.Parent or type(excluded)~="boolean" then return false,"Chest protection is unavailable" end
+    if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy or RemoteCatalog.ChestManualRunning then return false,"Stop collection and wait for cleanup before editing exclusions" end
+    local known=false
+    for _,entry in ipairs(RemoteCatalog.ChestTargets()) do if entry.Binding.Chest==chest then known=true;break end end
+    if not known or not chest or not chest.Parent then return false,"Choose a current individual chest in Targets first" end
+    local island=getPlayerIsland()
+    local cursor=chest
+    while cursor and cursor~=island do cursor=cursor.Parent end
+    if not island or cursor~=island then return false,"Choose a chest on your own island" end
+    RemoteCatalog.ChestExcludedChests[chest]=excluded and true or nil
+    RemoteCatalog.CloseMenus()
+    RemoteCatalog.UpdateChestSelectionUI()
+    RemoteCatalog.PreviewChestSelection()
+    return true,excluded and "Selected chest excluded: all slots/items are protected from Auto Take and manual hub withdrawal for this hub session." or "Selected chest allowed again. Conveyor Skip still applies. Collection stays OFF."
+end
+-- CHEST EXCLUSION UI LOGIC END
+
 function RemoteCatalog.ChestItemSelectionText()
     if not RemoteCatalog.ChestItems then return "All learned" end
     local items={}
@@ -6818,16 +6882,19 @@ function RemoteCatalog.PreviewChestSelection()
     table.sort(names)
     local itemCount=#names
     while #names>4 do table.remove(names) end
-    local protected={}
+    local protected,excluded={},{}
     for _,entry in ipairs(RemoteCatalog.SelectedChestTargets(true)) do
         if RemoteCatalog.ChestConveyorProtected(entry.Binding) then protected[entry.Binding.Chest]=true end
+        if RemoteCatalog.ChestIsExcluded(entry.Binding) then excluded[entry.Binding.Chest]=true end
     end
     local protectedCount=0;for _ in pairs(protected) do protectedCount+=1 end
-    local text=#targets==0 and (protectedCount>0 and "No eligible targets: selected conveyor I/O chests are skipped. Set Conveyor I/O chests: Include only if you want to withdraw from them." or "No targets selected. Learn a withdrawal and choose items first.") or
+    local excludedCount=0;for _ in pairs(excluded) do excludedCount+=1 end
+    local text=#targets==0 and (excludedCount>0 and "No eligible targets: selected chests are explicitly excluded. Use Allow selected chest in Chest protection to undo." or protectedCount>0 and "No eligible targets: selected conveyor I/O chests are skipped. Set Conveyor I/O chests: Include only if you want to withdraw from them." or "No targets selected. Learn a withdrawal and choose items first.") or
         (count.." chests · "..#targets.." slot checks · "..itemCount.." item types\n"..
         ready.." checks in reach; "..(#targets-ready).." need approach or attention.\n"..
         table.concat(names,", ")..(itemCount>4 and " …" or "").."\nInventory contents remain unknown until withdrawal.")
     text..="\nConveyor I/O chests: "..(RemoteCatalog.ChestIncludeConveyor and "Include; withdrawals can compete with the belt." or ("Skip; "..protectedCount.." selected chests protected. Manual hub withdrawal also skips them."))
+    text..="\nExplicit exclusions: "..excludedCount.." selected chests; all slots/items protected from Auto Take and manual hub withdrawal. This hub session only."
     for index,reason in ipairs(reasonOrder) do
         if index>3 then text..="\nMore blocked checks: refresh after resolving the above.";break end
         text..="\n"..reasons[reason].." checks: "..reason
@@ -6847,6 +6914,7 @@ function RemoteCatalog.PreviewChestSelection()
     return text
 end
 function RemoteCatalog.ChestRequestReady(binding)
+    if RemoteCatalog.ChestIsExcluded(binding) then return false,"This chest is explicitly excluded for this hub session. Choose it in Targets and Allow selected chest to undo." end
     if RemoteCatalog.ChestConveyorProtected(binding) then return false,"Conveyor I/O chest skipped. Choose Include to withdraw from it." end
     local chest=binding and binding.Chest
     local island=getPlayerIsland()
@@ -6930,7 +6998,7 @@ function RemoteCatalog.ChestTargetLabel(binding,all)
     for _,entry in ipairs(all) do
         local chest=entry.Binding.Chest
         if not seen[chest] then count+=1;seen[chest]=count end
-        if chest==binding.Chest then return "Chest #"..seen[chest]..(RemoteCatalog.ChestWhole and " · whole chest" or " · slot "..tostring(binding.Slot or "?")) end
+        if chest==binding.Chest then return "Chest #"..seen[chest]..(RemoteCatalog.ChestWhole and " · whole chest" or " · slot "..tostring(binding.Slot or "?"))..(RemoteCatalog.ChestIsExcluded(binding) and " · EXCLUDED" or "") end
     end
     return "Unavailable chest"
 end
@@ -6992,6 +7060,7 @@ track(RemoteCatalog.ChestSelectButton.Activated:Connect(function()
         local option=button({Parent=list,Text=i==0 and (RemoteCatalog.ChestDiscover and "All matching chests" or "All learned chests") or RemoteCatalog.ChestTargetLabel(entry.Binding,targets),TextSize=12,
             Size=UDim2.new(1,-8,0,30),Position=UDim2.fromOffset(2,i*32)})
         option.ZIndex=42
+        if entry and RemoteCatalog.ChestIsExcluded(entry.Binding) then option.TextColor3=COLORS.warn end
         table.insert(RemoteCatalog.ChestMenuConnections,option.Activated:Connect(function()
             RemoteCatalog.SetChestAuto(false)
             RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
@@ -7055,7 +7124,7 @@ function RemoteCatalog.WithdrawSelectedCarrots(generation)
             else task.wait(pause) end
         end
     end
-    if #targets==0 then return false,"Learn at least one chest first" end
+    if #targets==0 then return false,"No eligible chest targets. Learn/select a chest and check explicit exclusions and conveyor protection." end
     return sent>0,"Sent "..sent.."/"..#targets.." requests; "..skipped.." skipped or rejected. Check inventory. "..table.concat(details,"; ")
 end
 -- CHEST PROFILES BEGIN
@@ -7235,7 +7304,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn sturdy-chests-75\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-exclusions-76\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -7362,6 +7431,7 @@ end
 -- Keep action labels stable; progress belongs in the status line.
 function RemoteCatalog.RefreshChestActions()
     if not gui.Parent then return end
+    if RemoteCatalog.RefreshChestExclusions then RemoteCatalog.RefreshChestExclusions() end
     local auto=RemoteCatalog.ChestAutoEnabled
     local cleanup=not auto and RemoteCatalog.ChestAutoWorker~=nil
     local manual=RemoteCatalog.ChestManualRunning
@@ -7415,7 +7485,7 @@ function RemoteCatalog.ChestAutoStates(targets,batch,probe)
     for _,entry in ipairs(targets) do
         local adaptive=batch=="Max"
         local maximum=adaptive and 1000 or batch or entry.Binding.Amount
-        if not RemoteCatalog.ChestConveyorProtected(entry.Binding) and type(maximum)=="number" and maximum>=1 and maximum%1==0 and maximum<=1000000 then
+        if not RemoteCatalog.ChestTargetProtected(entry.Binding) and type(maximum)=="number" and maximum>=1 and maximum%1==0 and maximum<=1000000 then
             local unconfirmed=probe or entry.Binding.Probe
             table.insert(states,{Recorder=entry.Recorder,Binding=entry.Binding,Maximum=maximum,Amount=unconfirmed and 1 or adaptive and math.min(1000,math.max(30,entry.Binding.Amount or 30)) or maximum,Adaptive=adaptive,Probe=unconfirmed,NoProgress=0,RateRetries=0})
         end
@@ -7456,7 +7526,7 @@ function RemoteCatalog.SetChestAuto(state)
     local repeating=RemoteCatalog.ChestRepeat==true
     local states=RemoteCatalog.ChestAutoStates(RemoteCatalog.SelectedChestTargets(),batch,false)
     if #states==0 then
-        RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestItems and next(RemoteCatalog.ChestItems)==nil and "No items selected. Choose items or All learned items." or (RemoteCatalog.ChestIncludeConveyor~=true and "No eligible chest targets. Conveyor I/O chests are skipped; choose Include to withdraw from them, or learn/select a regular chest." or "Learn and select at least one valid item withdrawal first"))
+        RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestItems and next(RemoteCatalog.ChestItems)==nil and "No items selected. Choose items or All learned items." or ("No eligible chest targets. Check excluded chests. Conveyor I/O chests are skipped unless Include is chosen; learn/select an allowed chest."))
         return false
     end
     RemoteCatalog.ChestAutoGeneration=(RemoteCatalog.ChestAutoGeneration or 0)+1
@@ -7668,7 +7738,7 @@ function RemoteCatalog.SetChestAuto(state)
                 -- Inventory replication can yield after approach. Recheck the live
                 -- session and interaction range before acquiring the request lock.
                 if not recorder:CanUseChestBinding(binding) then state.Done=true;RemoteCatalog.ChestAutoMessage("Skipping "..target..": learn this chest again.");continue end
-                if RemoteCatalog.ChestConveyorProtected(binding) then state.Done=true;continue end
+                if RemoteCatalog.ChestTargetProtected(binding) then state.Done=true;continue end
                 if RemoteCatalog.ChestRequestReady then
                     local allowed,why=RemoteCatalog.ChestRequestReady(binding)
                     if not allowed then
@@ -7826,7 +7896,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn sturdy-chests-75\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-exclusions-76\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -8419,7 +8489,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn sturdy-chests-75 · Craft diagnostics",
+    return table.concat({"Reborn chest-exclusions-76 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -8489,7 +8559,7 @@ RemoteCatalog.CraftMaterialsLabel=label({Parent=RemoteCatalog.CraftMaterialsView
 RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsLabel.AutomaticSize=Enum.AutomaticSize.Y;RemoteCatalog.CraftMaterialsLabel.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.CraftMaterialsLabel.TextTruncate=Enum.TextTruncate.None
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
-    local report="Reborn sturdy-chests-75 · Materials\n"..RemoteCatalog.CraftMaterialReport()
+    local report="Reborn chest-exclusions-76 · Materials\n"..RemoteCatalog.CraftMaterialReport()
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end

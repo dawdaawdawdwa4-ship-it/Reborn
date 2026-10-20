@@ -851,7 +851,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn sturdy-chests-75',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn chest-exclusions-76',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1562,7 +1562,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn sturdy-chests-75 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn chest-exclusions-76 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -1600,6 +1600,63 @@ end)()
  r.PropellerResetButton.Activated:Fire();assert(r.PropellerTotal==0 and r.PropellerLastText()=='none yet')
  enabled=fishing;r.OwnedTools,r.BaitCount,r.PropellerNow=owned,count,clock;updateBoard()
  assert(r.PropellerLabel.Parent==fishingPage and r.PropellerResetButton.Position.Y.Offset>=r.PropellerInfo.Position.Y.Offset+r.PropellerInfo.Size.Y.Offset,'propeller tracking must live under Fishing with non-overlapping controls')
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ local fields={'ChestTargets','ChestSelection','ChestWhole','ChestDiscover','ChestIncludeConveyor','ChestExcludedChests','ChestItems','ChestItem','ChestGoal','ChestAutoBatch','ChestRepeat','ChestStockTarget','ChestProfiles','ChestProfileSlot','ChestSpeed','ChestTravel','ChestScanRange','ChestOrder','OwnedTools','BaitCount'}
+ local old={};for _,field in ipairs(fields) do old[field]=r[field] end
+ local function pos(x) return setmetatable({X=x,Y=0,Z=0},{__sub=function(a,b) return {Magnitude=math.abs(a.X-b.X)} end}) end
+ local oldFind,oldCharacter=workspace.FindFirstChild,player.Character
+ local island={Name='7-island',FindFirstChild=function() return nil end}
+ workspace.FindFirstChild=function(_,name) return name=='Islands' and {FindFirstChild=function(_,key) return key=='7-island' and island end} end
+ player.Character={FindFirstChild=function(_,name) return name=='HumanoidRootPart' and {Position=pos(0)} end,FindFirstChildOfClass=function() return nil end}
+ local a={Name='chestSmall',Parent=island,Position=pos(3),IsA=function(_,class) return class=='BasePart' end}
+ local b={Name=a.Name,Parent=island,Position=pos(5),IsA=a.IsA}
+ local trace,quantity={},0
+ local owner={CanUseChestBinding=function() return true end,WithdrawItems=function(_,amount,binding) table.insert(trace,binding.Chest);quantity+=amount;return true end}
+ local ba={Chest=a,Slot=1,Item='potatoSalad',Amount=30}
+ local bb={Chest=b,Slot=1,Item='potatoSalad',Amount=30}
+ local entries={{Recorder=owner,Binding=ba},{Recorder=owner,Binding=bb}}
+ r.ChestTargets=function() return entries end
+ r.OwnedTools=function() return {{Name='potatoSalad'}} end;r.BaitCount=function() return quantity end
+ r.ChestWhole=false;r.ChestDiscover=false;r.ChestIncludeConveyor=true;r.ChestExcludedChests={};r.ChestItems=nil;r.ChestItem=nil;r.ChestSelection=nil
+ r.ChestGoal=30;r.ChestAutoBatch=30;r.ChestRepeat=false;r.ChestStockTarget=nil
+ r.UpdateChestSelectionUI()
+ assert(not r.ChestExclusionButton.Active,'all-target mode must require an individual chest before exclusion')
+ r.ChestSelectButton.Activated:Fire()
+ local option
+ for _,child in ipairs(r.ChestSelectMenu:GetChildren()[1]:GetChildren()) do if child:IsA('TextButton') and string.find(child.Text,'Chest #1',1,true) then option=child;break end end
+ assert(option,'real chest selector must offer the first physical chest');option.Activated:Fire()
+ assert(r.ChestSelection.Chest==a and r.ChestExclusionButton.Active,'selecting a physical chest must enable its protection control: selected='..tostring(r.ChestSelection.Chest==a)..' active='..tostring(r.ChestExclusionButton.Active)..' auto='..tostring(r.ChestAutoEnabled)..' worker='..tostring(r.ChestAutoWorker)..' busy='..tostring(r.ChestBusy)..' manual='..tostring(r.ChestManualRunning))
+ r.ChestExclusionButton.Activated:Fire()
+ assert(r.ChestIsExcluded(ba) and not r.ChestIsExcluded(bb) and #trace==0 and r.ChestExclusionButton.Text=='Allow selected chest','the real exclude button must protect one instance without a request')
+ assert(string.find(r.ChestSelectButton.Text,'EXCLUDED',1,true) and string.find(r.PreviewChestSelection(),'Explicit exclusions: 1',1,true),'selector and preview must identify excluded chests')
+ r.ChestAutoButton.Activated:Fire()
+ assert(not r.ChestAutoWorker and #trace==0,'Auto Take must not start on an excluded-only selection')
+ r.ChestWithdrawButton.Activated:Fire();stepWorkers()
+ assert(#trace==0 and not r.ChestBusy,'manual withdrawal must not send from an excluded selection')
+ r.ChestQuickButton.Activated:Fire()
+ assert(r.ChestIsExcluded(ba) and r.ChestSelection==nil,'Fast slot setup must retain existing exclusions')
+ r.ChestProfiles={[1]={Version=1,Name='Exclusion preservation',ItemMode='All',Items={},Discover=true,Whole=false,Speed='Standard',Travel='Stay',Range=120,Goal=0,AutoBatch=30,Order='Same stack'}};r.ChestProfileSlot=1
+ assert(r.LoadChestProfile() and r.ChestIsExcluded(ba) and not r.ChestAutoEnabled and #trace==0,'loading a saved profile must preserve physical exclusions and keep collection OFF')
+ r.ChestGoal=30
+ r.ChestAutoButton.Activated:Fire();stepWorkers()
+ assert(#trace==1 and trace[1]==b and r.ChestAutoTotal==30,'All matching must collect an allowed neighbor while keeping the excluded chest untouched')
+ for _,field in ipairs({'ChestAutoEnabled','ChestAutoWorker','ChestBusy','ChestManualRunning'}) do
+  local original=r[field];r[field]=true;r.RefreshChestActions();r.ChestSelection={Chest=a,Slot=1};r.ChestExclusionButton.Activated:Fire()
+  assert(r.ChestIsExcluded(ba) and not r.ChestExclusionButton.Active,'active/manual/cleanup locks must reject even direct exclusion-button events')
+  r[field]=original
+ end
+ r.ChestSelection={Chest=a,Slot=1};r.UpdateChestSelectionUI();r.ChestExclusionButton.Activated:Fire()
+ assert(not r.ChestIsExcluded(ba) and #trace==1 and not r.ChestAutoEnabled,'Allow must restore eligibility without starting collection')
+ assert(r.ChestExclusionPanel.Position.Y.Offset>=r.ChestSelectButton.Position.Y.Offset+r.ChestSelectButton.Size.Y.Offset and r.ChestScopeButton.Position.Y.Offset>=r.ChestExclusionPanel.Position.Y.Offset+r.ChestExclusionPanel.Size.Y.Offset,'protection must fit between chest selection and scope controls')
+ local y=r.ChestExclusionPanel.Position.Y.Offset
+ r.ChestSelectButton.Activated:Fire()
+ assert(r.ChestExclusionPanel.Position.Y.Offset>=r.ChestSelectMenu.Position.Y.Offset+r.ChestSelectMenu.Size.Y.Offset,'open chest selector must push protection below its options')
+ r.CloseMenus();assert(r.ChestExclusionPanel.Position.Y.Offset==y,'closing selector must restore protection layout without drift')
+ for _,field in ipairs(fields) do r[field]=old[field] end
+ workspace.FindFirstChild,player.Character=oldFind,oldCharacter;r.UpdateChestSelectionUI()
  end)()
 
 local lastRecipeOption=RemoteCatalog.CraftRecipeMenu.Options[1]

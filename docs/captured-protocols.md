@@ -801,3 +801,23 @@ second live binding/reach/conveyor check follows any yielding inventory wait.
 Tests exercise failed/ambiguous results, late quantity replication, recovery,
 limits, migration, pause/stop and ordinary batch/remainder behavior. Live server
 error-code compatibility and Roblox behavior remain unverified.
+
+### Explicit physical chest exclusions (chest-exclusions-76)
+
+v76 retains recorder v31, the 146 catalog endpoints and existing learned request
+envelopes. A hub-session weak-key table identifies excluded chest instances;
+it contains no captured arguments or request tokens. Filtering occurs during
+target selection and auto-state creation, and the hub checks the exclusion again
+after yielding approach/inventory work and in its final readiness/replay wrapper.
+The read-only selector/preview can retain protected targets for explanation and
+undo; that path cannot bypass dispatch protection. Cached manual readiness also
+cannot bypass the final check.
+
+Exclusions cover all slots/items of one instance, remain independent of the
+conveyor type preference, and are not overwritten by profiles or quick setup.
+Edits require an idle hub chest worker, a current target and ownership of its
+island. They are neither persisted by coordinates/names nor applied to a new
+replacement instance. A hub reload clears the session list, while existing
+capture bindings and ordinary in-game manual interactions remain available.
+Full regression coverage includes filtering, last-moment rechecks, undo, locks
+and real controls/layout; live Roblox validation remains outstanding.

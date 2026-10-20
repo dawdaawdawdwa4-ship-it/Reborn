@@ -1798,3 +1798,35 @@ regressions cover delayed confirmation, ambiguous transport outcomes, capacity/
 permission failures, slot skipping, bounded metadata recovery, session/range
 changes during waits, pause/stop and manual sweep cleanup. Live Roblox behavior
 remains unverified.
+
+### Exclude individual chests (v76)
+
+**Chest protection · session only** sits below the chest selector in Targets.
+Choose one chest, then press **Exclude selected chest**. The exclusion covers
+that exact physical chest, across all of its slots and item types, for both Auto
+Take and manual hub withdrawal. The selector marks it **EXCLUDED** and keeps it
+available for selection, so **Allow selected chest** can undo the exclusion.
+The count and collection preview show the protection state. Neither button
+starts collection or sends a request.
+
+All learned/All matching scope, generated whole-chest slot probes, repeat scans,
+fixed/Max queues and the final pre-request guard respect the exclusion. Allowed
+neighbors still work, even when they share the same model name. Fast slot setup,
+profile loading and **Conveyor I/O chests: Include** do not remove it. Conversely,
+allowing an excluded chest again does not override Conveyor Skip. Auto/paused
+collection, manual withdrawal and request cleanup lock exclusion edits; forged
+button callbacks are checked as well. The pane moves below inline selector
+options and restores its position when they close.
+
+These are exact-instance exclusions for the current hub session, not saved
+profiles or a persistent island blacklist. They survive a character respawn
+while the same hub stays open. Reloading the hub starts a new exclusion list;
+a destroyed/replaced chest is a different instance, even at the same coordinates.
+No position/name-based match or serialized remote binding is inferred. Learning
+and normal in-game chest interaction outside the hub are unaffected.
+
+Validation covers exact identity and all slots/items, discovered chests, stale
+queue/readiness snapshots, direct request guards, manual sweeps, edit locks,
+undo, ownership, replacement identities, conveyor independence, real buttons,
+preview/selector labels, profile/quick setup preservation and dropdown layout,
+plus the full existing suite. Live Roblox behavior remains unverified.
