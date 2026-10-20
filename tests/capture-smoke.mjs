@@ -387,9 +387,13 @@ game.JobId=nil;assert(capture:CanUseBaitBinding(),'restoring exact live context 
  gamePlayer.UserId=user
  game.JobId='new-server';assert(not capture:WithdrawCarrots(),'server change must invalidate binding');game.JobId=nil
  endpoint.InvokeServer=function() return {success=false} end
- assert(not capture:WithdrawCarrots(),'server rejection must propagate')
+ local ok,result,kind=capture:WithdrawCarrots()
+ assert(not ok and result.success==false and kind=='rejected','server rejection must propagate with a distinct failure origin')
  endpoint.InvokeServer=function() error('network failure') end
- assert(not capture:WithdrawCarrots(),'transport errors must be handled')
+ ok,result,kind=capture:WithdrawCarrots()
+ assert(not ok and string.find(result,'network failure',1,true) and kind=='transport','transport errors must remain distinct from server rejections')
+ ok,result,kind=capture:WithdrawCarrots(0)
+ assert(not ok and kind=='invalid','local input rejection must never look like an empty stack')
  chest.Parent=nil;assert(not capture:CanUseChestBinding(),'removed chest must invalidate binding')
 end)()
 ;(function()
@@ -603,8 +607,14 @@ end)()
  old.CraftBinding.Remote.InvokeServer=function() return true end
  runRecorder()
  local upgraded=environment.RebornCapture
- assert(upgraded~=old and upgraded.Version==30 and upgraded.CraftBindings.bait==upgraded.CraftBinding and upgraded.CraftBinding.Item=='bait','v29 upgrade must retain the exact bait binding in the new recipe catalog')
+ assert(upgraded~=old and upgraded.Version==31 and upgraded.CraftBindings.bait==upgraded.CraftBinding and upgraded.CraftBinding.Item=='bait','v29 upgrade must retain the exact bait binding in the new recipe catalog')
  assert(upgraded:CraftBait(100),'migrated bait request must remain usable for this same character/server')
+ local bindings=upgraded.ChestBindings
+ upgraded.Version=30
+ runRecorder()
+ local latest=environment.RebornCapture
+ assert(latest~=upgraded and latest.Version==31 and latest.ChestBindings==bindings and latest.CraftBindings.bait==latest.CraftBinding,'v30 upgrade must preserve learned chest and crafting bindings while installing failure origins')
+ latest:Stop()
  upgraded:Stop()
  end)()
 return 'Recorder passed: argument/return preservation, filtering, cycles, pause, errors, detached instances, cap, stop, idempotent restart, detached metadata, request IDs'

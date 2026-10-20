@@ -52,7 +52,7 @@ assert(reduced,'remainder fixture must exercise a successful reduced batch')
 -- An accepted response without inventory movement must not imply transfer.
 calls={};inventory=0;RemoteCatalog.WithdrawCarrots=function(amount) table.insert(calls,amount);return true end
 assert(RemoteCatalog.SetChestAuto(true));drain()
-assert(RemoteCatalog.ChestAutoTotal==0 and not RemoteCatalog.ChestAutoEnabled and #calls<=8,'no progress must back off to one and stop after bounded retries')
+assert(RemoteCatalog.ChestAutoTotal==0 and not RemoteCatalog.ChestAutoEnabled and #calls==1,'an accepted but unconfirmed transfer must stop without resending or reducing its batch')
 -- Unreadable quantities send nothing.
 readable=false;calls={}
 assert(RemoteCatalog.SetChestAuto(true));drain()
@@ -238,7 +238,7 @@ assert(inventory==5 and RemoteCatalog.ChestAutoItems.wood==5,'new run must reset
 RemoteCatalog.ChestGoal=1;inventory=0;calls={}
 RemoteCatalog.WithdrawCarrots=function(amount) table.insert(calls,amount);return true end
 assert(RemoteCatalog.SetChestAuto(true));drain()
-assert(#calls==3 and RemoteCatalog.ChestAutoTotal==0 and next(RemoteCatalog.ChestAutoItems)==nil,'goal still requires inventory confirmation and bounded no-progress retries')
+assert(#calls==1 and RemoteCatalog.ChestAutoTotal==0 and next(RemoteCatalog.ChestAutoItems)==nil,'goals require inventory confirmation and must not replay an accepted but unconfirmed transfer')
 -- A goal is shared by mixed items, rather than applied separately to each.
 RemoteCatalog.ChestGoal=6;quantities.wood=0;quantities.stone=0;calls={}
 RemoteCatalog.SelectedChestTargets=function() return {
@@ -277,7 +277,7 @@ do
  local fast,_,count,total=run('Fast',true)
  assert(standard>fast and count==2 and total==60,'Fast must reduce waits for the same two confirmed batches')
  local _,polls,unconfirmed,total=run('Fast',false)
- assert(unconfirmed==3 and total==0 and polls>=60,'Fast must retain the full two-second confirmation window and bounded no-progress attempts')
+ assert(unconfirmed==1 and total==0 and polls>=50,'Fast must retain the five-second confirmation window without replaying an unconfirmed transfer')
  -- A running worker keeps its captured pace even if external code changes the preference.
  RemoteCatalog.ChestSpeed='Standard';RemoteCatalog.ChestGoal=60;inventory=0;waits={}
  RemoteCatalog.WithdrawCarrots=function(amount) inventory+=amount;return true end
@@ -313,7 +313,7 @@ do
  RemoteCatalog.SelectedChestTargets=function() return {{Recorder=recorder,Binding={Chest=salad,Slot=8,Item='potatoSalad',Amount=17}}} end
  RemoteCatalog.WithdrawCarrots=function(amount) table.insert(sent,amount);amounts.carrotHarvested+=amount;return true end
  assert(RemoteCatalog.SetChestAuto(true));drain()
- assert(#sent==3 and RemoteCatalog.ChestAutoTotal==0 and RemoteCatalog.ChestAutoItems.potatoSalad==nil,'only salad inventory growth can confirm a salad withdrawal')
+ assert(#sent==1 and RemoteCatalog.ChestAutoTotal==0 and RemoteCatalog.ChestAutoItems.potatoSalad==nil,'only salad inventory growth can confirm a salad withdrawal; wrong-item growth must not cause retries')
 end
 -- A first food tool can replicate before its stack quantity becomes readable.
 do
@@ -348,7 +348,7 @@ do
  task.wait=oldWait -- quantity deliberately never becomes readable
  assert(RemoteCatalog.SetChestAuto(true));drain()
  assert(#sent==1 and quantity==1 and RemoteCatalog.ChestAutoTotal==0 and not RemoteCatalog.ChestAutoWorker,'permanently missing quantity must not permit a second withdrawal')
- assert(string.find(RemoteCatalog.ChestLastDetail,'within 2 seconds',1,true),'timeout must explain why the one-item probe could not continue')
+ assert(string.find(RemoteCatalog.ChestLastDetail,'within 5 seconds',1,true),'timeout must explain why the one-item probe could not continue')
  -- Stop during metadata confirmation must prevent all late counts and follow-up requests.
  stock=17;quantity=0;hasTool=false;ready=true;sent={}
  assert(RemoteCatalog.SetChestAuto(true) and #sent==1 and not ready)
@@ -413,7 +413,7 @@ do
  prepare(49)
  RemoteCatalog.WithdrawCarrots=function(amount) table.insert(requests,amount);qty.wood+=amount;return true end
  assert(RemoteCatalog.SetChestAuto(true));drain()
- assert(#requests==6 and qty.potatoSalad==49 and RemoteCatalog.ChestAutoTotal==0,'top-up still needs exact item confirmation and bounded retries for each selected slot')
+ assert(#requests==1 and qty.potatoSalad==49 and RemoteCatalog.ChestAutoTotal==0,'top-up must stop an unconfirmed transfer instead of retrying other slots or attributing unrelated items')
  prepare(nil)
  assert(RemoteCatalog.SetChestAuto(true));drain()
  assert(#requests==0 and approaches==0 and string.find(RemoteCatalog.ChestLastDetail,'Cannot read',1,true),'unreadable inventory must stop before top-up navigation or withdrawal')

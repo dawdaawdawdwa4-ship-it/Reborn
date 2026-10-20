@@ -499,13 +499,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 30 and previous.Resume then
+if previous and previous.Version == 31 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 30, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 31, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -1050,24 +1050,25 @@ function capture:MakeChestTarget(binding,chest,slot)
     return target
 end
 function capture:WithdrawCarrots(amount,binding)
-    if not self:CanUseChestBinding(binding) then return false,"Learn an item withdrawal on this character first" end
+    if not self:CanUseChestBinding(binding) then return false,"Learn an item withdrawal on this character first","context" end
     local b=binding or self.ChestBinding
     amount=amount==nil and b.Amount or amount
-    if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount" end
+    if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount","invalid" end
     local args=cloneArguments(b.Args)
     local body=args[1]
-    if type(body)~="table" then return false,"Learn this chest withdrawal again" end
+    if type(body)~="table" then return false,"Learn this chest withdrawal again","context" end
     if body.chest~=b.Chest then
         for _,value in pairs(body) do
             if type(value)=="table" and value.chest==b.Chest and value.action=="withdraw" then body=value;break end
         end
     end
-    if body.chest~=b.Chest or body.action~="withdraw" or body.item~=(b.Item or "carrotHarvested") then return false,"Learn this chest withdrawal again" end
+    if body.chest~=b.Chest or body.action~="withdraw" or body.item~=(b.Item or "carrotHarvested") then return false,"Learn this chest withdrawal again","context" end
     -- Apply the selected slot and count to the cloned body; retain the learned session envelope.
     body.amount=amount
     body.slot=b.Slot
     local ok,result=pcall(function() return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n)) end)
-    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    if not ok then return false,result,"transport" end
+    if result==false or type(result)=="table" and result.success==false then return false,result,"rejected" end
     return true,result
 end
 capture.WithdrawItems=capture.WithdrawCarrots
@@ -2922,7 +2923,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "craft-materials-74",
+    Subtitle = "sturdy-chests-75",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3413,7 +3414,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn craft-materials-74",
+    return table.concat({"Reborn sturdy-chests-75",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5224,7 +5225,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn craft-materials-74 · Propeller tracker",
+    return table.concat({"Reborn sturdy-chests-75 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -5249,7 +5250,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn craft-materials-74", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn sturdy-chests-75", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6867,11 +6868,11 @@ function RemoteCatalog.WithdrawCarrots(amount,recorder,binding)
         binding=target and target.Binding
     end
     if not recorder or not recorder.CanUseChestBinding or not recorder:CanUseChestBinding(binding) then
-        return false,"Learn an item withdrawal on this character first"
+        return false,"Learn an item withdrawal on this character first","context"
     end
     binding=binding or recorder.ChestBinding
     local ready,reason=RemoteCatalog.ChestRequestReady(binding)
-    if not ready then return false,reason end
+    if not ready then return false,reason,"blocked" end
     return (recorder.WithdrawItems or recorder.WithdrawCarrots)(recorder,amount or (RemoteCatalog.ChestAmount=="Learned" and binding.Amount or RemoteCatalog.ChestAmount),binding)
 end
 function RemoteCatalog.ChestResultText(value)
@@ -7023,8 +7024,14 @@ function RemoteCatalog.WithdrawSelectedCarrots(generation)
                 end
                 if not gui.Parent or generation and RemoteCatalog.ChestManualGeneration~=generation then return false,"Withdrawal stopped" end
                 local gap=RemoteCatalog.MarkChestRequest()
-                ran,ok,result=pcall(RemoteCatalog.WithdrawCarrots,nil,entry.Recorder,entry.Binding)
-                if not ran then ok,result=false,ok end
+                local origin
+                ran,ok,result,origin=pcall(RemoteCatalog.WithdrawCarrots,nil,entry.Recorder,entry.Binding)
+                if not ran then ok,result,origin=false,ok,"transport" end
+                local kind=RemoteCatalog.ChestFailureKind(result,origin)
+                if not ok and kind~="amount" and kind~="skip" and kind~="rate" then
+                    RemoteCatalog.ObserveChestPace(false,nil,pause)
+                    return false,"Withdrawal stopped at check "..i.."/"..#targets.."; "..sent.." earlier requests sent. Check inventory/result before restarting. "..RemoteCatalog.ChestResultText(result)
+                end
                 if ok or not RemoteCatalog.ChestTooFast(result) then
                     if ran then RemoteCatalog.ObserveChestPace(ok,result,pause,gap) else RemoteCatalog.ObserveChestPace(false,nil,pause) end
                     break
@@ -7214,20 +7221,21 @@ function RemoteCatalog.CarrotCount(item)
     end
     return total
 end
-function RemoteCatalog.WaitChestInventory(item,active,previous)
+function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
     local count,reason=RemoteCatalog.CarrotCount(item)
-    for attempt=0,20 do
+    local attempts=math.floor((timeout or 2)*10+.5)
+    for attempt=0,attempts do
         if not active() then return nil,"cancelled" end
         -- Missing metadata can settle; malformed numbers must never be accepted.
         if reason~="pending" and (count==nil or previous==nil or count>previous) then return count,reason end
-        if attempt==20 then return count,reason end
+        if attempt==attempts then return count,reason end
         task.wait(.1)
         count,reason=RemoteCatalog.CarrotCount(item)
     end
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn craft-materials-74\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn sturdy-chests-75\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -7257,6 +7265,30 @@ function RemoteCatalog.ChestTooFast(response)
     end
     return check(response,0)
 end
+-- Distinguish retryable batch rejection from an unknown transfer outcome.
+function RemoteCatalog.ChestFailureKind(response,origin)
+    if origin=="transport" or origin=="context" or origin=="invalid" or origin=="blocked" then return origin end
+    if RemoteCatalog.ChestTooFast(response) then return "rate" end
+    local seen={}
+    local priority={amount=1,skip=2,context=3,capacity=4}
+    local result="unknown"
+    local function record(kind) if (priority[kind] or 0)>(priority[result] or 0) then result=kind end end
+    local function inspect(value,depth)
+        if type(value)=="string" then
+            local code=value:match("^%s*(.-)%s*$"):upper():gsub("[%s%-]+","_")
+            if code=="INVENTORY_FULL" or code=="BACKPACK_FULL" or code=="NO_SPACE" or code=="NOT_ENOUGH_SPACE" or code=="NOT_ENOUGH_INVENTORY_SPACE" then record("capacity")
+            elseif code=="NO_PERMISSION" or code=="PERMISSION_DENIED" or code=="UNAUTHORIZED" or code=="FORBIDDEN" or code=="INVALID_CONTEXT" or code=="INVALID_SESSION" or code=="EXPIRED_SESSION" then record("context")
+            elseif code=="INVALID_SLOT" or code=="EMPTY_SLOT" or code=="SLOT_EMPTY" or code=="ITEM_MISMATCH" or code=="INVALID_ITEM" then record("skip")
+            elseif code=="EMPTY" or code=="EMPTY_OR_INSUFFICIENT" or code=="AMOUNT_TOO_LARGE" or code=="BATCH_TOO_LARGE" or code=="INSUFFICIENT" or code=="INSUFFICIENT_ITEMS" or code=="INSUFFICIENT_STOCK" or code=="INSUFFICIENT_SALAD" or code:match("^NOT_ENOUGH_ITEMS") or code:match("^NOT_ENOUGH_CARROTS") then record("amount") end
+        elseif type(value)=="table" and depth<=3 and not seen[value] then
+            seen[value]=true
+            for _,key in ipairs({"error","code","reason","message","value"}) do inspect(value[key],depth+1) end
+        end
+    end
+    inspect(response,0)
+    return result
+end
+
 -- Measure spacing between attempts, including request/confirmation time.
 function RemoteCatalog.MarkChestRequest()
     if RemoteCatalog.PropellerWindow then RemoteCatalog.PropellerWindow.Blocked=true end
@@ -7359,6 +7391,9 @@ function RemoteCatalog.RefreshChestActions()
         local learning=RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnChestOnly
         RemoteCatalog.ChestIntro.Text=cleanup and "Stopping · waiting for the current request"
             or paused and (RemoteCatalog.ChestBusy and "Pausing · finishing current request" or "Paused · Resume continues this run; Stop ends it")
+            or auto and RemoteCatalog.ChestInventoryWaiting and ("Waiting for "..RemoteCatalog.ChestInventoryWaiting.." quantity · no new request sent")
+            or auto and RemoteCatalog.ChestRequestPending and ("Waiting for server · "..RemoteCatalog.ChestRequestPending.." · request still in flight")
+            or auto and RemoteCatalog.ChestConfirming and ("Confirming "..RemoteCatalog.ChestConfirming.." · no next request until inventory settles")
             or auto and RemoteCatalog.ChestReachWaiting and (RemoteCatalog.ChestTravel=="Walk" and "Waiting · no reachable selected chest; see result" or "Waiting · stand within 20 studs or choose Walk")
             or RemoteCatalog.ChestCooldown and ((RemoteCatalog.ChestCooldownKind=="pace" and "Request pace" or "Server cooldown").." · "..RemoteCatalog.ChestCooldown..(auto and " · "..tostring(RemoteCatalog.ChestAutoTotal or 0).." collected" or ""))
             or manual and ("Withdrawing · "..(RemoteCatalog.ChestManualProgress or "starting"))
@@ -7394,6 +7429,8 @@ function RemoteCatalog.SetChestAuto(state)
         RemoteCatalog.Navigation.Stop("Chest")
         RemoteCatalog.ChestAutoEnabled=false
         RemoteCatalog.ChestAutoPaused=false
+        RemoteCatalog.ChestConfirming=nil
+        RemoteCatalog.ChestInventoryWaiting=nil
         RemoteCatalog.ChestCooldown=nil;RemoteCatalog.ChestCooldownKind=nil
         RemoteCatalog.ChestRepeatWaiting=false;RemoteCatalog.ChestReachWaiting=false
         RemoteCatalog.ChestNextScan=nil
@@ -7443,6 +7480,7 @@ function RemoteCatalog.SetChestAuto(state)
         local completed=false
         local goalReached=false
         local stockMet=false
+        local stoppedOutcome=nil
         local function active()
             return gui.Parent~=nil and RemoteCatalog.ChestAutoEnabled and RemoteCatalog.ChestAutoGeneration==generation
         end
@@ -7454,6 +7492,15 @@ function RemoteCatalog.SetChestAuto(state)
             return active()
         end
         local function moving() return active() and not RemoteCatalog.ChestAutoPaused end
+        local function inventoryUnavailable(state,reason)
+            if reason~="pending" then RemoteCatalog.ChestAutoMessage("Cannot read item inventory count. No new withdrawal sent.");return false end
+            state.InventoryRetries=(state.InventoryRetries or 0)+1
+            if state.InventoryRetries>=3 then RemoteCatalog.ChestAutoMessage("Cannot read item inventory count after three checks. No new withdrawal sent; let inventory settle, then restart.");return false end
+            state.Waiting=true;state.InventoryWaiting=true
+            RemoteCatalog.ChestInventoryWaiting=tostring(state.Binding.Item or "carrotHarvested");RemoteCatalog.RefreshChestActions()
+            RemoteCatalog.ChestAutoMessage("Waiting for "..tostring(state.Binding.Item or "carrotHarvested").." quantity · check "..state.InventoryRetries.."/3. No withdrawal sent; other readable items can continue.")
+            return true
+        end
         local function paced(base)
             local delay=math.max(base,RemoteCatalog.ChestRateDelay or 0)
             if delay>base then return RemoteCatalog.WaitChestInterval(delay,active,ready,"pace") end
@@ -7523,11 +7570,15 @@ function RemoteCatalog.SetChestAuto(state)
                     continue
                 end
                 if waiting>0 and waiting==#states-finished then
-                    RemoteCatalog.ChestReachWaiting=true
+                    local inventoryWaits=0
+                    for _,state in ipairs(states) do if state.Waiting and state.InventoryWaiting then inventoryWaits+=1 end end
+                    RemoteCatalog.ChestReachWaiting=inventoryWaits==0
+                    RemoteCatalog.ChestInventoryWaiting=inventoryWaits>0 and "selected items" or nil
                     RemoteCatalog.RefreshChestActions()
-                    RemoteCatalog.ChestAutoMessage((RemoteCatalog.ChestTravel=="Walk" and "No selected chest can currently be reached. Check your character, path and Walk range." or "No selected chest is within reach. Stay sends only within 20 studs; move closer or choose Movement: Walk. Walk range controls walking only.").."\nRescanning in 1s. "..RemoteCatalog.ChestAutoTotal.." confirmed items; no withdrawal sent while waiting.")
+                    if inventoryWaits>0 then RemoteCatalog.ChestAutoMessage("Waiting for inventory metadata · "..inventoryWaits.." selected checks need a readable quantity. Rescanning in 1s; no withdrawal sent for these checks.")
+                    else RemoteCatalog.ChestAutoMessage((RemoteCatalog.ChestTravel=="Walk" and "No selected chest can currently be reached. Check your character, path and Walk range." or "No selected chest is within reach. Stay sends only within 20 studs; move closer or choose Movement: Walk. Walk range controls walking only.").."\nRescanning in 1s. "..RemoteCatalog.ChestAutoTotal.." confirmed items; no withdrawal sent while waiting.") end
                     task.wait(1)
-                    for _,state in ipairs(states) do state.Waiting=false end
+                    for _,state in ipairs(states) do state.Waiting=false;state.InventoryWaiting=false end
                     RemoteCatalog.ChestReachWaiting=false
                     continue
                 end
@@ -7556,6 +7607,7 @@ function RemoteCatalog.SetChestAuto(state)
                 end
                 local state=states[index]
                 if state.Done or state.Waiting then continue end
+                RemoteCatalog.ChestInventoryWaiting=nil
                 local recorder,binding=state.Recorder,state.Binding
                 local target="Chest #"..tostring(chestNumbers[binding.Chest] or index).." · slot "..tostring(binding.Slot or "?").." · "..tostring(binding.Item or "carrotHarvested")
                 if not recorder:CanUseChestBinding(binding) then
@@ -7569,10 +7621,12 @@ function RemoteCatalog.SetChestAuto(state)
                     local current,quantityState=RemoteCatalog.CarrotCount(binding.Item)
                     if current==nil and quantityState=="pending" then
                         RemoteCatalog.ChestAutoMessage("Waiting for "..tostring(binding.Item or "carrotHarvested").." inventory quantity before top-up…")
-                        current=RemoteCatalog.WaitChestInventory(binding.Item,active)
+                        RemoteCatalog.ChestInventoryWaiting=tostring(binding.Item or "carrotHarvested");RemoteCatalog.RefreshChestActions()
+                        current,quantityState=RemoteCatalog.WaitChestInventory(binding.Item,active)
+                        RemoteCatalog.ChestInventoryWaiting=nil
                         if not active() then break end
                     end
-                    if current==nil then RemoteCatalog.ChestAutoMessage("Cannot read item inventory count. Use manual withdrawal.");break end
+                    if current==nil then if inventoryUnavailable(state,quantityState) then continue else break end end
                     if current>=stockTarget then
                         state.Done=true
                         RemoteCatalog.ChestAutoMessage("Top-up already satisfied: "..tostring(binding.Item or "carrotHarvested").." "..current.."/"..stockTarget..". No approach or withdrawal needed.")
@@ -7590,7 +7644,7 @@ function RemoteCatalog.SetChestAuto(state)
                 end
                 if not reached then
                     currentChest=nil;preferredSlot=nil
-                    for _,candidate in ipairs(states) do if candidate.Binding.Chest==binding.Chest and not candidate.Done then candidate.Waiting=true end end
+                    for _,candidate in ipairs(states) do if candidate.Binding.Chest==binding.Chest and not candidate.Done then candidate.Waiting=true;candidate.InventoryWaiting=false end end
                     RemoteCatalog.ChestAutoMessage(target.." waiting: "..tostring(reason))
                     continue
                 end
@@ -7598,29 +7652,49 @@ function RemoteCatalog.SetChestAuto(state)
                 local before,quantityState=RemoteCatalog.CarrotCount(binding.Item)
                 if before==nil and quantityState=="pending" then
                     RemoteCatalog.ChestAutoMessage("Waiting for "..tostring(binding.Item or "carrotHarvested").." inventory quantity before withdrawal…")
-                    before=RemoteCatalog.WaitChestInventory(binding.Item,active)
+                    RemoteCatalog.ChestInventoryWaiting=tostring(binding.Item or "carrotHarvested");RemoteCatalog.RefreshChestActions()
+                    before,quantityState=RemoteCatalog.WaitChestInventory(binding.Item,active)
+                    RemoteCatalog.ChestInventoryWaiting=nil
                     if not active() then break end
                 end
                 if before==nil then
-                    RemoteCatalog.ChestAutoMessage("Cannot read item inventory count. Use manual withdrawal.")
-                    break
+                    if inventoryUnavailable(state,quantityState) then continue else break end
                 end
+                state.InventoryRetries=0;state.InventoryWaiting=false
                 -- Resume rechecks reach and live inventory, rather than using a pre-pause count.
                 if RemoteCatalog.ChestAutoPaused then preferredSlot=index;continue end
                 -- Approach can yield while another action changes inventory. Recheck now.
                 if stockTarget and before>=stockTarget then state.Done=true;continue end
+                -- Inventory replication can yield after approach. Recheck the live
+                -- session and interaction range before acquiring the request lock.
+                if not recorder:CanUseChestBinding(binding) then state.Done=true;RemoteCatalog.ChestAutoMessage("Skipping "..target..": learn this chest again.");continue end
+                if RemoteCatalog.ChestConveyorProtected(binding) then state.Done=true;continue end
+                if RemoteCatalog.ChestRequestReady then
+                    local allowed,why=RemoteCatalog.ChestRequestReady(binding)
+                    if not allowed then
+                        state.Waiting=true;state.InventoryWaiting=false;preferredSlot=nil
+                        RemoteCatalog.ChestAutoMessage(target.." waiting: "..tostring(why))
+                        continue
+                    end
+                end
                 RemoteCatalog.ChestBusy=true;ownsBusy=true
                 local amount=goal and math.min(state.Amount,goal-RemoteCatalog.ChestAutoTotal) or state.Amount
                 if stockTarget then amount=math.min(amount,stockTarget-before) end
                 state.Amount=amount
                 RemoteCatalog.ChestAutoMessage("Taking "..amount.." × "..tostring(binding.Item or "carrotHarvested").."\n"..target.."\nWaiting for inventory confirmation…")
                 local gap=RemoteCatalog.MarkChestRequest()
-                local ran,sent,response=pcall(RemoteCatalog.WithdrawCarrots,amount,recorder,binding)
+                RemoteCatalog.ChestRequestPending=tostring(binding.Item or "carrotHarvested");RemoteCatalog.RefreshChestActions()
+                local ran,sent,response,origin=pcall(RemoteCatalog.WithdrawCarrots,amount,recorder,binding)
+                RemoteCatalog.ChestRequestPending=nil
                 if not active() then break end
-                if not ran then sent,response=false,sent end
+                if not ran then sent,response,origin=false,sent,"transport" end
+                local kind=RemoteCatalog.ChestFailureKind(response,origin)
                 local after,afterState
-                if sent then after,afterState=RemoteCatalog.WaitChestInventory(binding.Item,active,before)
-                else after,afterState=RemoteCatalog.CarrotCount(binding.Item) end
+                if sent then
+                    RemoteCatalog.ChestConfirming=tostring(binding.Item or "carrotHarvested");RemoteCatalog.RefreshChestActions()
+                    after,afterState=RemoteCatalog.WaitChestInventory(binding.Item,active,before,5)
+                    RemoteCatalog.ChestConfirming=nil
+                else after=before end
                 RemoteCatalog.ChestBusy=false;ownsBusy=false
                 if not active() then break end
                 if not sent and RemoteCatalog.ChestTooFast(response) then
@@ -7633,10 +7707,23 @@ function RemoteCatalog.SetChestAuto(state)
                     continue
                 end
                 state.RateRetries=0
+                if not sent and kind~="amount" then
+                    if kind=="skip" then
+                        state.Done=true;preferredSlot=nil
+                        RemoteCatalog.ChestAutoMessage("Skipping "..target..": "..RemoteCatalog.ChestResultText(response)..". Other selected slots can continue.")
+                        if not paced(retryPause) then return end
+                        continue
+                    end
+                    stoppedOutcome=kind=="transport" and "Needs review" or "Blocked"
+                    RemoteCatalog.ObserveChestPace(false,nil,successPause)
+                    RemoteCatalog.ChestAutoMessage(target..": "..(kind=="transport" and "Transfer outcome unknown; request will not be replayed. Check inventory before restarting." or kind=="capacity" and "Inventory has no space; clear space before restarting. Batch was not reduced." or kind=="context" and "Chest permission/session changed; learn a fresh withdrawal before restarting." or "Withdrawal rejected; batch kept and run stopped. Check the result before restarting.").."\n"..RemoteCatalog.ChestResultText(response))
+                    return
+                end
                 if ran then RemoteCatalog.ObserveChestPace(sent,response,successPause,gap) else RemoteCatalog.ObserveChestPace(false,nil,successPause) end
-                if after==nil then
-                    RemoteCatalog.ChestAutoMessage(afterState=="pending" and ("The "..tostring(binding.Item or "carrotHarvested").." stack quantity did not become readable within 2 seconds. No further requests were sent; let inventory settle and try again.") or "Item count became unreadable; automatic withdrawal stopped.")
-                    break
+                if sent and (after==nil or after<=before) then
+                    stoppedOutcome="Needs review"
+                    RemoteCatalog.ChestAutoMessage(target..": "..(afterState=="pending" and "Quantity did not become readable within 5 seconds." or after==nil and "Item quantity became invalid or unreadable." or "No inventory gain confirmed within 5 seconds.").." No further requests sent and batch not reduced. Check inventory before restarting.\n"..RemoteCatalog.ChestResultText(response))
+                    return
                 end
                 local gained=math.max(0,after-before)
                 if sent and gained>0 then
@@ -7656,7 +7743,7 @@ function RemoteCatalog.SetChestAuto(state)
                         state.Amount=state.Maximum
                     end
                     state.NoProgress=0;state.Probe=false
-                    for _,candidate in ipairs(states) do candidate.Waiting=false end
+                    for _,candidate in ipairs(states) do candidate.Waiting=false;candidate.InventoryWaiting=false end
                     preferredSlot=index -- Same-stack mode retains its v60 continuation.
                     if balanced then preferredSlot=nil;currentChest=nil end
                     if not paced(successPause) then return end
@@ -7680,12 +7767,15 @@ function RemoteCatalog.SetChestAuto(state)
         if ownsBusy then RemoteCatalog.ChestBusy=false end
         RemoteCatalog.ChestRepeatWaiting=false;RemoteCatalog.ChestReachWaiting=false
         RemoteCatalog.ChestAutoPaused=false
+        RemoteCatalog.ChestConfirming=nil
+        RemoteCatalog.ChestInventoryWaiting=nil
         RemoteCatalog.ChestCooldown=nil;RemoteCatalog.ChestCooldownKind=nil
         RemoteCatalog.ChestAutoWorker=nil
+        RemoteCatalog.ChestRequestPending=nil
         RemoteCatalog.ChestNextScan=nil
         RemoteCatalog.RefreshChestActions()
         if gui.Parent then
-            local outcome=not ok and "Failed" or goalReached and "Goal reached" or stockMet and "Inventory targets met" or completed and "Pass finished" or "Stopped"
+            local outcome=not ok and "Failed" or stoppedOutcome or goalReached and "Goal reached" or stockMet and "Inventory targets met" or completed and "Pass finished" or "Stopped"
             RemoteCatalog.RecordChestRun(outcome,RemoteCatalog.ChestAutoTotal,RemoteCatalog.ChestAutoItems,goal,stockTarget)
         end
         if RemoteCatalog.ChestAutoGeneration==generation then
@@ -7693,7 +7783,7 @@ function RemoteCatalog.SetChestAuto(state)
             if not ok then RemoteCatalog.ChestAutoMessage("Auto withdraw stopped: "..RemoteCatalog.ChestResultText(failure))
             elseif goalReached then RemoteCatalog.ChestAutoMessage("Goal reached: "..RemoteCatalog.ChestAutoTotal.." items collected. Remaining slots were not checked.",COLORS.good)
             elseif stockMet then RemoteCatalog.ChestAutoMessage("Inventory targets met: at least "..stockTarget.." of each selected item. Collected "..RemoteCatalog.ChestAutoTotal.." items this run.",COLORS.good)
-            elseif completed then RemoteCatalog.ChestAutoMessage("Pass finished: "..RemoteCatalog.ChestAutoTotal.." items collected. All "..#states.." selected slot checks finished; empty or unconfirmed slots were skipped.\nLast result: "..tostring(RemoteCatalog.ChestResultLabel.Text),COLORS.good) end
+            elseif completed then RemoteCatalog.ChestAutoMessage("Pass finished: "..RemoteCatalog.ChestAutoTotal.." items collected. All "..#states.." selected slot checks finished; empty, mismatched or unavailable slots were skipped.\nLast result: "..tostring(RemoteCatalog.ChestResultLabel.Text),COLORS.good) end
             if stockTarget and completed and not stockMet then RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestResultLabel.Text.."\nSome selected items remain below "..stockTarget.."; empty, unavailable or unconfirmed checks were skipped.") end
             local names,totals={},{}
             for item in pairs(RemoteCatalog.ChestAutoItems) do table.insert(names,item) end
@@ -7736,7 +7826,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn craft-materials-74\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn sturdy-chests-75\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -8329,7 +8419,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn craft-materials-74 · Craft diagnostics",
+    return table.concat({"Reborn sturdy-chests-75 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -8399,7 +8489,7 @@ RemoteCatalog.CraftMaterialsLabel=label({Parent=RemoteCatalog.CraftMaterialsView
 RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsLabel.AutomaticSize=Enum.AutomaticSize.Y;RemoteCatalog.CraftMaterialsLabel.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.CraftMaterialsLabel.TextTruncate=Enum.TextTruncate.None
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
-    local report="Reborn craft-materials-74 · Materials\n"..RemoteCatalog.CraftMaterialReport()
+    local report="Reborn sturdy-chests-75 · Materials\n"..RemoteCatalog.CraftMaterialReport()
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end

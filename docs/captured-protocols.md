@@ -775,3 +775,29 @@ No material withdrawal or crafting request is dispatched by refresh/copy. Client
 data may omit server-only costs and requirements, so this estimate does not
 establish server craftability. Full test coverage includes costs, modes,
 ambiguity, preservation and real controls; live Roblox remains unverified.
+
+### Chest failure origins and confirmation (sturdy-chests-75)
+
+Recorder v31 adds a third, local return value to the chest replay adapter:
+`transport`, `rejected`, `context` or `invalid`. Existing callers can continue
+using the boolean/result pair. v30 bindings and capture history are migrated;
+learned arguments, tokens, item, slot, amount validation and endpoint catalog
+(146 entries) are unchanged. This origin is adapter metadata, not a new server
+field. The hub's own reach/ownership/conveyor guard returns `blocked` locally.
+
+Automatic collection resizes only recognized amount/stock rejections, retains
+same-batch TOO_FAST handling, and skips explicit slot/item mismatches. Capacity,
+context, unknown rejection and transport failure end the run without replay or
+batch reduction. An accepted request without exact-item inventory confirmation
+also ends as Needs review, since it cannot establish whether the transfer was
+applied. The inventory confirmation budget is five seconds after the call returns;
+observed gains still complete immediately. No network timeout or server-side
+transaction status is inferred. Manual sweep failures likewise stop further
+slots when the result needs attention.
+
+Transient unreadable pre-request metadata has three bounded checks; no request is
+sent for an unreadable target, and unrelated readable targets can continue. A
+second live binding/reach/conveyor check follows any yielding inventory wait.
+Tests exercise failed/ambiguous results, late quantity replication, recovery,
+limits, migration, pause/stop and ordinary batch/remainder behavior. Live server
+error-code compatibility and Roblox behavior remain unverified.

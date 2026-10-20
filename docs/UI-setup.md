@@ -1754,3 +1754,47 @@ costs and inventory, output rounding, all three modes, active frozen progress,
 unknown data, catalog preservation, real refresh/copy controls and dropdown
 layout, plus the full regression suite. Live Roblox material schemas and UI
 remain unverified.
+
+### Sturdier chest collection (v75)
+
+Auto Take now distinguishes a rejected batch from an uncertain transfer. Only
+recognized empty/insufficient/oversized-batch responses reduce the requested
+amount. **TOO_FAST** retains its bounded same-batch retries and learned pacing.
+An invalid/empty slot or item mismatch is skipped once, allowing other selected
+slots to continue. Full inventory, changed session/permissions and unknown
+rejections stop with the server result and keep the batch size. A transport
+exception also stops: the server may already have moved items, so the request is
+not replayed automatically. Manual withdrawal stops its sweep on these failures
+and reports how many earlier requests were sent.
+
+An accepted Auto Take request gets up to **five seconds after the server call
+returns** for a readable increase of that exact item's inventory. Confirmation
+returns immediately when the increase appears; successful transfers acquire no
+extra fixed delay. If the item never increases or becomes unreadable, the run
+ends as **Needs review**, with previously confirmed totals retained. It does not
+shrink the batch, retry the accepted request or move on to other slots. Check
+inventory before restarting because later replication may still arrive. Another
+item's increase does not confirm the requested item.
+
+Before dispatch, temporarily missing stack metadata is retried for up to three
+two-second checks, with a one-second rescan when all remaining checks are waiting.
+Readable items may continue while an unreadable target waits. Persistent missing
+metadata stops without sending a request for that target. Malformed quantities
+remain immediate failures. Session, conveyor exclusion and normal 20-stud reach
+are checked again after any inventory wait. Moving away defers the check while
+preserving the batch; moving back resumes it.
+
+The action status distinguishes **Waiting for server** from **Confirming item**.
+Pause allows an already-sent transfer to finish confirmation, while holding new
+work. Stop prevents follow-up requests and ignores late inventory credit. An
+in-flight server call keeps its lock until it returns, including after Stop;
+the five-second inventory window is not a network-call timeout. Conveyor I/O
+**Skip** remains the default, and normal Same stack/Balance chests, Max growth,
+fixed batches, goals, repeat and top-up behavior are retained.
+
+Recorder v31 preserves learned bindings from v30 and adds a local failure-origin
+return value for chest requests; it changes no wire envelope or endpoint. Full
+regressions cover delayed confirmation, ambiguous transport outcomes, capacity/
+permission failures, slot skipping, bounded metadata recovery, session/range
+changes during waits, pause/stop and manual sweep cleanup. Live Roblox behavior
+remains unverified.

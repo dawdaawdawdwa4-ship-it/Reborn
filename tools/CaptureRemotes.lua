@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 30 and previous.Resume then
+if previous and previous.Version == 31 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 30, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 31, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -559,24 +559,25 @@ function capture:MakeChestTarget(binding,chest,slot)
     return target
 end
 function capture:WithdrawCarrots(amount,binding)
-    if not self:CanUseChestBinding(binding) then return false,"Learn an item withdrawal on this character first" end
+    if not self:CanUseChestBinding(binding) then return false,"Learn an item withdrawal on this character first","context" end
     local b=binding or self.ChestBinding
     amount=amount==nil and b.Amount or amount
-    if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount" end
+    if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount","invalid" end
     local args=cloneArguments(b.Args)
     local body=args[1]
-    if type(body)~="table" then return false,"Learn this chest withdrawal again" end
+    if type(body)~="table" then return false,"Learn this chest withdrawal again","context" end
     if body.chest~=b.Chest then
         for _,value in pairs(body) do
             if type(value)=="table" and value.chest==b.Chest and value.action=="withdraw" then body=value;break end
         end
     end
-    if body.chest~=b.Chest or body.action~="withdraw" or body.item~=(b.Item or "carrotHarvested") then return false,"Learn this chest withdrawal again" end
+    if body.chest~=b.Chest or body.action~="withdraw" or body.item~=(b.Item or "carrotHarvested") then return false,"Learn this chest withdrawal again","context" end
     -- Apply the selected slot and count to the cloned body; retain the learned session envelope.
     body.amount=amount
     body.slot=b.Slot
     local ok,result=pcall(function() return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n)) end)
-    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    if not ok then return false,result,"transport" end
+    if result==false or type(result)=="table" and result.success==false then return false,result,"rejected" end
     return true,result
 end
 capture.WithdrawItems=capture.WithdrawCarrots
