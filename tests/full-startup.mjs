@@ -851,7 +851,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn recipe-tracking-73',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn craft-materials-74',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1527,8 +1527,8 @@ end)()
 
 ;(function()
  local r=RemoteCatalog
- local cache,catalog,status,item=r.ModuleCache,r.CraftCatalog,r.CraftCatalogStatus,r.CraftItem
- r.ModuleCache={['ReplicatedStorage.TS.crafting-recipes']={Recipes={catalogRecipe={toolName='catalogRecipe',ingredients={}}}}}
+ local cache,catalog,status,item,materials=r.ModuleCache,r.CraftCatalog,r.CraftCatalogStatus,r.CraftItem,r.CraftMaterials
+ r.ModuleCache={['ReplicatedStorage.TS.crafting-recipes']={Recipes={catalogRecipe={toolName='catalogRecipe',outputAmount=1,ingredients={worm=2}}}}}
  r.CraftCatalogButton.Activated:Fire()
  assert(r.CraftCatalog.catalogRecipe and not r.CraftWorker,'Load all recipes must populate the visible catalog without crafting')
  r.CraftRecipeSearch.Text='CATALOG_recipe'
@@ -1536,6 +1536,7 @@ end)()
  assert(#r.CraftRecipeMenu.Options==1 and string.find(r.CraftRecipeMenu.Options[1].Text,'catalogRecipe',1,true),'recipe search must filter loaded catalog entries in the real dropdown')
  r.CraftRecipeMenu.Options[1].Activated:Fire()
  assert(r.CraftItem=='catalogRecipe' and not r.CraftWorker,'catalog selection must not start crafting or queue work')
+ assert(r.CraftMaterials.catalogRecipe and string.find(r.CraftMaterialsLabel.Text,'worm',1,true),'real recipe selection must show discovered ingredient metadata')
  local job=r.MakeCraftJob('catalogRecipe','Make amount',100,100,false)
  assert(not job,'a displayed recipe must not fabricate a learned craft request')
  r.CraftWorker=72;r.CraftEnabled=true;r.RefreshCraftUI()
@@ -1543,8 +1544,34 @@ end)()
  assert(r.CraftPaused and r.CraftPauseButton.Text=='RESUME CRAFTING' and not r.CraftCatalogButton.Active and not r.CraftRecipeSearch.TextEditable,'Pause must lock the catalog/search and expose Resume')
  r.CraftPauseButton.Activated:Fire();assert(not r.CraftPaused)
  r.SetCraftEnabled(false);r.CraftWorker=nil;r.RefreshCraftUI()
- r.ModuleCache,r.CraftCatalog,r.CraftCatalogStatus,r.CraftItem=cache,catalog,status,item;r.CraftRecipeSearch.Text='';r.RefreshCraftCatalogUI()
+ r.ModuleCache,r.CraftCatalog,r.CraftCatalogStatus,r.CraftItem,r.CraftMaterials=cache,catalog,status,item,materials;r.CraftRecipeSearch.Text='';r.RefreshCraftCatalogUI()
  assert(r.CraftRecipeSearch.Position.Y.Offset+r.CraftRecipeSearch.Size.Y.Offset<=r.CraftCatalogLabel.Position.Y.Offset and r.CraftCatalogLabel.Position.Y.Offset+r.CraftCatalogLabel.Size.Y.Offset<=r.CraftRecipeButton.Position.Y.Offset,'catalog search/status must not overlap recipe selection')
+ end)()
+;(function()
+ local r=RemoteCatalog
+ local materials,item,mode,target,count=r.CraftMaterials,r.CraftItem,r.CraftMode,r.CraftTarget,r.CarrotCount
+ local stock={bait=3770,worm=20}
+ r.CraftMaterials={bait={OutputAmount=1,Ingredients={{Item='worm',Amount=2}}}}
+ r.CraftItem='bait';r.CraftMode='Make amount';r.CraftTarget=100
+ r.CarrotCount=function(name) return stock[name] or 0 end
+ r.CraftMaterialsRefresh.Activated:Fire()
+ assert(string.find(r.CraftMaterialsLabel.Text,'worm · need 200 · have 20 · missing 180',1,true) and not r.CraftWorker,'Refresh materials must calculate costs without crafting')
+ stock.worm=30;updateBoard()
+ assert(string.find(r.CraftMaterialsLabel.Text,'have 30 · missing 170',1,true),'periodic board updates must keep material quantities fresh')
+ local copy=setclipboard
+ local report
+ setclipboard=function(value) report=value end
+ r.CraftMaterialsCopy.Activated:Fire()
+ assert(report and string.find(report,'Reborn craft-materials-74 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ setclipboard=function() error('unavailable') end
+ r.CraftMaterialsCopy.Activated:Fire()
+ assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
+ setclipboard=copy
+ assert(r.CraftMaterialsRefresh.Position.Y.Offset+r.CraftMaterialsRefresh.Size.Y.Offset<=r.CraftMaterialsView.Position.Y.Offset and r.CraftMaterialsView.Position.Y.Offset+r.CraftMaterialsView.Size.Y.Offset<r.CraftQueueAddButton.Position.Y.Offset,'materials controls and queue must not overlap')
+ local y=r.CraftMaterialsView.Position.Y.Offset
+ r.CraftModeButton.Activated:Fire();assert(r.CraftMaterialsView.Position.Y.Offset>y,'inline dropdowns must push the material panel down')
+ r.CloseMenus();assert(r.CraftMaterialsView.Position.Y.Offset==y,'closing dropdowns must restore material layout')
+ r.CraftMaterials,r.CraftItem,r.CraftMode,r.CraftTarget,r.CarrotCount=materials,item,mode,target,count;r.RefreshCraftUI()
  end)()
 ;(function()
  local r=RemoteCatalog

@@ -754,3 +754,24 @@ inventory/worker state recovers. No counting, server reward attribution, recipe
 binding or request pacing changes are made. Reports contain counters and state,
 not captured envelopes/context tokens. Full regression coverage includes bounded
 partial discovery and the real report/copy fallback; live Roblox is unverified.
+
+### Advisory crafting materials (craft-materials-74)
+
+v74 adds no endpoint, learned envelope or recorder format change (146 catalog
+endpoints; recorder v30). The existing bounded client metadata loader retains
+validated ingredient quantities alongside recipe names. It accepts explicit
+numeric maps/rows and explicit output-yield metadata, aggregates duplicate
+ingredients, and excludes nested output descriptors from recursive discovery.
+Different cost/yield variants for one output remain ambiguous. Unsupported,
+missing or invalid quantities do not fabricate totals or assume a unit yield.
+
+The Materials panel and clipboard/console report read owned inventory through
+the existing validated counter. Whole-run or next-batch estimates use explicit
+output yield and round required crafts up; otherwise only per-craft costs are
+shown. A running job exposes its frozen settings and confirmed progress to the
+view; Stop, pause, queue advancement and request/confirmation logic are retained.
+Unknown stock is distinct from zero, and future queued jobs are not combined.
+No material withdrawal or crafting request is dispatched by refresh/copy. Client
+data may omit server-only costs and requirements, so this estimate does not
+establish server craftability. Full test coverage includes costs, modes,
+ambiguity, preservation and real controls; live Roblox remains unverified.

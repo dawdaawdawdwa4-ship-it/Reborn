@@ -64,6 +64,12 @@ local runtimeCalls=0
 getrenv=function() return {require=function(mod) runtimeCalls+=1;return original(mod) end} end
 modules={recipe}
 assert(RemoteCatalog.LoadCraftCatalog() and runtimeCalls==1,'module reads must use the game require environment when available')
+local materialData=module('recipes',{Recipes={bait={toolName='bait',outputAmount=1,ingredients={worm=2}}}})
+modules={materialData};RemoteCatalog.ModuleCache={}
+assert(RemoteCatalog.LoadCraftCatalog() and RemoteCatalog.CraftMaterials.bait.OutputAmount==1 and RemoteCatalog.CraftMaterials.bait.Ingredients[1].Item=='worm','catalog commits must retain validated materials alongside recipe names')
+local preservedMaterials=RemoteCatalog.CraftMaterials
+modules={}
+assert(not RemoteCatalog.LoadCraftCatalog() and RemoteCatalog.CraftMaterials==preservedMaterials,'a failed scan must preserve material data with the existing catalog')
 modules={};RemoteCatalog.ModuleCache={}
 local metadata=module('crafting-recipes',{newRecipe={ingredients={wood=1}}})
 root.GetDescendants=function() return {metadata,unrelated} end

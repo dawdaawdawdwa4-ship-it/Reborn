@@ -2922,7 +2922,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "recipe-tracking-73",
+    Subtitle = "craft-materials-74",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3413,7 +3413,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn recipe-tracking-73",
+    return table.concat({"Reborn craft-materials-74",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5224,7 +5224,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn recipe-tracking-73 · Propeller tracker",
+    return table.concat({"Reborn craft-materials-74 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -5249,7 +5249,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn recipe-tracking-73", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn craft-materials-74", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -5280,6 +5280,7 @@ function RemoteCatalog.CopySessionReport()
 end
 local function updateBoard()
     if RemoteCatalog.RefreshPropellers then RemoteCatalog.RefreshPropellers() end
+    if RemoteCatalog.RefreshCraftMaterials then RemoteCatalog.RefreshCraftMaterials() end
     if buildController.RangeMarkers then buildController:RefreshReach() end
     RemoteCatalog.UpdateDashboard()
     if RemoteCatalog.UpdateChestSelectionUI then RemoteCatalog.UpdateChestSelectionUI() end
@@ -7226,7 +7227,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn recipe-tracking-73\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn craft-materials-74\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -7735,7 +7736,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn recipe-tracking-73\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn craft-materials-74\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -7755,6 +7756,7 @@ function RemoteCatalog.CraftMessage(text)
     if RemoteCatalog.CraftQueueRunning and RemoteCatalog.CraftQueueIndex then text="Queue "..RemoteCatalog.CraftQueueIndex.." / "..RemoteCatalog.CraftQueueRunSize.." · "..text end
     if gui.Parent and RemoteCatalog.CraftInfo then RemoteCatalog.CraftInfo.Text=text end
     if RemoteCatalog.RefreshCraftQueue then RemoteCatalog.RefreshCraftQueue() end
+    if RemoteCatalog.RefreshCraftMaterials then RemoteCatalog.RefreshCraftMaterials() end
 end
 function RemoteCatalog.RefreshCraftUI()
     if not gui.Parent or not RemoteCatalog.CraftToggle then return end
@@ -7830,7 +7832,112 @@ end
 -- CRAFT CATALOG BEGIN
 RemoteCatalog.CraftCatalog={}
 RemoteCatalog.CraftCatalogStatus="Press Load all recipes to show the game's available recipe list."
-function RemoteCatalog.ReadCraftRecipes(data,output,recipeRoot)
+-- CRAFT MATERIALS BEGIN
+RemoteCatalog.CraftMaterials={}
+function RemoteCatalog.ReadCraftMaterials(value,ingredients)
+    local function id(name)
+        return type(name)=="string" and #name>0 and #name<=128 and not name:find("%c") and name:match("^%s*(.-)%s*$")==name and name or nil
+    end
+    local function positive(amount)
+        return type(amount)=="number" and amount>0 and amount<=1000000000 and amount%1==0
+    end
+    if type(ingredients)~="table" then return {Error="Ingredient quantities unavailable"} end
+    if rawget(value,"cost")~=nil or rawget(value,"currency")~=nil or rawget(value,"coins")~=nil then return {Error="Additional recipe costs are not supported"} end
+    local totals,entries={},0
+    for key,entry in next,ingredients do
+        entries+=1
+        if entries>64 then return {Error="Ingredient list exceeds 64 entries"} end
+        local name,amount
+        if type(entry)=="number" then name=id(key);amount=entry
+        elseif type(entry)=="table" then
+            if rawget(entry,"alternatives")~=nil or rawget(entry,"options")~=nil then return {Error="Alternative ingredients are not supported"} end
+            name=id(rawget(entry,"item")) or id(rawget(entry,"itemType")) or id(rawget(entry,"itemName")) or id(rawget(entry,"toolName")) or id(rawget(entry,"type")) or id(key)
+            amount=rawget(entry,"amount") or rawget(entry,"quantity") or rawget(entry,"count")
+        end
+        if not name or not positive(amount) then return {Error="Ingredient quantities unavailable or unsupported"} end
+        totals[name]=(totals[name] or 0)+amount
+        if totals[name]>1000000000 then return {Error="Ingredient quantity exceeds supported range"} end
+    end
+    if entries==0 then return {Error="No readable ingredient quantities"} end
+    local output=rawget(value,"output") or rawget(value,"result") or rawget(value,"outputItem")
+    local amount=rawget(value,"outputAmount") or rawget(value,"outputCount") or rawget(value,"resultAmount")
+    if amount==nil and type(output)=="table" then amount=rawget(output,"amount") or rawget(output,"quantity") or rawget(output,"count") end
+    if amount~=nil and not positive(amount) then return {Error="Output quantity is invalid"} end
+    local rows={}
+    for name,cost in pairs(totals) do table.insert(rows,{Item=name,Amount=cost}) end
+    table.sort(rows,function(a,b) return a.Item<b.Item end)
+    return {Ingredients=rows,OutputAmount=amount}
+end
+function RemoteCatalog.RememberCraftMaterials(target,name,value,ingredients)
+    local recipe=RemoteCatalog.ReadCraftMaterials(value,ingredients)
+    local previous=target[name]
+    if not previous then target[name]=recipe;return end
+    local same=previous.Error==recipe.Error and previous.OutputAmount==recipe.OutputAmount
+    if same and previous.Ingredients and recipe.Ingredients then
+        same=#previous.Ingredients==#recipe.Ingredients
+        if same then for index,row in ipairs(previous.Ingredients) do
+            local other=recipe.Ingredients[index]
+            if row.Item~=other.Item or row.Amount~=other.Amount then same=false;break end
+        end end
+    elseif previous.Ingredients or recipe.Ingredients then same=false end
+    if not same then target[name]={Error="Multiple recipe variants; material costs cannot be selected reliably"} end
+end
+function RemoteCatalog.CraftMaterialCount(item)
+    if type(RemoteCatalog.CarrotCount)~="function" then return nil end
+    local ok,count=pcall(RemoteCatalog.CarrotCount,item)
+    if ok and type(count)=="number" and count>=0 and count<=9007199254740991 and count%1==0 then return count end
+end
+function RemoteCatalog.CraftMaterialReport()
+    local run=RemoteCatalog.CraftWorker and RemoteCatalog.CraftMaterialRun
+    local item=run and run.Item or RemoteCatalog.CraftItem
+    local mode=run and run.Mode or RemoteCatalog.CraftMode
+    local target=run and run.Target or RemoteCatalog.CraftTarget
+    local batch=run and run.Batch or RemoteCatalog.CraftBatch
+    local lines={"Recipe: "..tostring(item).." · "..tostring(mode)}
+    local recipe=RemoteCatalog.CraftMaterials[item]
+    if not recipe then
+        table.insert(lines,"Material data unavailable. Press Load all recipes first; learning a request alone does not provide costs.")
+        return table.concat(lines,"\n")
+    end
+    if recipe.Error then table.insert(lines,recipe.Error..". No total estimated.");return table.concat(lines,"\n") end
+    local desired
+    if mode=="Make amount" then desired=type(target)=="number" and math.max(0,target-(run and run.Confirmed or 0))
+    elseif mode=="Continuous" then desired=batch
+    elseif mode=="Top up stock" then local stock=RemoteCatalog.CraftMaterialCount(item);if stock~=nil and type(target)=="number" then desired=math.max(0,target-stock) end end
+    if type(desired)~="number" or desired<0 or desired>10000 or desired%1~=0 then
+        table.insert(lines,"Target or output inventory unreadable; showing per-craft costs only.");desired=nil
+    end
+    local crafts
+    if desired~=nil and recipe.OutputAmount then
+        crafts=math.ceil(desired/recipe.OutputAmount)
+        table.insert(lines,(mode=="Continuous" and "Next batch: " or run and "Remaining: " or "Planned: ")..desired.." more "..item.." · "..crafts.." crafts × "..recipe.OutputAmount.." output")
+    elseif desired==0 then crafts=0;table.insert(lines,"Target already met; no materials needed.")
+    elseif not recipe.OutputAmount then table.insert(lines,"Output quantity unknown; showing per-craft costs only.") end
+    local missing,unknown,available=0,0,nil
+    for _,row in ipairs(recipe.Ingredients) do
+        local need=row.Amount*(crafts or 1)
+        local have=RemoteCatalog.CraftMaterialCount(row.Item)
+        local deficit=have~=nil and math.max(0,need-have) or nil
+        if deficit==nil then unknown+=1 elseif deficit>0 then missing+=1 end
+        if have~=nil then local can=math.floor(have/row.Amount);available=available and math.min(available,can) or can end
+        table.insert(lines,row.Item.." · need "..string.format("%.0f",need).." · have "..(have~=nil and string.format("%.0f",have) or "unknown").." · missing "..(deficit~=nil and string.format("%.0f",deficit) or "unknown"))
+    end
+    if unknown==0 and available then
+        local maximum=recipe.OutputAmount and available*recipe.OutputAmount or available
+        if maximum<=9007199254740991 then table.insert(lines,"Craftable from readable materials: "..string.format("%.0f",maximum)..(recipe.OutputAmount and " output items" or " crafts (output quantity unknown)"))
+        else table.insert(lines,"Craftable amount exceeds supported numeric range") end
+    end
+    table.insert(lines,missing.." material types short; "..unknown.." unreadable. "..(crafts==nil and "Per craft only. " or "").."Client recipe estimate; server checks still apply.")
+    if RemoteCatalog.CraftQueueRunning then table.insert(lines,"Current queue job only; later jobs are not included.") end
+    return table.concat(lines,"\n")
+end
+function RemoteCatalog.RefreshCraftMaterials()
+    if not gui.Parent or not RemoteCatalog.CraftMaterialsLabel then return end
+    RemoteCatalog.CraftMaterialsLabel.Text=RemoteCatalog.CraftMaterialReport()
+end
+-- CRAFT MATERIALS END
+
+function RemoteCatalog.ReadCraftRecipes(data,output,recipeRoot,materials)
     local seen,nodes={},0
     local function id(value)
         return type(value)=="string" and #value>0 and #value<=128 and not value:find("%c") and value:match("^%s*(.-)%s*$")==value and value or nil
@@ -7847,11 +7954,12 @@ function RemoteCatalog.ReadCraftRecipes(data,output,recipeRoot)
         local name=explicit or hint or (recipeContext and id(key))
         if name and (type(ingredients)=="table" or recipeContext and (explicit or hint)) then
             output[name]=true
+            if materials then RemoteCatalog.RememberCraftMaterials(materials,name,value,ingredients) end
         end
         for field,child in next,value do
             if type(child)=="table" then
                 local lower=type(field)=="string" and string.lower(field):gsub("[^%w]","") or ""
-                local excluded=lower=="ingredients" or lower=="requireditems" or lower=="materials" or lower=="inputs" or lower=="cost" or lower=="requirements" or (recipeContext and lower=="items")
+                local excluded=lower=="ingredients" or lower=="requireditems" or lower=="materials" or lower=="inputs" or lower=="cost" or lower=="requirements" or lower=="output" or lower=="outputitem" or lower=="result" or (recipeContext and lower=="items")
                 if not excluded then
                     local container=lower=="recipes" or lower=="craftingrecipes" or lower=="craftrecipes"
                     local single=lower=="recipe" or lower=="craftingrecipe"
@@ -7876,6 +7984,7 @@ function RemoteCatalog.LoadCraftCatalog()
     if RemoteCatalog.CraftCatalogButton then RemoteCatalog.CraftCatalogButton.Text="Loading recipes…" end
     RemoteCatalog.RefreshCraftCatalogUI()
     local found,sources,failed,attempts={},0,0,0
+    local materials={}
     local visited,exports,paths={},{},{}
     local limited=false
     local function budget()
@@ -7886,7 +7995,7 @@ function RemoteCatalog.LoadCraftCatalog()
     local function accept(data,name)
         if exports[data] then return end
         exports[data]=true
-        RemoteCatalog.ReadCraftRecipes(data,found,string.find(string.lower(tostring(name)),"recipe",1,true)~=nil)
+        RemoteCatalog.ReadCraftRecipes(data,found,string.find(string.lower(tostring(name)),"recipe",1,true)~=nil,materials)
         sources+=1
     end
     local ok=pcall(function()
@@ -7947,7 +8056,7 @@ function RemoteCatalog.LoadCraftCatalog()
     if not gui.Parent then return false end
     local count=0;for _ in pairs(found) do count+=1 end
     if ok and count>0 then
-        RemoteCatalog.CraftCatalog=found
+        RemoteCatalog.CraftCatalog=found;RemoteCatalog.CraftMaterials=materials
         RemoteCatalog.CraftCatalogStatus=count.." recipes loaded from "..sources.." tables. Search to choose one."
         if failed>0 or limited then RemoteCatalog.CraftCatalogStatus=RemoteCatalog.CraftCatalogStatus.." Partial scan: "..failed.." failed reads"..(limited and "; 32-read limit reached." or ".") end
     else
@@ -7982,6 +8091,7 @@ function RemoteCatalog.RefreshCraftCatalogUI()
     end
     if RemoteCatalog.CraftCatalogButton then RemoteCatalog.CraftCatalogButton.Active=not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftCatalogLoading end
     if RemoteCatalog.CraftRecipeSearch then RemoteCatalog.CraftRecipeSearch.TextEditable=RemoteCatalog.CraftWorker==nil end
+    RemoteCatalog.RefreshCraftMaterials()
 end
 -- CRAFT CATALOG END
 function RemoteCatalog.CraftRecorder(item)
@@ -8122,6 +8232,8 @@ function RemoteCatalog.SetCraftEnabled(state,queued)
                 local runRecorder,runBinding=job.Recorder,job.Binding
                 local makeAmount,continuous=mode=="Make amount",mode=="Continuous"
                 local confirmed,retries=0,0
+                RemoteCatalog.CraftMaterialRun={Item=item,Mode=mode,Batch=batch,Target=target,Confirmed=0}
+                RemoteCatalog.RefreshCraftMaterials()
                 local completed=false
                 if queued then RemoteCatalog.CraftQueueIndex=index;RemoteCatalog.CraftQueueActiveItem=item;RemoteCatalog.RefreshCraftQueue() end
                 local function runRecipe()
@@ -8166,6 +8278,7 @@ function RemoteCatalog.SetCraftEnabled(state,queued)
                         if not active() then return end
                         if not after or after<=before then outcome="No confirmed item gain · stopped. Check materials and quantity metadata.";return end
                         confirmed+=after-before;retries=0
+                        RemoteCatalog.CraftMaterialRun.Confirmed=confirmed
                         if queued then RemoteCatalog.CraftQueueTotal+=after-before end
                         RemoteCatalog.CraftMessage("+"..confirmed.." confirmed · "..mode.." · inventory "..after)
                         if not continuous and ((makeAmount and confirmed>=target) or (not makeAmount and after>=target)) then
@@ -8183,7 +8296,7 @@ function RemoteCatalog.SetCraftEnabled(state,queued)
             end
             if queued then outcome="Queue finished · "..#jobs.." jobs · +"..RemoteCatalog.CraftQueueTotal.." confirmed items. Queue kept; Run Queue repeats from the first job." end
         end)
-        RemoteCatalog.CraftWorker=nil;RemoteCatalog.CraftPaused=false
+        RemoteCatalog.CraftWorker=nil;RemoteCatalog.CraftPaused=false;RemoteCatalog.CraftMaterialRun=nil
         if not ok then outcome="Craft stopped: "..tostring(failure) end
         if queued and (RemoteCatalog.CraftQueueDone or 0)<#jobs then outcome="Queue stopped at job "..tostring(RemoteCatalog.CraftQueueIndex or 1).." / "..#jobs.." · "..tostring(RemoteCatalog.CraftQueueActiveItem or "unknown").." · "..outcome end
         RemoteCatalog.CraftQueueRunning=false;RemoteCatalog.CraftQueueActiveItem=nil
@@ -8216,7 +8329,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn recipe-tracking-73 · Craft diagnostics",
+    return table.concat({"Reborn craft-materials-74 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -8234,7 +8347,7 @@ function RemoteCatalog.CraftDiagnosticReport()
         "Queue: "..#RemoteCatalog.CraftQueue.." jobs; "..tostring(RemoteCatalog.CraftQueueDone or 0).." finished; "..tostring(RemoteCatalog.CraftQueueTotal or 0).." confirmed items",
         "Active queue recipe: "..tostring(RemoteCatalog.CraftQueueActiveItem or "none"),
         "Last craft status: "..tostring(RemoteCatalog.CraftInfo and RemoteCatalog.CraftInfo.Text or "not started"),
-        "Next step: "..action},"\n")
+        "Next step: "..action, "", "Materials:", RemoteCatalog.CraftMaterialReport()},"\n")
 end
 -- CRAFT BAIT END
 -- CRAFT BAIT UI BEGIN
@@ -8274,13 +8387,30 @@ track(RemoteCatalog.CraftDiagnosticButton.Activated:Connect(function()
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft diagnostics copied",COLORS.good)
     else print(report);setStatus("Craft diagnostics printed to the console",COLORS.warn) end
 end))
-pageHeading(RemoteCatalog.CraftPage,"CRAFTING QUEUE · FINITE JOBS",550)
-RemoteCatalog.CraftQueueAddButton=button({Parent=RemoteCatalog.CraftPage,Text="Add to queue",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,578)})
-RemoteCatalog.CraftQueueRunButton=button({Parent=RemoteCatalog.CraftPage,Text="RUN QUEUE",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,578)})
-RemoteCatalog.CraftQueueRemoveButton=button({Parent=RemoteCatalog.CraftPage,Text="Remove last job",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,622)})
-RemoteCatalog.CraftQueueClearButton=button({Parent=RemoteCatalog.CraftPage,Text="Clear queue",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,622)})
+pageHeading(RemoteCatalog.CraftPage,"MATERIALS · SELECTED RECIPE",550)
+RemoteCatalog.CraftMaterialsRefresh=button({Parent=RemoteCatalog.CraftPage,Text="Refresh materials",TextSize=12,Size=UDim2.new(.5,-9,0,32),Position=UDim2.fromOffset(6,578)})
+RemoteCatalog.CraftMaterialsCopy=button({Parent=RemoteCatalog.CraftPage,Text="Copy materials",TextSize=12,Size=UDim2.new(.5,-9,0,32),Position=UDim2.new(.5,3,0,578)})
+RemoteCatalog.CraftMaterialsView=Instance.new("ScrollingFrame")
+RemoteCatalog.CraftMaterialsView.Size=UDim2.new(1,-12,0,128);RemoteCatalog.CraftMaterialsView.Position=UDim2.fromOffset(6,618)
+RemoteCatalog.CraftMaterialsView.BackgroundColor3=COLORS.panel;RemoteCatalog.CraftMaterialsView.BorderSizePixel=0
+RemoteCatalog.CraftMaterialsView.CanvasSize=UDim2.new();RemoteCatalog.CraftMaterialsView.AutomaticCanvasSize=Enum.AutomaticSize.Y
+RemoteCatalog.CraftMaterialsView.ScrollBarThickness=5;RemoteCatalog.CraftMaterialsView.ScrollingDirection=Enum.ScrollingDirection.Y;RemoteCatalog.CraftMaterialsView.Parent=RemoteCatalog.CraftPage
+RemoteCatalog.CraftMaterialsLabel=label({Parent=RemoteCatalog.CraftMaterialsView,Text="Load recipes to see materials",TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-20,0,24),Position=UDim2.fromOffset(8,6)})
+RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsLabel.AutomaticSize=Enum.AutomaticSize.Y;RemoteCatalog.CraftMaterialsLabel.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.CraftMaterialsLabel.TextTruncate=Enum.TextTruncate.None
+track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
+track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
+    local report="Reborn craft-materials-74 · Materials\n"..RemoteCatalog.CraftMaterialReport()
+    local copy=setclipboard or toclipboard
+    if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
+    else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
+end))
+pageHeading(RemoteCatalog.CraftPage,"CRAFTING QUEUE · FINITE JOBS",772)
+RemoteCatalog.CraftQueueAddButton=button({Parent=RemoteCatalog.CraftPage,Text="Add to queue",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,800)})
+RemoteCatalog.CraftQueueRunButton=button({Parent=RemoteCatalog.CraftPage,Text="RUN QUEUE",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,800)})
+RemoteCatalog.CraftQueueRemoveButton=button({Parent=RemoteCatalog.CraftPage,Text="Remove last job",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,844)})
+RemoteCatalog.CraftQueueClearButton=button({Parent=RemoteCatalog.CraftPage,Text="Clear queue",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,844)})
 RemoteCatalog.CraftQueueView=Instance.new("ScrollingFrame")
-RemoteCatalog.CraftQueueView.Size=UDim2.new(1,-12,0,128);RemoteCatalog.CraftQueueView.Position=UDim2.fromOffset(6,666)
+RemoteCatalog.CraftQueueView.Size=UDim2.new(1,-12,0,128);RemoteCatalog.CraftQueueView.Position=UDim2.fromOffset(6,888)
 RemoteCatalog.CraftQueueView.BackgroundColor3=COLORS.panel;RemoteCatalog.CraftQueueView.BorderSizePixel=0
 RemoteCatalog.CraftQueueView.CanvasSize=UDim2.new();RemoteCatalog.CraftQueueView.AutomaticCanvasSize=Enum.AutomaticSize.Y
 RemoteCatalog.CraftQueueView.ScrollBarThickness=5;RemoteCatalog.CraftQueueView.ScrollingDirection=Enum.ScrollingDirection.Y;RemoteCatalog.CraftQueueView.Parent=RemoteCatalog.CraftPage

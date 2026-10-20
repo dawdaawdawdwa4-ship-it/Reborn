@@ -43,9 +43,11 @@ assert(#calls==5 and inventory==4270,'larger run must use separate batches cappe
 for _,amount in ipairs(calls) do assert(amount==100,'every request must respect the crafting limit') end
 reset();RemoteCatalog.CraftMode='Make amount';RemoteCatalog.CraftTarget=250;inventory=3770
 assert(RemoteCatalog.SetCraftEnabled(true))
+assert(RemoteCatalog.CraftMaterialRun and RemoteCatalog.CraftMaterialRun.Item=='bait' and RemoteCatalog.CraftMaterialRun.Target==250 and RemoteCatalog.CraftMaterialRun.Confirmed==100,'material estimates must receive the frozen active job and actual confirmed progress')
 RemoteCatalog.CraftMode='Top up stock';RemoteCatalog.CraftTarget=100
 -- Mode/amount are frozen even if external code changes the configuration mid-run.
 drain();assert(#calls==3 and calls[1]==100 and calls[2]==100 and calls[3]==50 and inventory==4020,'Make amount needs a smaller last batch and frozen run settings')
+assert(RemoteCatalog.CraftMaterialRun==nil,'completed workers must clear the active material estimate')
 reset();inventory=3770
 assert(RemoteCatalog.SetCraftEnabled(true));drain()
 assert(#calls==0 and string.find(RemoteCatalog.CraftInfo.Text,'Choose Make amount',1,true),'Top up stock must explain why existing stock prevents a request')

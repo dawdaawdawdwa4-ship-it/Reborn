@@ -1709,3 +1709,48 @@ Validation includes partial catalog completion, shared attempt limits for failed
 and cached reads, deduplication, GUI destruction during a module read, tracker
 status transitions and the real copy button/clipboard fallback, in addition to
 the full existing suite. Live Roblox compatibility remains unverified.
+
+### Crafting materials overview (v74)
+
+The Crafting tab now includes **Materials · selected recipe**, above the queue.
+After **Load all recipes**, the panel shows each readable ingredient's **need /
+have / missing**, and how much the limiting ingredient permits from current
+inventory. **Refresh materials** reads quantities immediately; the normal board
+update also refreshes the view once a second. **Copy materials** copies the current
+estimate or prints it to the console if clipboard access fails. The existing
+craft diagnostics also include it. Opening inline dropdowns moves the materials
+and queue panels down together; both lists scroll separately.
+
+Validated recipe metadata supports numeric ingredient maps and ingredient rows
+with explicit item IDs and positive integer amount/quantity/count fields.
+Repeated ingredients are added together, with a maximum of 64 input entries.
+Explicit output amount/count metadata permits a whole-run estimate: required
+crafts are rounded up by that output quantity. **Make amount** uses the extra
+quantity selected, regardless of existing stock; **Top up stock** uses the current
+output deficit; **Continuous** shows the next selected batch only. Running or
+paused jobs use their frozen recipe/settings and confirmed remaining amount.
+During a queue, the panel covers the current job, not the later jobs combined.
+
+Missing output quantities are not assumed to be one: the panel shows per-craft
+costs and says a total cannot be calculated. Unreadable inventory remains unknown,
+including the missing quantity; it is not treated as zero stock. Incompatible
+recipe variants for the same output stay ambiguous instead of choosing one
+station's cost arbitrarily. Invalid, empty, oversized or unsupported material
+data, alternative ingredients and extra cost/currency fields do not produce a
+partial total. Missing metadata explains that request learning alone provides
+no material costs. A failed catalog reload preserves existing materials with
+the catalog. Explicit output quantities are read from output/result/outputItem
+rows or outputAmount/outputCount/resultAmount fields; an ambiguous top-level
+amount is not guessed. Current recipe discovery/schema coverage is incomplete.
+
+This is an advisory estimate from client metadata and readable owned inventory.
+It does not reserve or withdraw materials, start a craft, change request batching,
+or bypass server recipe/workbench/unlock requirements. Server-only costs may
+remain unknown. Existing crafting confirmation, pause/stop and chest protection
+behavior stays in place.
+
+Validation includes recipe extraction, duplicate/variant handling, malformed
+costs and inventory, output rounding, all three modes, active frozen progress,
+unknown data, catalog preservation, real refresh/copy controls and dropdown
+layout, plus the full regression suite. Live Roblox material schemas and UI
+remain unverified.
