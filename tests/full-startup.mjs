@@ -851,7 +851,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn recipes-propellers-72',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn recipe-tracking-73',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1560,6 +1560,15 @@ end)()
  assert(overlayValues.propellerLast.Text=='00:01:15 ago' and string.find(r.SessionReport(),'Propellers: 1',1,true),'timer and copied report must include the last propeller')
  r.BeginPropellerCatch(3);local requestAt=r.ChestRequestAt;r.MarkChestRequest();quantity=7;r.ConfirmPropellerCatch()
  assert(r.PropellerTotal==1,'a hub withdrawal must invalidate fishing attribution even if it finishes between tracker polls')
+ local originalCopy=setclipboard
+ local trackerReport
+ setclipboard=function(value) trackerReport=value end
+ r.PropellerCopyButton.Activated:Fire()
+ assert(trackerReport and string.find(trackerReport,'Propeller tracker',1,true) and string.find(trackerReport,'Window blocked: true',1,true),'Copy tracker result must use the current attribution state')
+ setclipboard=function() error('clipboard unavailable') end
+ r.PropellerCopyButton.Activated:Fire()
+ assert(string.find(status.Text,'printed to the console',1,true),'tracker diagnostics must provide a console fallback when clipboard access fails')
+ setclipboard=originalCopy
  r.ChestRequestAt=requestAt
  r.PropellerResetButton.Activated:Fire();assert(r.PropellerTotal==0 and r.PropellerLastText()=='none yet')
  enabled=fishing;r.OwnedTools,r.BaitCount,r.PropellerNow=owned,count,clock;updateBoard()

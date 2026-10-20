@@ -1677,3 +1677,35 @@ conflict cases, real panel/overlay controls and all previous regressions. The UI
 mock's hook variants run in separate processes to avoid its fixed WASM heap and
 bridge-handle limits; neither variant's checks were removed. Live v72 recipe
 coverage and Roblox propeller tracking/rendering remain unverified.
+
+### Recipe discovery and tracker diagnostics (v73)
+
+**Load all recipes** now supplements a partial cached/loaded list with explicitly
+named recipe and item metadata under ReplicatedStorage. Finding one station's
+recipes no longer prevents discovery of other stations' data. A shared limit of
+32 read attempts covers cached tables and module reads, including failures.
+Duplicate module identities and exports are skipped across discovery stages;
+cached modules with matching full paths do not need another require. A failed
+module is not retried in the same scan. Failed reads and an exhausted budget are
+shown as a partial scan, and **Copy craft diagnostics** includes attempts, failures
+and the limit flag. A scan with no usable recipes preserves the previous list.
+The limit bounds attempts, not the runtime of a game's individual module load.
+Client metadata still cannot guarantee every server recipe is discoverable, and
+an independently learned recipe request is still required for Auto Craft.
+
+The Fishing propeller panel now distinguishes waiting for a reel, waiting for
+catch confirmation, watching delayed inventory, unreadable quantities, and
+chest/craft overlap. If an overlapping action invalidated a catch window, that
+window stays visibly excluded after the other action ends; the next reel starts
+a fresh window. An unreadable starting quantity stays excluded even if later
+inventory becomes readable. **Copy tracker result** sits beside **Reset session**
+and reports session count, time since the last propeller, inventory, window
+baseline, confirmation/block state, remaining observation time and hub workers.
+If clipboard access fails, it prints to the console. No captured request payloads
+or context tokens appear in the report. Counters and fishing attribution rules
+are unchanged from v72.
+
+Validation includes partial catalog completion, shared attempt limits for failed
+and cached reads, deduplication, GUI destruction during a module read, tracker
+status transitions and the real copy button/clipboard fallback, in addition to
+the full existing suite. Live Roblox compatibility remains unverified.

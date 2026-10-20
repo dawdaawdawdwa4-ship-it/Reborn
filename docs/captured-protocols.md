@@ -735,3 +735,22 @@ Unobservable quantities or external simultaneous inventory gains cannot establis
 an exact server reward source. Tests cover stacked and delayed quantities,
 repeated samples, respawn/OFF, timer/reset, hub conflicts and the UI. Live v72
 recipe compatibility and reward attribution remain unverified.
+
+### Recipe discovery bounds and tracker diagnostics (recipe-tracking-73)
+
+v73 retains the 146 endpoints, recorder v30 and existing crafting/fishing
+protocols. Recipe discovery supplements partial loaded exports with explicitly
+named metadata under ReplicatedStorage. Cached tables, successful module loads
+and failed loads share a 32-attempt budget, with shared module/export identities
+and cached-path deduplication. Failures and truncation are visible, without
+claiming complete server recipe coverage. No recipe export function or craft
+request is called by the loader. A module's own load can still yield independently
+of the attempt budget; GUI removal stops further reads after it returns.
+
+The propeller report exposes the existing inventory-observation window rather
+than inferring rewards from a new remote. Status now identifies an unreadable
+baseline and a permanently excluded overlapping window, even after current
+inventory/worker state recovers. No counting, server reward attribution, recipe
+binding or request pacing changes are made. Reports contain counters and state,
+not captured envelopes/context tokens. Full regression coverage includes bounded
+partial discovery and the real report/copy fallback; live Roblox is unverified.
