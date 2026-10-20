@@ -1,5 +1,17 @@
 import fs from 'node:fs';
 import {LuauState} from 'luau-web';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+// Isolate runtime variants: the WASM fixture has a fixed heap and retains bridge handles.
+const variant=process.argv[2];
+if (variant!=='with-hooks' && variant!=='without-hooks') {
+ let code=0;
+ for (const name of ['without-hooks','with-hooks']) {
+  const result=spawnSync(process.execPath,[fileURLToPath(import.meta.url),name],{stdio:'inherit'});
+  if (result.status!==0) code=1;
+ }
+ process.exit(code);
+}
 const root=new URL('../',import.meta.url);
 const state=await LuauState.createAsync();
 for(const path of ['message.txt','src/AutoFarmUI.lua','src/init.client.lua','tools/CaptureRemotes.lua']) {
@@ -131,7 +143,7 @@ end
 end)()
 return 'UI, twelve tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
 `;
-for (const supported of [false,true]) {
+for (const supported of [variant==='with-hooks']) {
  const hooks=`
 local CAPTURE_SUPPORTED=${supported}
 if not CAPTURE_SUPPORTED then task.defer=nil end

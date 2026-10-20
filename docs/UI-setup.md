@@ -1620,3 +1620,60 @@ cooldown failure, workbench range, malformed/capped queues and GUI cleanup. The
 real UI tests exercise Add/Run/Stop/Clear, Stop All, edit locks, diagnostics and
 inline dropdown layout. Conveyor Skip remains the startup default. Live v71
 Roblox behavior remains unverified.
+
+### Recipe catalog, craft pause and propeller tracking (v72)
+
+Crafting adds **Load all recipes** and a search field. Loading first inspects
+relevant cached and already-loaded game recipe/item metadata. If no recipes are
+found, it looks for explicitly named recipe/config metadata modules under
+ReplicatedStorage. It reads table exports, recognizes recipe output IDs and
+item metadata with `craftingRecipe` data, and excludes ingredient lists from the
+output choices. It does not invoke recipe getter functions, craft requests,
+purchases or queue actions. Loading is explicit and locked while crafting.
+
+Catalog IDs merge with learned recipes. Search ignores case, spaces, underscores
+and hyphens; at most 60 matches render at once, so narrow the search for larger
+lists. The status shows available/shown counts and whether the selected recipe
+has been learned. Selecting a catalog entry does not create a request binding:
+the selected recipe still needs one manual learned craft before Auto Craft can
+send it. This button provides the recipe list, not server unlocks or a generic
+request template. Data discovery is bounded and schema-based; getters, different
+metadata formats or hidden/server-only recipes can remain unavailable. A failed
+reload preserves the previous catalog and learned recipes. Open a crafting
+station and retry if the client has not exposed recipe metadata. Copy craft
+diagnostics includes catalog read/failure counts for live troubleshooting.
+
+**Pause crafting / Resume crafting** works for single-recipe and queued jobs.
+It keeps the worker, recipe, job index, confirmed totals and remaining quantity.
+An already-sent request may finish inventory confirmation, but no next request
+or queued job starts while paused. Resume continues the same job; Stop still
+cancels it. Recipe/queue edits and catalog loading remain locked during Pause.
+Completed final batches can finish a run even if Pause was pressed in flight.
+
+Fishing now shows **Propellers this session** and **Last propeller**; both also
+appear in the corner overlay, and the session report includes them. The timer
+updates in HH:MM:SS since the last observed gain and keeps advancing with Fishing
+OFF. Counts persist through OFF→ON in the same hub session. **Reset propeller
+session** clears both; the general stats reset also clears them. Reloading the
+hub starts a new session. No earlier catch time or historical total is inferred.
+
+The tracker snapshots owned propeller quantity immediately before an Auto
+Fishing reel and attributes positive changes only after the catch's bobber
+removal is confirmed, allowing up to five seconds for metadata replication.
+Existing quantities, unchanged stacks, temporary removal/reappearance, invalid
+counts, expired/unconfirmed reels, OFF and respawn do not add to the counter.
+It supports the exact propeller/propellor name spellings and plural variants.
+Unreadable stack quantities wait rather than assuming one Tool means one item.
+Hub chest/craft requests invalidate an overlapping catch window, including
+requests that finish between tracker polls. This is inventory-based attribution,
+not a captured server reward event; manual purchases/trades outside the hub
+cannot be conclusively distinguished if they coincide with the same catch
+window. Recipes/remote bindings and conveyor Skip behavior remain unchanged.
+
+Validation: `npm --prefix tests test` covers recipe schemas and metadata fallback,
+search/render limits, no request fabrication, catalog failure preservation,
+pause/resume and in-flight confirmation, propeller stack/delay/timer/reset/
+conflict cases, real panel/overlay controls and all previous regressions. The UI
+mock's hook variants run in separate processes to avoid its fixed WASM heap and
+bridge-handle limits; neither variant's checks were removed. Live v72 recipe
+coverage and Roblox propeller tracking/rendering remain unverified.

@@ -107,6 +107,19 @@ reset();assert(add('bait'));local job=RemoteCatalog.CraftQueue[1]
 for _,bad in ipairs({{[1]=job,[3]=job}, {job,false}, {job,job,job,job,job,job,job,job,job}}) do
  RemoteCatalog.CraftQueue=bad;assert(not RemoteCatalog.SetCraftEnabled(true,true) and #trace==0,'malformed or oversized queue must send nothing')
 end
+reset();assert(add('bait',250) and add('testRecipe'))
+assert(RemoteCatalog.SetCraftEnabled(true,true) and #trace==1)
+assert(RemoteCatalog.SetCraftPaused(true));for _=1,30 do step() end
+assert(#trace==1 and RemoteCatalog.CraftQueueTotal==100 and RemoteCatalog.CraftQueueIndex==1,'Pause must keep worker/job/progress and send no additional request')
+assert(RemoteCatalog.SetCraftPaused(false));drain()
+assert(#trace==4 and inventory.bait==250 and inventory.testRecipe==100,'Resume must finish remaining quantities without restarting the first job')
+reset();assert(add('bait',250) and add('testRecipe'))
+behavior=function(amount,binding) coroutine.yield('in-flight');inventory[binding.Item]=(inventory[binding.Item] or 0)+amount;return true end
+assert(RemoteCatalog.SetCraftEnabled(true,true));assert(RemoteCatalog.SetCraftPaused(true));step()
+for _=1,10 do step() end
+assert(#trace==1 and RemoteCatalog.CraftQueueTotal==100 and RemoteCatalog.CraftPaused,'Pause must permit confirmation of the in-flight batch while holding the next request')
+RemoteCatalog.SetCraftEnabled(false);drain()
+assert(#trace==1 and not RemoteCatalog.CraftPaused and not RemoteCatalog.CraftWorker,'Stop from Pause must cancel the rest of the queue')
 reset();assert(add('bait') and add('testRecipe'))
 behavior=function(amount,binding) coroutine.yield('in-flight');inventory[binding.Item]=(inventory[binding.Item] or 0)+amount;return true end
 assert(RemoteCatalog.SetCraftEnabled(true,true));gui.Parent=nil;drain()

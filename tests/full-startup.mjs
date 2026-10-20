@@ -851,7 +851,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn craft-queue-71',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn recipes-propellers-72',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1523,6 +1523,47 @@ end)()
  r.CraftQueueClearButton.Activated:Fire();assert(#r.CraftQueue==0 and string.find(r.CraftQueueLabel.Text,'0 / 8',1,true))
  r.CraftRecorder,r.CarrotCount,r.CraftReachable=lookup,count,reach
  r.CraftItem,r.CraftMode,r.CraftBatch,r.CraftTarget=item,mode,batch,target;r.RefreshCraftUI()
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ local cache,catalog,status,item=r.ModuleCache,r.CraftCatalog,r.CraftCatalogStatus,r.CraftItem
+ r.ModuleCache={['ReplicatedStorage.TS.crafting-recipes']={Recipes={catalogRecipe={toolName='catalogRecipe',ingredients={}}}}}
+ r.CraftCatalogButton.Activated:Fire()
+ assert(r.CraftCatalog.catalogRecipe and not r.CraftWorker,'Load all recipes must populate the visible catalog without crafting')
+ r.CraftRecipeSearch.Text='CATALOG_recipe'
+ r.CraftRecipeButton.Activated:Fire()
+ assert(#r.CraftRecipeMenu.Options==1 and string.find(r.CraftRecipeMenu.Options[1].Text,'catalogRecipe',1,true),'recipe search must filter loaded catalog entries in the real dropdown')
+ r.CraftRecipeMenu.Options[1].Activated:Fire()
+ assert(r.CraftItem=='catalogRecipe' and not r.CraftWorker,'catalog selection must not start crafting or queue work')
+ local job=r.MakeCraftJob('catalogRecipe','Make amount',100,100,false)
+ assert(not job,'a displayed recipe must not fabricate a learned craft request')
+ r.CraftWorker=72;r.CraftEnabled=true;r.RefreshCraftUI()
+ r.CraftPauseButton.Activated:Fire()
+ assert(r.CraftPaused and r.CraftPauseButton.Text=='RESUME CRAFTING' and not r.CraftCatalogButton.Active and not r.CraftRecipeSearch.TextEditable,'Pause must lock the catalog/search and expose Resume')
+ r.CraftPauseButton.Activated:Fire();assert(not r.CraftPaused)
+ r.SetCraftEnabled(false);r.CraftWorker=nil;r.RefreshCraftUI()
+ r.ModuleCache,r.CraftCatalog,r.CraftCatalogStatus,r.CraftItem=cache,catalog,status,item;r.CraftRecipeSearch.Text='';r.RefreshCraftCatalogUI()
+ assert(r.CraftRecipeSearch.Position.Y.Offset+r.CraftRecipeSearch.Size.Y.Offset<=r.CraftCatalogLabel.Position.Y.Offset and r.CraftCatalogLabel.Position.Y.Offset+r.CraftCatalogLabel.Size.Y.Offset<=r.CraftRecipeButton.Position.Y.Offset,'catalog search/status must not overlap recipe selection')
+ end)()
+;(function()
+ local r=RemoteCatalog
+ local owned,count,clock=r.OwnedTools,r.BaitCount,r.PropellerNow
+ local fishing=enabled
+ local quantity,time=5,100
+ local propeller={Name='propeller',Parent={}}
+ r.OwnedTools=function() return {propeller} end;r.BaitCount=function() return quantity end;r.PropellerNow=function() return time end
+ r.ResetPropellers();enabled=true
+ r.BeginPropellerCatch(3);quantity=6;r.ConfirmPropellerCatch();updateBoard()
+ assert(r.PropellerTotal==1 and overlayValues.propellers.Text=='1' and string.find(r.PropellerLabel.Text,'this session: 1',1,true),'real fishing panel and overlay must show the observed propeller count')
+ time=175;updateBoard()
+ assert(overlayValues.propellerLast.Text=='00:01:15 ago' and string.find(r.SessionReport(),'Propellers: 1',1,true),'timer and copied report must include the last propeller')
+ r.BeginPropellerCatch(3);local requestAt=r.ChestRequestAt;r.MarkChestRequest();quantity=7;r.ConfirmPropellerCatch()
+ assert(r.PropellerTotal==1,'a hub withdrawal must invalidate fishing attribution even if it finishes between tracker polls')
+ r.ChestRequestAt=requestAt
+ r.PropellerResetButton.Activated:Fire();assert(r.PropellerTotal==0 and r.PropellerLastText()=='none yet')
+ enabled=fishing;r.OwnedTools,r.BaitCount,r.PropellerNow=owned,count,clock;updateBoard()
+ assert(r.PropellerLabel.Parent==fishingPage and r.PropellerResetButton.Position.Y.Offset>=r.PropellerInfo.Position.Y.Offset+r.PropellerInfo.Size.Y.Offset,'propeller tracking must live under Fishing with non-overlapping controls')
  end)()
 
 local lastRecipeOption=RemoteCatalog.CraftRecipeMenu.Options[1]

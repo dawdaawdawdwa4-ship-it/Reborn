@@ -709,3 +709,29 @@ settings remaining fixed, complete preflight, capped quantities, failure/Stop
 isolation and the existing build/plow/chest/fishing regressions. No server cost,
 output ratio, dependency graph or live queue compatibility is inferred; live
 Roblox operation remains unverified.
+
+### Automatic recipe listing and propeller observation (recipes-propellers-72)
+
+v72 adds no endpoint, packet, token or recorder format (146 catalog endpoints,
+recorder v30). The explicit recipe-list loader inspects cached/loaded recipe and
+item metadata exports and, when necessary, clearly named recipe/config metadata
+ModuleScripts under ReplicatedStorage. It parses tables for actual recipe output
+IDs; it neither invokes export functions nor constructs a request for those IDs.
+Catalog-only selections remain unlearned until their own manual craft supplies
+the complete observed binding. This is bounded client-data discovery, not a
+claim that every server-only/locked recipe is exposed or craftable.
+
+Craft Pause retains the existing generation and queue state. Only unsent work
+waits: accepted in-flight output can still be confirmed. Resume revalidates
+binding/actor/reach immediately before another request; Stop cancels the same
+worker. Existing request caps, context checks and cooldown behavior remain.
+
+Propeller stats use validated owned-inventory quantities and a bounded window
+around an actual Auto Fishing reel. Bobber removal must be confirmed before a
+positive quantity difference is credited. No new pickup, fishing or reward
+remote is invoked. Chest/craft request dispatch invalidates an overlapping
+propeller window to prevent those hub actions being attributed to fishing.
+Unobservable quantities or external simultaneous inventory gains cannot establish
+an exact server reward source. Tests cover stacked and delayed quantities,
+repeated samples, respawn/OFF, timer/reset, hub conflicts and the UI. Live v72
+recipe compatibility and reward attribution remain unverified.
