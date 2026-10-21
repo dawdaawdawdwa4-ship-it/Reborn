@@ -123,6 +123,55 @@ occupied[1]=true;step();step()
 assert(string.find(b.Status.Text,'block 2/2',1,true),'a completed waiting cell must advance to the next target')
 assert(requests==before,'remote targets must not be sent while out of reach')
 b:Stop();step()
+-- Placement recovery uses a single cell/worker and bounded server pacing.
+;(function()
+ local originalPlace,originalModule=ctx.Place,ctx.GameModule
+ local function drain() for _=1,2000 do if coroutine.status(worker)=='dead' then return end;step() end;error('build did not settle') end
+ local function fresh(n)
+  occupied={};root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+  local value=A.new(ctx);value.Cells=cells(n or 2);value.BlockSize=3;return value
+ end
+ ctx.PlacementReady=function() return false,'Learn placement first' end
+ local value=fresh();local before=requests
+ assert(value:Start()==false and not value.Running and not value.WorkerToken and requests==before,'unavailable placement must stop before requests')
+ ctx.PlacementReady=nil
+ local attempts=0
+ ctx.Place=function(body) attempts+=1;requests+=1;if attempts<=2 then return false,{success=false,error='TOO_FAST'},'rejected' end;occupied[body.cframe.Position]=true;return true end
+ value=fresh(1);value:Start();drain()
+ assert(attempts==3 and value.Progress.Placed==1 and value.Progress.Failed==0,'cooldown must retry the same cell without counting transient rejects as failed blocks')
+ attempts=0;ctx.Place=function() attempts+=1;return false,{error='TOO_FAST'},'rejected' end
+ value=fresh();value:Start();drain()
+ assert(attempts==6 and value.Progress.Failed==1 and value.Progress.State=='Paused after cooldown','persistent server pacing must stop after five retries')
+ attempts=0;value=fresh();value:Start();value:Stop();drain();assert(attempts==1,'Stop must cancel cooldown before another request')
+ local due
+ ctx.Place=function(body) due={Position=body.cframe.Position,At=ticks+2};return true end
+ ctx.GameModule=function(path,name)
+  if name=='BlockUtils' then return {getBlocksFromLocation=function(pos) if due and ticks>=due.At then occupied[due.Position]=true end;return occupied[pos] and {true} or {} end} end
+ end
+ value=fresh(1);value:Start();drain()
+ assert(value.Progress.Placed==1 and value.Progress.Failed==0,'a block replicated after two seconds must confirm rather than fail')
+ ctx.GameModule=originalModule
+ attempts=0;ctx.Place=function() attempts+=1;return false,'connection lost','transport' end
+ value=fresh();local ghost={Destroy=function(self) self.Destroyed=true end};value.Cells[1].Preview=ghost
+ value:Start();drain()
+ assert(attempts==1 and value.Progress.State=='Placement needs review' and value.Progress.Failed==1 and not ghost.Destroyed,'uncertain transport must retain the ghost and stop before the next cell')
+ assert(string.find(value:DiagnosticReport(),'connection lost',1,true),'diagnostics must retain the actual placement failure')
+ attempts=0;ctx.Place=function(body)
+  attempts+=1;if attempts==1 then root.Position=setmetatable({},{__sub=function() return {Magnitude=100} end});return false,{error='TOO_FAST'} end
+  occupied[body.cframe.Position]=true;return true
+ end
+ value=fresh(1);value:Start()
+ for _=1,20 do step() end
+ assert(attempts==1 and value.Progress.State=='Waiting for reach','cooldown must recheck reach before resending')
+ root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end});drain();assert(attempts==2 and value.Progress.Placed==1)
+ for _,invalid in ipairs({0,-1,math.huge,0/0}) do
+  ctx.GameModule=function(_,name) if name=='CLIENT_REACH' then return invalid end;if name=='BlockUtils' then return {getBlocksFromLocation=function() return {} end} end end
+  value=fresh(1);root.Position=setmetatable({},{__sub=function() return {Magnitude=100} end});local before=attempts
+  value:Start();assert(attempts==before and value.Progress.State=='Waiting for reach','invalid reach metadata must use the normal fallback rather than send from afar')
+  value:Stop();drain()
+ end
+ ctx.Place,ctx.GameModule=originalPlace,originalModule
+ end)()
 -- Plan controls must agree with the immutable active preview.
 root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
 occupied={};b.Cells=cells(2);b:Start()

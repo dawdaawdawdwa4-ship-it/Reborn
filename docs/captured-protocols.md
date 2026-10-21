@@ -913,3 +913,23 @@ work do not receive misleading remaining-run totals. Planning mutates neither
 inventory nor working/saved queues and changes no runtime caps or confirmation.
 Tests cover arithmetic, order/dependencies, isolation, limits/failures and real
 scope/copy/edit controls. Live Roblox remains unverified.
+
+
+### Auto Build placement recovery (build-recovery-81)
+
+v81 retains recorder v31, all 146 catalog endpoints and existing placement bodies.
+A native route is considered usable only when BLOCK_PLACE_REQUEST resolves to an
+endpoint exposing CallServer. Lookup failure can fall back before dispatch;
+server rejection or an exception after dispatch cannot trigger another route.
+Native and legacy transport origins are exposed locally for Auto Build to stop
+uncertain work without sending the next cell. Recorder returns are preserved.
+
+Learn placement invokes the existing explicit manual capture workflow. No new
+session IDs, token substitutes, endpoint guesses or automatic placement are
+introduced. Auto Build preflights placement availability, retries only explicit
+TOO_FAST results on the same cell with bounded backoff/reach checks, and extends
+occupancy confirmation to five seconds. Unchanged occupancy semantics do not
+prove the exact material or server source of an observed block. Diagnostics
+retain actionable server errors without exporting captured request envelopes.
+Full tests cover routing, recovery and real controls; live Roblox remains
+unverified.

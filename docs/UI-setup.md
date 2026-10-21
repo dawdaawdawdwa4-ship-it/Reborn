@@ -2012,3 +2012,40 @@ and later top-ups, per-batch rounding, missing/invalid metadata, partial plans,
 unknown stock, maximum totals, UI scope/copy/refresh/edit/layout/cleanup and the
 full regression suite. Live Roblox costs, output quantities and rendering remain
 unverified.
+
+
+### Auto Build placement setup and recovery (v81)
+
+Auto Build now checks that a usable placement route is available before starting
+a worker. **Learn placement** sits beside Preview/Start: it starts the existing
+manual recorder and asks the user to hide the hub and place one block manually
+on their own island. It sends no placement request itself. Hosts without capture
+support receive a setup message; the native game API can still work when present.
+Crafting, chest and Auto Plow activity must finish before starting this capture.
+
+Native placement readiness validates the BLOCK_PLACE_REQUEST endpoint and its
+CallServer method, rather than assuming Requests.Client alone is sufficient.
+Failed endpoint lookup can use an existing learned/legacy route. Once a native
+request has been dispatched, rejection or transport failure never causes a second
+route to send it again. Native/legacy transport uncertainty stops Auto Build
+before another cell and asks the user to inspect the island before resuming.
+
+Explicit TOO_FAST replies retry the same cell after 0.5/1/2/4/4 seconds, with at
+most five retries. Stop cancels waiting; each retry rechecks normal reach. Invalid reach metadata
+falls back to the normal 20-stud check. A block already observed during cooldown
+is skipped. Accepted requests now receive
+up to five seconds for replication instead of one; early observation still
+continues immediately. Other rejection/no-gain behavior retains the three-failure
+limit. Failed cells retain their ghosts for inspection and explicit Resume.
+Confirmation still observes occupancy, not independent material/server identity.
+
+Clear preview, dimension commits and placement learning remain locked while a
+stopped request is still finishing. **Saved blueprints & checks → Copy build
+diagnostics** reports placement readiness, worker/cleanup state, selected cells,
+progress, last server result and current status. It uses the normal clipboard/
+console report path and sends no requests. Saved blueprint formats are unchanged.
+
+Validation covers unusable native endpoint fallback, no resend after dispatch,
+manual learning UI, missing setup, delayed replication, cooldown/reach/Stop,
+transport uncertainty, failed ghosts and cleanup locks, plus the full regression
+suite. Live Roblox placement and rendering remain unverified.

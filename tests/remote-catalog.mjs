@@ -267,6 +267,26 @@ assert(RemoteCatalog.PlacementAvailable(),'game request module should permit pla
 assert(firePlant(cf,'blueFlowers'))
 assert(requestedName=='BLOCK_PLACE_REQUEST' and gameBody.cframe==cf and gameBody.blockType=='blueFlowers','game placement API used incorrectly')
 assert(table.find(RemoteCatalog.SeedNames('blueFlowers'),'blueFlowerSeeds'),'metadata seed mapping missing')
+;(function()
+ local lookup,recorder=RemoteCatalog.PlacementClient,RemoteCatalog.Recorder
+ local fallbacks,dispatches=0,0
+ RemoteCatalog.Recorder={PlacementBinding={Remote={Parent=true}},Place=function() fallbacks+=1;return true end}
+ for _,invalid in ipairs({false,{},123}) do
+  RemoteCatalog.PlacementClient=function() return {Get=function() return invalid end} end
+  assert(RemoteCatalog.PlacementAvailable() and RemoteCatalog.CallPlacement({}) and fallbacks>0,'broken endpoint lookup must allow a learned placement route')
+ end
+ RemoteCatalog.PlacementClient=function() return {Get=function() error('missing endpoint') end} end
+ local before=fallbacks;assert(RemoteCatalog.CallPlacement({}) and fallbacks==before+1)
+ RemoteCatalog.PlacementClient=function() return {Get=function() return {CallServer=function() dispatches+=1;error('transport lost') end} end} end
+ before=fallbacks
+ local sent,reason,origin=RemoteCatalog.CallPlacement({})
+ assert(not sent and origin=='transport' and dispatches==1 and fallbacks==before,'a dispatched native call must never fall back after a transport exception')
+ RemoteCatalog.PlacementClient=function() return {Get=function() return {CallServer=function() return {success=false,error='TOO_FAST'} end} end} end
+ sent,reason,origin=RemoteCatalog.CallPlacement({})
+ assert(not sent and reason.error=='TOO_FAST' and origin=='rejected' and fallbacks==before,'explicit rejection must preserve the server error without duplicate dispatch')
+ RemoteCatalog.PlacementClient,RemoteCatalog.Recorder=lookup,recorder
+ end)()
+
 assert(setHotbarLayout('stonePickaxe,,,,,,,'))
 assert(requestedName=='CLIENT_HOTBAR_LAYOUT_UPDATE' and gameBody.layout=='stonePickaxe,,,,,,,','game hotbar API not used')
 local cropTarget={Name='wheat'}

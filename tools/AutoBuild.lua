@@ -457,10 +457,29 @@ function AutoBuild.new(ctx)
         self.HistoryIndex=0;self.HistoryReport=nil
         if ctx.Alive() then self.HistoryLabel.Text="Latest build recorded. View results to inspect the last "..#self.History.." runs (session only)." end
     end
+    function self:DiagnosticReport()
+        local ready,reason=true,"Placement readiness check unavailable"
+        if ctx.PlacementReady then ready,reason=ctx.PlacementReady() end
+        local p=self.Progress or {}
+        return table.concat({"Reborn Auto Build diagnostics", "Placement ready: "..tostring(ready).." · "..tostring(reason),
+            "Running: "..tostring(self.Running).."; request cleanup: "..tostring(self.WorkerToken~=nil),
+            "Preview cells: "..tostring(self.Cells and #self.Cells or 0).."; selected: "..#self:SelectedCells(),
+            "State: "..tostring(p.State or "not started").."; cell: "..tostring(p.Index or 0).." / "..tostring(p.Total or 0),
+            "Confirmed: "..tostring(p.Placed or 0).."; skipped: "..tostring(p.Skipped or 0).."; failed: "..tostring(p.Failed or 0),
+            "Last placement: "..tostring(self.LastPlacementResult or "none"),"Status: "..tostring(self.Status.Text)},"\n")
+    end
+    local function resultText(value)
+        if type(value)=="table" then return tostring(value.error or value.code or value.message or value.success or "unrecognized server result") end
+        return tostring(value)
+    end
     function self:Start()
         if ctx.BuildBlocked then local reason=ctx.BuildBlocked();if reason then status(reason);return false end end
         if self.Running then return false end
         if self.WorkerToken then status("Wait for the previous build request to finish before resuming.");return false end
+        if ctx.PlacementReady then
+            local ready,reason=ctx.PlacementReady()
+            if not ready then status(reason);return false end
+        end
         if not self.Cells and not self:Preview() then return end
         local cells=self:SelectedCells()
         if #cells==0 then status("No blocks selected. Choose All layers or create a new preview.");return false end
@@ -482,12 +501,13 @@ function AutoBuild.new(ctx)
                     if not active() then return end
                     self.Progress.Index=index
                     local existing=occupied(cell.CFrame,self.BlockSize)
+                    local confirmed=false
                     if existing then
                         skipped+=1
                     else
                         local _,root=characterRoot()
                         local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
-                        if type(reach)~="number" then reach=20 end
+                        if type(reach)~="number" or not (reach>0 and reach<math.huge) then reach=20 end
                         while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
                             self.Progress.State="Waiting for reach"
                             status(string.format("Move within %d studs of block %d/%d, or press Stop.",reach,index,#cells))
@@ -496,16 +516,53 @@ function AutoBuild.new(ctx)
                             if existing then break end
                         end
                         if not active() then return end
-                        if existing or occupied(cell.CFrame,self.BlockSize) then
+                        existing=existing or occupied(cell.CFrame,self.BlockSize)
+                        if existing then
                             skipped+=1
                         else
                             self.Progress.State="Building"
                             status(string.format("Building %d/%d: %s",index,#cells,cell.Material))
-                            local sent,reason=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
+                            local sent,reason,origin
+                            local retries=0
+                            repeat
+                                if not active() then return end
+                                sent,reason,origin=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
+                                self.LastPlacementResult=(sent and "Accepted: " or "Rejected: ")..resultText(reason)
+                                if not active() then return end
+                                local cooldown=not sent and type(reason)=="table" and (reason.error=="TOO_FAST" or reason.code=="TOO_FAST")
+                                if not cooldown then break end
+                                retries+=1
+                                if retries>5 then
+                                    progress.Failed+=1;progress.State="Paused after cooldown"
+                                    status("Server cooldown persisted after 5 retries. Preview kept; wait, then Resume build.")
+                                    return
+                                end
+                                progress.State="Waiting for server cooldown"
+                                status("Server cooldown · retrying block "..index.." / "..#cells.." ("..retries.."/5)")
+                                for _=1,math.ceil(math.min(4,.5*2^(retries-1))/.1) do
+                                    if not active() then return end
+                                    scheduler.wait(.1)
+                                end
+                                if not active() then return end
+                                if occupied(cell.CFrame,self.BlockSize) then existing=true;sent=true;break end
+                                -- Cooldown waits can outlive the actor's reach. Wait
+                                -- before retrying this same cell; never send from afar.
+                                _,root=characterRoot()
+                                while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
+                                    progress.State="Waiting for reach";status("Move back within placement reach, or Stop.")
+                                    scheduler.wait(.2);_,root=characterRoot()
+                                end
+                            until not active()
                             if not active() then return end
-                            local confirmed=false
+                            if origin=="transport" or origin=="unavailable" then
+                                progress.Failed+=1;progress.State="Placement needs review"
+                                status("Placement stopped: "..resultText(reason)..". Check the island before resuming; no further blocks sent.")
+                                return
+                            end
                             if sent then
-                                local deadline=now()+1
+                                progress.State="Confirming block"
+                                status("Confirming block "..index.." / "..#cells.." · waiting for island replication")
+                                local deadline=now()+5
                                 repeat
                                     if not active() then return end
                                     confirmed=occupied(cell.CFrame,self.BlockSize)
@@ -513,25 +570,26 @@ function AutoBuild.new(ctx)
                                     scheduler.wait(.05)
                                 until now()>=deadline
                             end
-                            if confirmed then placed+=1;streak=0
+                            if existing then skipped+=1;streak=0
+                            elseif confirmed then placed+=1;streak=0
                             else failed+=1;streak+=1 end
                             self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
                             if streak>=3 then
                                 self.Progress.State="Paused after failures"
-                                status("Build paused after 3 failures: "..tostring(reason or "no block appeared")..". Check materials, support and island access.")
+                                status("Build paused after 3 failures: "..resultText(reason or "no block appeared")..". Check materials, support and island access.")
                                 return
                             end
                         end
                     end
                     self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
-                    if cell.Preview then cell.Preview:Destroy();cell.Preview=nil end
+                    if (existing or confirmed) and cell.Preview then cell.Preview:Destroy();cell.Preview=nil end
                     scheduler.wait(.2)
                 end
                 if active() then self.Progress.State="Finished";status(string.format("Finished: %d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
             if self.WorkerToken==token then self.WorkerToken=nil end
             if self.Token==token then
-                self.Running=false;buttons.Start.Text="Start build"
+                self.Running=false;buttons.Start.Text=progress.State=="Finished" and "Start build" or "Resume build"
                 if not ok then self.Progress.State="Error";status("Build stopped: "..tostring(err)) end
             end
             recordBuild(progress,meta)
@@ -1056,7 +1114,7 @@ function AutoBuild.new(ctx)
         inputs[key]=field;register(field,y+24,30,0,6,nil,true)
         local committed=field.Text
         local function commit()
-            if self.Running or self.SavedPlan then
+            if self.Running or self.WorkerToken or self.SavedPlan then
                 field.Text=committed
                 status(self.SavedPlan and "Saved layouts keep their materials and shape. Choose a built-in blueprint to edit them." or "Stop the build before changing its plan.")
                 return
@@ -1092,10 +1150,15 @@ function AutoBuild.new(ctx)
     buttons.Layer=ctx.Button({Parent=ctx.Parent,Text="Build: All layers",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,446)})
     register(buttons.Layer,446,32)
     ctx.Track(buttons.Layer.Activated:Connect(function() self:CycleLayer() end))
-    button("Preview","Preview",0,446,.5,function() self:Preview() end)
-    button("Start","Start build",.5,446,.5,function() self:Start() end)
+    button("Preview","Preview",0,446,.3,function() self:Preview() end)
+    button("LearnPlacement","Learn placement",.3,446,.4,function()
+        if self.Running or self.WorkerToken then status("Stop building and wait for request cleanup before learning.");return end
+        if not ctx.LearnPlacement then status("Placement learning unavailable in this host.");return end
+        local ok,reason=ctx.LearnPlacement();status(reason)
+    end)
+    button("Start","Start build",.7,446,.3,function() self:Start() end)
     button("Stop","Stop build",0,486,.5,function() self:Stop() end)
-    button("Clear","Clear preview",.5,486,.5,function() if not self.Running then self:ClearPreview();status("Preview cleared.") end end)
+    button("Clear","Clear preview",.5,486,.5,function() if not self.Running and not self.WorkerToken then self:ClearPreview();status("Preview cleared.") else status("Wait for build request cleanup before clearing the preview.") end end)
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
     local materialView=Instance.new("ScrollingFrame")
@@ -1139,6 +1202,10 @@ function AutoBuild.new(ctx)
         self.CopyTarget=self.CopyTarget%5+1;buttons.CopyTarget.Text="Copy target: "..self.CopyTarget.." / 5"
     end)
     button("CopySlot","Copy selected slot → target (overwrites target)",0,1416,1,function() self:CopySlot(self.CopyTarget) end)
+    button("CopyDiagnostics","Copy build diagnostics",0,1896,1,function()
+        local report=self:DiagnosticReport()
+        if ctx.CopyReport then ctx.CopyReport(report) else status(report) end
+    end)
     local copyHint=label("Rename uses the blueprint name field. Copy changes only the target slot; the current preview stays where it is. Choose the destination before copying.",1456,72)
     copyHint.TextWrapped=true
     self.BackupSummary=label("Backup not inspected. Refresh saved slots to check the selected slot.",1540,52)

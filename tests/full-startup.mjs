@@ -38,6 +38,26 @@ RemoteCatalog.ChestConveyorButton.Activated:Fire()
 assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy I/O collection")
  ;(function()
  assert(buildController.LayoutHeight<650 and not buildController.Inputs.Width.Visible and buildController.Buttons.Start.Visible,'actual startup must show a compact Auto Build workspace')
+ ;(function()
+  local r=RemoteCatalog;local b=buildController
+  local start,recorder=r.StartCapture,r.Recorder
+  local cells=b.Cells;local calls,placements=0,0
+  b.Cells={{CFrame={},Material='grass'}}
+  assert(not b:Start() and not b.WorkerToken and string.find(b.Status.Text,'Placement not ready',1,true),'real Start must explain missing placement setup before spawning a worker')
+  r.StartCapture=function() calls+=1;return {PlacementBinding={Remote={Parent=true}},Place=function() placements+=1;return true end} end
+  b.Buttons.LearnPlacement.Activated:Fire()
+  assert(calls==1 and placements==0 and r.PlacementAvailable() and string.find(b.Status.Text,'place one block manually',1,true),'Learn placement must start capture with instructions and send no placement')
+  b.WorkerToken=81;b.Buttons.LearnPlacement.Activated:Fire();b.Buttons.Clear.Activated:Fire()
+  assert(calls==1 and b.Cells~=nil,'in-flight worker must lock learning and Clear after Stop')
+  local width=b.Width;b.Inputs.Width.Text='12';b.Inputs.Width.FocusLost:Fire()
+  assert(b.Width==width,'in-flight cleanup must also lock dimension commits')
+  b.WorkerToken=nil
+  local copy,report=setclipboard,nil;setclipboard=function(value) report=value end
+  b.Buttons.CopyDiagnostics.Activated:Fire()
+  assert(report and string.find(report,'Reborn Auto Build diagnostics',1,true) and string.find(report,'Learned placement ready',1,true),'Copy build diagnostics must report the actual available route')
+  setclipboard=copy;r.StartCapture,r.Recorder=start,recorder;b.Cells=cells
+  end)()
+
  showTab('Auto Build');flush()
  assert(not buildController.Inputs.Width.Visible and not buildController.Buttons.Load.Visible,'tab intro must not reveal collapsed Auto Build fields')
  local startY=buildController.Buttons.Start.Position.Y.Offset
@@ -851,7 +871,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn queue-materials-80',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-recovery-81',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1576,7 +1596,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn queue-materials-80 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-recovery-81 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
