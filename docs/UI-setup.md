@@ -2130,3 +2130,43 @@ layers, untouched cells, changed geometry/materials, in-flight Stop, unconfirmed
 and transport outcomes (including cooldown-shaped errors), successful retry
 cleanup, result history and actual UI handlers. The full regression suite is
 required; live Roblox placement and rendering remain unverified.
+
+
+### Setup preview markers (v84)
+
+**Move blueprint → Setup marks** is optional and OFF by default. Turning it ON
+runs the existing read-only setup check for the current selected layer and colors
+its remaining preview ghosts. It shares the reset-offset row, keeping the compact
+page and move popup at their previous size. Check setup/Copy setup refresh the
+observations; the material-only check also refreshes the same occupancy snapshot.
+
+The legend appears in the setup report:
+
+- **Purple:** observed occupied; the build worker will skip this cell. The
+  existing block's material is not verified and no existing block is removed.
+- **Red:** a recorded explicit placement rejection for this cell/material.
+- **Yellow:** a recorded uncertain request or unconfirmed placement needing review.
+- **Orange:** an empty observed cell outside normal reach.
+- **Gray:** unavailable, invalidated or expired observation data.
+- **Original blue/gold:** observed empty and in reach; server checks still apply.
+
+Occupied observations take precedence over past failure colors. Rejection/review
+records take precedence over reach. Unselected layers keep their original colors
+and faint opacity; picking a ghost retains its selection emphasis. Turning setup
+markers OFF restores material colors, while optional live Reach markers remain
+active if enabled. Enabling setup scans waits for worker cleanup; turning markers
+OFF remains available during a run.
+
+Occupancy/reach observations are snapshots, expire after 30 seconds and are
+invalidated by blueprint edits/movement, layer/run changes or respawn. Refresh Check
+setup after moving or changing inventory/world state. With Reach markers ON,
+their current reach state is used for the empty-cell reach color; occupied and
+failure colors retain priority. Cached marker paints query no world occupancy,
+perform no movement, write no files and send no placement requests. Source blocks
+and saved blueprint data are unchanged. Runtime Start/Resume/Retry still perform
+their existing fresh checks independently of these colors.
+
+Tests cover every marker state, precedence, selection/layer behavior, expiry,
+respawn/plan invalidation, no repeated scans, failed reads, worker locks, OFF
+restoration and actual UI/worker repainting, plus the full regression suite.
+Live Roblox rendering, occupancy precision and placement remain unverified.

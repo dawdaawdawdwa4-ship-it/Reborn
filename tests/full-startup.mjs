@@ -42,6 +42,7 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   local b,r=buildController,RemoteCatalog
   local cache,cells,layer,character,count=r.ModuleCache,b.Cells,b.LayerIndex,player.Character,r.CarrotCount
   local stock,dispatches,copied=0,0,nil
+  local markerOn,rangeOn=b.SetupMarkers,b.RangeMarkers
   local function pos(x) return setmetatable({X=x,Y=0,Z=0},{__sub=function(a,b) return {Magnitude=math.abs(a.X-b.X)} end}) end
   r.ModuleCache={
    ['ReplicatedStorage.TS.network.requests']={Requests={Client={Get=function() return {CallServer=function() dispatches+=1;return true end} end}}},
@@ -63,8 +64,18 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   assert(b.Buttons.CheckSetup.Visible and b.Buttons.CheckSetup.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.LayoutHeight<650,'setup action must remain visible inside the compact action row')
   assert(b.Buttons.Stop.Position.X.Scale+b.Buttons.Stop.Size.X.Scale<=b.Buttons.CheckSetup.Position.X.Scale and b.Buttons.CheckSetup.Position.X.Scale+b.Buttons.CheckSetup.Size.X.Scale<=b.Buttons.Clear.Position.X.Scale,'action buttons must not overlap horizontally')
   b.WorkerToken=82;b.Buttons.CheckSetup.Activated:Fire();assert(dispatches==0);b.WorkerToken=nil
+  local base={}
+  for _,cell in ipairs(b.Cells) do cell.Preview={Color=base};cell.PreviewColor=base end
+  b.Buttons.SetupMarkers.Activated:Fire()
+  assert(b.SetupMarkers and b.Cells[1].SetupState=='Occupied' and b.Cells[2].SetupState=='Clear' and b.Cells[3].SetupState=='Out' and dispatches==0,'real setup marker toggle must paint the checked ghosts without placement')
+  local checks=b.VisualSnapshot
+  updateBoard();assert(b.VisualSnapshot==checks and b.Cells[1].SetupState=='Occupied','periodic color refresh must reuse the snapshot')
+  b.Buttons.SetupMarkers.Activated:Fire()
+  assert(not b.SetupMarkers and b.Cells[1].Preview.Color==base and not b.Cells[1].SetupState,'real OFF control must restore source preview colors')
+  assert(b.Buttons.SetupMarkers.Position.Y.Offset==b.Buttons.ResetOffset.Position.Y.Offset and b.MoveMenu.Size.Y.Offset==220,'diagnostic toggle must share the reset row without enlarging the popup')
+
   r.ModuleCache,b.Cells,b.LayerIndex,player.Character,r.CarrotCount=cache,cells,layer,character,count
-  b.SetupReport=nil;b.SetupResult=nil
+  b.SetupReport=nil;b.SetupResult=nil;b.VisualSnapshot=nil;b.VisualCounts=nil;b.SetupMarkers=markerOn;b.RangeMarkers=rangeOn
   end)()
 
  ;(function()
@@ -104,8 +115,11 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   }
   player.Character={FindFirstChild=function() return {Position=pos(0)} end}
   b.LayerIndex=nil;b.Failures={};b.Cells={{CFrame={Position=pos(4)},Material='grass'},{CFrame={Position=pos(7)},Material='grass'}}
+  for _,cell in ipairs(b.Cells) do cell.Preview={Destroy=function() end};cell.PreviewColor={} end
+  b.SetupMarkers=true
   b.Buttons.Start.Activated:Fire();for _=1,4 do stepWorkers() end
   assert(not b.WorkerToken and b.Buttons.RetryFailed.Active and #trace==2,'real rejected placements must enable Retry failed after cleanup')
+  assert(b.Cells[1].SetupState=='Rejected' and b.Cells[2].SetupState=='Rejected','actual rejected requests must be visible as red diagnostics')
   b.Buttons.CheckSetup.Activated:Fire()
   assert(string.find(b.SetupReport,'Retry failed targets 2 explicitly rejected cells',1,true),'setup must explain the eligible retry count')
   assert(string.find(b.SetupReport,'REJECTED · blueprint block #1 · grass · MISSING_MATERIALS',1,true),'setup must retain per-cell server reasons')
@@ -114,7 +128,7 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   assert(b.History[1].RetryOnly and string.find(b:ShowHistory(),'Run type: Retry failed',1,true),'retry history must identify its narrower run scope')
   assert(b.Buttons.RetryFailed.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.LayoutHeight<650,'retry action must fit the compact action row')
   r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
-  b.HistoryIndex=0;b.SetupReport=nil;b.SetupResult=nil;b:RefreshFailureUI()
+  b.HistoryIndex=0;b.SetupReport=nil;b.SetupResult=nil;b.SetupMarkers=false;b.VisualSnapshot=nil;b.VisualCounts=nil;b:RefreshFailureUI()
   end)()
  showTab('Auto Build');flush()
  assert(not buildController.Inputs.Width.Visible and not buildController.Buttons.Load.Visible,'tab intro must not reveal collapsed Auto Build fields')
@@ -929,7 +943,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-retry-83',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-markers-84',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1654,7 +1668,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-retry-83 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-markers-84 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

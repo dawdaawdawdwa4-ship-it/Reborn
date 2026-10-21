@@ -973,3 +973,22 @@ Setup next steps and retry/history/diagnostic counts remain local observations,
 not evidence of server permission or exact block material. No automatic retries
 are added for ambiguous outcomes. Tests cover eligibility, scope, cleanup,
 uncertainty and real controls; live Roblox remains unverified.
+
+
+### Read-only setup preview markers (build-markers-84)
+
+v84 retains recorder v31, all 146 endpoints and all existing request envelopes.
+Per-cell occupancy and reach observations are collected during the existing
+read-only material/setup scan and cached with cell CFrame/material, plan revision,
+worker token, layer, character and observation time. Marker repaints use that
+cache and existing rejected/review records; they never perform an occupancy scan
+or send a remote. Observations expire after 30 seconds and mismatched context
+cannot retain a clear/occupied color.
+
+Occupied means the existing broad occupied-cell predicate, not a verified match
+of block type or ownership. Failure records are past observations, not proof of
+current world contents. Marker colors do not authorize replacements or change
+Start/Resume/Retry selection, routing, limits, cancellation or confirmation.
+Setup enabling performs only the existing read-only check, and source blocks or
+saved blueprint files are never edited. Tests cover colors, lifetime/context,
+read-only behavior and actual controls; live Roblox remains unverified.

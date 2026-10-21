@@ -131,6 +131,7 @@ function AutoBuild.new(ctx)
     local inputs,buttons,commits={},{},{}
     self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
     self.Failures=setmetatable({}, {__mode="k"})
+    self.MarkerColors={Occupied=Color3.fromRGB(172,126,224),Rejected=Color3.fromRGB(240,100,108),Review=Color3.fromRGB(250,209,90),Out=Color3.fromRGB(255,160,70),Unknown=Color3.fromRGB(160,170,180)}
     self.Backups={};self.BackupPersistence={}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
@@ -146,6 +147,8 @@ function AutoBuild.new(ctx)
         if self.RefreshFailureUI then self:RefreshFailureUI() end
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
         self.Cells=nil;self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil;self.LayerIndex=nil;self.BaseAnchor=nil
+        self.VisualSnapshot=nil;self.VisualCounts=nil
+        self:RefreshPreviewColors()
         self.SelectedCell=nil;self.Picking=false
         if buttons.Pick then buttons.Pick.Text="Pick block: OFF" end
         if self.SelectionLabel then self.SelectionLabel.Text="No preview block selected." end
@@ -216,6 +219,56 @@ function AutoBuild.new(ctx)
         end
         return selected
     end
+    function self:RefreshPreviewColors()
+        if not ctx.Alive() then return end
+        local selected={};for _,cell in ipairs(self:SelectedCells()) do selected[cell]=true end
+        local snapshot=self.VisualSnapshot
+        local valid=snapshot and snapshot.Revision==self.PlanRevision and snapshot.Token==self.Token and snapshot.Layer==self.LayerIndex
+            and snapshot.Character==ctx.Player.Character and now()>=snapshot.At and now()-snapshot.At<=30
+        local counts={Occupied=0,Rejected=0,Review=0,Out=0,Unknown=0,Clear=0,Stale=not valid}
+        for _,cell in ipairs(self.Cells or {}) do
+            if cell.Preview then
+                local color=cell.PreviewColor or Color3.fromRGB(100,160,255)
+                cell.SetupState=nil
+                if selected[cell] then
+                    if self.SetupMarkers then
+                        local row=valid and snapshot.States[cell]
+                        if row and (row.CFrame~=cell.CFrame or row.Material~=cell.Material) then row=nil end
+                        local failure=self.Failures[cell]
+                        if failure and (failure.CFrame~=cell.CFrame or failure.Material~=cell.Material) then failure=nil end
+                        local state
+                        if row and row.Occupied then state="Occupied"
+                        elseif failure then state=failure.Retryable and "Rejected" or "Review"
+                        elseif not row then state="Unknown"
+                        elseif self.RangeMarkers and cell.ReachState=="out" or not self.RangeMarkers and row.InReach==false then state="Out"
+                        elseif self.RangeMarkers and cell.ReachState~="in" or not self.RangeMarkers and row.InReach==nil then state="Unknown"
+                        else state="Clear" end
+                        cell.SetupState=state;counts[state]+=1
+                        color=self.MarkerColors[state] or color
+                    elseif self.RangeMarkers then
+                        if cell.ReachState=="out" then color=self.MarkerColors.Out
+                        elseif cell.ReachState=="unknown" then color=self.MarkerColors.Unknown end
+                    end
+                end
+                cell.Preview.Color=color
+            end
+        end
+        self.VisualCounts=self.SetupMarkers and counts or nil
+        if buttons.SetupMarkers then
+            buttons.SetupMarkers.Text=self.SetupMarkers and "Setup marks: ON" or "Setup marks: OFF"
+            local available=self.SetupMarkers or not self.Running and not self.WorkerToken
+            buttons.SetupMarkers.Active=available==true;buttons.SetupMarkers.Selectable=available==true
+        end
+    end
+    function self:SetSetupMarkers(on)
+        if not ctx.Alive() or type(on)~="boolean" then return false end
+        if on and (self.Running or self.WorkerToken) then status("Stop building and wait for cleanup before checking preview markers.");return false end
+        self.SetupMarkers=on
+        if on then self:CheckSetup() end
+        self:RefreshReach();self:RefreshPreviewColors()
+        if not on then status("Setup markers OFF. Reach markers still apply when enabled.") end
+        return true
+    end
     function self:RefreshSelection()
         local included={}
         for _,cell in ipairs(self:SelectedCells()) do included[cell]=true end
@@ -223,6 +276,7 @@ function AutoBuild.new(ctx)
         for _,cell in ipairs(self.Cells or {}) do
             if cell.Preview then cell.Preview.Transparency=cell==self.SelectedCell and .25 or included[cell] and .65 or .94 end
         end
+        self:RefreshPreviewColors()
         if self.SelectionLabel then
             local cell=self.SelectedCell
             self.SelectionLabel.Text=cell and ("Selected block #"..tostring(table.find(self.Cells,cell))..": "..cell.Material..". Use the replacement field, then Replace selected; or Remove selected.") or "No preview block selected. Enable Pick block, then click/tap a ghost outside the hub, or use Next block."
@@ -270,6 +324,7 @@ function AutoBuild.new(ctx)
             end
             self.ReachCounts=nil
             if buttons.Reach then buttons.Reach.Text="Mark reach: OFF" end
+            self:RefreshPreviewColors()
             return nil
         end
         if not self.Cells then
@@ -299,6 +354,7 @@ function AutoBuild.new(ctx)
         end
         self.ReachCounts=counts
         if buttons.Reach then buttons.Reach.Text="Reach: "..counts.InRange.." in / "..counts.OutOfRange.." out / "..counts.Unknown.." unknown" end
+        self:RefreshPreviewColors()
         return counts
     end
     function self:CycleLayer()
@@ -308,6 +364,7 @@ function AutoBuild.new(ctx)
         if not heights or #heights==0 then status("Layer information is unavailable; create a new preview.");return false end
         local index=(self.LayerIndex or 0)+1
         self.LayerIndex=index<=#heights and index or nil
+        self.VisualSnapshot=nil
         self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil
         local selected=self:SelectedCells()
         self:RefreshFailureUI()
@@ -491,9 +548,11 @@ function AutoBuild.new(ctx)
         local counts=self:FailureCounts()
         local available=ctx.Alive() and not self.Running and not self.WorkerToken and counts.Retryable>0
         buttons.RetryFailed.Active=available==true;buttons.RetryFailed.Selectable=available==true
+        if self.SetupMarkers then self:RefreshPreviewColors() end
     end
     local function markFailure(cell,reason,retryable)
         self.Failures[cell]={CFrame=cell.CFrame,Material=cell.Material,Reason=tostring(reason),Retryable=retryable==true}
+        if self.SetupMarkers then self:RefreshPreviewColors() end
     end
     function self:RetryFailures() return self:Start(true) end
     function self:DiagnosticReport()
@@ -539,6 +598,7 @@ function AutoBuild.new(ctx)
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
+        self.VisualSnapshot=nil
         self.SetupReport=nil;self.SetupResult=nil
         self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true}
         local progress=self.Progress
@@ -699,8 +759,10 @@ function AutoBuild.new(ctx)
     end
     function self:UpdateMaterials(cells)
         self.PlanRevision=(self.PlanRevision or 0)+1
+        self.VisualSnapshot=nil
         self.SetupReport=nil;self.SetupResult=nil
         self:RefreshFailureUI()
+        self:RefreshPreviewColors()
         local counts,names={},{}
         for _,cell in ipairs(cells or {}) do
             if not counts[cell.Material] then counts[cell.Material]=0;table.insert(names,cell.Material) end
@@ -800,23 +862,29 @@ function AutoBuild.new(ctx)
         if not self.Cells then status("Preview at the intended position before checking materials.");return false end
         local cells=self:SelectedCells()
         local checkedCells,checkedToken,checkedLayer,revision=self.Cells,self.Token,self.LayerIndex,self.PlanRevision
+        local checkedCharacter=ctx.Player.Character
+        self.VisualSnapshot=nil;self:RefreshPreviewColors()
         self.SetupReport=nil;self.SetupResult=nil
         if #cells==0 then status("No blocks selected. Choose All layers or refresh the preview.");return false end
-        local pending,skipped,reachable={},0,0
+        local pending,skipped,reachable,states={},0,0,{}
         local _,root=characterRoot()
         local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
         local fallback=type(reach)~="number" or not (reach>0 and reach<math.huge)
         if fallback then reach=20 end
         local ok,err=pcall(function()
             for _,cell in ipairs(cells) do
-                if occupied(cell.CFrame,self.BlockSize) then skipped+=1
+                local existing=occupied(cell.CFrame,self.BlockSize)
+                local inReach
+                if not existing and root then inReach=(root.Position-cell.CFrame.Position).Magnitude<=reach end
+                states[cell]={CFrame=cell.CFrame,Material=cell.Material,Occupied=existing,InReach=inReach}
+                if existing then skipped+=1
                 else
                     pending[cell.Material]=(pending[cell.Material] or 0)+1
-                    if root and (root.Position-cell.CFrame.Position).Magnitude<=reach then reachable+=1 end
+                    if inReach then reachable+=1 end
                 end
             end
         end)
-        if not ctx.Alive() or self.Cells~=checkedCells or self.Token~=checkedToken or self.LayerIndex~=checkedLayer or self.PlanRevision~=revision or self.Running or self.WorkerToken then return false end
+        if not ctx.Alive() or self.Cells~=checkedCells or self.Token~=checkedToken or self.LayerIndex~=checkedLayer or self.PlanRevision~=revision or ctx.Player.Character~=checkedCharacter or self.Running or self.WorkerToken then return false end
         if not ok then status("Could not check world occupancy: "..tostring(err));return false end
         local names,total={},0
         for material,amount in pairs(pending) do table.insert(names,material);total+=amount end
@@ -833,7 +901,9 @@ function AutoBuild.new(ctx)
             table.insert(lines,material..": need "..pending[material]..(valid and (", owned "..count..", short "..math.max(0,pending[material]-count)) or ", owned quantity unknown"))
         end
         table.insert(lines,"Occupied cells may contain a different block. Materials, support and permissions remain server-controlled.")
-        if not ctx.Alive() or self.Cells~=checkedCells or self.Token~=checkedToken or self.LayerIndex~=checkedLayer or self.PlanRevision~=revision or self.Running or self.WorkerToken then return false end
+        if not ctx.Alive() or self.Cells~=checkedCells or self.Token~=checkedToken or self.LayerIndex~=checkedLayer or self.PlanRevision~=revision or ctx.Player.Character~=checkedCharacter or self.Running or self.WorkerToken then return false end
+        self.VisualSnapshot={States=states,Revision=revision,Token=checkedToken,Layer=checkedLayer,Character=checkedCharacter,At=now()}
+        self:RefreshPreviewColors()
         self.BuildReport=table.concat(lines,"\n")
         self.MaterialSummary.Text=self.BuildReport
         status("Build check ready. No blocks were placed. Refresh after inventory or world changes.")
@@ -924,8 +994,10 @@ function AutoBuild.new(ctx)
         if result.Failures.Retryable+result.Failures.Review>0 then table.insert(lines,self:FailureReport()) end
         table.insert(lines,"NEXT STEPS")
         for index,step in ipairs(result.NextSteps) do table.insert(lines,index..". "..step) end
+        if self.SetupMarkers then table.insert(lines,"MARKERS · purple: occupied/skipped; red: recorded rejection; yellow: review; orange: out of reach; gray: unknown/stale; blue/gold: empty in reach. Occupancy is a snapshot (30s); Check setup refreshes it.") end
         table.insert(lines,"Read-only snapshot; no blocks placed. Refresh after inventory, position or world changes. Support and island permissions are checked by the server.")
         result.Text=table.concat(lines,"\n")
+        self:RefreshPreviewColors()
         self.SetupReport=result.Text;self.SetupResult=result
         self.MaterialSummary.Text=result.Text
         status("Setup check: "..result.Summary..". See the scrollable report below; no blocks placed.")
@@ -1252,9 +1324,12 @@ function AutoBuild.new(ctx)
     moveButton("MoveBack","Back ↓",.5,40,0,0,-1)
     moveButton("MoveUp","Up +1",0,76,0,1,0)
     moveButton("MoveDown","Down −1",.5,76,0,-1,0)
-    local resetOffset=ctx.Button({Parent=moveMenu,Text="Reset blueprint offset",Size=UDim2.new(1,-6,0,32),Position=UDim2.fromOffset(3,112)})
+    local resetOffset=ctx.Button({Parent=moveMenu,Text="Reset offset",Size=UDim2.new(.5,-6,0,32),Position=UDim2.fromOffset(3,112)})
     resetOffset.ZIndex=36;buttons.ResetOffset=resetOffset
     ctx.Track(resetOffset.Activated:Connect(function() self:Move(-self.OffsetX,-self.OffsetY,-self.OffsetZ) end))
+    buttons.SetupMarkers=ctx.Button({Parent=moveMenu,Text="Setup marks: OFF",TextSize=12,Size=UDim2.new(.5,-6,0,32),Position=UDim2.new(.5,3,0,112)})
+    buttons.SetupMarkers.ZIndex=36
+    ctx.Track(buttons.SetupMarkers.Activated:Connect(function() self:SetSetupMarkers(not self.SetupMarkers) end))
     self.MoveLabel=ctx.Label({Parent=moveMenu,Text="Moves 1 block per click, relative to preview.",TextSize=12,Size=UDim2.new(1,-12,0,30),Position=UDim2.fromOffset(6,148)})
     self.MoveLabel.ZIndex=36;self.MoveLabel.TextWrapped=true
     self.MoveMenu=moveMenu
@@ -1262,8 +1337,8 @@ function AutoBuild.new(ctx)
     buttons.Reach.ZIndex=36
     ctx.Track(buttons.Reach.Activated:Connect(function()
         self.RangeMarkers=not self.RangeMarkers;self:RefreshReach()
-        status(self.RangeMarkers and "Reach markers ON: original colors are in reach, orange is beyond reach, gray is unknown. Selected preview ghosts update while the hub runs."
-            or "Reach markers OFF. Original preview colors restored.")
+        status(self.RangeMarkers and (self.SetupMarkers and "Reach markers ON; setup occupied/failure colors take priority. Check setup refreshes occupancy." or "Reach markers ON: original colors are in reach, orange is beyond reach, gray is unknown. Selected preview ghosts update while the hub runs.")
+            or (self.SetupMarkers and "Reach markers OFF. Setup snapshot markers remain ON; Check setup refreshes them." or "Reach markers OFF. Original preview colors restored."))
     end))
     for index,preset in ipairs(presets) do
         local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(.5,-4,0,34),Position=UDim2.new((index-1)%2*.5,2,0,math.floor((index-1)/2)*36)})

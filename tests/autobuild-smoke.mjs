@@ -584,6 +584,59 @@ ctx.GameModule=modules50
 markers.Buttons.Reach.Activated:Fire()
 assert(not markers.RangeMarkers and not markers.ReachCounts and not markers.Cells[2].ReachState and markers.Cells[1].Preview.Color==base50a and markers.Cells[2].Preview.Color==base50b,'OFF must restore all original colors and clear marker state')
 assert(requests==req50 and writes47==writes50 and not markers.Running,'marker refresh must never place, write files or start a worker')
+-- Setup markers reuse bounded snapshots and leave source blocks/requests alone.
+;(function()
+ local module,count,alive,character,clock=ctx.GameModule,ctx.ItemCount,ctx.Alive,ctx.Player.Character,ticks
+ local value=A.new(ctx);value.BlockSize=3
+ local sourceColors={}
+ value.Cells={}
+ for index=1,7 do sourceColors[index]={};value.Cells[index]={CFrame={Position=index},LayerY=index==7 and 3 or 0,Material='grass',Preview={},PreviewColor=sourceColors[index]} end
+ value.LayerIndex=1
+ local scans=0
+ ctx.GameModule=function(_,name)
+  if name=='CLIENT_REACH' then return 20 end
+  if name=='BlockUtils' then return {getBlocksFromLocation=function(pos) scans+=1;return pos==1 and {true} or {} end} end
+ end
+ ctx.ItemCount=function() return 100 end
+ root.Position=setmetatable({},{__sub=function(_,pos) return {Magnitude=pos==4 and 50 or 1} end})
+ value.Failures[value.Cells[2]]={CFrame=value.Cells[2].CFrame,Material='grass',Reason='DENIED',Retryable=true}
+ value.Failures[value.Cells[3]]={CFrame=value.Cells[3].CFrame,Material='grass',Reason='uncertain',Retryable=false}
+ local requestsBefore=requests
+ assert(not value.SetupMarkers and value:SetSetupMarkers(true))
+ assert(value.Cells[1].SetupState=='Occupied' and value.Cells[1].Preview.Color==value.MarkerColors.Occupied)
+ assert(value.Cells[2].SetupState=='Rejected' and value.Cells[2].Preview.Color==value.MarkerColors.Rejected)
+ assert(value.Cells[3].SetupState=='Review' and value.Cells[3].Preview.Color==value.MarkerColors.Review)
+ assert(value.Cells[4].SetupState=='Out' and value.Cells[5].SetupState=='Clear' and value.Cells[5].Preview.Color==sourceColors[5])
+ assert(not value.Cells[7].SetupState and value.Cells[7].Preview.Color==sourceColors[7],'excluded layer cannot inherit a diagnostic color')
+ assert(string.find(value.SetupReport,'MARKERS · purple:',1,true) and requests==requestsBefore and not value.WorkerToken,'marker enabling must only run the read-only setup check')
+ local scanCount=scans
+ for _=1,20 do value:RefreshPreviewColors() end
+ assert(scans==scanCount,'repainting must never rescan occupancy')
+ assert(value:SelectCell(2) and value.Cells[2].Preview.Transparency==.25 and value.Cells[2].SetupState=='Rejected','picking must preserve diagnosis color and selection emphasis')
+ value.VisualSnapshot.States[value.Cells[6]]=nil;value:RefreshPreviewColors()
+ assert(value.Cells[6].SetupState=='Unknown','missing per-cell observations cannot claim an empty buildable cell')
+ value.Buttons.Reach.Activated:Fire();assert(value.RangeMarkers and value.Cells[2].SetupState=='Rejected' and value.Cells[1].SetupState=='Occupied','live reach must not overwrite occupied/rejection colors')
+ value.Buttons.Reach.Activated:Fire();assert(value.SetupMarkers and value.Cells[1].SetupState=='Occupied','reach OFF must preserve setup diagnostics')
+ ticks+=31;scanCount=scans;value:RefreshPreviewColors()
+ assert(value.VisualCounts.Stale and value.Cells[1].SetupState=='Unknown' and value.Cells[5].SetupState=='Unknown' and scans==scanCount,'expired occupancy must turn unknown without a background scan')
+ value:CheckSetup();assert(not value.VisualCounts.Stale and value.Cells[1].SetupState=='Occupied')
+ ctx.Player.Character={FindFirstChild=function() return root end};value:RefreshPreviewColors()
+ assert(value.Cells[1].SetupState=='Unknown','respawn must invalidate an old occupancy observation')
+ ctx.Player.Character=character
+ assert(value:CycleLayer() and value.Cells[7].SetupState=='Unknown' and not value.Cells[2].SetupState and value.Cells[2].Preview.Transparency==.94,'changing layer must require a new setup snapshot and fade the excluded layer')
+ value:CheckSetup();assert(value.Cells[7].SetupState=='Clear')
+ value:UpdateMaterials(value:SelectedCells());assert(not value.VisualSnapshot and value.Cells[7].SetupState=='Unknown','plan edits cannot reuse old occupancy colors')
+ value.WorkerToken=84;scanCount=scans
+ assert(not value:SetSetupMarkers(true) and scans==scanCount,'finishing placement work must block another setup scan')
+ assert(value:SetSetupMarkers(false) and value.Cells[7].Preview.Color==sourceColors[7] and not value.Cells[7].SetupState,'OFF must restore material colors even during cleanup')
+ value.WorkerToken=nil
+ ctx.GameModule=function() error('world metadata unavailable') end
+ assert(value:SetSetupMarkers(true) and value.Cells[7].SetupState=='Unknown','failed setup reads cannot leave stale colors')
+ ctx.Alive=function() return false end;local before=value.Cells[7].Preview.Color
+ value:RefreshPreviewColors();assert(value.Cells[7].Preview.Color==before,'destroyed hub cannot update marker colors')
+ ctx.GameModule,ctx.ItemCount,ctx.Alive,ctx.Player.Character,ticks=module,count,alive,character,clock
+ assert(requests==requestsBefore,'setup diagnostics must never place or remove a source block')
+ end)()
 -- Panel toggles change only presentation and have stable, bounded layout height.
 local compact=A.new(ctx)
 assert(compact.LayoutHeight<650 and not compact.Inputs.Width.Visible and compact.Buttons.Start.Visible and not compact.Buttons.Load.Visible and not compact.Buttons.Replace.Visible,'compact layout must expose primary actions and collapse optional sections')
