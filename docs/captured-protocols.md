@@ -933,3 +933,21 @@ prove the exact material or server source of an observed block. Diagnostics
 retain actionable server errors without exporting captured request envelopes.
 Full tests cover routing, recovery and real controls; live Roblox remains
 unverified.
+
+
+### Read-only build setup checks (build-setup-82)
+
+v82 retains recorder v31, all 146 catalog endpoints and existing placement
+payloads. Check setup performs only readiness lookup, world occupancy queries,
+owned inventory reads and distance calculations. It never calls CallServer,
+InvokeServer, capture startup or movement. Local status does not establish
+server permission/support or confirm the material occupying an existing cell.
+
+Remaining material totals exclude occupied cells and honor the selected layer.
+Malformed/unreadable quantities remain unknown; invalid reach metadata uses the
+same 20-stud fallback as the placement worker. Results are snapshots, discarded
+if plan/layer/revision/token/lifetime changes while reading. Setup actions wait
+for active/finishing workers and leave Start/resume and routing unchanged.
+Fresh setup reports support the existing clipboard/console path. Tests verify
+state classification, read-only isolation, stale-result rejection and real UI
+controls; live Roblox remains unverified.

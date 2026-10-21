@@ -39,6 +39,35 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
  ;(function()
  assert(buildController.LayoutHeight<650 and not buildController.Inputs.Width.Visible and buildController.Buttons.Start.Visible,'actual startup must show a compact Auto Build workspace')
  ;(function()
+  local b,r=buildController,RemoteCatalog
+  local cache,cells,layer,character,count=r.ModuleCache,b.Cells,b.LayerIndex,player.Character,r.CarrotCount
+  local stock,dispatches,copied=0,0,nil
+  local function pos(x) return setmetatable({X=x,Y=0,Z=0},{__sub=function(a,b) return {Magnitude=math.abs(a.X-b.X)} end}) end
+  r.ModuleCache={
+   ['ReplicatedStorage.TS.network.requests']={Requests={Client={Get=function() return {CallServer=function() dispatches+=1;return true end} end}}},
+   ['ReplicatedStorage.TS.util.block-utils']={BlockUtils={getBlocksFromLocation=function(pos) return pos.X==1 and {true} or {} end}},
+   ['ReplicatedStorage.Shared.SharedConfig']={CLIENT_REACH=20},
+  }
+  player.Character={FindFirstChild=function() return {Position=pos(0)} end}
+  r.CarrotCount=function() return stock end
+  b.LayerIndex=nil;b.Cells={{CFrame={Position=pos(1)},Material='grass'},{CFrame={Position=pos(4)},Material='grass'},{CFrame={Position=pos(45)},Material='grass'}}
+  b.Buttons.CheckSetup.Activated:Fire()
+  assert(b.SetupResult and b.SetupResult.Summary=='ACTION NEEDED' and b.SetupResult.Materials.Occupied==1 and b.SetupResult.Materials.Quantities.grass.Missing==2,'actual Check setup must combine placement, occupied, reach and inventory state')
+  assert(string.find(b.MaterialSummary.Text,'1 in / 1 out of reach',1,true) and dispatches==0 and not b.WorkerToken,'setup must report distant cells without moving or placing')
+  local copy=setclipboard;setclipboard=function(text) copied=text end
+  stock=5;b.Buttons.CopySetup.Activated:Fire()
+  assert(copied and string.find(copied,'AUTO BUILD SETUP',1,true) and string.find(copied,'owned 5',1,true) and dispatches==0,'Copy setup must refresh current stock and copy without dispatch')
+  setclipboard=function() error('unavailable') end;b.Buttons.CopySetup.Activated:Fire()
+  assert(string.find(status.Text,'printed to console',1,true),'setup copy must support console fallback')
+  setclipboard=copy
+  assert(b.Buttons.CheckSetup.Visible and b.Buttons.CheckSetup.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.LayoutHeight<650,'setup action must remain visible inside the compact action row')
+  assert(b.Buttons.Stop.Position.X.Scale+b.Buttons.Stop.Size.X.Scale<=b.Buttons.CheckSetup.Position.X.Scale and b.Buttons.CheckSetup.Position.X.Scale+b.Buttons.CheckSetup.Size.X.Scale<=b.Buttons.Clear.Position.X.Scale,'action buttons must not overlap horizontally')
+  b.WorkerToken=82;b.Buttons.CheckSetup.Activated:Fire();assert(dispatches==0);b.WorkerToken=nil
+  r.ModuleCache,b.Cells,b.LayerIndex,player.Character,r.CarrotCount=cache,cells,layer,character,count
+  b.SetupReport=nil;b.SetupResult=nil
+  end)()
+
+ ;(function()
   local r=RemoteCatalog;local b=buildController
   local start,recorder=r.StartCapture,r.Recorder
   local cells=b.Cells;local calls,placements=0,0
@@ -871,7 +900,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-recovery-81',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-setup-82',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1596,7 +1625,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-recovery-81 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-setup-82 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

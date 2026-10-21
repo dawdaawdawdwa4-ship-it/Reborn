@@ -2049,3 +2049,45 @@ Validation covers unusable native endpoint fallback, no resend after dispatch,
 manual learning UI, missing setup, delayed replication, cooldown/reach/Stop,
 transport uncertainty, failed ghosts and cleanup locks, plus the full regression
 suite. Live Roblox placement and rendering remain unverified.
+
+
+### Auto Build setup check (v82)
+
+**Check setup** is visible beside Stop/Clear in the compact Auto Build action
+row. Preview the intended placement and select All layers or one layer, then
+press Check setup. It does not create/move a preview, invoke placement, move the
+character, start capture, reserve inventory or start a worker.
+
+The scrollable material panel displays an **AUTO BUILD SETUP · snapshot** with
+OK, ACTION, UNKNOWN and INFO lines. It checks the configured automation blocker,
+placement route availability, character root, selected preview, occupied cells,
+remaining material quantities and current reach. Unknown stock is not zero.
+Occupied cells are excluded from material needs because the existing build
+worker skips them; their material/type is not independently verified.
+
+The summary is **ACTION NEEDED**, **CHECKS INCOMPLETE**, **LOCAL CHECKS PASS** or
+**NOTHING TO PLACE**. A local pass establishes only these client-side checks;
+support and island permissions still require the server. Materials/reach checks
+use the selected layer only, with a normal 20-stud fallback for invalid reach
+metadata matching the worker. Out-of-range cells recommend moving closer or
+choosing a nearer layer. Recheck after moving or changing world/inventory state.
+
+**Saved blueprints & checks → Copy setup check** runs a fresh setup check and
+copies its full result through the usual clipboard/console path. Copy build
+check retains its material-only report. Copy build diagnostics includes the
+latest plan-specific setup snapshot when available. Blueprint edits, preview
+replacement, layer/position/material changes and worker startup invalidate that
+snapshot. Check setup/copy wait for running or finishing workers to end.
+
+World/module/inventory reads can yield. Results are not published if the plan,
+selected layer, revision, worker token or hub lifetime changes during the read.
+The existing material checker now returns structured shortage/readability data
+for the setup report and shares its range fallback; Start/resume, confirmation,
+request envelopes, pacing and blueprint persistence remain unchanged.
+
+Tests cover consolidated status, missing setup/character, material shortages,
+unknown/error/invalid reads, occupied-only plans, layer filtering, range fallback,
+read-only behavior, snapshot invalidation and changed-context reads, plus actual
+setup/copy controls, compact layout and console fallback. The full regression
+suite is required. Live Roblox placement, permissions and rendering remain
+unverified.

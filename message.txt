@@ -1492,8 +1492,9 @@ function AutoBuild.new(ctx)
         self.Status.Text=tostring(message)..counts
     end
     function self:ClearPreview()
+        self.PlanRevision=(self.PlanRevision or 0)+1
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
-        self.Cells=nil;self.BuildReport=nil;self.LayerIndex=nil;self.BaseAnchor=nil
+        self.Cells=nil;self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil;self.LayerIndex=nil;self.BaseAnchor=nil
         self.SelectedCell=nil;self.Picking=false
         if buttons.Pick then buttons.Pick.Text="Pick block: OFF" end
         if self.SelectionLabel then self.SelectionLabel.Text="No preview block selected." end
@@ -1655,7 +1656,7 @@ function AutoBuild.new(ctx)
         if not heights or #heights==0 then status("Layer information is unavailable; create a new preview.");return false end
         local index=(self.LayerIndex or 0)+1
         self.LayerIndex=index<=#heights and index or nil
-        self.BuildReport=nil
+        self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil
         local selected=self:SelectedCells()
         self:RefreshSelection()
         local included={}
@@ -1732,7 +1733,7 @@ function AutoBuild.new(ctx)
             cell.CFrame=delta*cell.CFrame
             if cell.Preview then cell.Preview.CFrame=cell.CFrame end
         end
-        self.Anchor=anchor;self.BuildReport=nil
+        self.Anchor=anchor;self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil
         self:UpdateMaterials(self:SelectedCells())
         self:RefreshReach()
     end
@@ -1818,7 +1819,8 @@ function AutoBuild.new(ctx)
             "Preview cells: "..tostring(self.Cells and #self.Cells or 0).."; selected: "..#self:SelectedCells(),
             "State: "..tostring(p.State or "not started").."; cell: "..tostring(p.Index or 0).." / "..tostring(p.Total or 0),
             "Confirmed: "..tostring(p.Placed or 0).."; skipped: "..tostring(p.Skipped or 0).."; failed: "..tostring(p.Failed or 0),
-            "Last placement: "..tostring(self.LastPlacementResult or "none"),"Status: "..tostring(self.Status.Text)},"\n")
+            "Last placement: "..tostring(self.LastPlacementResult or "none"),"Status: "..tostring(self.Status.Text),
+            "Setup snapshot: "..tostring(self.SetupReport or "not checked; use Check setup")},"\n")
     end
     local function resultText(value)
         if type(value)=="table" then return tostring(value.error or value.code or value.message or value.success or "unrecognized server result") end
@@ -1838,6 +1840,7 @@ function AutoBuild.new(ctx)
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
+        self.SetupReport=nil;self.SetupResult=nil
         self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building"}
         local progress=self.Progress
         local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now()}
@@ -1987,6 +1990,8 @@ function AutoBuild.new(ctx)
         return true
     end
     function self:UpdateMaterials(cells)
+        self.PlanRevision=(self.PlanRevision or 0)+1
+        self.SetupReport=nil;self.SetupResult=nil
         local counts,names={},{}
         for _,cell in ipairs(cells or {}) do
             if not counts[cell.Material] then counts[cell.Material]=0;table.insert(names,cell.Material) end
@@ -2081,14 +2086,18 @@ function AutoBuild.new(ctx)
         return table.concat(lines,"\n")
     end
     function self:CheckMaterials()
+        if not ctx.Alive() then return false end
         if self.Running or self.WorkerToken then status("Finish or stop the current build request before checking materials.");return false end
         if not self.Cells then status("Preview at the intended position before checking materials.");return false end
         local cells=self:SelectedCells()
+        local checkedCells,checkedToken,checkedLayer,revision=self.Cells,self.Token,self.LayerIndex,self.PlanRevision
+        self.SetupReport=nil;self.SetupResult=nil
         if #cells==0 then status("No blocks selected. Choose All layers or refresh the preview.");return false end
         local pending,skipped,reachable={},0,0
         local _,root=characterRoot()
         local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
-        if type(reach)~="number" then reach=20 end
+        local fallback=type(reach)~="number" or not (reach>0 and reach<math.huge)
+        if fallback then reach=20 end
         local ok,err=pcall(function()
             for _,cell in ipairs(cells) do
                 if occupied(cell.CFrame,self.BlockSize) then skipped+=1
@@ -2098,22 +2107,97 @@ function AutoBuild.new(ctx)
                 end
             end
         end)
+        if not ctx.Alive() or self.Cells~=checkedCells or self.Token~=checkedToken or self.LayerIndex~=checkedLayer or self.PlanRevision~=revision or self.Running or self.WorkerToken then return false end
         if not ok then status("Could not check world occupancy: "..tostring(err));return false end
         local names,total={},0
         for material,amount in pairs(pending) do table.insert(names,material);total+=amount end
         table.sort(names)
-        local lines={"BUILD CHECK · snapshot",#cells.." selected of "..#self.Cells.." planned · "..skipped.." occupied · "..total.." remaining",reachable.." remaining cells currently in reach"}
+        local lines={"BUILD CHECK · snapshot",#cells.." selected of "..#checkedCells.." planned · "..skipped.." occupied · "..total.." remaining",reachable.." remaining cells currently in reach"}
+        local quantities,short,unknown={},0,0
         for _,material in ipairs(names) do
             local count
             if ctx.ItemCount then local ran,value=pcall(ctx.ItemCount,material);if ran then count=value end end
             local valid=type(count)=="number" and count>=0 and count%1==0 and count<=9007199254740991
+            local missing=valid and math.max(0,pending[material]-count) or nil
+            quantities[material]={Need=pending[material],Owned=valid and count or nil,Missing=missing}
+            if not valid then unknown+=1 elseif missing>0 then short+=1 end
             table.insert(lines,material..": need "..pending[material]..(valid and (", owned "..count..", short "..math.max(0,pending[material]-count)) or ", owned quantity unknown"))
         end
         table.insert(lines,"Occupied cells may contain a different block. Materials, support and permissions remain server-controlled.")
+        if not ctx.Alive() or self.Cells~=checkedCells or self.Token~=checkedToken or self.LayerIndex~=checkedLayer or self.PlanRevision~=revision or self.Running or self.WorkerToken then return false end
         self.BuildReport=table.concat(lines,"\n")
         self.MaterialSummary.Text=self.BuildReport
         status("Build check ready. No blocks were placed. Refresh after inventory or world changes.")
-        return {Remaining=total,Occupied=skipped,Reachable=reachable,Materials=pending,Selected=#cells,Excluded=#self.Cells-#cells}
+        return {Remaining=total,Occupied=skipped,Reachable=reachable,Materials=pending,Selected=#cells,Excluded=#self.Cells-#cells,
+            Quantities=quantities,ShortTypes=short,UnknownTypes=unknown,RootAvailable=root~=nil,Reach=reach,ReachFallback=fallback}
+    end
+    function self:CheckSetup()
+        if not ctx.Alive() then return false end
+        if self.Running or self.WorkerToken then status("Stop building and wait for request cleanup before checking setup.");return false end
+        self.SetupReport=nil;self.SetupResult=nil
+        local cells,token,layer,revision=self.Cells,self.Token,self.LayerIndex,self.PlanRevision
+        local function current()
+            return ctx.Alive() and self.Cells==cells and self.Token==token and self.LayerIndex==layer and self.PlanRevision==revision and not self.Running and not self.WorkerToken
+        end
+        local result={Checks={},Actions=0,Unknown=0}
+        local function add(name,state,detail)
+            table.insert(result.Checks,{Name=name,State=state,Detail=detail})
+            if state=="ACTION" then result.Actions+=1 elseif state=="UNKNOWN" then result.Unknown+=1 end
+        end
+        if ctx.BuildBlocked then
+            local ok,reason=pcall(ctx.BuildBlocked)
+            if not ok then add("Automation","UNKNOWN","Could not check other automation")
+            elseif reason then add("Automation","ACTION",tostring(reason))
+            else add("Automation","OK","No build blocker reported") end
+        end
+        if ctx.PlacementReady then
+            local ok,ready,reason=pcall(ctx.PlacementReady)
+            add("Placement",not ok and "UNKNOWN" or ready==true and "OK" or ready==false and "ACTION" or "UNKNOWN",
+                ok and tostring(reason or (ready and "Placement route available" or "Use Learn placement, then place one block manually")) or "Placement readiness could not be read")
+        else add("Placement","UNKNOWN","Placement readiness check unavailable") end
+        if not current() then return false end
+        local ok,char,root=pcall(characterRoot)
+        add("Character",ok and root and "OK" or "ACTION",ok and root and "Character root available" or "Wait for your character to spawn")
+        local selected=self:SelectedCells()
+        if not self.Cells or #selected==0 then
+            add("Preview","ACTION","Preview at the intended position and select at least one block")
+        else
+            add("Preview","OK",#selected.." selected of "..#self.Cells.." planned")
+            local ran,check=pcall(function() return self:CheckMaterials() end)
+            if ran and type(check)=="table" then
+                result.Materials=check
+                add("Occupied","INFO",check.Occupied.." selected cells will be skipped; existing block type is not verified")
+                if check.ShortTypes>0 then add("Materials","ACTION",check.ShortTypes.." material types short; "..check.UnknownTypes.." quantities unknown")
+                elseif check.UnknownTypes>0 then add("Materials","UNKNOWN",check.UnknownTypes.." inventory quantities unreadable")
+                else add("Materials","OK",check.Remaining==0 and "No materials needed; all selected cells occupied" or "Readable inventory covers the remaining cells") end
+                if check.ShortTypes>0 and check.UnknownTypes>0 then add("Inventory reads","UNKNOWN",check.UnknownTypes.." quantities unreadable; additional shortages may exist") end
+                if check.Remaining==0 then add("Reach","INFO","No empty selected cells to place")
+                elseif not check.RootAvailable then add("Reach","UNKNOWN","Character root unavailable; remaining-cell reach unknown")
+                else
+                    local outside=check.Remaining-check.Reachable
+                    add("Reach",outside>0 and "ACTION" or "OK",check.Reachable.." in / "..outside.." out of reach · "..check.Reach.." studs"..(check.ReachFallback and " (normal fallback)" or "")..(outside>0 and "; move closer or build a nearer layer" or ""))
+                end
+            else add("World/materials","UNKNOWN","Could not read occupancy or inventory. Refresh after the world settles.") end
+        end
+        -- Lookups can yield. Never publish results over a changed plan, a new
+        -- worker, a different selected layer or a destroyed hub.
+        if not current() then return false end
+        result.Summary=result.Materials and result.Materials.Remaining==0 and "NOTHING TO PLACE" or result.Actions>0 and "ACTION NEEDED" or result.Unknown>0 and "CHECKS INCOMPLETE" or "LOCAL CHECKS PASS"
+        local lines={"AUTO BUILD SETUP · snapshot",result.Summary.." · "..result.Actions.." action checks · "..result.Unknown.." unknown checks"}
+        for _,check in ipairs(result.Checks) do table.insert(lines,"["..check.State.."] "..check.Name..": "..check.Detail) end
+        if result.Materials then
+            local names={};for name in pairs(result.Materials.Quantities) do table.insert(names,name) end;table.sort(names)
+            for _,name in ipairs(names) do
+                local quantity=result.Materials.Quantities[name]
+                table.insert(lines,name.." · need "..quantity.Need.." · owned "..tostring(quantity.Owned or "unknown").." · short "..tostring(quantity.Missing or "unknown"))
+            end
+        end
+        table.insert(lines,"Read-only snapshot; no blocks placed. Refresh after inventory, position or world changes. Support and island permissions are checked by the server.")
+        result.Text=table.concat(lines,"\n")
+        self.SetupReport=result.Text;self.SetupResult=result
+        self.MaterialSummary.Text=result.Text
+        status("Setup check: "..result.Summary..". See the scrollable report below; no blocks placed.")
+        return result
     end
     function self:RenameSlot(name)
         if self.Running or self.WorkerToken then status("Wait for the build worker before renaming a slot.");return false end
@@ -2183,7 +2267,7 @@ function AutoBuild.new(ctx)
         return true
     end
     local function markEdited()
-        self.PlanDirty=true;self.BuildReport=nil
+        self.PlanDirty=true;self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil
         self.Preset="Saved: "..self.SavedPlan.Name.." *";buttons.Preset.Text=self.Preset.."  ▼"
         self:UpdateMaterials(self.Cells and self:SelectedCells() or self.SavedPlan.Cells)
     end
@@ -2289,7 +2373,7 @@ function AutoBuild.new(ctx)
         if not ok then status(current);return false end
         table.remove(source)
         table.insert(destination,editSnapshot(current,undo.Removal))
-        self.SavedPlan=AutoBuild.Validate(undo.Plan);self.PlanDirty=undo.Dirty;self.BuildReport=nil
+        self.SavedPlan=AutoBuild.Validate(undo.Plan);self.PlanDirty=undo.Dirty;self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil
         if self.Cells then
             if undo.Removal then
                 for _,cell in ipairs(self.Cells) do if cell.Preview then cell.Preview:Destroy() end end
@@ -2509,8 +2593,9 @@ function AutoBuild.new(ctx)
         local ok,reason=ctx.LearnPlacement();status(reason)
     end)
     button("Start","Start build",.7,446,.3,function() self:Start() end)
-    button("Stop","Stop build",0,486,.5,function() self:Stop() end)
-    button("Clear","Clear preview",.5,486,.5,function() if not self.Running and not self.WorkerToken then self:ClearPreview();status("Preview cleared.") else status("Wait for build request cleanup before clearing the preview.") end end)
+    button("Stop","Stop build",0,486,.3,function() self:Stop() end)
+    button("CheckSetup","Check setup",.3,486,.4,function() self:CheckSetup() end)
+    button("Clear","Clear preview",.7,486,.3,function() if not self.Running and not self.WorkerToken then self:ClearPreview();status("Preview cleared.") else status("Wait for build request cleanup before clearing the preview.") end end)
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
     local materialView=Instance.new("ScrollingFrame")
@@ -2540,9 +2625,14 @@ function AutoBuild.new(ctx)
     local hint=label("Save preview stores its shape and materials. Save island area stores nearby placed blocks on your own island. Saving overwrites the selected slot. Load never starts building. Chest contents, inventories and scripts are not saved.",966,110)
     hint.TextWrapped=true
     button("Check","Check remaining materials",0,1088,1,function() self:CheckMaterials() end)
-    button("CopyCheck","Copy build check",0,1128,1,function()
+    button("CopyCheck","Copy build check",0,1128,.5,function()
         if not self.BuildReport then status("Run Check remaining materials first.");return end
         if ctx.CopyReport then ctx.CopyReport(self.BuildReport) else status("Report copying is unavailable.") end
+    end)
+    button("CopySetup","Copy setup check",.5,1128,.5,function()
+        local result=self:CheckSetup()
+        if not result then return end
+        if ctx.CopyReport then ctx.CopyReport(result.Text) else status(result.Text) end
     end)
     button("Inspect","Refresh saved slots",0,1168,1,function() self:RefreshLibrary(true) end)
     self.LibrarySummary=label("Saved slots have not been inspected. Press Refresh saved slots to read them.",1208,156)
@@ -3035,7 +3125,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "build-recovery-81",
+    Subtitle = "build-setup-82",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3534,7 +3624,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-recovery-81",
+    return table.concat({"Reborn build-setup-82",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5414,7 +5504,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn build-recovery-81 · Propeller loot history (UTC)",
+    return table.concat({"Reborn build-setup-82 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -5518,7 +5608,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn build-recovery-81 · Propeller tracker",
+    return table.concat({"Reborn build-setup-82 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -5554,7 +5644,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-recovery-81", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn build-setup-82", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -7621,7 +7711,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-recovery-81\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn build-setup-82\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -8214,7 +8304,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-recovery-81\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn build-setup-82\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -9113,7 +9203,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn build-recovery-81 · Craft diagnostics",
+    return table.concat({"Reborn build-setup-82 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -9190,7 +9280,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn build-recovery-81 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn build-setup-82 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end

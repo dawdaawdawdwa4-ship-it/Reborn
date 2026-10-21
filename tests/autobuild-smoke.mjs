@@ -300,6 +300,59 @@ assert(string.find(check.BuildReport,'grass: need 1, owned quantity unknown',1,t
 occupied={[1]=true,[2]=true,[3]=true}
 result=check:CheckMaterials();assert(result.Remaining==0 and next(result.Materials)==nil,'completed layouts must need no additional material')
 check:ClearPreview();assert(not check.BuildReport and not check:CheckMaterials(),'changing the plan must invalidate the old preflight snapshot')
+-- Consolidated setup reports preserve building behavior and make no requests.
+;(function()
+ local fields={'PlacementReady','BuildBlocked','GameModule','ItemCount','Alive'}
+ local old={};for _,field in ipairs(fields) do old[field]=ctx[field] end
+ local originalCharacter=ctx.Player.Character
+ local function has(text,part) return string.find(text,part,1,true)~=nil end
+ local function find(report,name) for _,row in ipairs(report.Checks) do if row.Name==name then return row end end end
+ local value=A.new(ctx);value.Cells=cells(3);value.BlockSize=3
+ occupied={[1]=true}
+ root.Position=setmetatable({},{__sub=function(_,pos) return {Magnitude=pos==3 and 50 or 5} end})
+ ctx.PlacementReady=function() return false,'Learn placement first' end
+ ctx.BuildBlocked=function() return 'Wait for Auto Plow cleanup' end
+ ctx.ItemCount=function() return 0 end
+ local before=requests;local token=value.Token
+ local report=value:CheckSetup()
+ assert(report.Summary=='ACTION NEEDED' and report.Materials.Occupied==1 and report.Materials.Remaining==2 and report.Materials.Quantities.grass.Missing==2)
+ assert(find(report,'Placement').State=='ACTION' and find(report,'Automation').State=='ACTION' and find(report,'Reach').State=='ACTION' and find(report,'Materials').State=='ACTION')
+ assert(requests==before and not value.WorkerToken and not value.Running and value.Token==token and value.Cells[1].Material=='grass','setup cannot send, launch or mutate the blueprint')
+ ctx.PlacementReady=function() return true,'Native endpoint ready' end;ctx.BuildBlocked=function() end;ctx.ItemCount=function() return 2 end
+ root.Position=setmetatable({},{__sub=function() return {Magnitude=5} end})
+ report=value:CheckSetup();assert(report.Summary=='LOCAL CHECKS PASS' and report.Actions==0 and report.Unknown==0 and has(value.MaterialSummary.Text,'[OK] Materials'))
+ for _,bad in ipairs({-1,.5,math.huge,0/0,'2'}) do
+  ctx.ItemCount=function() return bad end;report=value:CheckSetup()
+  assert(report.Summary=='CHECKS INCOMPLETE' and find(report,'Materials').State=='UNKNOWN' and report.Materials.Quantities.grass.Missing==nil,'bad stock cannot claim materials ready or zero')
+ end
+ ctx.ItemCount=function() error('unreadable') end;ctx.PlacementReady=function() error('lookup failed') end
+ report=value:CheckSetup();assert(find(report,'Placement').State=='UNKNOWN' and find(report,'Materials').State=='UNKNOWN')
+ ctx.PlacementReady=function() return true end;ctx.ItemCount=function() return 10 end
+ ctx.Player.Character=nil;report=value:CheckSetup()
+ assert(find(report,'Character').State=='ACTION' and find(report,'Reach').State=='UNKNOWN','missing character must leave reach unknown')
+ ctx.Player.Character=originalCharacter
+ for _,bad in ipairs({-1,0,math.huge,0/0}) do
+  ctx.GameModule=function(path,name) if name=='CLIENT_REACH' then return bad end;return old.GameModule(path,name) end
+  report=value:CheckSetup();assert(report.Materials.Reach==20 and report.Materials.ReachFallback,'setup range must match the worker fallback for invalid metadata')
+ end
+ ctx.GameModule=old.GameModule;occupied={[1]=true,[2]=true,[3]=true}
+ report=value:CheckSetup();assert(report.Summary=='NOTHING TO PLACE' and report.Materials.Remaining==0)
+ value.Cells=nil;report=value:CheckSetup();assert(find(report,'Preview').State=='ACTION' and not report.Materials and value.Cells==nil,'setup cannot create a preview implicitly')
+ value.Cells=cells(2)
+ value.Running=true;assert(not value:CheckSetup());value.Running=false
+ value.WorkerToken=82;assert(not value:CheckSetup());value.WorkerToken=nil
+ ctx.Alive=function() return false end;local previous=value.MaterialSummary.Text
+ assert(not value:CheckSetup() and value.MaterialSummary.Text==previous,'destroyed UI must not publish setup results');ctx.Alive=old.Alive
+ occupied={};value.Cells={{CFrame={Position=1},LayerY=0,Material='grass'},{CFrame={Position=2},LayerY=3,Material='stone'}}
+ value.LayerIndex=1;report=value:CheckSetup();assert(report.Materials.Selected==1 and report.Materials.Excluded==1 and not report.Materials.Materials.stone,'setup must check only the selected layer')
+ value:UpdateMaterials(value:SelectedCells());assert(not value.SetupReport and not value.SetupResult,'editing plan material state must invalidate the snapshot')
+ -- A yielding callback must not publish over a moved/changed plan or a new worker.
+ ctx.ItemCount=function() value:UpdateMaterials(value:SelectedCells());return 10 end
+ assert(not value:CheckSetup() and not value.SetupReport,'revision changes during a count read must discard both material/setup snapshots')
+ ctx.ItemCount=old.ItemCount;ctx.PlacementReady=function() value.Token+=1;return true end
+ assert(not value:CheckSetup(),'new cycle during placement lookup must discard the old setup')
+ for _,field in ipairs(fields) do ctx[field]=old[field] end
+ end)()
 -- Slot inspection validates files without selecting their plans or starting work.
 ctx.ReadBlueprint=function(slot)
  if slot==1 then local data=valid();data.Name='House';return data end
