@@ -851,7 +851,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn chest-exclusions-76',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn craft-presets-77',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1562,7 +1562,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn chest-exclusions-76 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn craft-presets-77 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -1657,6 +1657,50 @@ end)()
  r.CloseMenus();assert(r.ChestExclusionPanel.Position.Y.Offset==y,'closing selector must restore protection layout without drift')
  for _,field in ipairs(fields) do r[field]=old[field] end
  workspace.FindFirstChild,player.Character=oldFind,oldCharacter;r.UpdateChestSelectionUI()
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ local fields={'CraftQueue','CraftPresets','CraftPresetPersistence','CraftPresetSlot','CraftPresetFileState'}
+ local old={};for _,field in ipairs(fields) do old[field]=r[field] end
+ local name=r.CraftPresetName.Text
+ local oldWrite,oldRead=writefile,readfile
+ local encode,decode=HttpService.JSONEncode,HttpService.JSONDecode
+ local data,encoded,writes=nil,nil,0
+ HttpService.JSONEncode=function(_,value) data=value;return 'craft-presets-json' end
+ HttpService.JSONDecode=function(_,text) assert(text=='craft-presets-json');return data end
+ writefile=function(path,text) assert(path=='RebornCraftQueues_7.json');encoded=text;writes+=1 end
+ readfile=function(path) assert(path=='RebornCraftQueues_7.json');return encoded end
+ r.CraftPresetSlot=1;r.CraftPresets={};r.CraftPresetPersistence={}
+ r.CraftQueue={{Item='bait',Mode='Make amount',Batch=100,Target=100},{Item='unlearnedRecipe',Mode='Top up stock',Batch=25,Target=250}}
+ r.CraftPresetName.Text='Materials route';r.RefreshCraftQueue()
+ r.CraftPresetSaveButton.Activated:Fire()
+ assert(writes==1 and r.CraftPresets[1].Name=='Materials route' and not r.CraftWorker,'real Save must persist the configured queue without running it')
+ r.CraftQueueClearButton.Activated:Fire()
+ assert(#r.CraftQueue==0 and #r.CraftPresets[1].Jobs==2,'clearing the working queue must retain the stored preset')
+ r.CraftPresetLoadButton.Activated:Fire()
+ assert(#r.CraftQueue==2 and r.CraftQueue[2].Item=='unlearnedRecipe' and not r.CraftEnabled and not r.CraftWorker,'real Load must restore descriptors while keeping crafting OFF')
+ r.CraftPresetSlotButton.Activated:Fire()
+ assert(r.CraftPresetSlot==2 and not r.CraftPresetLoadButton.Active and r.CraftPresetName.Text=='Craft queue 2','slot cycle must show an empty preset clearly')
+ r.CraftPresetName.Text='Second route';r.CraftPresetSaveButton.Activated:Fire()
+ assert(writes==2 and data.Presets['1'] and data.Presets['2'],'saving a second real UI slot must keep the first')
+ for _,field in ipairs({'CraftWorker','CraftEnabled','CraftLearning','CraftPresetBusy','CraftCatalogLoading'}) do
+  local previous=r[field];r[field]=true;r.RefreshCraftQueue();local slot=r.CraftPresetSlot;local queue=r.CraftQueue
+  r.CraftPresetSlotButton.Activated:Fire();r.CraftPresetSaveButton.Activated:Fire();r.CraftPresetLoadButton.Activated:Fire()
+  assert(r.CraftPresetSlot==slot and r.CraftQueue==queue and writes==2 and not r.CraftPresetSaveButton.Active and not r.CraftPresetName.TextEditable,'preset UI callbacks must enforce running/paused/cleanup/learning/file locks')
+  r[field]=previous
+ end
+ r.CraftPresets={};r.CraftPresetPersistence={};local queue=r.CraftQueue
+ assert(r.ReadCraftPresets() and r.CraftQueue==queue and r.CraftPresets[1].Name=='Materials route' and not r.CraftEnabled,'file restore must populate slots without applying a queue')
+ assert(r.CraftPresetSlotButton.Position.Y.Offset>=r.CraftQueueView.Position.Y.Offset+r.CraftQueueView.Size.Y.Offset,'preset controls must remain below the queue')
+ local y=r.CraftPresetSlotButton.Position.Y.Offset
+ r.CraftModeButton.Activated:Fire();assert(r.CraftPresetSlotButton.Position.Y.Offset>y,'inline recipe controls must push the preset section down')
+ r.CloseMenus();assert(r.CraftPresetSlotButton.Position.Y.Offset==y,'closing menus must restore the preset layout')
+ writefile=function() return false end
+ r.CraftPresetSaveButton.Activated:Fire()
+ assert(r.CraftPresetPersistence[2]=='Session only' and string.find(r.CraftPresetSummary.Text,'File saving unavailable or failed',1,true),'file failure must be visible in the real preset summary')
+ writefile,readfile=oldWrite,oldRead;HttpService.JSONEncode,HttpService.JSONDecode=encode,decode
+ for _,field in ipairs(fields) do r[field]=old[field] end;r.CraftPresetName.Text=name;r.RefreshCraftUI()
  end)()
 
 local lastRecipeOption=RemoteCatalog.CraftRecipeMenu.Options[1]

@@ -1830,3 +1830,45 @@ queue/readiness snapshots, direct request guards, manual sweeps, edit locks,
 undo, ownership, replacement identities, conveyor independence, real buttons,
 preview/selector labels, profile/quick setup preservation and dropdown layout,
 plus the full existing suite. Live Roblox behavior remains unverified.
+
+### Saved crafting queue presets (v77)
+
+The Crafting tab now has **Saved queue presets** below the working queue. Cycle
+between three slots, enter a name, and press **Save queue (overwrites slot)**.
+Each preset keeps 1–8 finite jobs, including recipe IDs, order, Make amount/Top up
+stock mode, batch and amount/stock target. It stores no request binding, workbench
+instance, actor/session context or token. Continuous jobs are not saved in a queue.
+
+**Load queue (replaces)** copies the selected preset into the working queue and
+clears its old progress. Crafting stays OFF, the saved preset remains independent
+of later queue edits, and loading never sends a request. Each recipe still needs
+a fresh usable learned binding on this character/server. **Run Queue** retains
+the whole-queue preflight and 100-per-request cap; a missing recipe binding blocks
+the run before any job sends. Selection in the single-recipe controls is retained.
+
+When host file APIs are available, saving writes all three current slots to
+`RebornCraftQueues_<UserId>.json`. On hub startup, a valid file populates saved
+slots without loading or running a working queue. Files are limited to 64 KiB
+and validated as a whole before any slot is applied. Invalid versions, slot keys,
+sparse/oversized queues, names, IDs, modes, batches and amounts are rejected.
+A failed read preserves session presets and the current working queue. A failed
+load or invalid save also retains the existing working/stored data.
+
+The summary distinguishes **File + session**, **Loaded from file** and **Session
+only**, and shows file read/write status. If writing is unsupported or fails,
+the new preset remains available only while this hub session stays open; a
+previously saved file can still contain an older version. Presets are scoped to
+the account, with no captured envelope transferred through files. There is no
+promise of persistence if the host does not retain its own files.
+
+Running, paused and finishing craft workers, recipe learning/catalog loading and
+preset file work lock preset controls. A yielding file operation also prevents
+queue edits and crafting/learning/catalog startup until it returns. When file work returns after GUI cleanup, its busy state is released and a late
+read does not apply data. Inline
+dropdowns push the preset section down and restore it when closed.
+
+Validation covers snapshot isolation, three-slot/account persistence, no automatic
+start, fresh-binding preflight, invalid/oversized/corrupt data, failed writes,
+session fallback, IO concurrency/cleanup and the actual preset buttons/layout,
+plus the full regression suite. Live Roblox and executor file retention remain
+unverified.

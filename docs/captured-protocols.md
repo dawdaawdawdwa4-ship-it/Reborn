@@ -821,3 +821,23 @@ replacement instance. A hub reload clears the session list, while existing
 capture bindings and ordinary in-game manual interactions remain available.
 Full regression coverage includes filtering, last-moment rechecks, undo, locks
 and real controls/layout; live Roblox validation remains outstanding.
+
+### Saved crafting descriptors (craft-presets-77)
+
+v77 keeps recorder v31 and the 146 catalog endpoints. Named queue presets persist
+only sanitized recipe IDs, finite mode, batch and target, in order, with at most
+eight jobs per preset and three presets per account file. No remote, captured
+arguments, workbench, owner character, session token or learned binding is
+serialized. The format has its own version 1 and 64-KiB file limit.
+
+Startup file reading populates preset slots only. Explicit Load replaces the
+working descriptor queue with a detached validated copy and leaves crafting OFF.
+The existing full-queue preflight still resolves every learned binding in the
+current character/server before any request is sent; catalog/preset IDs never
+fabricate a request envelope. Runtime batch caps and confirmation are unchanged.
+
+File failures preserve session state, with a visible session-only fallback on
+write failure. File IO locks prevent worker startup and concurrent queue edits;
+late reads after GUI cleanup are not applied. Tests cover persistence, schema
+limits, isolation, missing binding preflight, file/IO failure paths and real UI
+controls. Live Roblox/executor persistence remains unverified.

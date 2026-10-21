@@ -2923,7 +2923,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-exclusions-76",
+    Subtitle = "craft-presets-77",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3414,7 +3414,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-exclusions-76",
+    return table.concat({"Reborn craft-presets-77",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5242,7 +5242,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn chest-exclusions-76 · Propeller tracker",
+    return table.concat({"Reborn craft-presets-77 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -5267,7 +5267,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn chest-exclusions-76", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn craft-presets-77", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -7304,7 +7304,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-exclusions-76\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn craft-presets-77\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -7896,7 +7896,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-exclusions-76\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn craft-presets-77\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -7955,6 +7955,7 @@ function RemoteCatalog.StopCraftLearning()
     RemoteCatalog.RefreshCraftUI()
 end
 function RemoteCatalog.BeginCraftLearning()
+    if RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish first.");return false end
     if RemoteCatalog.CraftWorker then RemoteCatalog.CraftMessage("Stop crafting and wait for the current request to finish first.");return false end
     if RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnCraftOnly then RemoteCatalog.StopCraftLearning();RemoteCatalog.CraftMessage("Craft learning cancelled.");return true end
     local ok,recorder=pcall(RemoteCatalog.StartCapture)
@@ -8137,6 +8138,7 @@ function RemoteCatalog.CraftRecipeModule(name)
     return string.find(lower,"recipe",1,true)~=nil or lower=="craftingmeta" or lower=="craftingconfig" or lower=="craftingdata" or lower=="itemmeta" or lower=="itemconfig"
 end
 function RemoteCatalog.LoadCraftCatalog()
+    if RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish first.");return false end
     if RemoteCatalog.CraftWorker or RemoteCatalog.CraftCatalogLoading then RemoteCatalog.CraftMessage("Finish or stop crafting before loading recipes.");return false end
     RemoteCatalog.CloseMenus()
     RemoteCatalog.CraftCatalogLoading=true
@@ -8251,6 +8253,7 @@ function RemoteCatalog.RefreshCraftCatalogUI()
     end
     if RemoteCatalog.CraftCatalogButton then RemoteCatalog.CraftCatalogButton.Active=not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftCatalogLoading end
     if RemoteCatalog.CraftRecipeSearch then RemoteCatalog.CraftRecipeSearch.TextEditable=RemoteCatalog.CraftWorker==nil end
+    if RemoteCatalog.RefreshCraftPresets then RemoteCatalog.RefreshCraftPresets() end
     RemoteCatalog.RefreshCraftMaterials()
 end
 -- CRAFT CATALOG END
@@ -8298,8 +8301,9 @@ function RemoteCatalog.CraftQueueText()
 end
 function RemoteCatalog.RefreshCraftQueue()
     if not gui.Parent then return end
+    if RemoteCatalog.RefreshCraftPresets then RemoteCatalog.RefreshCraftPresets() end
     if RemoteCatalog.CraftQueueLabel then RemoteCatalog.CraftQueueLabel.Text=RemoteCatalog.CraftQueueText() end
-    local busy=RemoteCatalog.CraftWorker~=nil
+    local busy=RemoteCatalog.CraftWorker~=nil or RemoteCatalog.CraftPresetBusy==true
     for _,name in ipairs({"CraftQueueAddButton","CraftQueueRemoveButton","CraftQueueClearButton"}) do
         local control=RemoteCatalog[name]
         if control then
@@ -8314,6 +8318,7 @@ function RemoteCatalog.RefreshCraftQueue()
     end
 end
 function RemoteCatalog.AddCraftQueueJob()
+    if RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish first.");return false end
     if RemoteCatalog.CraftWorker then RemoteCatalog.CraftMessage("Stop crafting and wait for cleanup before editing the queue.");return false end
     RemoteCatalog.RefreshCraftUI()
     if #RemoteCatalog.CraftQueue>=8 then RemoteCatalog.CraftMessage("Queue is full: remove a job or clear the queue first.");return false end
@@ -8325,12 +8330,154 @@ function RemoteCatalog.AddCraftQueueJob()
     return true
 end
 function RemoteCatalog.EditCraftQueue(clear)
+    if RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish first.");return false end
     if RemoteCatalog.CraftWorker then RemoteCatalog.CraftMessage("Stop crafting and wait for cleanup before editing the queue.");return false end
     if clear then RemoteCatalog.CraftQueue={} else table.remove(RemoteCatalog.CraftQueue) end
     RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0;RemoteCatalog.CraftQueueIndex=nil
     RemoteCatalog.CraftMessage(clear and "Queue cleared. No crafting started." or "Last queue job removed. No crafting started.")
     return true
 end
+-- CRAFT PRESETS BEGIN
+RemoteCatalog.CraftPresets={}
+RemoteCatalog.CraftPresetPersistence={}
+RemoteCatalog.CraftPresetSlot=1
+RemoteCatalog.CraftPresetOwner=player.UserId
+RemoteCatalog.CraftPresetFileState="No saved file read yet"
+function RemoteCatalog.ValidateCraftPreset(data)
+    assert(type(data)=="table" and data.Version==1,"Unsupported queue preset version")
+    assert(type(data.Name)=="string" and #data.Name>=1 and #data.Name<=48 and not data.Name:find("%c") and data.Name:match("^%s*(.-)%s*$")==data.Name,"Use a preset name of 1–48 bytes")
+    assert(type(data.Jobs)=="table" and #data.Jobs>=1 and #data.Jobs<=8,"Save a queue with 1–8 finite jobs")
+    local count,jobs=0,{}
+    for key in pairs(data.Jobs) do
+        assert(type(key)=="number" and key%1==0 and key>=1 and key<=#data.Jobs,"Queue jobs must be a consecutive list")
+        count+=1
+    end
+    assert(count==#data.Jobs,"Queue jobs must be a consecutive list")
+    for _,job in ipairs(data.Jobs) do
+        assert(type(job)=="table" and type(job.Item)=="string" and #job.Item>=1 and #job.Item<=128 and not job.Item:find("%c") and job.Item:match("^%s*(.-)%s*$")==job.Item,"Invalid recipe ID in queue")
+        assert(job.Mode=="Make amount" or job.Mode=="Top up stock","Saved queues support finite modes only")
+        assert(job.Batch==25 or job.Batch==50 or job.Batch==100,"Invalid queue batch")
+        assert(table.find({100,250,500,1000,2500,5000,10000},job.Target),"Invalid queue amount/stock target")
+        table.insert(jobs,{Item=job.Item,Mode=job.Mode,Batch=job.Batch,Target=job.Target})
+    end
+    return {Version=1,Name=data.Name,Jobs=jobs}
+end
+function RemoteCatalog.ValidateCraftPresets(data)
+    assert(type(data)=="table" and data.Version==1 and type(data.Presets)=="table","Invalid queue presets file")
+    local presets={}
+    for slot,preset in pairs(data.Presets) do
+        assert(slot=="1" or slot=="2" or slot=="3","Invalid queue preset slot")
+        presets[tonumber(slot)]=RemoteCatalog.ValidateCraftPreset(preset)
+    end
+    return presets
+end
+function RemoteCatalog.CraftPresetIdle()
+    if not gui.Parent then return false end
+    local slot=RemoteCatalog.CraftPresetSlot
+    if type(slot)~="number" or slot%1~=0 or slot<1 or slot>3 then RemoteCatalog.CraftMessage("Choose a queue preset slot from 1 to 3.");return false end
+    if player.UserId~=RemoteCatalog.CraftPresetOwner or type(player.UserId)~="number" or player.UserId<1 or player.UserId%1~=0 then RemoteCatalog.CraftMessage("Queue presets belong to this hub's account. Reload the hub for another account.");return false end
+    if RemoteCatalog.CraftPresetBusy or RemoteCatalog.CraftWorker or RemoteCatalog.CraftEnabled or RemoteCatalog.CraftCatalogLoading or RemoteCatalog.CraftLearning or RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnCraftOnly then
+        RemoteCatalog.CraftMessage("Finish or stop crafting, recipe loading/learning and preset file work before editing presets.");return false
+    end
+    return true
+end
+function RemoteCatalog.RefreshCraftPresets()
+    if not gui.Parent or not RemoteCatalog.CraftPresetSummary then return end
+    local slot=RemoteCatalog.CraftPresetSlot
+    local preset=RemoteCatalog.CraftPresets[slot]
+    local busy=RemoteCatalog.CraftPresetBusy or RemoteCatalog.CraftWorker~=nil or RemoteCatalog.CraftEnabled or RemoteCatalog.CraftCatalogLoading or RemoteCatalog.CraftLearning or RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnCraftOnly
+    for _,key in ipairs({"CraftPresetSlotButton","CraftPresetSaveButton","CraftPresetLoadButton"}) do
+        local control=RemoteCatalog[key]
+        if control then
+            local available=not busy and (key~="CraftPresetLoadButton" or preset~=nil)
+            control.Active=available;control.Selectable=available;control.AutoButtonColor=available
+            control.TextColor3=available and COLORS.text or COLORS.muted
+        end
+    end
+    if RemoteCatalog.CraftPresetName then RemoteCatalog.CraftPresetName.TextEditable=not busy end
+    if RemoteCatalog.CraftPresetSlotButton then RemoteCatalog.CraftPresetSlotButton.Text="Preset: "..tostring(slot).." / 3" end
+    RemoteCatalog.CraftPresetSummary.Text=(preset and (preset.Name.." · "..#preset.Jobs.." jobs · "..(RemoteCatalog.CraftPresetPersistence[slot] or "Session only")) or ("Empty preset "..tostring(slot))).."\n"..RemoteCatalog.CraftPresetFileState.."\nLoad replaces the working queue and keeps crafting OFF. Learn each recipe on this character/server before Run Queue."
+end
+function RemoteCatalog.SetCraftPresetSlot(slot)
+    if not RemoteCatalog.CraftPresetIdle() then return false end
+    if type(slot)~="number" or slot%1~=0 or slot<1 or slot>3 then return false end
+    RemoteCatalog.CloseMenus()
+    RemoteCatalog.CraftPresetSlot=slot
+    local preset=RemoteCatalog.CraftPresets[slot]
+    if RemoteCatalog.CraftPresetName then RemoteCatalog.CraftPresetName.Text=preset and preset.Name or "Craft queue "..slot end
+    RemoteCatalog.RefreshCraftPresets()
+    return true
+end
+function RemoteCatalog.ReadCraftPresets()
+    if not RemoteCatalog.CraftPresetIdle() then return false end
+    if type(readfile)~="function" then RemoteCatalog.CraftPresetFileState="File reading unavailable; session only";RemoteCatalog.RefreshCraftPresets();return false end
+    RemoteCatalog.CraftPresetBusy=true;RemoteCatalog.RefreshCraftPresets();RemoteCatalog.RefreshCraftQueue()
+    local ok,result=pcall(function()
+        local encoded=readfile("RebornCraftQueues_"..tostring(RemoteCatalog.CraftPresetOwner)..".json")
+        assert(type(encoded)=="string" and #encoded>0 and #encoded<=65536,"Invalid queue presets file size")
+        return RemoteCatalog.ValidateCraftPresets(HttpService:JSONDecode(encoded))
+    end)
+    RemoteCatalog.CraftPresetBusy=false
+    if not gui.Parent then return false end
+    if ok then
+        for slot,preset in pairs(result) do
+            if not RemoteCatalog.CraftPresets[slot] then RemoteCatalog.CraftPresets[slot]=preset;RemoteCatalog.CraftPresetPersistence[slot]="Loaded from file" end
+        end
+        RemoteCatalog.CraftPresetFileState="Saved file loaded"
+        local selected=RemoteCatalog.CraftPresets[RemoteCatalog.CraftPresetSlot]
+        if selected and RemoteCatalog.CraftPresetName then RemoteCatalog.CraftPresetName.Text=selected.Name end
+    else RemoteCatalog.CraftPresetFileState="File missing, unreadable or invalid; session presets retained" end
+    RemoteCatalog.RefreshCraftPresets();RemoteCatalog.RefreshCraftQueue()
+    return ok
+end
+function RemoteCatalog.SaveCraftPreset()
+    if not RemoteCatalog.CraftPresetIdle() then return false end
+    local name=RemoteCatalog.CraftPresetName and RemoteCatalog.CraftPresetName.Text
+    if type(name)=="string" then name=name:match("^%s*(.-)%s*$") end
+    local ok,preset=pcall(RemoteCatalog.ValidateCraftPreset,{Version=1,Name=name,Jobs=RemoteCatalog.CraftQueue})
+    if not ok then RemoteCatalog.CraftMessage("Preset not saved: "..tostring(preset));return false end
+    local slot=RemoteCatalog.CraftPresetSlot
+    RemoteCatalog.CloseMenus()
+    RemoteCatalog.CraftPresets[slot]=preset
+    RemoteCatalog.CraftPresetName.Text=preset.Name
+    RemoteCatalog.CraftPresetBusy=true;RemoteCatalog.RefreshCraftPresets();RemoteCatalog.RefreshCraftQueue()
+    local saved=false
+    if type(writefile)=="function" then saved=pcall(function()
+        local envelope={Version=1,Presets={}}
+        for index,entry in pairs(RemoteCatalog.CraftPresets) do
+            assert(index==1 or index==2 or index==3,"Invalid preset slot")
+            envelope.Presets[tostring(index)]=RemoteCatalog.ValidateCraftPreset(entry)
+        end
+        local encoded=HttpService:JSONEncode(envelope)
+        assert(type(encoded)=="string" and #encoded>0 and #encoded<=65536,"Invalid queue presets file size")
+        assert(writefile("RebornCraftQueues_"..tostring(RemoteCatalog.CraftPresetOwner)..".json",encoded)~=false,"File writer reported failure")
+    end) end
+    RemoteCatalog.CraftPresetBusy=false
+    if saved then
+        for index in pairs(RemoteCatalog.CraftPresets) do RemoteCatalog.CraftPresetPersistence[index]="File + session" end
+        RemoteCatalog.CraftPresetFileState="Saved file written"
+    else RemoteCatalog.CraftPresetPersistence[slot]="Session only";RemoteCatalog.CraftPresetFileState="File saving unavailable or failed; preset kept in session" end
+    if not gui.Parent then return false end
+    RemoteCatalog.RefreshCraftPresets();RemoteCatalog.RefreshCraftQueue()
+    RemoteCatalog.CraftMessage("Saved queue preset "..slot..": "..preset.Name..(saved and " (file + session)." or " (session only; file saving unavailable or failed).").." No crafting started.")
+    return true
+end
+function RemoteCatalog.LoadCraftPreset()
+    if not RemoteCatalog.CraftPresetIdle() then return false end
+    local slot=RemoteCatalog.CraftPresetSlot
+    local ok,preset=pcall(RemoteCatalog.ValidateCraftPreset,RemoteCatalog.CraftPresets[slot])
+    if not ok then RemoteCatalog.CraftMessage("Save a valid preset in this slot before loading it. Current queue kept.");return false end
+    RemoteCatalog.CloseMenus()
+    RemoteCatalog.CraftQueue=preset.Jobs
+    RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0;RemoteCatalog.CraftQueueIndex=nil;RemoteCatalog.CraftQueueRunSize=nil;RemoteCatalog.CraftQueueActiveItem=nil;RemoteCatalog.CraftQueueRunning=false
+    RemoteCatalog.CraftEnabled=false;RemoteCatalog.CraftPaused=false;RemoteCatalog.CraftMaterialRun=nil
+    if RemoteCatalog.CraftPresetName then RemoteCatalog.CraftPresetName.Text=preset.Name end
+    RemoteCatalog.CraftMessage("Loaded "..preset.Name..": "..#preset.Jobs.." jobs. Working queue replaced; crafting stays OFF. Run Queue validates every learned recipe before starting.")
+    RemoteCatalog.RefreshCraftUI()
+    return true
+end
+-- CRAFT PRESETS END
+
 function RemoteCatalog.SetCraftPaused(state)
     if type(state)~="boolean" or not gui.Parent or not RemoteCatalog.CraftEnabled or not RemoteCatalog.CraftWorker then return false end
     RemoteCatalog.CraftPaused=state
@@ -8339,6 +8486,7 @@ function RemoteCatalog.SetCraftPaused(state)
     return true
 end
 function RemoteCatalog.SetCraftEnabled(state,queued)
+    if state and RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish before starting crafting.");return false end
     if state and RemoteCatalog.CraftCatalogLoading then RemoteCatalog.CraftMessage("Wait for recipe loading to finish first.");return false end
     if not state then
         RemoteCatalog.CraftEnabled=false;RemoteCatalog.CraftPaused=false
@@ -8489,7 +8637,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn chest-exclusions-76 · Craft diagnostics",
+    return table.concat({"Reborn craft-presets-77 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -8559,7 +8707,7 @@ RemoteCatalog.CraftMaterialsLabel=label({Parent=RemoteCatalog.CraftMaterialsView
 RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsLabel.AutomaticSize=Enum.AutomaticSize.Y;RemoteCatalog.CraftMaterialsLabel.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.CraftMaterialsLabel.TextTruncate=Enum.TextTruncate.None
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
-    local report="Reborn chest-exclusions-76 · Materials\n"..RemoteCatalog.CraftMaterialReport()
+    local report="Reborn craft-presets-77 · Materials\n"..RemoteCatalog.CraftMaterialReport()
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -8582,6 +8730,23 @@ track(RemoteCatalog.CraftQueueClearButton.Activated:Connect(function() RemoteCat
 track(RemoteCatalog.CraftQueueRunButton.Activated:Connect(function()
     if RemoteCatalog.CraftQueueRunning and RemoteCatalog.CraftEnabled then RemoteCatalog.SetCraftEnabled(false) else RemoteCatalog.SetCraftEnabled(true,true) end
 end))
+pageHeading(RemoteCatalog.CraftPage,"SAVED QUEUE PRESETS",1040)
+RemoteCatalog.CraftPresetSlotButton=button({Parent=RemoteCatalog.CraftPage,Text="Preset: 1 / 3",TextSize=12,Size=UDim2.new(.4,-9,0,34),Position=UDim2.fromOffset(6,1068)})
+RemoteCatalog.CraftPresetName=Instance.new("TextBox")
+RemoteCatalog.CraftPresetName.Name="CraftPresetName";RemoteCatalog.CraftPresetName.Text="Craft queue 1";RemoteCatalog.CraftPresetName.PlaceholderText="Preset name (1–48 bytes)"
+RemoteCatalog.CraftPresetName.ClearTextOnFocus=false;RemoteCatalog.CraftPresetName.TextSize=13;RemoteCatalog.CraftPresetName.TextColor3=COLORS.text
+RemoteCatalog.CraftPresetName.BackgroundColor3=COLORS.panel;RemoteCatalog.CraftPresetName.Size=UDim2.new(.6,-9,0,34);RemoteCatalog.CraftPresetName.Position=UDim2.new(.4,3,0,1068);RemoteCatalog.CraftPresetName.Parent=RemoteCatalog.CraftPage
+RemoteCatalog.CraftPresetSaveButton=button({Parent=RemoteCatalog.CraftPage,Text="Save queue (overwrites slot)",TextSize=11,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,1112)})
+RemoteCatalog.CraftPresetLoadButton=button({Parent=RemoteCatalog.CraftPage,Text="Load queue (replaces)",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,1112)})
+RemoteCatalog.CraftPresetSummary=label({Parent=RemoteCatalog.CraftPage,Text="No preset selected",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,100),Position=UDim2.fromOffset(8,1156)})
+RemoteCatalog.CraftPresetSummary.TextWrapped=true
+track(RemoteCatalog.CraftPresetSlotButton.Activated:Connect(function()
+    RemoteCatalog.SetCraftPresetSlot((RemoteCatalog.CraftPresetSlot or 0)%3+1)
+end))
+table.insert(RemoteCatalog.MenuClosers,function() pcall(function() RemoteCatalog.CraftPresetName:ReleaseFocus() end) end)
+track(RemoteCatalog.CraftPresetSaveButton.Activated:Connect(RemoteCatalog.SaveCraftPreset))
+track(RemoteCatalog.CraftPresetLoadButton.Activated:Connect(RemoteCatalog.LoadCraftPreset))
+RemoteCatalog.ReadCraftPresets()
 RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText())
 RemoteCatalog.RefreshCraftUI()
 -- CRAFT BAIT UI END
