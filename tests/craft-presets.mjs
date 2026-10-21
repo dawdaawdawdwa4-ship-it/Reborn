@@ -40,7 +40,8 @@ local saved=RemoteCatalog.CraftPresets[1]
 local payload=archive[files[path]].Presets['1']
 assert(saved.Name=='Materials' and #payload.Jobs==2 and payload.Jobs[1].Binding==nil and payload.Jobs[1].Recorder==nil,'saved descriptors must omit live bindings, functions and context tokens')
 local fields=0;for _ in pairs(payload.Jobs[1]) do fields+=1 end;assert(fields==4)
-RemoteCatalog.CraftQueue[1].Target=500
+assert(RemoteCatalog.SelectCraftQueueJob(1));RemoteCatalog.CraftTarget=500;assert(RemoteCatalog.ApplyCraftQueueJob())
+assert(RemoteCatalog.MoveCraftQueueJob(1) and RemoteCatalog.MoveCraftQueueJob(-1),'preset-backed queues must support reordering')
 assert(saved.Jobs[1].Target==100 and payload.Jobs[1].Target==100,'saving must detach both session and encoded snapshots from later queue edits')
 assert(RemoteCatalog.SetCraftPresetSlot(2));RemoteCatalog.CraftPresetName.Text='Stock'
 RemoteCatalog.CraftQueue={{Item='bait',Mode='Top up stock',Batch=25,Target=250}}

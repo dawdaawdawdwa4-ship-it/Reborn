@@ -865,3 +865,27 @@ reel before input; the final actual catch is registered before its goal stop.
 This remains inventory-based attribution, with unresolved simultaneous external
 trade/purchase ambiguity. Full tests cover history, goals, overlapping windows,
 real-loop cancellation and UI; live Roblox remains unverified.
+
+
+### Queue editor, chest ordering and propeller rates (queue-priority-stats-79)
+
+v79 retains recorder v31, all 146 catalog endpoints and existing request formats.
+Queue selection/reordering/apply only edit sanitized descriptors; no captured
+arguments, workbench or token is copied. Preset snapshots remain independent.
+Runtime preflight and frozen jobs still govern the next explicit run.
+
+Chest priority orders existing eligible targets by exact-instance session state;
+it creates no new binding and changes no request amount, pacing or confirmation.
+First/Normal/Last groups retain stable tie order (distance first in Walk mode).
+The worker still skips waiting targets and honors Balance chests. Exclusions,
+conveyor protection, ownership and final reach/context guards remain authoritative.
+
+Propeller rate and interval aggregates consume only existing credited inventory
+gains and a monotonic Fishing ON timer. OFF periods are excluded; average gaps
+refer to observations rather than independently proven server rewards. History
+clear/retention cannot erase aggregates; session reset clears them. No additional
+remote is called for statistics or control appearance.
+
+Tests cover descriptor edits and execution, saved snapshot isolation, exact chest
+priority and protected dispatch, active-time metrics and UI/input states. The
+full regression suite is required; live Roblox remains unverified.

@@ -37,7 +37,7 @@ local function reset()
  inventory={};trace={};workers={};distance={}
  for _,binding in pairs(bindings) do binding.Invalid=nil end
  recorder.CraftBindings=bindings
- RemoteCatalog.CraftQueue={};RemoteCatalog.CraftQueueDone=0
+ RemoteCatalog.CraftQueue={};RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueSelected=nil
  RemoteCatalog.CraftItem='bait';RemoteCatalog.CraftMode='Make amount';RemoteCatalog.CraftBatch=100;RemoteCatalog.CraftTarget=100
  RemoteCatalog.ChestBusy=false;RemoteCatalog.ChestAutoWorker=nil
  behavior=function(amount,binding) inventory[binding.Item]=(inventory[binding.Item] or 0)+amount;return true end
@@ -120,9 +120,39 @@ for _=1,10 do step() end
 assert(#trace==1 and RemoteCatalog.CraftQueueTotal==100 and RemoteCatalog.CraftPaused,'Pause must permit confirmation of the in-flight batch while holding the next request')
 RemoteCatalog.SetCraftEnabled(false);drain()
 assert(#trace==1 and not RemoteCatalog.CraftPaused and not RemoteCatalog.CraftWorker,'Stop from Pause must cancel the rest of the queue')
+-- Editing is descriptor-only, explicit and blocked through every active/IO state.
+reset();assert(add('bait',250) and add('testRecipe',100))
+assert(RemoteCatalog.SelectCraftQueueJob(1) and RemoteCatalog.CraftTarget==250 and RemoteCatalog.CraftItem=='bait' and #trace==0)
+RemoteCatalog.CraftTarget=500;RemoteCatalog.CraftBatch=25;RemoteCatalog.CraftMode='Top up stock'
+assert(RemoteCatalog.CraftQueue[1].Target==250,'changing the form cannot mutate the queued job before Apply')
+assert(RemoteCatalog.ApplyCraftQueueJob() and RemoteCatalog.CraftQueue[1].Target==500 and RemoteCatalog.CraftQueue[1].Batch==25 and RemoteCatalog.CraftQueue[1].Mode=='Top up stock')
+local saved=RemoteCatalog.CraftQueue[1]
+RemoteCatalog.CraftMode='Continuous'
+assert(not RemoteCatalog.ApplyCraftQueueJob() and RemoteCatalog.CraftQueue[1]==saved,'invalid edits must retain the original descriptor')
+assert(not RemoteCatalog.MoveCraftQueueJob(-1) and not RemoteCatalog.MoveCraftQueueJob(0) and not RemoteCatalog.SelectCraftQueueJob(3) and not RemoteCatalog.SelectCraftQueueJob(1.5))
+assert(RemoteCatalog.MoveCraftQueueJob(1) and RemoteCatalog.CraftQueueSelected==2 and RemoteCatalog.CraftQueue[2]==saved)
+assert(not RemoteCatalog.MoveCraftQueueJob(1),'moving past the end must preserve every job')
+assert(RemoteCatalog.SelectCraftQueueJob(1));RemoteCatalog.CraftTarget=250
+assert(RemoteCatalog.ApplyCraftQueueJob())
+for _,field in ipairs({'CraftWorker','CraftEnabled','CraftPresetBusy','CraftCatalogLoading','CraftLearning'}) do
+ RemoteCatalog[field]=true
+ assert(not RemoteCatalog.SelectCraftQueueJob(2) and not RemoteCatalog.MoveCraftQueueJob(1) and not RemoteCatalog.ApplyCraftQueueJob() and not RemoteCatalog.EditCraftQueue(false),'running/paused/finishing/loading states must reject direct edit callbacks')
+ RemoteCatalog[field]=nil
+end
+RemoteCatalog.Recorder=recorder;recorder.LearnCraftOnly=true;assert(not RemoteCatalog.ApplyCraftQueueJob());recorder.LearnCraftOnly=nil;RemoteCatalog.Recorder=nil
+assert(RemoteCatalog.SetCraftEnabled(true,true));drain()
+assert(trace[1].Item=='testRecipe' and inventory.testRecipe==250 and inventory.bait==500,'the next explicit run must execute edited order, quantities and mode')
+assert(RemoteCatalog.SelectCraftQueueJob(1) and RemoteCatalog.EditCraftQueue(false) and #RemoteCatalog.CraftQueue==1 and RemoteCatalog.CraftQueue[1].Item=='bait' and not RemoteCatalog.CraftQueueSelected,'Remove selected must remove the chosen index and clear the edit cursor')
+RemoteCatalog.CraftQueue={{Item='unlearned',Mode='Make amount',Batch=100,Target=100}}
+assert(RemoteCatalog.SelectCraftQueueJob(1));RemoteCatalog.CraftTarget=250
+assert(RemoteCatalog.ApplyCraftQueueJob() and RemoteCatalog.CraftQueue[1].Target==250,'loaded recipes may be edited before learning; Run still validates their bindings')
+local count=#trace
+assert(not RemoteCatalog.SetCraftEnabled(true,true) and #trace==count)
 reset();assert(add('bait') and add('testRecipe'))
 behavior=function(amount,binding) coroutine.yield('in-flight');inventory[binding.Item]=(inventory[binding.Item] or 0)+amount;return true end
-assert(RemoteCatalog.SetCraftEnabled(true,true));gui.Parent=nil;drain()
+assert(RemoteCatalog.SetCraftEnabled(true,true));gui.Parent=nil
+assert(not RemoteCatalog.ApplyCraftQueueJob() and not RemoteCatalog.SelectCraftQueueJob(1),'destroyed UI must reject queue editing')
+drain()
 assert(#trace==1 and not RemoteCatalog.CraftQueueRunning and not RemoteCatalog.CraftWorker,'GUI removal must cancel the remaining queue')
 return 'Craft queue: order, partial batches, top-up, repeated recipes, preflight, frozen jobs, Stop, material/no-gain/cooldown failures, range, stale context, caps and cleanup passed'
 `;

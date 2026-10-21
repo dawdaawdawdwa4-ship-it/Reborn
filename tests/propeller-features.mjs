@@ -83,6 +83,23 @@ setEnabled(false);assert(RemoteCatalog.SetPropellerGoal(1));setEnabled(true);cat
 assert(not enabled and RemoteCatalog.PropellerTotal==1 and RemoteCatalog.PropellerHistory[1].Timestamp=='timestamp unavailable','clock formatting failure must not drop loot or prevent the goal stop')
 RemoteCatalog.ResetPropellers()
 assert(RemoteCatalog.PropellerGoal.Limit==1 and not RemoteCatalog.PropellerGoal.Reached and RemoteCatalog.PropellerGoal.Progress==0,'Reset session must keep the selected limit and clear progress/history')
+-- Rates use active Fishing time and survive history clearing/OFF periods.
+setEnabled(false);assert(RemoteCatalog.SetPropellerGoal(0));RemoteCatalog.ResetPropellers()
+now=1000;setEnabled(true);now=1060;catch(4)
+local metrics=RemoteCatalog.PropellerStatistics()
+assert(metrics.Seconds==60 and metrics.PerHour==240 and metrics.Events==1 and metrics.AverageGap==nil,'stacked gains count items/hour, but a first find has no interval')
+now=1090;catch(2);metrics=RemoteCatalog.PropellerStatistics()
+assert(metrics.Seconds==90 and metrics.PerHour==240 and metrics.AverageGap==30 and metrics.Events==2)
+setEnabled(false);now=1690;metrics=RemoteCatalog.PropellerStatistics()
+assert(metrics.Seconds==90 and metrics.PerHour==240,'OFF time cannot dilute the active Fishing rate')
+setEnabled(true);now=1720;catch(3);metrics=RemoteCatalog.PropellerStatistics()
+assert(metrics.Seconds==120 and metrics.PerHour==270 and metrics.AverageGap==30,'average gaps must exclude the OFF period between sessions')
+RemoteCatalog.ClearPropellerHistory();metrics=RemoteCatalog.PropellerStatistics()
+assert(metrics.Events==3 and metrics.PerHour==270 and metrics.AverageGap==30,'Clear history must retain aggregate statistics')
+assert(has(RemoteCatalog.PropellerReport(),'Propellers/hour: 270.0') and has(RemoteCatalog.PropellerHistoryReport(),'Average between observed gains: 30.0s'),'copied diagnostics must include statistics even after clearing rows')
+setEnabled(false);now=2000;RemoteCatalog.ResetPropellers();metrics=RemoteCatalog.PropellerStatistics()
+assert(metrics.Seconds==0 and metrics.PerHour==nil and metrics.Events==0 and metrics.AverageGap==nil,'Reset must clear time and intervals without division by zero')
+assert(RemoteCatalog.SetPropellerGoal(1))
 -- Exercise the real fishing loop: the final fish must register before a
 -- propeller goal stops the worker, and no further cast/reel may be sent.
 local CONFIG={ActionCooldown=0,ReelTimeout=3,ReelSettleDelay=0,FishingPollInterval=.05}

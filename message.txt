@@ -2678,19 +2678,19 @@ end
 -- Colors / sizes
 --------------------------------------------------------------------
 local COLORS = {
-	bg = Color3.fromRGB(17, 23, 29),
-	panel = Color3.fromRGB(29, 39, 48),
-	stroke = Color3.fromRGB(56, 73, 83),
-	text = Color3.fromRGB(226, 232, 240),
-	muted = Color3.fromRGB(170, 186, 194),
-	on = Color3.fromRGB(24, 92, 75),
-	off = Color3.fromRGB(42, 55, 65),
+	bg = Color3.fromRGB(18, 20, 27),
+	panel = Color3.fromRGB(29, 33, 44),
+	stroke = Color3.fromRGB(58, 66, 84),
+	text = Color3.fromRGB(238, 242, 250),
+	muted = Color3.fromRGB(159, 171, 191),
+	on = Color3.fromRGB(24, 81, 70),
+	off = Color3.fromRGB(35, 42, 56),
 	gold = Color3.fromRGB(255, 200, 60),
 	good = Color3.fromRGB(80, 230, 130),
 	bad = Color3.fromRGB(240, 80, 80),
 	warn = Color3.fromRGB(255, 170, 50),
 	harvest = Color3.fromRGB(122, 162, 247),
-	accent = Color3.fromRGB(91, 204, 177),
+	accent = Color3.fromRGB(110, 218, 189),
 }
 
 
@@ -2735,10 +2735,10 @@ local function button(props)
 	b.BackgroundColor3 = props.Bg or COLORS.panel
 	b.TextColor3 = props.Color or COLORS.text
 	b.Text = props.Text
-	b.Font = Enum.Font.GothamBold
-	b.TextSize = math.max(props.TextSize or 13, 13)
+	b.Font = props.Primary and Enum.Font.GothamBold or Enum.Font.GothamMedium
+	b.TextSize = math.max(props.TextSize or 13, 12)
 	b.BorderSizePixel = 0
-	b.AutoButtonColor = true
+	b.AutoButtonColor = false
     b.Active = true
     b.Selectable = true
     b.Modal = true -- Keep controls reachable when the game locks the pointer.
@@ -2748,14 +2748,36 @@ local function button(props)
     padding.PaddingRight = UDim.new(0, 10)
     padding.Parent = b
 	b.Parent = props.Parent
-	corner(b, props.Radius or 8)
+	corner(b, props.Radius or 6)
     local stroke = Instance.new("UIStroke")
     stroke.Color = COLORS.stroke
     stroke.Thickness = 1
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = b
-    track(b.MouseEnter:Connect(function() stroke.Color = COLORS.accent end))
-    track(b.MouseLeave:Connect(function() stroke.Color = COLORS.stroke end))
+    stroke.Name="ControlStroke"
+    local gradient=Instance.new("UIGradient")
+    gradient.Name="ControlSurface";gradient.Rotation=90
+    gradient.Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(220,228,240));gradient.Parent=b
+    local hovered,pressed=false,false
+    local function refreshStyle()
+        local available=b.Active
+        local selected=b.BackgroundColor3==COLORS.on
+        stroke.Color=available and (hovered or pressed or selected or props.Primary) and COLORS.accent or COLORS.stroke
+        stroke.Transparency=not available and .8 or pressed and 0 or hovered and .1 or selected and .25 or props.Primary and .25 or .55
+        stroke.Thickness=available and pressed and 2 or 1
+        b.TextTransparency=available and 0 or .42
+    end
+    track(b.MouseEnter:Connect(function() hovered=true;refreshStyle() end))
+    track(b.MouseLeave:Connect(function() hovered=false;pressed=false;refreshStyle() end))
+    track(b.InputBegan:Connect(function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then pressed=true;refreshStyle() end
+    end))
+    track(b.InputEnded:Connect(function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then pressed=false;refreshStyle() end
+    end))
+    track(b:GetPropertyChangedSignal("Active"):Connect(function() if not b.Active then hovered=false;pressed=false end;refreshStyle() end))
+    track(b:GetPropertyChangedSignal("BackgroundColor3"):Connect(refreshStyle))
+    refreshStyle()
     if string.find(props.Text or "", "▼", 1, true) then
         b.TextXAlignment = Enum.TextXAlignment.Left
         padding.PaddingLeft = UDim.new(0, 12)
@@ -2796,7 +2818,7 @@ local R=game:GetService"TweenService"local p=game:GetService"UserInputService"lo
 -- NAVY. Upstream ships a plum palette; these are the same roles in blue. AccentDark is
 -- the text that sits ON the accent (primary buttons, the toggle knob), so it stays the
 -- darkest colour here -- swapping it for a blue would leave that text unreadable.
-g.Theme={Background=Color3.fromRGB(17,23,29),Surface=Color3.fromRGB(22,30,37),Surface2=Color3.fromRGB(29,39,48),Surface3=Color3.fromRGB(42,55,65),Stroke=Color3.fromRGB(56,73,83),StrokeHover=Color3.fromRGB(91,204,177),Accent=Color3.fromRGB(91,204,177),AccentDark=Color3.fromRGB(10,14,24),Text=Color3.fromRGB(226,232,240),Muted=Color3.fromRGB(170,186,194),Warning=Color3.fromRGB(240,176,108),Success=Color3.fromRGB(150,220,170),Error=Color3.fromRGB(240,120,120)}
+g.Theme={Background=Color3.fromRGB(18,20,27),Surface=Color3.fromRGB(23,26,35),Surface2=Color3.fromRGB(29,33,44),Surface3=Color3.fromRGB(35,42,56),Stroke=Color3.fromRGB(58,66,84),StrokeHover=Color3.fromRGB(110,218,189),Accent=Color3.fromRGB(110,218,189),AccentDark=Color3.fromRGB(10,14,24),Text=Color3.fromRGB(238,242,250),Muted=Color3.fromRGB(159,171,191),Warning=Color3.fromRGB(240,176,108),Success=Color3.fromRGB(150,220,170),Error=Color3.fromRGB(240,120,120)}
 g.Assets={Shadow="rbxassetid://6014261993",Glow="rbxassetid://8992230677",Logo="rbxassetid://6031090998"}
 -- ICONS COME FROM THE SCRIPT, NOT FROM THE INTERNET. Upstream resolved lucide names by
 -- downloading a table from a third-party GitHub repo and running it -- a dependency that
@@ -2923,7 +2945,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "propeller-goals-78",
+    Subtitle = "queue-priority-stats-79",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3414,7 +3436,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn propeller-goals-78",
+    return table.concat({"Reborn queue-priority-stats-79",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -3881,6 +3903,8 @@ RemoteCatalog.PropellerGoalMenu=RemoteCatalog.ChoiceDropdown(fishingPage,RemoteC
     Set=function(value) if RemoteCatalog.SetPropellerGoal then RemoteCatalog.SetPropellerGoal(value=="Unlimited" and 0 or tonumber(value)) end end,
     Locked=function() if enabled then setStatus("Stop Fishing before changing the propeller goal.",COLORS.warn);return true end;return false end,
 })
+RemoteCatalog.PropellerStatsLabel=label({Parent=fishingPage,Text="Propellers/hour: waiting for fishing time",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,66),Position=UDim2.fromOffset(8,1028)})
+RemoteCatalog.PropellerStatsLabel.TextWrapped=true
 pageHeading(fishingPage,"PROPELLER LOOT · LATEST 50 · UTC",790)
 RemoteCatalog.PropellerHistoryView=Instance.new("ScrollingFrame")
 RemoteCatalog.PropellerHistoryView.Size=UDim2.new(1,-12,0,156);RemoteCatalog.PropellerHistoryView.Position=UDim2.fromOffset(6,818)
@@ -4038,7 +4062,7 @@ for _,field in ipairs({"ChestScopeButton","ChestWholeButton"}) do
         RemoteCatalog.UpdateChestSelectionUI()
     end))
 end
-RemoteCatalog.ChestAutoButton=button({Parent=RemoteCatalog.ChestPage,Text="START COLLECTING",TextSize=13,
+RemoteCatalog.ChestAutoButton=button({Primary=true,Parent=RemoteCatalog.ChestPage,Text="START COLLECTING",TextSize=13,
     Size=UDim2.new(1,-12,0,38),Position=UDim2.fromOffset(6,330)})
 RemoteCatalog.ChestWithdrawButton=button({Parent=RemoteCatalog.ChestPage,Text="Learn chests first",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,376)})
@@ -4348,14 +4372,22 @@ track(RemoteCatalog.ChestConveyorButton.Activated:Connect(function()
     setStatus(RemoteCatalog.ChestIncludeConveyor and "Conveyor I/O chests included: withdrawals can compete with the belt." or "Conveyor I/O chests skipped: no automatic or manual hub withdrawal from them.",COLORS.good)
 end))
 RemoteCatalog.ChestExclusionPanel=Instance.new("Frame")
-RemoteCatalog.ChestExclusionPanel.Name="ChestProtection";RemoteCatalog.ChestExclusionPanel.Size=UDim2.new(1,-12,0,122)
+RemoteCatalog.ChestExclusionPanel.Name="ChestProtection";RemoteCatalog.ChestExclusionPanel.Size=UDim2.new(1,-12,0,164)
 RemoteCatalog.ChestExclusionPanel.Position=UDim2.fromOffset(6,0);RemoteCatalog.ChestExclusionPanel.BackgroundColor3=COLORS.panel
 RemoteCatalog.ChestExclusionPanel.BorderSizePixel=0;RemoteCatalog.ChestExclusionPanel.Parent=RemoteCatalog.ChestPage;corner(RemoteCatalog.ChestExclusionPanel,8)
-RemoteCatalog.ChestExclusionHeading=label({Parent=RemoteCatalog.ChestExclusionPanel,Text="CHEST PROTECTION · SESSION ONLY",TextSize=12,Color=COLORS.accent,Size=UDim2.new(1,-12,0,22),Position=UDim2.fromOffset(6,4)})
+RemoteCatalog.ChestExclusionHeading=label({Parent=RemoteCatalog.ChestExclusionPanel,Text="CHEST PRIORITY / PROTECTION · SESSION",TextSize=12,Color=COLORS.accent,Size=UDim2.new(1,-12,0,22),Position=UDim2.fromOffset(6,4)})
 RemoteCatalog.ChestExclusionButton=button({Parent=RemoteCatalog.ChestExclusionPanel,Text="Choose one chest above",TextSize=13,Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,30)})
 RemoteCatalog.ChestExclusionButton.Active=false
 RemoteCatalog.ChestExclusionSummary=label({Parent=RemoteCatalog.ChestExclusionPanel,Text="0 excluded chests · this hub session only. Choose an individual chest in Targets.",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-12,0,48),Position=UDim2.fromOffset(6,70)})
 RemoteCatalog.ChestExclusionSummary.TextWrapped=true
+RemoteCatalog.ChestPriorityButton=button({Parent=RemoteCatalog.ChestExclusionPanel,Text="Priority: Normal · click to change",TextSize=12,Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,122)})
+track(RemoteCatalog.ChestPriorityButton.Activated:Connect(function()
+    if not RemoteCatalog.SetChestPriority then return end
+    local chest=RemoteCatalog.ChestSelection and RemoteCatalog.ChestSelection.Chest
+    local current=chest and RemoteCatalog.ChestPriorities[chest] or 0
+    local ok,reason=RemoteCatalog.SetChestPriority(chest,current==0 and 1 or current==1 and -1 or 0)
+    setStatus(reason,ok and COLORS.good or COLORS.warn)
+end))
 track(RemoteCatalog.ChestExclusionButton.Activated:Connect(function()
     if not RemoteCatalog.SetChestExcluded then return end
     local selected=RemoteCatalog.ChestSelection
@@ -5208,11 +5240,32 @@ end
 RemoteCatalog.PropellerTotal=0
 RemoteCatalog.PropellerHistory={}
 RemoteCatalog.PropellerGoal={Progress=0,Reached=false}
+RemoteCatalog.PropellerStats={Seconds=0,Events=0,GapTotal=0}
+function RemoteCatalog.UpdatePropellerStatsClock(active)
+    local data=RemoteCatalog.PropellerStats
+    local now=RemoteCatalog.PropellerNow()
+    if data.Since then data.Seconds+=math.max(0,now-data.Since) end
+    data.Since=active and now or nil
+    return data.Seconds
+end
+function RemoteCatalog.PropellerStatistics()
+    local seconds=RemoteCatalog.UpdatePropellerStatsClock(enabled and gui.Parent~=nil)
+    local data=RemoteCatalog.PropellerStats
+    return {Seconds=seconds,Events=data.Events,PerHour=seconds>0 and RemoteCatalog.PropellerTotal*3600/seconds or nil,
+        AverageGap=data.Events>1 and data.GapTotal/(data.Events-1) or nil}
+end
+function RemoteCatalog.PropellerStatisticsText()
+    local data=RemoteCatalog.PropellerStatistics()
+    return "Propellers/hour: "..(data.PerHour and string.format("%.1f",data.PerHour) or "waiting for fishing time")..
+        " · Active Fishing: "..math.floor(data.Seconds).."s\nAverage between observed gains: "..(data.AverageGap and string.format("%.1fs",data.AverageGap) or "needs 2 finds")..
+        " · "..data.Events.." gains. OFF time excluded; gains can be parts of one catch."
+end
 function RemoteCatalog.PropellerTimestamp()
     local ok,value=pcall(function() return os.date("!%Y-%m-%d %H:%M:%S UTC",os.time()) end)
     return ok and type(value)=="string" and value or "timestamp unavailable"
 end
 function RemoteCatalog.StartPropellerRun()
+    RemoteCatalog.UpdatePropellerStatsClock(enabled and gui.Parent~=nil)
     RemoteCatalog.PropellerGoal.Progress=0;RemoteCatalog.PropellerGoal.Reached=false
     RemoteCatalog.PropellerWindow=nil;RemoteCatalog.PropellerPendingWindow=nil
 end
@@ -5238,6 +5291,10 @@ function RemoteCatalog.CheckPropellerGoal()
     if setStatus then setStatus("Propeller goal reached: "..goal.Progress.." / "..goal.Limit.." new. Fishing stopped.",COLORS.good) end
 end
 function RemoteCatalog.RecordPropellerGain(amount,now)
+    local seconds=RemoteCatalog.UpdatePropellerStatsClock(enabled and gui.Parent~=nil)
+    local data=RemoteCatalog.PropellerStats
+    if data.LastFindActive then data.GapTotal+=math.max(0,seconds-data.LastFindActive) end
+    data.LastFindActive=seconds;data.Events+=1
     RemoteCatalog.PropellerTotal+=amount
     RemoteCatalog.PropellerLastAt=now
     RemoteCatalog.PropellerGoal.Progress+=amount
@@ -5259,9 +5316,9 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn propeller-goals-78 · Propeller loot history (UTC)",
+    return table.concat({"Reborn queue-priority-stats-79 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
-        RemoteCatalog.PropellerGoalText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
+        RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
 end
 function RemoteCatalog.ClearPropellerHistory()
@@ -5307,6 +5364,7 @@ function RemoteCatalog.ConfirmPropellerCatch()
     RemoteCatalog.PollPropellers()
 end
 function RemoteCatalog.PollPropellers()
+    RemoteCatalog.UpdatePropellerStatsClock(enabled and gui.Parent~=nil)
     local now=RemoteCatalog.PropellerNow()
     if not enabled or not gui.Parent then RemoteCatalog.PropellerWindow=nil;RemoteCatalog.PropellerPendingWindow=nil;return end
     local keys={"PropellerPendingWindow","PropellerWindow"}
@@ -5341,6 +5399,7 @@ function RemoteCatalog.PropellerLastText()
 end
 function RemoteCatalog.ResetPropellers()
     RemoteCatalog.PropellerTotal=0;RemoteCatalog.PropellerLastAt=nil;RemoteCatalog.PropellerWindow=nil
+    RemoteCatalog.PropellerStats={Seconds=0,Events=0,GapTotal=0}
     RemoteCatalog.PropellerHistory={};RemoteCatalog.StartPropellerRun()
     if RemoteCatalog.RefreshPropellers then RemoteCatalog.RefreshPropellers() end
 end
@@ -5361,12 +5420,13 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn propeller-goals-78 · Propeller tracker",
+    return table.concat({"Reborn queue-priority-stats-79 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
         "Fishing: "..tostring(enabled==true),
         "Propeller goal: "..RemoteCatalog.PropellerGoalText(),
+        RemoteCatalog.PropellerStatisticsText(),
         "History entries: "..#RemoteCatalog.PropellerHistory.." / 50",
         "Previous confirmed window: "..tostring(RemoteCatalog.PropellerPendingWindow~=nil),
         "Tracker status: "..RemoteCatalog.PropellerTrackingStatus(count),
@@ -5388,6 +5448,7 @@ function RemoteCatalog.RefreshPropellers()
     end
     if RemoteCatalog.PropellerGoalMenu then RemoteCatalog.PropellerGoalMenu:Refresh() end
     if RemoteCatalog.PropellerHistoryLabel then RemoteCatalog.PropellerHistoryLabel.Text=RemoteCatalog.PropellerHistoryText() end
+    if RemoteCatalog.PropellerStatsLabel then RemoteCatalog.PropellerStatsLabel.Text=RemoteCatalog.PropellerStatisticsText() end
     if RemoteCatalog.PropellerInfo then
         local count=RemoteCatalog.PropellerCount()
         RemoteCatalog.PropellerInfo.Text="Inventory: "..tostring(count or "unreadable").." · "..RemoteCatalog.PropellerTrackingStatus(count)
@@ -5395,7 +5456,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn propeller-goals-78", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn queue-priority-stats-79", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6610,6 +6671,7 @@ setEnabled = function(state)
 	end
 
 	enabled = state
+    if RemoteCatalog.UpdatePropellerStatsClock then RemoteCatalog.UpdatePropellerStatsClock(enabled) end
 	cycleId += 1
 
 	if enabled then
@@ -6759,6 +6821,7 @@ function RemoteCatalog.ChestConveyorProtected(binding)
 end
 -- CHEST EXCLUSIONS BEGIN
 RemoteCatalog.ChestExcludedChests=setmetatable({}, {__mode="k"})
+RemoteCatalog.ChestPriorities=setmetatable({}, {__mode="k"})
 function RemoteCatalog.ChestIsExcluded(binding)
     local chest=binding and binding.Chest
     return chest~=nil and RemoteCatalog.ChestExcludedChests[chest]==true
@@ -6856,20 +6919,20 @@ function RemoteCatalog.SelectedChestTargets(includeProtected)
             end
         end
     end
-    if RemoteCatalog.ChestTravel=="Walk" then
-        local char=player.Character
-        local root=char and char:FindFirstChild("HumanoidRootPart")
-        if root then
-            local order={}
-            for index,entry in ipairs(targets) do order[entry]=index end
-            table.sort(targets,function(a,b)
-                local ap,bp=getPartPosition(a.Binding.Chest),getPartPosition(b.Binding.Chest)
-                local ad=ap and (ap-root.Position).Magnitude or math.huge
-                local bd=bp and (bp-root.Position).Magnitude or math.huge
-                return ad<bd or ad==bd and order[a]<order[b]
-            end)
-        end
+    local char=player.Character
+    local root=char and char:FindFirstChild("HumanoidRootPart")
+    local order,distances={},{}
+    for index,entry in ipairs(targets) do
+        order[entry]=index
+        local position=RemoteCatalog.ChestTravel=="Walk" and root and getPartPosition(entry.Binding.Chest)
+        distances[entry]=position and (position-root.Position).Magnitude or math.huge
     end
+    table.sort(targets,function(a,b)
+        local ap,bp=RemoteCatalog.ChestPriorities[a.Binding.Chest] or 0,RemoteCatalog.ChestPriorities[b.Binding.Chest] or 0
+        if ap~=bp then return ap>bp end
+        local ad,bd=distances[a],distances[b]
+        return ad<bd or ad==bd and order[a]<order[b]
+    end)
     return targets
 end
 -- CHEST TARGETS END
@@ -6882,6 +6945,12 @@ function RemoteCatalog.RefreshChestExclusions()
     local excluded=RemoteCatalog.ChestIsExcluded(selected)
     local locked=RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker~=nil or RemoteCatalog.ChestBusy or RemoteCatalog.ChestManualRunning
     local available=not locked and chest~=nil and chest.Parent~=nil
+    if RemoteCatalog.ChestPriorityButton then
+        local priority=chest and RemoteCatalog.ChestPriorities[chest] or 0
+        RemoteCatalog.ChestPriorityButton.Text="Priority: "..(priority==1 and "First" or priority==-1 and "Last" or "Normal").." · click to change"
+        RemoteCatalog.ChestPriorityButton.Active=available==true;RemoteCatalog.ChestPriorityButton.Selectable=available==true
+        RemoteCatalog.ChestPriorityButton.TextColor3=available and COLORS.text or COLORS.muted
+    end
     RemoteCatalog.ChestExclusionButton.Text=not chest and "Choose one chest above" or excluded and "Allow selected chest" or "Exclude selected chest"
     RemoteCatalog.ChestExclusionButton.Active=available==true
     RemoteCatalog.ChestExclusionButton.Selectable=available==true
@@ -6907,6 +6976,19 @@ function RemoteCatalog.SetChestExcluded(chest,excluded)
     RemoteCatalog.UpdateChestSelectionUI()
     RemoteCatalog.PreviewChestSelection()
     return true,excluded and "Selected chest excluded: all slots/items are protected from Auto Take and manual hub withdrawal for this hub session." or "Selected chest allowed again. Conveyor Skip still applies. Collection stays OFF."
+end
+function RemoteCatalog.SetChestPriority(chest,priority)
+    if not gui.Parent or (priority~=-1 and priority~=0 and priority~=1) then return false,"Choose First, Normal or Last" end
+    if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy or RemoteCatalog.ChestManualRunning then return false,"Stop collection and wait for cleanup before editing priority" end
+    local known=false
+    for _,entry in ipairs(RemoteCatalog.ChestTargets()) do if entry.Binding.Chest==chest then known=true;break end end
+    if not known or not chest or not chest.Parent then return false,"Choose a current individual chest in Targets first" end
+    local island=getPlayerIsland();local cursor=chest
+    while cursor and cursor~=island do cursor=cursor.Parent end
+    if not island or cursor~=island then return false,"Choose a chest on your own island" end
+    RemoteCatalog.ChestPriorities[chest]=priority~=0 and priority or nil
+    RemoteCatalog.CloseMenus();RemoteCatalog.UpdateChestSelectionUI();RemoteCatalog.PreviewChestSelection()
+    return true,"Chest priority: "..(priority==1 and "First" or priority==-1 and "Last" or "Normal")..". Applies to all slots/items; exclusions still apply. Session only."
 end
 -- CHEST EXCLUSION UI LOGIC END
 
@@ -7040,6 +7122,7 @@ function RemoteCatalog.PreviewChestSelection()
     end
     text..=RemoteCatalog.ChestRepeat and "\nRun: Repeat; wait 2 seconds between passes. Stop cancels. The combined goal applies to the whole run." or "\nRun: One pass; stop after the selected checks."
     text..="\nAuto batch: "..(RemoteCatalog.ChestAutoBatch=="Max" and "adaptive 30–1000; grows only after confirmed full transfers" or tostring(RemoteCatalog.ChestAutoBatch or 30))..". TOO_FAST waits and retries the same batch."
+    text..="\nChest priority: First → Normal → Last; Walk uses distance within each priority. Balance chests still rotates after each confirmed batch. Session only."
     text..="\nOrder: "..(RemoteCatalog.ChestOrder=="Balance chests" and "Balance chests; give another chest a turn after each confirmed batch. Retries stay on their slot." or "Same stack; drain the current stack before moving on.")
     RemoteCatalog.ChestPlanLabel.Text=text
     RemoteCatalog.ChestPlanView.CanvasPosition=Vector2.zero
@@ -7130,7 +7213,11 @@ function RemoteCatalog.ChestTargetLabel(binding,all)
     for _,entry in ipairs(all) do
         local chest=entry.Binding.Chest
         if not seen[chest] then count+=1;seen[chest]=count end
-        if chest==binding.Chest then return "Chest #"..seen[chest]..(RemoteCatalog.ChestWhole and " · whole chest" or " · slot "..tostring(binding.Slot or "?"))..(RemoteCatalog.ChestIsExcluded(binding) and " · EXCLUDED" or "") end
+        if chest==binding.Chest then
+            local priority=RemoteCatalog.ChestPriorities[chest] or 0
+            return "Chest #"..seen[chest]..(RemoteCatalog.ChestWhole and " · whole chest" or " · slot "..tostring(binding.Slot or "?"))..
+                (priority==1 and " · FIRST" or priority==-1 and " · LAST" or "")..(RemoteCatalog.ChestIsExcluded(binding) and " · EXCLUDED" or "")
+        end
     end
     return "Unavailable chest"
 end
@@ -7436,7 +7523,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn propeller-goals-78\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn queue-priority-stats-79\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -8029,7 +8116,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn propeller-goals-78\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn queue-priority-stats-79\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -8421,11 +8508,63 @@ function RemoteCatalog.MakeCraftJob(item,mode,batch,target,allowContinuous)
     if not recorder then return nil,"Learn "..item.." on this character/server first, then choose it in Recipe." end
     return {Item=item,Mode=mode,Batch=batch,Target=target,Recorder=recorder,Binding=binding}
 end
+function RemoteCatalog.CraftQueueEditable()
+    local recorder=RemoteCatalog.Recorder
+    return gui.Parent~=nil and not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftEnabled and not RemoteCatalog.CraftPresetBusy
+        and not RemoteCatalog.CraftCatalogLoading and not RemoteCatalog.CraftLearning and not (recorder and recorder.LearnCraftOnly)
+end
+function RemoteCatalog.CraftQueueChanged()
+    RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0;RemoteCatalog.CraftQueueIndex=nil
+    RemoteCatalog.CraftQueueRunSize=nil;RemoteCatalog.CraftQueueActiveItem=nil;RemoteCatalog.CraftMaterialRun=nil
+end
+function RemoteCatalog.CraftQueueJobOptions()
+    local options={}
+    for index,job in ipairs(RemoteCatalog.CraftQueue) do table.insert(options,index.." · "..tostring(type(job)=="table" and job.Item or "Invalid job")) end
+    return options
+end
+function RemoteCatalog.SelectCraftQueueJob(index)
+    if not RemoteCatalog.CraftQueueEditable() or type(index)~="number" or index%1~=0 then return false end
+    local ok,preset=pcall(RemoteCatalog.ValidateCraftPreset,{Version=1,Name="Queue edit",Jobs={RemoteCatalog.CraftQueue[index]}})
+    if not ok then RemoteCatalog.CraftMessage("Choose a valid queue job first.");return false end
+    RemoteCatalog.CloseMenus()
+    local job=preset.Jobs[1]
+    RemoteCatalog.CraftQueueSelected=index
+    RemoteCatalog.CraftItem=job.Item;RemoteCatalog.CraftMode=job.Mode;RemoteCatalog.CraftBatch=job.Batch;RemoteCatalog.CraftTarget=job.Target
+    for _,name in ipairs({"CraftRecipeMenu","CraftModeMenu","CraftBatchMenu","CraftTargetMenu"}) do
+        if RemoteCatalog[name] then RemoteCatalog[name]:Refresh() end
+    end
+    RemoteCatalog.RefreshCraftUI()
+    RemoteCatalog.CraftMessage("Editing job "..index..": change the recipe, mode, batch or amount above, then Apply settings. Queue unchanged until applied.")
+    return true
+end
+function RemoteCatalog.MoveCraftQueueJob(direction)
+    if not RemoteCatalog.CraftQueueEditable() or (direction~=-1 and direction~=1) then return false end
+    local index=RemoteCatalog.CraftQueueSelected
+    if type(index)~="number" or index%1~=0 or not RemoteCatalog.CraftQueue[index] or not RemoteCatalog.CraftQueue[index+direction] then return false end
+    RemoteCatalog.CloseMenus()
+    local queue=RemoteCatalog.CraftQueue
+    queue[index],queue[index+direction]=queue[index+direction],queue[index]
+    RemoteCatalog.CraftQueueSelected=index+direction;RemoteCatalog.CraftQueueChanged()
+    RemoteCatalog.CraftMessage("Moved selected job to position "..RemoteCatalog.CraftQueueSelected..". No crafting started.")
+    return true
+end
+function RemoteCatalog.ApplyCraftQueueJob()
+    if not RemoteCatalog.CraftQueueEditable() then return false end
+    local index=RemoteCatalog.CraftQueueSelected
+    if type(index)~="number" or index%1~=0 or not RemoteCatalog.CraftQueue[index] then return false end
+    local ok,preset=pcall(RemoteCatalog.ValidateCraftPreset,{Version=1,Name="Queue edit",Jobs={{Item=RemoteCatalog.CraftItem,Mode=RemoteCatalog.CraftMode,Batch=RemoteCatalog.CraftBatch,Target=RemoteCatalog.CraftTarget}}})
+    if not ok then RemoteCatalog.CraftMessage("Choose a valid recipe, finite mode, batch and amount. Selected job kept.");return false end
+    RemoteCatalog.CloseMenus()
+    RemoteCatalog.CraftQueue[index]=preset.Jobs[1];RemoteCatalog.CraftQueueChanged()
+    RemoteCatalog.CraftMessage("Updated job "..index..". Saved presets unchanged; save again to update a preset. Run Queue validates all learned recipes.")
+    return true
+end
 function RemoteCatalog.CraftQueueText()
     local lines={"QUEUE · "..#RemoteCatalog.CraftQueue.." / 8 jobs"}
     if #RemoteCatalog.CraftQueue==0 then table.insert(lines,"Choose a recipe, Make amount or Top up stock, then Add to queue. Each request remains capped at 100.") end
     for index,job in ipairs(RemoteCatalog.CraftQueue) do
         local marker=RemoteCatalog.CraftQueueRunning and index==RemoteCatalog.CraftQueueIndex and "▶ " or index<=(RemoteCatalog.CraftQueueDone or 0) and "✓ " or ""
+        if index==RemoteCatalog.CraftQueueSelected then marker..="EDIT · " end
         if type(job)=="table" then
             table.insert(lines,marker..index..". "..tostring(job.Item).." · "..tostring(job.Mode).." "..tostring(job.Target).." · batch "..tostring(job.Batch))
         else table.insert(lines,index..". Invalid job; clear the queue.") end
@@ -8436,11 +8575,20 @@ function RemoteCatalog.RefreshCraftQueue()
     if not gui.Parent then return end
     if RemoteCatalog.RefreshCraftPresets then RemoteCatalog.RefreshCraftPresets() end
     if RemoteCatalog.CraftQueueLabel then RemoteCatalog.CraftQueueLabel.Text=RemoteCatalog.CraftQueueText() end
-    local busy=RemoteCatalog.CraftWorker~=nil or RemoteCatalog.CraftPresetBusy==true
-    for _,name in ipairs({"CraftQueueAddButton","CraftQueueRemoveButton","CraftQueueClearButton"}) do
+    local busy=not RemoteCatalog.CraftQueueEditable()
+    local index=RemoteCatalog.CraftQueueSelected
+    local selected=type(index)=="number" and index%1==0 and RemoteCatalog.CraftQueue[index]~=nil
+    if RemoteCatalog.CraftQueueJobMenu then RemoteCatalog.CraftQueueJobMenu:Refresh() end
+    if RemoteCatalog.CraftQueueRemoveButton then RemoteCatalog.CraftQueueRemoveButton.Text=selected and "Remove selected job" or "Remove last job" end
+    for _,name in ipairs({"CraftQueueAddButton","CraftQueueRemoveButton","CraftQueueClearButton","CraftQueueJobButton","CraftQueueUpButton","CraftQueueDownButton","CraftQueueApplyButton"}) do
         local control=RemoteCatalog[name]
         if control then
-            local available=not busy and (name~="CraftQueueAddButton" or RemoteCatalog.CraftMode~="Continuous")
+            local available=not busy
+            if name=="CraftQueueAddButton" then available=available and RemoteCatalog.CraftMode~="Continuous" and #RemoteCatalog.CraftQueue<8
+            elseif name=="CraftQueueJobButton" or name=="CraftQueueRemoveButton" or name=="CraftQueueClearButton" then available=available and #RemoteCatalog.CraftQueue>0
+            elseif name=="CraftQueueApplyButton" then available=available and selected and RemoteCatalog.CraftMode~="Continuous"
+            elseif name=="CraftQueueUpButton" then available=available and selected and index>1
+            elseif name=="CraftQueueDownButton" then available=available and selected and index<#RemoteCatalog.CraftQueue end
             control.Active=available;control.Selectable=available;control.TextColor3=available and COLORS.text or COLORS.muted
         end
     end
@@ -8451,23 +8599,28 @@ function RemoteCatalog.RefreshCraftQueue()
     end
 end
 function RemoteCatalog.AddCraftQueueJob()
+    if not RemoteCatalog.CraftQueueEditable() then RemoteCatalog.CraftMessage("Stop crafting/learning and wait for loading or cleanup before editing the queue.");return false end
     if RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish first.");return false end
     if RemoteCatalog.CraftWorker then RemoteCatalog.CraftMessage("Stop crafting and wait for cleanup before editing the queue.");return false end
     RemoteCatalog.RefreshCraftUI()
     if #RemoteCatalog.CraftQueue>=8 then RemoteCatalog.CraftMessage("Queue is full: remove a job or clear the queue first.");return false end
     local job,reason=RemoteCatalog.MakeCraftJob(RemoteCatalog.CraftItem,RemoteCatalog.CraftMode,RemoteCatalog.CraftBatch,RemoteCatalog.CraftTarget,false)
     if not job then RemoteCatalog.CraftMessage(reason);return false end
+    RemoteCatalog.CloseMenus()
     table.insert(RemoteCatalog.CraftQueue,{Item=job.Item,Mode=job.Mode,Batch=job.Batch,Target=job.Target})
-    RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0;RemoteCatalog.CraftQueueIndex=nil
+    RemoteCatalog.CraftQueueSelected=#RemoteCatalog.CraftQueue;RemoteCatalog.CraftQueueChanged()
     RemoteCatalog.CraftMessage("Added "..job.Item.." to queue. Run Queue starts from the first job and uses your materials.")
     return true
 end
 function RemoteCatalog.EditCraftQueue(clear)
-    if RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish first.");return false end
-    if RemoteCatalog.CraftWorker then RemoteCatalog.CraftMessage("Stop crafting and wait for cleanup before editing the queue.");return false end
-    if clear then RemoteCatalog.CraftQueue={} else table.remove(RemoteCatalog.CraftQueue) end
-    RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0;RemoteCatalog.CraftQueueIndex=nil
-    RemoteCatalog.CraftMessage(clear and "Queue cleared. No crafting started." or "Last queue job removed. No crafting started.")
+    if not RemoteCatalog.CraftQueueEditable() then RemoteCatalog.CraftMessage("Stop crafting/learning and wait for loading or cleanup before editing the queue.");return false end
+    RemoteCatalog.CloseMenus()
+    local index=RemoteCatalog.CraftQueueSelected or #RemoteCatalog.CraftQueue
+    if clear then RemoteCatalog.CraftQueue={}
+    elseif type(index)=="number" and index%1==0 and RemoteCatalog.CraftQueue[index] then table.remove(RemoteCatalog.CraftQueue,index)
+    else return false end
+    RemoteCatalog.CraftQueueSelected=nil;RemoteCatalog.CraftQueueChanged()
+    RemoteCatalog.CraftMessage(clear and "Queue cleared. No crafting started." or "Queue job removed. No crafting started.")
     return true
 end
 -- CRAFT PRESETS BEGIN
@@ -8602,6 +8755,7 @@ function RemoteCatalog.LoadCraftPreset()
     if not ok then RemoteCatalog.CraftMessage("Save a valid preset in this slot before loading it. Current queue kept.");return false end
     RemoteCatalog.CloseMenus()
     RemoteCatalog.CraftQueue=preset.Jobs
+    RemoteCatalog.CraftQueueSelected=nil
     RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0;RemoteCatalog.CraftQueueIndex=nil;RemoteCatalog.CraftQueueRunSize=nil;RemoteCatalog.CraftQueueActiveItem=nil;RemoteCatalog.CraftQueueRunning=false
     RemoteCatalog.CraftEnabled=false;RemoteCatalog.CraftPaused=false;RemoteCatalog.CraftMaterialRun=nil
     if RemoteCatalog.CraftPresetName then RemoteCatalog.CraftPresetName.Text=preset.Name end
@@ -8771,7 +8925,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn propeller-goals-78 · Craft diagnostics",
+    return table.concat({"Reborn queue-priority-stats-79 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -8811,7 +8965,7 @@ end))
 RemoteCatalog.CraftRecipeButton=button({Parent=RemoteCatalog.CraftPage,Text="Recipe: bait",TextSize=12,Size=UDim2.new(1,-12,0,36),Position=UDim2.fromOffset(6,202)})
 RemoteCatalog.CraftModeButton=button({Parent=RemoteCatalog.CraftPage,Text="Craft: Make amount",TextSize=12,Size=UDim2.new(1,-12,0,36),Position=UDim2.fromOffset(6,246)})
 RemoteCatalog.CraftLearnButton=button({Parent=RemoteCatalog.CraftPage,Text="Learn recipe",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,290)})
-RemoteCatalog.CraftToggle=button({Parent=RemoteCatalog.CraftPage,Text="START CRAFTING",TextSize=12,Bg=COLORS.off,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,290)})
+RemoteCatalog.CraftToggle=button({Primary=true,Parent=RemoteCatalog.CraftPage,Text="START CRAFTING",TextSize=12,Bg=COLORS.off,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,290)})
 RemoteCatalog.CraftBatchButton=button({Parent=RemoteCatalog.CraftPage,Text="Batch: 100",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,334)})
 RemoteCatalog.CraftTargetButton=button({Parent=RemoteCatalog.CraftPage,Text="Amount: 100",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,334)})
 RemoteCatalog.CraftInfo=label({Parent=RemoteCatalog.CraftPage,Text="OFF · Learn a manual craft first. Uses your materials.",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,76),Position=UDim2.fromOffset(8,422)})
@@ -8841,14 +8995,14 @@ RemoteCatalog.CraftMaterialsLabel=label({Parent=RemoteCatalog.CraftMaterialsView
 RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsLabel.AutomaticSize=Enum.AutomaticSize.Y;RemoteCatalog.CraftMaterialsLabel.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.CraftMaterialsLabel.TextTruncate=Enum.TextTruncate.None
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
-    local report="Reborn propeller-goals-78 · Materials\n"..RemoteCatalog.CraftMaterialReport()
+    local report="Reborn queue-priority-stats-79 · Materials\n"..RemoteCatalog.CraftMaterialReport()
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
 end))
 pageHeading(RemoteCatalog.CraftPage,"CRAFTING QUEUE · FINITE JOBS",772)
 RemoteCatalog.CraftQueueAddButton=button({Parent=RemoteCatalog.CraftPage,Text="Add to queue",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,800)})
-RemoteCatalog.CraftQueueRunButton=button({Parent=RemoteCatalog.CraftPage,Text="RUN QUEUE",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,800)})
+RemoteCatalog.CraftQueueRunButton=button({Primary=true,Parent=RemoteCatalog.CraftPage,Text="RUN QUEUE",TextSize=12,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,800)})
 RemoteCatalog.CraftQueueRemoveButton=button({Parent=RemoteCatalog.CraftPage,Text="Remove last job",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,844)})
 RemoteCatalog.CraftQueueClearButton=button({Parent=RemoteCatalog.CraftPage,Text="Clear queue",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,844)})
 RemoteCatalog.CraftQueueView=Instance.new("ScrollingFrame")
@@ -8864,15 +9018,30 @@ track(RemoteCatalog.CraftQueueClearButton.Activated:Connect(function() RemoteCat
 track(RemoteCatalog.CraftQueueRunButton.Activated:Connect(function()
     if RemoteCatalog.CraftQueueRunning and RemoteCatalog.CraftEnabled then RemoteCatalog.SetCraftEnabled(false) else RemoteCatalog.SetCraftEnabled(true,true) end
 end))
-pageHeading(RemoteCatalog.CraftPage,"SAVED QUEUE PRESETS",1040)
-RemoteCatalog.CraftPresetSlotButton=button({Parent=RemoteCatalog.CraftPage,Text="Preset: 1 / 3",TextSize=12,Size=UDim2.new(.4,-9,0,34),Position=UDim2.fromOffset(6,1068)})
+RemoteCatalog.CraftQueueJobButton=button({Parent=RemoteCatalog.CraftPage,Text="Edit job: choose",TextSize=12,Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,1024)})
+RemoteCatalog.CraftQueueUpButton=button({Parent=RemoteCatalog.CraftPage,Text="Move up",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,1066)})
+RemoteCatalog.CraftQueueDownButton=button({Parent=RemoteCatalog.CraftPage,Text="Move down",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,1066)})
+RemoteCatalog.CraftQueueApplyButton=button({Parent=RemoteCatalog.CraftPage,Text="Apply settings to selected job",TextSize=12,Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,1108)})
+RemoteCatalog.CraftQueueEditHint=label({Parent=RemoteCatalog.CraftPage,Text="Choose a job → edit recipe, mode, batch or amount above → Apply settings. Changes stay in this working queue until you save a preset again.",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,52),Position=UDim2.fromOffset(8,1150)})
+RemoteCatalog.CraftQueueEditHint.TextWrapped=true
+RemoteCatalog.CraftQueueJobMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.CraftPage,RemoteCatalog.CraftQueueJobButton,{}, {
+    Name="CraftQueueJobDropdown",Title="Edit job",GetOptions=RemoteCatalog.CraftQueueJobOptions,
+    Get=function() return RemoteCatalog.CraftQueueJobOptions()[RemoteCatalog.CraftQueueSelected or 0] or "choose" end,
+    Set=function(value) RemoteCatalog.SelectCraftQueueJob(tonumber(value:match("^(%d+)"))) end,
+    Locked=function() return not RemoteCatalog.CraftQueueEditable() or #RemoteCatalog.CraftQueue==0 end,
+})
+track(RemoteCatalog.CraftQueueUpButton.Activated:Connect(function() RemoteCatalog.MoveCraftQueueJob(-1) end))
+track(RemoteCatalog.CraftQueueDownButton.Activated:Connect(function() RemoteCatalog.MoveCraftQueueJob(1) end))
+track(RemoteCatalog.CraftQueueApplyButton.Activated:Connect(RemoteCatalog.ApplyCraftQueueJob))
+pageHeading(RemoteCatalog.CraftPage,"SAVED QUEUE PRESETS",1220)
+RemoteCatalog.CraftPresetSlotButton=button({Parent=RemoteCatalog.CraftPage,Text="Preset: 1 / 3",TextSize=12,Size=UDim2.new(.4,-9,0,34),Position=UDim2.fromOffset(6,1248)})
 RemoteCatalog.CraftPresetName=Instance.new("TextBox")
 RemoteCatalog.CraftPresetName.Name="CraftPresetName";RemoteCatalog.CraftPresetName.Text="Craft queue 1";RemoteCatalog.CraftPresetName.PlaceholderText="Preset name (1–48 bytes)"
 RemoteCatalog.CraftPresetName.ClearTextOnFocus=false;RemoteCatalog.CraftPresetName.TextSize=13;RemoteCatalog.CraftPresetName.TextColor3=COLORS.text
-RemoteCatalog.CraftPresetName.BackgroundColor3=COLORS.panel;RemoteCatalog.CraftPresetName.Size=UDim2.new(.6,-9,0,34);RemoteCatalog.CraftPresetName.Position=UDim2.new(.4,3,0,1068);RemoteCatalog.CraftPresetName.Parent=RemoteCatalog.CraftPage
-RemoteCatalog.CraftPresetSaveButton=button({Parent=RemoteCatalog.CraftPage,Text="Save queue (overwrites slot)",TextSize=11,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,1112)})
-RemoteCatalog.CraftPresetLoadButton=button({Parent=RemoteCatalog.CraftPage,Text="Load queue (replaces)",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,1112)})
-RemoteCatalog.CraftPresetSummary=label({Parent=RemoteCatalog.CraftPage,Text="No preset selected",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,100),Position=UDim2.fromOffset(8,1156)})
+RemoteCatalog.CraftPresetName.BackgroundColor3=COLORS.panel;RemoteCatalog.CraftPresetName.Size=UDim2.new(.6,-9,0,34);RemoteCatalog.CraftPresetName.Position=UDim2.new(.4,3,0,1248);RemoteCatalog.CraftPresetName.Parent=RemoteCatalog.CraftPage
+RemoteCatalog.CraftPresetSaveButton=button({Parent=RemoteCatalog.CraftPage,Text="Save queue (overwrites slot)",TextSize=11,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,1292)})
+RemoteCatalog.CraftPresetLoadButton=button({Parent=RemoteCatalog.CraftPage,Text="Load queue (replaces)",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,1292)})
+RemoteCatalog.CraftPresetSummary=label({Parent=RemoteCatalog.CraftPage,Text="No preset selected",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,100),Position=UDim2.fromOffset(8,1336)})
 RemoteCatalog.CraftPresetSummary.TextWrapped=true
 track(RemoteCatalog.CraftPresetSlotButton.Activated:Connect(function()
     RemoteCatalog.SetCraftPresetSlot((RemoteCatalog.CraftPresetSlot or 0)%3+1)
@@ -9698,6 +9867,7 @@ gui.Destroying:Connect(function()
     baitEnabled = false
     baitCycleId += 1
 	enabled = false
+    RemoteCatalog.UpdatePropellerStatsClock(false)
 	harvestEnabled = false
 	cycleId += 1
 	harvestCycleId += 1

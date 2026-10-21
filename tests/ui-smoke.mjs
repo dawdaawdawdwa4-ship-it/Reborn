@@ -74,6 +74,23 @@ smallerUI.Activated:Fire();resetUI.Activated:Fire()
 assert(frame.Size.X.Offset==720 and frame.Size.Y.Offset==470,'reset failed')
 assert(hub.OpenButton and #hub._connections>0,'reopen and drag connections missing')
 assert(not RemoteCatalog.Recorder and hookCount==0,'recording must not start or install hooks by default')
+-- Shared button feedback must reflect disabled and pressed states without firing actions.
+;(function()
+ local control=RemoteCatalog.CraftQueueRunButton
+ local stroke=control:FindFirstChild('ControlStroke')
+ assert(stroke and control:FindFirstChild('ControlSurface'),'shared buttons must have their styled border/surface')
+ control.MouseEnter:Fire();assert(stroke.Color==COLORS.accent and stroke.Transparency==.1)
+ control.Active=false;control.MouseEnter:Fire();control.InputBegan:Fire({UserInputType=Enum.UserInputType.Touch})
+ assert(stroke.Color==COLORS.stroke and stroke.Transparency==.8 and stroke.Thickness==1 and control.TextTransparency>0,'disabled controls must stay visibly locked under hover/touch')
+ control.Active=true;control.InputBegan:Fire({UserInputType=Enum.UserInputType.MouseButton1})
+ assert(stroke.Thickness==2 and control.TextTransparency==0,'mouse press must give feedback')
+ control.InputEnded:Fire({UserInputType=Enum.UserInputType.MouseButton1});control.MouseLeave:Fire()
+ assert(stroke.Thickness==1 and not RemoteCatalog.CraftWorker,'visual feedback cannot start automation')
+ local previous=control.BackgroundColor3;control.BackgroundColor3=COLORS.on
+ assert(stroke.Color==COLORS.accent,'selected controls must retain an accent border outside hover')
+ control.BackgroundColor3=previous;RemoteCatalog.RefreshCraftQueue()
+ end)()
+
 -- Exercise the actual switch callbacks with no learned remote IDs.
 for _,button in ipairs({harvestToggle,woodToggle,mineToggle,toggle,baitToggle}) do
  button.Activated:Fire()

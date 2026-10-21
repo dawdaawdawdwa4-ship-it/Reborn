@@ -91,12 +91,35 @@ onWait=function() RemoteCatalog.ChestExcludedChests[a]=true end
 local manualResult
 task.spawn(function() manualResult=table.pack(RemoteCatalog.WithdrawSelectedCarrots()) end);drain();onWait=nil
 assert(#calls==1 and calls[1].Chest==a and not manualResult[1],'a cached manual readiness result must not bypass an exclusion added between slots')
+-- Priority uses exact identity, stable ties and existing dispatch safeguards.
+RemoteCatalog.ChestExcludedChests={};RemoteCatalog.ChestSelection=nil;RemoteCatalog.ChestDiscover=false;RemoteCatalog.ChestWhole=false
+learned={ba,ba2,bb};calls={};quantity=0
+assert(RemoteCatalog.SetChestPriority(b,1) and #calls==0)
+local ordered=RemoteCatalog.SelectedChestTargets()
+assert(ordered[1].Binding==bb and ordered[2].Binding==ba and ordered[3].Binding==ba2,'First priority must preserve original slot order within ties')
+RemoteCatalog.ChestTravel='Walk'
+assert(RemoteCatalog.SelectedChestTargets()[1].Binding==bb,'explicit priority must precede distance')
+for _,field in ipairs({'ChestAutoEnabled','ChestAutoWorker','ChestBusy','ChestManualRunning'}) do
+ RemoteCatalog[field]=true;assert(not RemoteCatalog.SetChestPriority(b,-1) and RemoteCatalog.ChestPriorities[b]==1);RemoteCatalog[field]=nil
+end
+assert(not RemoteCatalog.SetChestPriority(b,2) and not RemoteCatalog.SetChestPriority(nil,1))
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(#calls==1 and calls[1].Chest==b,'actual Auto Take must visit the priority chest first')
+assert(RemoteCatalog.SetChestExcluded(b,true))
+assert(RemoteCatalog.SelectedChestTargets()[1].Binding.Chest==a,'First priority cannot bypass an exclusion')
+assert(RemoteCatalog.SetChestExcluded(b,false) and RemoteCatalog.SetChestPriority(b,-1))
+assert(RemoteCatalog.SelectedChestTargets()[1].Binding.Chest==a,'Last priority must defer the selected chest')
+assert(RemoteCatalog.SetChestPriority(b,0) and RemoteCatalog.ChestPriorities[b]==nil,'Normal must restore default distance/order behavior')
+assert(RemoteCatalog.SetChestPriority(a,1))
 local replacement={Name=a.Name,Parent=blocks,Position=a.Position}
+assert(RemoteCatalog.ChestPriorities[replacement]==nil,'replacement chests cannot inherit priority')
 assert(not RemoteCatalog.ChestIsExcluded({Chest=replacement}),'same-name/same-position replacements must not inherit another instance identity')
 local otherIsland={};local foreign={Name=a.Name,Parent=otherIsland,Position=pos(1)}
 learned={{Chest=foreign,Slot=1,Amount=30}}
+assert(not RemoteCatalog.SetChestPriority(foreign,1),'priority must enforce island ownership')
 assert(not RemoteCatalog.SetChestExcluded(foreign,true) and not RemoteCatalog.ChestIsExcluded({Chest=foreign}),'exclusion edits must validate island ownership')
 gui.Parent=nil;learned={bb}
+assert(not RemoteCatalog.SetChestPriority(b,1),'destroyed UI must reject priorities')
 assert(not RemoteCatalog.SetChestExcluded(b,true),'destroyed UI must not mutate protection')
 return 'Chest exclusions: exact identity, all slots/items, discovered/whole checks, final manual/auto guards, lock states, undo, independent conveyor protection, replacements and cleanup passed'
 `;

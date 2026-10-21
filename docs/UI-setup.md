@@ -1917,3 +1917,53 @@ restart/overshoot, locked goal edits, one-time stop and real-loop ordering,
 delayed previous-catch gains, shared-window deduplication, hub conflicts and the
 actual dropdown/history/copy controls, plus the full regression suite. Live
 Roblox rewards, client rendering and attribution remain unverified.
+
+
+### Queue editing, chest priority, statistics and controls (v79)
+
+**Crafting queue:** use **Edit job** to load a queued descriptor into the recipe,
+mode, batch and amount controls above. Changing those controls stages an edit;
+**Apply settings to selected job** explicitly replaces that job. **Move up/down**
+keeps the chosen job selected and preserves all other jobs. Remove deletes the
+selected job, or the last job when no job is selected. Clear/Remove/Load clear
+the edit selection. Reordering or applying resets the previous run summary.
+
+Edits affect the working queue only; saved presets retain their snapshots until
+explicitly saved again. Unlearned preset recipes can be edited without fabricating
+a binding. Run Queue still validates every current learned recipe before its
+first request, keeps a frozen configuration and caps crafting requests at 100.
+Running, paused, finishing, learning, catalog loading and preset file work lock
+the editor. Dropdown expansion keeps the editor/preset section below its options.
+
+**Chest priority:** choose an individual physical chest in Targets, then click
+**Priority** to cycle Normal → First → Last → Normal. FIRST/LAST appear in the
+chest labels. First checks precede Normal and Last checks; Walk uses distance
+within each priority and keeps slot order for ties. Balance chests still rotates
+after confirmed transfers. Unreachable/waiting chests do not prevent other ready
+checks. Priority does not bypass exclusions, conveyor protection, range checks,
+item filters or learned-binding validation. Changes require collection/manual
+withdrawal and in-flight cleanup to finish. Priorities are session-only, apply to
+all slots/items of that exact instance and are not stored in chest profiles or
+transferred to replacement chests.
+
+**Propeller statistics:** below the loot history, Fishing shows items per hour,
+active Fishing ON seconds and the average active time between observed gains.
+Rates count actual credited quantities; the interval average counts observations,
+which can be parts of one replicated catch. No interval is shown before two
+finds. OFF time is excluded, including gaps between runs. Clear history retains
+statistics; Reset session clears quantities, active time and interval aggregates.
+Statistics survive the 50-row history limit within this session and appear in
+both tracker and history reports. The existing attribution limits still apply.
+
+**Controls:** the application and shell share a quieter dark palette. Buttons use
+lighter type, subtle shaded surfaces and smaller corners. Primary crafting/chest
+run actions retain stronger accent borders and bold labels; selected, hovered,
+pressed and disabled states have separate border/text treatment. Mouse and touch
+feedback changes appearance without invoking gameplay callbacks. Disabled buttons
+remain dim even under hover or press. All added event listeners use normal hub
+cleanup. Control geometry, menu closing and automation callbacks remain intact.
+
+Validation covers edited queue execution, preset isolation, invalid edits, locks,
+priority dispatch/protection, rate/interval/OFF/reset semantics, real buttons,
+dropdown layout and shared mouse/touch states, plus the full regression suite.
+Live Roblox behavior and rendering remain unverified.
