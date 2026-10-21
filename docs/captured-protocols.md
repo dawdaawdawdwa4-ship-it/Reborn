@@ -841,3 +841,27 @@ write failure. File IO locks prevent worker startup and concurrent queue edits;
 late reads after GUI cleanup are not applied. Tests cover persistence, schema
 limits, isolation, missing binding preflight, file/IO failure paths and real UI
 controls. Live Roblox/executor persistence remains unverified.
+
+### Propeller observation history and goals (propeller-goals-78)
+
+v78 retains recorder v31, all 146 catalog endpoints and the existing fishing
+inputs/learned envelopes. History is bounded client-side observation data, not
+a newly captured reward event. It records each credited positive owned-inventory
+delta with its observation timestamp and session total, with up to 50 rows.
+UTC formatting failure cannot block inventory accounting or goal completion.
+
+Per-run propeller goals default to Unlimited. Configuring a finite goal requires
+Fishing OFF; starting a new run resets progress and keeps session history.
+Threshold completion uses the existing Fishing controller to cancel its cycle
+and queued bait startup, without stopping other automation modes. The actual
+gain is retained even when it overshoots. History Clear and session Reset have
+separate semantics; neither fabricates or sends a server request.
+
+The previous confirmed catch's bounded observation tail can overlap the new
+reel. Shared high-water marks avoid counting the same stock increase twice.
+Hub chest/craft request dispatch blocks both windows, while OFF/respawn/expiry
+clear them. A goal reached while flushing the previous catch cancels the new
+reel before input; the final actual catch is registered before its goal stop.
+This remains inventory-based attribution, with unresolved simultaneous external
+trade/purchase ambiguity. Full tests cover history, goals, overlapping windows,
+real-loop cancellation and UI; live Roblox remains unverified.

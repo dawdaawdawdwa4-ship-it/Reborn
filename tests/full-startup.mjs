@@ -851,7 +851,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn craft-presets-77',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn propeller-goals-78',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1562,7 +1562,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn craft-presets-77 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn propeller-goals-78 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -1585,8 +1585,10 @@ end)()
  assert(r.PropellerTotal==1 and overlayValues.propellers.Text=='1' and string.find(r.PropellerLabel.Text,'this session: 1',1,true),'real fishing panel and overlay must show the observed propeller count')
  time=175;updateBoard()
  assert(overlayValues.propellerLast.Text=='00:01:15 ago' and string.find(r.SessionReport(),'Propellers: 1',1,true),'timer and copied report must include the last propeller')
- r.BeginPropellerCatch(3);local requestAt=r.ChestRequestAt;r.MarkChestRequest();quantity=7;r.ConfirmPropellerCatch()
+ r.BeginPropellerCatch(3);r.ConfirmPropellerCatch();r.BeginPropellerCatch(3)
+ local requestAt=r.ChestRequestAt;r.MarkChestRequest();quantity=7;r.ConfirmPropellerCatch()
  assert(r.PropellerTotal==1,'a hub withdrawal must invalidate fishing attribution even if it finishes between tracker polls')
+ assert(r.PropellerPendingWindow and r.PropellerPendingWindow.Blocked,'a hub request must also invalidate the previous confirmed catch window')
  local originalCopy=setclipboard
  local trackerReport
  setclipboard=function(value) trackerReport=value end
@@ -1701,6 +1703,50 @@ end)()
  assert(r.CraftPresetPersistence[2]=='Session only' and string.find(r.CraftPresetSummary.Text,'File saving unavailable or failed',1,true),'file failure must be visible in the real preset summary')
  writefile,readfile=oldWrite,oldRead;HttpService.JSONEncode,HttpService.JSONDecode=encode,decode
  for _,field in ipairs(fields) do r[field]=old[field] end;r.CraftPresetName.Text=name;r.RefreshCraftUI()
+ end)()
+
+;(function()
+ local r=RemoteCatalog
+ local fields={'OwnedTools','BaitCount','PropellerNow','PropellerTimestamp','PropellerGoal','PropellerHistory','PropellerTotal','PropellerLastAt','PropellerWindow','PropellerPendingWindow'}
+ local old={};for _,field in ipairs(fields) do old[field]=r[field] end
+ local quantity=10
+ r.OwnedTools=function() return {{Name='propeller',Parent={}}} end;r.BaitCount=function() return quantity end
+ r.PropellerNow=function() return 100 end;r.PropellerTimestamp=function() return '2026-10-21 12:00:00 UTC' end
+ r.PropellerGoal={Progress=0,Reached=false};r.ResetPropellers()
+ assert(not enabled,'propeller goal UI fixture must start with Fishing OFF')
+ r.PropellerGoalButton.Activated:Fire()
+ local y=r.PropellerHistoryView.Position.Y.Offset
+ assert(r.PropellerGoalMenu.Menu.Visible and y>=r.PropellerGoalMenu.Menu.Position.Y.Offset+r.PropellerGoalMenu.Menu.Size.Y.Offset,'goal dropdown must push loot history below its options')
+ r.PropellerGoalMenu.Options[4].Activated:Fire()
+ assert(r.PropellerGoal.Limit==10 and not enabled and not r.PropellerGoalMenu.Menu.Visible,'choosing ten must keep fishing OFF')
+ local base=r.PropellerHistoryView.Position.Y.Offset
+ assert(base<y,'closing the goal dropdown must restore history layout')
+ r.PropellerGoalButton.Activated:Fire();assert(r.PropellerGoalMenu.Menu.Visible)
+ setEnabled(true)
+ assert(r.PropellerGoal.Progress==0 and not r.PropellerGoalButton.Active and not r.PropellerGoalMenu.Menu.Visible,'Fishing start must reset run progress, dismiss the picker and lock goal editing')
+ r.PropellerGoalButton.Activated:Fire();assert(not r.PropellerGoalMenu.Menu.Visible and not r.SetPropellerGoal(5),'running Fishing must reject goal edits through both UI and API')
+ r.BeginPropellerCatch(3);quantity=20
+ local token=cycleId;local bait=baitEnabled;baitEnabled=true;r.StartFishingOnBait=true
+ r.ConfirmPropellerCatch()
+ assert(not enabled and cycleId>token and string.find(toggle.Text,'FISH OFF',1,true) and r.PropellerGoal.Reached and r.PropellerGoal.Progress==10,'the real fishing controller must stop at ten new propellers and cancel its old generation')
+ assert(baitEnabled and not r.StartFishingOnBait,'propeller completion must keep other automation state and cancel pending bait auto-start')
+ baitEnabled=bait
+ assert(string.find(status.Text,'Propeller goal reached',1,true) and string.find(r.PropellerGoalLabel.Text,'REACHED',1,true) and r.PropellerGoalButton.Active,'completion must remain visible and unlock the goal selector')
+ local originalCopy=setclipboard
+ local copied
+ setclipboard=function(value) copied=value end;r.PropellerHistoryCopy.Activated:Fire()
+ assert(copied and string.find(copied,'Propeller loot history (UTC)',1,true) and string.find(copied,'2026-10-21 12:00:00 UTC · +10 · session 10',1,true),'Copy loot history must include timestamp and actual amount')
+ setclipboard=function() error('clipboard unavailable') end;r.PropellerHistoryCopy.Activated:Fire()
+ assert(string.find(status.Text,'printed to the console',1,true),'history copy must support the console fallback')
+ setclipboard=originalCopy
+ setEnabled(true);assert(r.PropellerGoal.Progress==0 and r.PropellerTotal==10 and #r.PropellerHistory==1,'restarting Fishing must retain session history and reset only run progress')
+ r.BeginPropellerCatch(3);quantity=21;r.ConfirmPropellerCatch();r.PropellerHistoryClear.Activated:Fire()
+ assert(enabled and #r.PropellerHistory==0 and r.PropellerTotal==11 and r.PropellerGoal.Progress==1,'Clear history must not change Fishing or goal/session counters')
+ r.PropellerResetButton.Activated:Fire()
+ assert(enabled and r.PropellerTotal==0 and #r.PropellerHistory==0 and r.PropellerGoal.Progress==0 and r.PropellerGoal.Limit==10,'Reset session must clear history/progress and keep the selected goal')
+ assert(r.PropellerHistoryCopy.Position.Y.Offset>=r.PropellerHistoryView.Position.Y.Offset+r.PropellerHistoryView.Size.Y.Offset,'history actions must sit below their scrolling view')
+ setEnabled(false);stepWorkers()
+ for _,field in ipairs(fields) do r[field]=old[field] end;r.RefreshPropellers()
  end)()
 
 local lastRecipeOption=RemoteCatalog.CraftRecipeMenu.Options[1]

@@ -2923,7 +2923,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "craft-presets-77",
+    Subtitle = "propeller-goals-78",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3414,7 +3414,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn craft-presets-77",
+    return table.concat({"Reborn propeller-goals-78",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -3871,6 +3871,36 @@ track(RemoteCatalog.PropellerCopyButton.Activated:Connect(function()
     else print(report);setStatus("Propeller tracker result printed to the console",COLORS.warn) end
 end))
 track(RemoteCatalog.PropellerResetButton.Activated:Connect(function() if RemoteCatalog.ResetPropellers then RemoteCatalog.ResetPropellers() end end))
+
+RemoteCatalog.PropellerGoalButton=button({Parent=fishingPage,Text="Propeller goal: Unlimited",TextSize=12,Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,688)})
+RemoteCatalog.PropellerGoalLabel=label({Parent=fishingPage,Text="Each Fishing start counts new propellers from zero.",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,52),Position=UDim2.fromOffset(8,730)})
+RemoteCatalog.PropellerGoalLabel.TextWrapped=true
+RemoteCatalog.PropellerGoalMenu=RemoteCatalog.ChoiceDropdown(fishingPage,RemoteCatalog.PropellerGoalButton,{"Unlimited","1","5","10","25","50","100"},{
+    Name="PropellerGoalDropdown",Title="Propeller goal",
+    Get=function() return RemoteCatalog.PropellerGoal and RemoteCatalog.PropellerGoal.Limit and tostring(RemoteCatalog.PropellerGoal.Limit) or "Unlimited" end,
+    Set=function(value) if RemoteCatalog.SetPropellerGoal then RemoteCatalog.SetPropellerGoal(value=="Unlimited" and 0 or tonumber(value)) end end,
+    Locked=function() if enabled then setStatus("Stop Fishing before changing the propeller goal.",COLORS.warn);return true end;return false end,
+})
+pageHeading(fishingPage,"PROPELLER LOOT · LATEST 50 · UTC",790)
+RemoteCatalog.PropellerHistoryView=Instance.new("ScrollingFrame")
+RemoteCatalog.PropellerHistoryView.Size=UDim2.new(1,-12,0,156);RemoteCatalog.PropellerHistoryView.Position=UDim2.fromOffset(6,818)
+RemoteCatalog.PropellerHistoryView.BackgroundColor3=COLORS.panel;RemoteCatalog.PropellerHistoryView.BorderSizePixel=0
+RemoteCatalog.PropellerHistoryView.CanvasSize=UDim2.new();RemoteCatalog.PropellerHistoryView.AutomaticCanvasSize=Enum.AutomaticSize.Y
+RemoteCatalog.PropellerHistoryView.ScrollBarThickness=5;RemoteCatalog.PropellerHistoryView.ScrollingDirection=Enum.ScrollingDirection.Y;RemoteCatalog.PropellerHistoryView.Parent=fishingPage
+RemoteCatalog.PropellerHistoryLabel=label({Parent=RemoteCatalog.PropellerHistoryView,Text="No confirmed propeller gains yet.",TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-20,0,24),Position=UDim2.fromOffset(8,6)})
+RemoteCatalog.PropellerHistoryLabel.TextWrapped=true;RemoteCatalog.PropellerHistoryLabel.AutomaticSize=Enum.AutomaticSize.Y;RemoteCatalog.PropellerHistoryLabel.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.PropellerHistoryLabel.TextTruncate=Enum.TextTruncate.None
+RemoteCatalog.PropellerHistoryCopy=button({Parent=fishingPage,Text="Copy loot history",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,986)})
+RemoteCatalog.PropellerHistoryClear=button({Parent=fishingPage,Text="Clear history",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,986)})
+track(RemoteCatalog.PropellerHistoryCopy.Activated:Connect(function()
+    if not RemoteCatalog.PropellerHistoryReport then return end
+    local report=RemoteCatalog.PropellerHistoryReport()
+    local copy=setclipboard or toclipboard
+    if type(copy)=="function" and pcall(copy,report) then setStatus("Propeller loot history copied",COLORS.good)
+    else print(report);setStatus("Propeller loot history printed to the console",COLORS.warn) end
+end))
+track(RemoteCatalog.PropellerHistoryClear.Activated:Connect(function()
+    if RemoteCatalog.ClearPropellerHistory then RemoteCatalog.ClearPropellerHistory();setStatus("Loot history cleared; session count and goal progress kept.",COLORS.muted) end
+end))
 
 local harvestToggle = button({
     Parent = harvestPage, Text = "CROP FARM OFF", TextSize = 13, Bg = COLORS.off,
@@ -5176,6 +5206,70 @@ end
 
 -- PROPELLER TRACKER BEGIN
 RemoteCatalog.PropellerTotal=0
+RemoteCatalog.PropellerHistory={}
+RemoteCatalog.PropellerGoal={Progress=0,Reached=false}
+function RemoteCatalog.PropellerTimestamp()
+    local ok,value=pcall(function() return os.date("!%Y-%m-%d %H:%M:%S UTC",os.time()) end)
+    return ok and type(value)=="string" and value or "timestamp unavailable"
+end
+function RemoteCatalog.StartPropellerRun()
+    RemoteCatalog.PropellerGoal.Progress=0;RemoteCatalog.PropellerGoal.Reached=false
+    RemoteCatalog.PropellerWindow=nil;RemoteCatalog.PropellerPendingWindow=nil
+end
+function RemoteCatalog.SetPropellerGoal(limit)
+    if not gui.Parent then return false end
+    if enabled then
+        if setStatus then setStatus("Stop Fishing before changing the propeller goal.",COLORS.warn) end
+        return false
+    end
+    if not table.find({0,1,5,10,25,50,100},limit) then return false end
+    RemoteCatalog.PropellerGoal.Limit=limit>0 and limit or nil
+    RemoteCatalog.StartPropellerRun()
+    if RemoteCatalog.RefreshPropellers then RemoteCatalog.RefreshPropellers() end
+    if setStatus then setStatus("Propeller goal updated. Start Fishing when ready; new finds count from zero.",COLORS.muted) end
+    return true
+end
+function RemoteCatalog.CheckPropellerGoal()
+    local goal=RemoteCatalog.PropellerGoal
+    if not enabled or not goal.Limit or goal.Reached or goal.Progress<goal.Limit then return end
+    goal.Reached=true
+    if RemoteCatalog.StopGoalMode then RemoteCatalog.StopGoalMode("fishing")
+    elseif setEnabled then setEnabled(false) end
+    if setStatus then setStatus("Propeller goal reached: "..goal.Progress.." / "..goal.Limit.." new. Fishing stopped.",COLORS.good) end
+end
+function RemoteCatalog.RecordPropellerGain(amount,now)
+    RemoteCatalog.PropellerTotal+=amount
+    RemoteCatalog.PropellerLastAt=now
+    RemoteCatalog.PropellerGoal.Progress+=amount
+    local ok,stamp=pcall(RemoteCatalog.PropellerTimestamp)
+    table.insert(RemoteCatalog.PropellerHistory,1,{Amount=amount,Timestamp=ok and type(stamp)=="string" and stamp or "timestamp unavailable",ObservedAt=now,Total=RemoteCatalog.PropellerTotal})
+    while #RemoteCatalog.PropellerHistory>50 do table.remove(RemoteCatalog.PropellerHistory) end
+end
+function RemoteCatalog.PropellerGoalText()
+    local goal=RemoteCatalog.PropellerGoal
+    return "This run: "..goal.Progress..(goal.Limit and (" / "..goal.Limit.." new"..(goal.Reached and " · REACHED" or "")) or " new · Unlimited")..". Each Fishing start resets run progress."
+end
+function RemoteCatalog.PropellerHistoryText()
+    local lines={}
+    for _,entry in ipairs(RemoteCatalog.PropellerHistory) do
+        table.insert(lines,entry.Timestamp.." · +"..entry.Amount.." · session "..entry.Total)
+    end
+    if #lines==0 then return "No loot entries retained. New confirmed gains appear here (latest 50; this hub session only)." end
+    return table.concat(lines,"\n")
+end
+function RemoteCatalog.PropellerHistoryReport()
+    RemoteCatalog.PollPropellers()
+    return table.concat({"Reborn propeller-goals-78 · Propeller loot history (UTC)",
+        "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
+        RemoteCatalog.PropellerGoalText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
+        RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
+end
+function RemoteCatalog.ClearPropellerHistory()
+    if not gui.Parent then return false end
+    RemoteCatalog.PropellerHistory={}
+    if RemoteCatalog.PropellerHistoryLabel then RemoteCatalog.PropellerHistoryLabel.Text=RemoteCatalog.PropellerHistoryText() end
+    return true
+end
 function RemoteCatalog.PropellerNow() return os.clock() end
 function RemoteCatalog.PropellerCount()
     local total=0
@@ -5197,7 +5291,14 @@ function RemoteCatalog.PropellerConflict()
 end
 function RemoteCatalog.BeginPropellerCatch(timeout)
     RemoteCatalog.PollPropellers()
-    RemoteCatalog.PropellerWindow={Before=RemoteCatalog.PropellerCount(),Character=player.Character,Until=RemoteCatalog.PropellerNow()+(timeout or 3)+5,Blocked=RemoteCatalog.PropellerConflict()==true}
+    if not enabled or not gui.Parent then return false end
+    local previous=RemoteCatalog.PropellerWindow
+    if previous and previous.Confirmed then RemoteCatalog.PropellerPendingWindow=previous end
+    local before=RemoteCatalog.PropellerCount()
+    local pending=RemoteCatalog.PropellerPendingWindow
+    if before~=nil and pending and not pending.Blocked and pending.Before~=nil then before=math.max(before,pending.Before) end
+    RemoteCatalog.PropellerWindow={Before=before,Character=player.Character,Until=RemoteCatalog.PropellerNow()+(timeout or 3)+5,Blocked=RemoteCatalog.PropellerConflict()==true}
+    return true
 end
 function RemoteCatalog.ConfirmPropellerCatch()
     local window=RemoteCatalog.PropellerWindow
@@ -5206,16 +5307,31 @@ function RemoteCatalog.ConfirmPropellerCatch()
     RemoteCatalog.PollPropellers()
 end
 function RemoteCatalog.PollPropellers()
-    local window=RemoteCatalog.PropellerWindow
-    if not window then return end
-    if not enabled or not gui.Parent or player.Character~=window.Character or RemoteCatalog.PropellerNow()>window.Until then RemoteCatalog.PropellerWindow=nil;return end
-    if RemoteCatalog.PropellerConflict() then window.Blocked=true end
-    if not window.Confirmed or window.Blocked or window.Before==nil then return end
+    local now=RemoteCatalog.PropellerNow()
+    if not enabled or not gui.Parent then RemoteCatalog.PropellerWindow=nil;RemoteCatalog.PropellerPendingWindow=nil;return end
+    local keys={"PropellerPendingWindow","PropellerWindow"}
+    for _,key in ipairs(keys) do
+        local window=RemoteCatalog[key]
+        if window and (player.Character~=window.Character or now>window.Until) then RemoteCatalog[key]=nil
+        elseif window and RemoteCatalog.PropellerConflict() then window.Blocked=true end
+    end
+    if not RemoteCatalog.PropellerWindow and not RemoteCatalog.PropellerPendingWindow then return end
     local current=RemoteCatalog.PropellerCount()
-    if current~=nil and current>window.Before then
-        RemoteCatalog.PropellerTotal+=current-window.Before
-        RemoteCatalog.PropellerLastAt=RemoteCatalog.PropellerNow()
-        window.Before=current
+    if current==nil then return end
+    for _,key in ipairs(keys) do
+        local window=RemoteCatalog[key]
+        if window and window.Confirmed and not window.Blocked and window.Before~=nil and current>window.Before then
+            local amount=current-window.Before
+            -- Shared high-water marks prevent overlapping windows crediting the
+            -- same replicated stock twice; unreadable baselines stay excluded.
+            for _,otherKey in ipairs(keys) do
+                local other=RemoteCatalog[otherKey]
+                if other and other.Before~=nil then other.Before=math.max(other.Before,current) end
+            end
+            RemoteCatalog.RecordPropellerGain(amount,now)
+            RemoteCatalog.CheckPropellerGoal()
+            if not enabled then return end
+        end
     end
 end
 function RemoteCatalog.PropellerLastText()
@@ -5225,12 +5341,15 @@ function RemoteCatalog.PropellerLastText()
 end
 function RemoteCatalog.ResetPropellers()
     RemoteCatalog.PropellerTotal=0;RemoteCatalog.PropellerLastAt=nil;RemoteCatalog.PropellerWindow=nil
+    RemoteCatalog.PropellerHistory={};RemoteCatalog.StartPropellerRun()
     if RemoteCatalog.RefreshPropellers then RemoteCatalog.RefreshPropellers() end
 end
 function RemoteCatalog.PropellerTrackingStatus(count)
     if not enabled then return "Fishing OFF; session count kept" end
     if RemoteCatalog.PropellerConflict() then return "Paused: chest collection or crafting active" end
     local window=RemoteCatalog.PropellerWindow
+    local pending=RemoteCatalog.PropellerPendingWindow
+    if pending and pending.Confirmed and not pending.Blocked and pending.Before~=nil then return "Confirmed catch; watching delayed inventory gain" end
     if window and window.Blocked then return "Catch excluded: inventory automation overlapped; waiting for next reel" end
     if window and window.Before==nil then return "Catch excluded: starting quantity unreadable; waiting for next reel" end
     if count==nil then return "Waiting for readable inventory quantity" end
@@ -5242,11 +5361,14 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn craft-presets-77 · Propeller tracker",
+    return table.concat({"Reborn propeller-goals-78 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
         "Fishing: "..tostring(enabled==true),
+        "Propeller goal: "..RemoteCatalog.PropellerGoalText(),
+        "History entries: "..#RemoteCatalog.PropellerHistory.." / 50",
+        "Previous confirmed window: "..tostring(RemoteCatalog.PropellerPendingWindow~=nil),
         "Tracker status: "..RemoteCatalog.PropellerTrackingStatus(count),
         "Catch window: "..(not window and "none" or window.Confirmed and "confirmed" or "unconfirmed"),
         "Window baseline: "..tostring(window and window.Before or "unavailable"),
@@ -5260,6 +5382,12 @@ function RemoteCatalog.RefreshPropellers()
     RemoteCatalog.PollPropellers()
     if RemoteCatalog.PropellerLabel then RemoteCatalog.PropellerLabel.Text="Propellers this session: "..RemoteCatalog.PropellerTotal.."\nLast propeller: "..RemoteCatalog.PropellerLastText() end
     if overlayValues.propellers then overlayValues.propellers.Text=tostring(RemoteCatalog.PropellerTotal);overlayValues.propellerLast.Text=RemoteCatalog.PropellerLastText() end
+    if RemoteCatalog.PropellerGoalLabel then RemoteCatalog.PropellerGoalLabel.Text=RemoteCatalog.PropellerGoalText().." Reset session clears counts, run progress and history. Other goals/timer still apply." end
+    if RemoteCatalog.PropellerGoalButton then
+        RemoteCatalog.PropellerGoalButton.Active=not enabled;RemoteCatalog.PropellerGoalButton.Selectable=not enabled;RemoteCatalog.PropellerGoalButton.AutoButtonColor=not enabled
+    end
+    if RemoteCatalog.PropellerGoalMenu then RemoteCatalog.PropellerGoalMenu:Refresh() end
+    if RemoteCatalog.PropellerHistoryLabel then RemoteCatalog.PropellerHistoryLabel.Text=RemoteCatalog.PropellerHistoryText() end
     if RemoteCatalog.PropellerInfo then
         local count=RemoteCatalog.PropellerCount()
         RemoteCatalog.PropellerInfo.Text="Inventory: "..tostring(count or "unreadable").." · "..RemoteCatalog.PropellerTrackingStatus(count)
@@ -5267,13 +5395,14 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn craft-presets-77", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn propeller-goals-78", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
         "Modes: Fishing "..(enabled and "ON" or "OFF")..", Bait "..(baitEnabled and "ON" or "OFF")..", Harvest "..(harvestEnabled and "ON" or "OFF")..", Wood "..(woodEnabled and "ON" or "OFF")..", Mining "..(mineEnabled and "ON" or "OFF")}
     if RemoteCatalog.PlowConfirmed~=nil then table.insert(text,"Plow run: "..(RemoteCatalog.PlowEnabled and "ON" or RemoteCatalog.PlowWorker and "stopping" or "OFF").." · "..RemoteCatalog.PlowConfirmed.." observed soil · "..RemoteCatalog.PlowFailed.." failed") end
     table.insert(text,"Propellers: "..RemoteCatalog.PropellerTotal.." this session; last "..RemoteCatalog.PropellerLastText())
+    table.insert(text,"Propeller goal: "..RemoteCatalog.PropellerGoalText())
     local build=buildController.Progress
     if build then table.insert(text,"Build run: "..build.State.." · "..build.Placed.." confirmed · "..build.Skipped.." skipped · "..build.Failed.." failed · "..build.Total.." planned") end
     for _,mode in ipairs({"fishing","crop","wood","mine"}) do
@@ -6383,6 +6512,7 @@ local function run(myCycle)
 				lastAction = os.clock()
 				local reelTime = os.clock()
                 if RemoteCatalog.BeginPropellerCatch then RemoteCatalog.BeginPropellerCatch(CONFIG.ReelTimeout) end
+                if not running(myCycle) then break end
 				if not countedBites[bobber] then stats.bites += 1; countedBites[bobber] = true end
 				updateBoard()
 				setStatus("Tug! Reeling in...", COLORS.gold)
@@ -6404,8 +6534,8 @@ local function run(myCycle)
 					task.wait(0.05)
 					local fishName
 					if lastNewItem and lastNewItem.at >= reelTime then fishName = lastNewItem.name end
-                    if RemoteCatalog.ConfirmPropellerCatch then RemoteCatalog.ConfirmPropellerCatch() end
 					registerCatch(fishName)
+                    if RemoteCatalog.ConfirmPropellerCatch then RemoteCatalog.ConfirmPropellerCatch() end
                     RemoteCatalog.CompleteModeGoal("fishing")
                     if not running(myCycle) then break end
 					setStatus("Caught " .. (fishName or "a fish") .. "! 🐟", COLORS.good)
@@ -6472,7 +6602,7 @@ end
 -- Controls
 --------------------------------------------------------------------
 setEnabled = function(state)
-    if not state then RemoteCatalog.PropellerWindow=nil end
+    if not state then RemoteCatalog.PropellerWindow=nil;RemoteCatalog.PropellerPendingWindow=nil end
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);setStatus("Wait for Auto Plow input cleanup, then start this mode",COLORS.warn);return end
     RemoteCatalog.StartFishingOnBait=false
 	if state == enabled then
@@ -6483,6 +6613,8 @@ setEnabled = function(state)
 	cycleId += 1
 
 	if enabled then
+        if RemoteCatalog.PropellerGoalMenu then RemoteCatalog.PropellerGoalMenu:Close() end
+        if RemoteCatalog.StartPropellerRun then RemoteCatalog.StartPropellerRun() end
         RemoteCatalog.ResetModeGoal("fishing")
 		if not stats.onSince then
 			stats.onSince = os.clock()
@@ -7304,7 +7436,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn craft-presets-77\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn propeller-goals-78\n"..text
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
@@ -7361,6 +7493,7 @@ end
 -- Measure spacing between attempts, including request/confirmation time.
 function RemoteCatalog.MarkChestRequest()
     if RemoteCatalog.PropellerWindow then RemoteCatalog.PropellerWindow.Blocked=true end
+    if RemoteCatalog.PropellerPendingWindow then RemoteCatalog.PropellerPendingWindow.Blocked=true end
     local now=(RemoteCatalog.ChestClock or os.clock)()
     local previous=RemoteCatalog.ChestRequestAt
     RemoteCatalog.ChestRequestAt=now
@@ -7896,7 +8029,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn craft-presets-77\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn propeller-goals-78\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -8572,6 +8705,7 @@ function RemoteCatalog.SetCraftEnabled(state,queued)
                         RemoteCatalog.CraftMessage("Crafting "..amount.." "..item.." · "..mode.." · +"..confirmed.." confirmed"..(continuous and " · until Stop" or makeAmount and (" / "..target.." extra") or (" · stock "..before.." / "..target)))
                         local sent,response
                         if RemoteCatalog.PropellerWindow then RemoteCatalog.PropellerWindow.Blocked=true end
+                        if RemoteCatalog.PropellerPendingWindow then RemoteCatalog.PropellerPendingWindow.Blocked=true end
                         if recorder.CraftItem then sent,response=recorder:CraftItem(amount,binding) else sent,response=recorder:CraftBait(amount) end
                         if not active() then return end
                         if not sent and RemoteCatalog.ChestTooFast(response) then
@@ -8637,7 +8771,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn craft-presets-77 · Craft diagnostics",
+    return table.concat({"Reborn propeller-goals-78 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -8707,7 +8841,7 @@ RemoteCatalog.CraftMaterialsLabel=label({Parent=RemoteCatalog.CraftMaterialsView
 RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsLabel.AutomaticSize=Enum.AutomaticSize.Y;RemoteCatalog.CraftMaterialsLabel.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.CraftMaterialsLabel.TextTruncate=Enum.TextTruncate.None
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
-    local report="Reborn craft-presets-77 · Materials\n"..RemoteCatalog.CraftMaterialReport()
+    local report="Reborn propeller-goals-78 · Materials\n"..RemoteCatalog.CraftMaterialReport()
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -9534,7 +9668,7 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
-    RemoteCatalog.PropellerWindow=nil
+    RemoteCatalog.PropellerWindow=nil;RemoteCatalog.PropellerPendingWindow=nil
     RemoteCatalog.SetCraftEnabled(false)
     RemoteCatalog.StopCraftLearning()
     RemoteCatalog.SetPlowEnabled(false)

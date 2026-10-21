@@ -1872,3 +1872,48 @@ start, fresh-binding preflight, invalid/oversized/corrupt data, failed writes,
 session fallback, IO concurrency/cleanup and the actual preset buttons/layout,
 plus the full regression suite. Live Roblox and executor file retention remain
 unverified.
+
+### Propeller loot history and per-run goals (v78)
+
+Fishing now shows **Propeller loot · latest 50 · UTC**, below the tracker and
+goal picker. Each credited inventory increase records its actual quantity,
+observed UTC timestamp and resulting session total, newest first. The history
+retains 50 entries while the session counter continues beyond that limit.
+Timestamps describe when the client observed the gain, not the server's reward
+time; one catch can replicate as several gains/rows. If the clock cannot be
+formatted, the row says **timestamp unavailable** and counting still works.
+**Copy loot history** copies the bounded history or prints it to the console if
+clipboard access fails. No extra fishing or pickup request is sent by history.
+
+The **Propeller goal** dropdown offers Unlimited (default), 1, 5, 10, 25, 50 and
+100 new propellers. Choose it while Fishing is OFF. Each OFF→ON start begins
+run progress at zero, retaining the session total/history. Existing inventory
+and previous-run finds cannot satisfy a fresh goal. A credited gain reaching
+the target stops Auto Fishing through its normal cancellation path, keeps the
+reached result visible and cancels queued bait-triggered fishing startup. Other
+automation states remain unchanged; existing fishing goals/timers still apply.
+An individual gain can overshoot the limit, and the full observed amount is kept.
+Starting Fishing again deliberately begins another run toward the same limit.
+
+**Clear history** clears only log rows, retaining the session total, last-found
+timer, current run progress and Fishing state. **Reset session** and the general
+stats reset clear the propeller counter, history, last time and run progress;
+they retain the selected goal limit. These counters, limits and history belong
+to the current hub session and are not restored after reloading the hub.
+
+A previous confirmed catch now retains its remaining five-second observation
+window when the next reel starts. At most the previous confirmed window and the
+current reel are held. Overlapping windows share inventory high-water marks so
+a delayed gain is not lost or counted twice. Chest/craft dispatch invalidates
+both overlapping windows, including requests completed between tracker polls.
+OFF, respawn, expiry and unreadable starting quantities retain their exclusion
+rules. The real fishing loop registers the confirmed fish before a propeller
+goal stops it and checks cancellation before sending a new reel. Inventory-based
+attribution still cannot distinguish outside purchases/trades that coincide
+with an eligible window; this does not establish an exact server reward source.
+
+Validation covers timestamps/clock failure, retention order/limits, clear/reset,
+restart/overshoot, locked goal edits, one-time stop and real-loop ordering,
+delayed previous-catch gains, shared-window deduplication, hub conflicts and the
+actual dropdown/history/copy controls, plus the full regression suite. Live
+Roblox rewards, client rendering and attribution remain unverified.
