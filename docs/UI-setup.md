@@ -1967,3 +1967,48 @@ Validation covers edited queue execution, preset isolation, invalid edits, locks
 priority dispatch/protection, rate/interval/OFF/reset semantics, real buttons,
 dropdown layout and shared mouse/touch states, plus the full regression suite.
 Live Roblox behavior and rendering remain unverified.
+
+
+### Whole-queue material plan (v80)
+
+Under **Crafting → Materials → Plan**, choose **Whole queue** to estimate the
+next full run of the configured queue. **Selected recipe** remains the default
+and retains the previous single-recipe/current-job view. Refresh materials and
+Copy materials follow the visible scope; craft diagnostics include both scopes.
+The scope dropdown pushes lower controls down and restores them when closed.
+
+The whole-queue view lists each finite job's planned additional output and
+estimated crafts, followed by combined ingredient use, current stock, planned
+queue output and shortages in queue order. Shared ingredient stock is read once
+per report and consumed only once in the calculation. Make amount is additional;
+Top up stock uses projected stock after earlier jobs, so repeated top-ups do not
+charge for the same target twice. Earlier outputs can supply later jobs, but a
+later output cannot remove an earlier shortage. Ingredient use and output credits
+are local estimates; no inventory, saved preset or queue descriptor is changed.
+
+Shortages are tallied assuming the user supplies them at the step that needs
+them and each earlier job succeeds. This is not an exact upfront shopping list:
+restocking before the run can change Top up stock deficits. Refresh after
+restocking or editing the queue. Each batch's estimated crafts round up using
+explicit output metadata, and only the requested output is projected for later
+jobs; possible rounding surplus is not credited. Server behavior may differ.
+
+Unreadable ingredient stock shows unknown shortage, not zero. Missing/ambiguous
+recipe costs, unknown output yield, self-consuming output recipes or unreadable
+Top up output stock stop the estimate at that job. The earlier estimated prefix
+is labeled PARTIAL and no full-queue total is claimed. Already-met top-ups need
+no recipe metadata and spend no materials. Dense queues of at most eight finite
+jobs, supported batch/target choices and bounded ingredient quantities are
+validated before totals are presented.
+
+While crafting is running, paused or finishing, Whole queue asks the user to
+stop and wait for cleanup: it does not misrepresent the configured full queue
+as remaining active work. Catalog/preset loading also postpones estimates.
+Planning is advisory, starts no crafting, reserves no materials and does not
+change existing runtime preflight, pacing, request caps or server validation.
+
+Validation includes shared stock, queue order, intermediate outputs, repeated
+and later top-ups, per-batch rounding, missing/invalid metadata, partial plans,
+unknown stock, maximum totals, UI scope/copy/refresh/edit/layout/cleanup and the
+full regression suite. Live Roblox costs, output quantities and rendering remain
+unverified.

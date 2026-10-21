@@ -851,7 +851,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn queue-priority-stats-79',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn queue-materials-80',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1576,7 +1576,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn queue-priority-stats-79 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn queue-materials-80 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -1587,6 +1587,42 @@ end)()
  r.CloseMenus();assert(r.CraftMaterialsView.Position.Y.Offset==y,'closing dropdowns must restore material layout')
  r.CraftMaterials,r.CraftItem,r.CraftMode,r.CraftTarget,r.CarrotCount=materials,item,mode,target,count;r.RefreshCraftUI()
  end)()
+;(function()
+ local r=RemoteCatalog
+ local fields={'CraftQueue','CraftQueueSelected','CraftMaterials','CraftItem','CraftMode','CraftBatch','CraftTarget','CarrotCount'}
+ local old={};for _,field in ipairs(fields) do old[field]=r[field] end
+ local stock={bait=0,worm=150}
+ r.CarrotCount=function(name) return stock[name] or 0 end
+ r.CraftMaterials={bait={OutputAmount=1,Ingredients={{Item='worm',Amount=2}}}}
+ r.CraftQueue={{Item='bait',Mode='Make amount',Target=100,Batch=100},{Item='bait',Mode='Make amount',Target=100,Batch=100}}
+ assert(r.CraftMaterialsScope=='Selected recipe','new material panel must preserve the old default')
+ local base=r.CraftMaterialsRefresh.Position.Y.Offset
+ r.CraftMaterialsScopeButton.Activated:Fire()
+ assert(r.CraftMaterialsScopeMenu.Menu.Visible and r.CraftMaterialsRefresh.Position.Y.Offset>base,'scope dropdown must push material controls down')
+ r.CraftMaterialsScopeMenu.Options[2].Activated:Fire()
+ assert(r.CraftMaterialsScope=='Whole queue' and r.CraftMaterialsRefresh.Position.Y.Offset==base and not r.CraftWorker,'selecting Whole queue must restore layout without starting crafting')
+ assert(string.find(r.CraftMaterialsLabel.Text,'worm · use 400 · have 150 · queue output 0 · missing in order 250',1,true),'actual scope selector must show combined shortages')
+ stock.worm=200;updateBoard()
+ assert(string.find(r.CraftMaterialsLabel.Text,'missing in order 200',1,true),'periodic refresh must use new inventory quantities')
+ local copy,report=setclipboard,nil
+ setclipboard=function(text) report=text end;r.CraftMaterialsCopy.Activated:Fire()
+ assert(report and string.find(report,'WHOLE QUEUE',1,true) and string.find(report,'missing in order 200',1,true),'Copy materials must follow the visible scope')
+ setclipboard=function() error('clipboard unavailable') end;r.CraftMaterialsCopy.Activated:Fire()
+ assert(string.find(status.Text,'printed to the console',1,true),'whole-queue copy must support the console fallback');setclipboard=copy
+ assert(r.SelectCraftQueueJob(1));r.CraftTarget=250;r.CraftQueueApplyButton.Activated:Fire()
+ assert(string.find(r.CraftMaterialsLabel.Text,'worm · use 700',1,true),'Apply must refresh whole-queue materials immediately')
+ r.CraftWorker=80;r.CraftEnabled=true;r.RefreshCraftMaterials()
+ assert(string.find(r.CraftMaterialsLabel.Text,'Crafting active or finishing',1,true) and not string.find(r.CraftMaterialsLabel.Text,'Estimated 2 / 2',1,true),'active queue scope must not mislabel a next-run plan as remaining work')
+ r.CraftEnabled=false;r.CraftWorker=nil;r.CraftQueueClearButton.Activated:Fire()
+ assert(string.find(r.CraftMaterialsLabel.Text,'Queue empty',1,true),'Clear must immediately remove stale combined totals')
+ assert(string.find(r.CraftDiagnosticReport(),'WHOLE QUEUE',1,true),'craft diagnostics must include queue materials')
+ assert(r.CraftMaterialsScopeButton.Position.Y.Offset+r.CraftMaterialsScopeButton.Size.Y.Offset<=base and r.CraftMaterialsView.Position.Y.Offset+r.CraftMaterialsView.Size.Y.Offset<r.CraftQueueAddButton.Position.Y.Offset,'scope/material controls must fit above the queue')
+ for _=1,3 do r.CraftMaterialsScopeButton.Activated:Fire();r.CloseMenus() end
+ assert(r.CraftMaterialsRefresh.Position.Y.Offset==base,'repeated scope expansion must not drift')
+ r.CraftMaterialsScopeMenu:Open();r.CraftMaterialsScopeMenu.Options[1].Activated:Fire()
+ for _,field in ipairs(fields) do r[field]=old[field] end;r.RefreshCraftUI()
+ end)()
+
 ;(function()
  local r=RemoteCatalog
  local owned,count,clock=r.OwnedTools,r.BaitCount,r.PropellerNow
@@ -1772,11 +1808,13 @@ end)()
  for _,field in ipairs(fields) do r[field]=old[field] end;r.RefreshPropellers()
  end)()
 
-local lastRecipeOption=RemoteCatalog.CraftRecipeMenu.Options[1]
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2]}
 RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
-RemoteCatalog.CraftItem="cleanup-sentinel";lastRecipeOption.Activated:Fire()
+RemoteCatalog.CraftItem="cleanup-sentinel";cleanupOptions.Recipe.Activated:Fire()
 assert(RemoteCatalog.CraftItem=="cleanup-sentinel","GUI cleanup must disconnect dynamic recipe option callbacks")
+RemoteCatalog.CraftMaterialsScope="cleanup-sentinel";cleanupOptions.Materials.Activated:Fire()
+assert(RemoteCatalog.CraftMaterialsScope=="cleanup-sentinel","GUI cleanup must disconnect material scope callbacks")
 assert(not RemoteCatalog.StopTimerDeadline,'destroying the hub must clear its timer')
 assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'

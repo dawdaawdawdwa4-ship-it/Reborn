@@ -889,3 +889,27 @@ remote is called for statistics or control appearance.
 Tests cover descriptor edits and execution, saved snapshot isolation, exact chest
 priority and protected dispatch, active-time metrics and UI/input states. The
 full regression suite is required; live Roblox remains unverified.
+
+
+### Whole-queue material estimates (queue-materials-80)
+
+v80 retains recorder v31, all 146 catalog endpoints and all request envelopes.
+The new material scope reads validated finite queue descriptors and previously
+discovered ingredient/output metadata; it never learns, resolves or sends a
+new request. Displayed catalog IDs still require current learned bindings at
+Run Queue preflight. Existing execution and single-recipe estimates are retained.
+
+An ordered local inventory ledger combines ingredient use without double-spending
+stock and projects earlier requested outputs for subsequent jobs. Shortages are
+counted at their point of use, assuming they are supplied then; earlier restocking
+can change Top up stock plans. Costs round per configured batch from explicit
+yield metadata; unconfirmed surplus is not credited. These are advisory figures,
+not new server guarantees about quantity semantics or costs.
+
+Unknown/ambiguous costs and unreadable output needed for a top-up produce a
+clearly partial prefix, not a full-queue estimate. Ingredient inventory read
+failures leave shortages unknown. Active/paused/finishing workers and catalog/file
+work do not receive misleading remaining-run totals. Planning mutates neither
+inventory nor working/saved queues and changes no runtime caps or confirmation.
+Tests cover arithmetic, order/dependencies, isolation, limits/failures and real
+scope/copy/edit controls. Live Roblox remains unverified.
