@@ -992,3 +992,22 @@ Start/Resume/Retry selection, routing, limits, cancellation or confirmation.
 Setup enabling performs only the existing read-only check, and source blocks or
 saved blueprint files are never edited. Tests cover colors, lifetime/context,
 read-only behavior and actual controls; live Roblox remains unverified.
+
+### Optional Auto Build walking (build-walk-85)
+
+v85 retains recorder v31, all 146 endpoints and the existing placement payloads.
+Auto Walk adds client movement through the shared navigation controller using
+`Humanoid:MoveTo` and path waypoint jumps, forced to Walk mode with owner `Build`.
+An ephemeral target represents the unbuilt preview cell; no world instance or
+saved blueprint is modified by travel. The requested navigation reach is 80% of
+the normal placement limit; placement still checks the actual normal reach and
+current occupancy after approach and after cooldown. Successful path completion
+alone does not authorize a request.
+
+Build Stop invalidates its run token and calls the owner-scoped navigation stop.
+Old workers retain their cleanup lock until returned. Failed/stuck/cancelled paths
+pause without dispatch or automatic replay; in-flight placement requests keep the
+existing confirmation/review semantics. Movement conflicts are checked at Start
+and while approaching. Read-only setup checks never move the character. Mock
+regressions include composed real navigation/build code and real application UI
+wiring; live Roblox behavior remains unverified.

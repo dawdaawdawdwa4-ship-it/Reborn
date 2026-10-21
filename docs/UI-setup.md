@@ -2170,3 +2170,38 @@ Tests cover every marker state, precedence, selection/layer behavior, expiry,
 respawn/plan invalidation, no repeated scans, failed reads, worker locks, OFF
 restoration and actual UI/worker repainting, plus the full regression suite.
 Live Roblox rendering, occupancy precision and placement remain unverified.
+
+### Auto Walk for Auto Build (v85)
+
+Open **Auto Build → Move / Auto Walk → Auto Walk: ON**, preview the layout, then
+press **Start build**. OFF remains the default: builds wait for you to move into
+normal placement reach. Selecting ON alone does not start walking or building.
+The popup gains one 36-pixel row; the main page keeps its compact layout.
+
+Auto Walk uses ordinary pathfinding, walking and waypoint jumps to approach the
+next empty selected cell. Already occupied cells are skipped before travel.
+The destination leaves a margin inside normal reach; the build worker checks
+actual character distance and occupancy again before sending. After server
+cooldown, it approaches again if you have moved away. Layer selection, existing
+placement learning, confirmation and rejected-only retries keep their behavior.
+
+**Stop** cancels Build movement immediately. Resume stays locked until the old
+path/request finishes cleaning up, then can start a fresh path. A blocked path,
+stuck character, respawn or conflicting movement pauses the run with its preview
+kept; it does not silently skip the target or repeatedly replan. Fix the route or
+turn Auto Walk OFF and Resume to move manually. High layers or builds across gaps
+may need you to create access first. Walk can only use paths the character can
+traverse; it does not create a bridge or scaffold.
+
+Pause Fishing, farming movement, chest walking and Auto Plow before using Auto
+Walk. A new movement conflict during travel also pauses the build. Build Stop
+and cleanup release only movement owned by Build. The movement selector is locked
+during a run and during old-worker cleanup.
+
+Check setup remains read-only: it reports the selected movement mode, current
+reach and movement conflicts, without claiming that a path will succeed. Copy
+build diagnostics includes movement mode and the last walk result. Tests cover
+real navigation composed with Auto Build, Stop/Resume, blocked/stuck paths,
+respawn, stale success, cooldown re-approach, occupied targets, conflicts and
+actual UI adapters. The full regression suite is required. Live Roblox walking,
+rendering and placement remain unverified.

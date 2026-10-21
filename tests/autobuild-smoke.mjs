@@ -172,6 +172,91 @@ b:Stop();step()
  end
  ctx.Place,ctx.GameModule=originalPlace,originalModule
  end)()
+-- Auto Walk shares fresh range/occupancy checks with ordinary placement.
+;(function()
+ local fields={'Approach','StopTravel','TravelBlocked','Place','PlacementReady','GameModule'}
+ local old={};for _,key in ipairs(fields) do old[key]=ctx[key] end
+ local oldCharacter,oldPosition=ctx.Player.Character,root.Position
+ local walks,stops,trace,conflict=0,0,{},nil
+ local distance=100
+ local function position() root.Position=setmetatable({},{__sub=function() return {Magnitude=distance} end}) end
+ local function drain() for _=1,500 do if coroutine.status(worker)=='dead' then return end;step() end;error('walk worker did not finish') end
+ local function fresh(n)
+  occupied={};distance=100;position();walks=0;stops=0;trace={};conflict=nil
+  local value=A.new(ctx);value.Cells=cells(n);value.BlockSize=3
+  assert(value.TravelMode=='Stay','legacy manual reach must remain the default')
+  return value
+ end
+ ctx.TravelBlocked=function() return conflict end
+ ctx.StopTravel=function() stops+=1 end
+ ctx.PlacementReady=function() return true end
+ ctx.Place=function(body)
+  assert(distance<=20,'every send must have fresh normal reach')
+  table.insert(trace,body.cframe.Position);occupied[body.cframe.Position]=true;return true
+ end
+ ctx.Approach=function(cell,reach,active)
+  assert(reach==20 and active());walks+=1;distance=0;return true
+ end
+ local value=fresh(1)
+ value:SetTravelMode('Walk')
+ local report=value:CheckSetup()
+ assert(report.States.Reach=='ACTION' and string.find(report.Text,'Auto Walk will try paths after Start',1,true) and walks==0 and #trace==0,'setup must keep distant cells out of reach and describe untested paths without movement')
+ conflict='Other movement is active';report=value:CheckSetup()
+ assert(report.States.Walking=='ACTION' and walks==0 and #trace==0,'read-only setup must expose movement conflicts')
+ conflict=nil
+ ctx.TravelBlocked=function() value:SetTravelMode('Stay') end
+ assert(not value:CheckSetup() and not value.SetupReport,'a movement change during a yielding setup lookup must invalidate its report')
+ ctx.TravelBlocked=function() return conflict end
+ value:SetTravelMode('Walk');ctx.PlacementReady=function() value:SetTravelMode('Stay');return true end
+ assert(not value:Start() and not value.WorkerToken and walks==0,'changing movement during readiness checks must not launch a worker with a stale mode')
+ ctx.PlacementReady=function() return true end
+ value=fresh(2)
+ value:Start();assert(walks==0 and #trace==0 and value.Progress.State=='Waiting for reach','Stay must wait without requesting any movement')
+ value:Stop();drain()
+ value=fresh(3);occupied[1]=true
+ assert(value:SetTravelMode('Walk') and not value:SetTravelMode('Teleport'),'Auto Walk supports only Stay/Walk')
+ assert(value:Start() and not value:SetTravelMode('Stay'),'active workers must freeze the travel choice')
+ drain();assert(walks==1 and #trace==2 and trace[1]==2 and trace[2]==3 and value.Progress.Placed==2 and value.Progress.Skipped==1,'skip distant occupied cells, walk once, then confirm in-range cells')
+ assert(stops>0 and string.find(value:DiagnosticReport(),'Build movement: Walk',1,true),'completion must release walking and expose movement in diagnostics')
+ value=fresh(1);value:SetTravelMode('Walk');conflict='Other movement is active'
+ assert(not value:Start() and not value.WorkerToken and walks==0 and #trace==0,'conflicts must block Start before a path or placement')
+ value=fresh(1);value:SetTravelMode('Walk');ctx.Approach=nil
+ assert(not value:Start() and string.find(value.Status.Text,'unavailable',1,true),'missing walking adapter must explain the manual fallback')
+ for _,arrived in ipairs({false,true}) do
+  value=fresh(1);value:SetTravelMode('Walk')
+  ctx.Approach=function() walks+=1;return arrived,'Path failed' end
+  assert(value:Start());drain()
+  assert(walks==1 and #trace==0 and value.Progress.State=='Walking paused' and value.Cells and next(value.Failures)==nil,'a blocked path or inaccurate success cannot place, retry forever or reject untouched cells')
+ end
+ value=fresh(1);value:SetTravelMode('Walk')
+ ctx.Approach=function(_,_,active) walks+=1;ctx.Scheduler.wait(.1);if active() then distance=0 end;return true end
+ value:Start();local stopped=stops
+ value:Stop();assert(stops==stopped+1 and #trace==0 and not value:Start() and not value:SetTravelMode('Stay'),'Stop releases movement immediately and locks restart until path cleanup')
+ drain();assert(#trace==0 and value.Progress.State=='Stopped' and not value.WorkerToken,'an old path cannot place after Stop')
+ assert(value:Start());drain();assert(#trace==1 and walks==2,'OFF/ON restart must create a new path after cleanup')
+ value=fresh(1);value:SetTravelMode('Walk');value:Start();conflict='Chest walking started';drain()
+ assert(#trace==0 and value.Progress.State=='Walking paused' and string.find(value.Status.Text,conflict,1,true),'a new conflicting worker during path computation must pause before placement')
+ value=fresh(1);value:SetTravelMode('Walk')
+ ctx.Approach=function() walks+=1;distance=0;return true end
+ local attempts=0
+ ctx.Place=function(body)
+  attempts+=1;assert(distance<=20)
+  if attempts==1 then distance=100;return false,{error='TOO_FAST'},'rejected' end
+  occupied[body.cframe.Position]=true;table.insert(trace,body.cframe.Position);return true
+ end
+ value:Start();drain();assert(attempts==2 and walks==2 and value.Progress.Placed==1,'cooldown retries must approach again when the actor moved outside reach')
+ value=fresh(1);value:SetTravelMode('Walk');attempts=0
+ ctx.Approach=function(cell) walks+=1;distance=0;if walks==2 then occupied[cell.CFrame.Position]=true end;return true end
+ value:Start();drain();assert(attempts==1 and walks==2 and value.Progress.Skipped==1,'a cell occupied during cooldown travel must not be resent')
+ ctx.Place=old.Place
+ value=fresh(1);value:SetTravelMode('Walk');ctx.Player.Character=nil
+ value:Start();assert(walks==0 and #trace==0 and value.Running,'missing character must wait without moving or disabling the build')
+ ctx.Player.Character=oldCharacter;drain();assert(walks==1 and value.Progress.Placed==1)
+ value=fresh(1);value:SetTravelMode('Walk');ctx.Approach=function() error('path service failed') end
+ value:Start();drain();assert(value.Progress.State=='Error' and stops>0 and not value.WorkerToken and next(value.Failures)==nil,'path exceptions must clean up without recording a dispatched request')
+ for _,key in ipairs(fields) do ctx[key]=old[key] end
+ ctx.Player.Character=oldCharacter;root.Position=oldPosition;occupied={}
+ end)()
 -- Plan controls must agree with the immutable active preview.
 root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
 occupied={};b.Cells=cells(2);b:Start()

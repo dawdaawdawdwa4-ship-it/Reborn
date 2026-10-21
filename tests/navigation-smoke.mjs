@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const source=fs.readFileSync(new URL('../tools/FarmNavigation.lua',import.meta.url),'utf8');
+const builder=fs.readFileSync(new URL('../tools/AutoBuild.lua',import.meta.url),'utf8');
 const main=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
 if(!main.includes(source)) throw Error('Embedded navigation differs from source');
 const code=`
@@ -80,6 +81,57 @@ local previousHalts=halts
 assert(not Navigation.Stop('Chest') and Navigation.Generation==gen and Navigation.Humanoid==humanoid,'stopping chest travel must not cancel another navigation owner')
 Navigation.Owner='Chest'
 assert(Navigation.Stop('Chest') and Navigation.Generation==gen+1 and not Navigation.Humanoid and halts==previousHalts+1,'chest OFF must immediately clear the MoveTo destination and owner')
-return 'Navigation: approach, in-range fast path, blocked routes, ground-level waypoints and jumps, stuck timeout, replacement/respawn and cancellation passed'
+-- Real Auto Build + real navigation: paths, reach and cancellation compose.
+;(function()
+ local function signal() return {Connect=function() return {} end} end
+ local function control() return {Activated=signal(),FocusLost=signal(),Destroy=function() end} end
+ local Instance={new=control}
+ local UDim2={new=function() return {} end,fromOffset=function() return {} end}
+ local Color3={fromRGB=function() return {} end}
+ local Enum={RaycastFilterType={Exclude=1},Material={ForceField=1},AutomaticSize={Y=1},TextTruncate={None=1},TextXAlignment={Left=1},TextYAlignment={Top=1}}
+ local AutoBuild=(function() ${builder} end)()
+ local world,dispatches,travels={},0,0
+ path.ComputeAsync=function(_,_,destination) path.Destination=destination end
+ path.GetWaypoints=function() return {{Position=v(0,0),Action=0},{Position=v(path.Destination.X,0),Action=0}} end
+ local ctx={Player=player,Parent={},Label=control,Button=control,Track=function() end,Alive=function() return true end,Workspace={},Now=function() return time end,
+  Scheduler={spawn=function(fn) fn() end,wait=function(dt) task.wait(dt) end},
+  GameModule=function(_,key)
+   if key=='CLIENT_REACH' then return 20 end
+   if key=='BlockUtils' then return {getBlocksFromLocation=function(point) return world[point] and {true} or {} end} end
+  end,
+  Place=function(body)
+   assert((root.Position-body.cframe.Position).Magnitude<=20,'composed worker must verify real reach before sending')
+   dispatches+=1;world[body.cframe.Position]=true;return true
+  end,
+  Approach=function(cell,reach,active)
+   travels+=1
+   local previewTarget={Parent=true,Position=cell.CFrame.Position}
+   return Navigation.Approach(player,previewTarget,reach*.8,active,positionOf,'Walk','Build')
+  end,
+  StopTravel=function() Navigation.Stop('Build') end,
+ }
+ local function fresh()
+  reset();world={};dispatches=0;travels=0
+  local b=AutoBuild.new(ctx);b.BlockSize=3;b.Cells={{CFrame={Position=v(40)},Material='grass'}}
+  assert(b:SetTravelMode('Walk'));return b
+ end
+ local b=fresh();assert(b:Start())
+ assert(dispatches==1 and travels==1 and moves>0 and b.Progress.Placed==1 and b.Progress.State=='Finished' and not Navigation.Humanoid,'real paths must reach and confirm a distant preview cell, then release movement')
+ b=fresh();failPath=true;b:Start()
+ assert(dispatches==0 and travels==1 and moves==0 and b.Progress.State=='Walking paused' and b.Cells and not Navigation.Humanoid,'failed paths must retain the preview without sending')
+ b=fresh();stuck=true;local began=time;b:Start()
+ assert(dispatches==0 and time-began<2 and b.Progress.State=='Walking paused' and not Navigation.Humanoid,'stuck paths must bound the wait and clean up')
+ local ordinaryWait=task.wait
+ b=fresh();task.wait=function(dt)
+  ordinaryWait(dt)
+  if b.Progress.State=='Walking to block' then b:Stop();assert(not Navigation.Humanoid,'Stop must immediately clear real MoveTo ownership') end
+ end
+ b:Start();assert(dispatches==0 and b.Progress.State=='Stopped' and not b.WorkerToken,'Stop inside a real path must prevent dispatch and finish worker cleanup')
+ task.wait=ordinaryWait;b:Start();assert(dispatches==1 and b.Progress.Placed==1,'resuming after a cancelled path must start fresh and build')
+ b=fresh();respawn=true;b:Start()
+ assert(dispatches==0 and b.Progress.State=='Walking paused' and not Navigation.Humanoid,'respawning during real movement must stop before placing')
+ reset()
+ end)()
+return 'Navigation: approach, blocked routes, stuck timeout, respawn/cancellation and real Auto Build walking integration passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'navigation',true)());}finally{state.destroy();}

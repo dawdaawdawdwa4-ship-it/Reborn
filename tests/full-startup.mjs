@@ -72,7 +72,7 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   updateBoard();assert(b.VisualSnapshot==checks and b.Cells[1].SetupState=='Occupied','periodic color refresh must reuse the snapshot')
   b.Buttons.SetupMarkers.Activated:Fire()
   assert(not b.SetupMarkers and b.Cells[1].Preview.Color==base and not b.Cells[1].SetupState,'real OFF control must restore source preview colors')
-  assert(b.Buttons.SetupMarkers.Position.Y.Offset==b.Buttons.ResetOffset.Position.Y.Offset and b.MoveMenu.Size.Y.Offset==220,'diagnostic toggle must share the reset row without enlarging the popup')
+  assert(b.Buttons.SetupMarkers.Position.Y.Offset==b.Buttons.ResetOffset.Position.Y.Offset and b.MoveMenu.Size.Y.Offset==256,'diagnostic toggle must share the reset row above the new Auto Walk row')
 
   r.ModuleCache,b.Cells,b.LayerIndex,player.Character,r.CarrotCount=cache,cells,layer,character,count
   b.SetupReport=nil;b.SetupResult=nil;b.VisualSnapshot=nil;b.VisualCounts=nil;b.SetupMarkers=markerOn;b.RangeMarkers=rangeOn
@@ -129,6 +129,48 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   assert(b.Buttons.RetryFailed.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.LayoutHeight<650,'retry action must fit the compact action row')
   r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
   b.HistoryIndex=0;b.SetupReport=nil;b.SetupResult=nil;b.SetupMarkers=false;b.VisualSnapshot=nil;b.VisualCounts=nil;b:RefreshFailureUI()
+  end)()
+ ;(function()
+  local b,r=buildController,RemoteCatalog
+  local saved={Navigation=r.Navigation,Cache=r.ModuleCache,Cells=b.Cells,Layer=b.LayerIndex,Character=player.Character,Failures=b.Failures,Progress=b.Progress,History=b.History}
+  local world,trace,walks,stops={},{},0,{}
+  local function pos(x) return setmetatable({X=x,Y=0,Z=0},{__sub=function(a,c) return {Magnitude=math.abs(a.X-c.X)} end}) end
+  local root={Position=pos(0)}
+  r.ModuleCache={
+   ['ReplicatedStorage.TS.network.requests']={Requests={Client={Get=function() return {CallServer=function(_,body)
+    assert((root.Position-body.cframe.Position).Magnitude<=20,'real placement adapter must be inside normal reach')
+    table.insert(trace,body.cframe.Position.X);world[body.cframe.Position.X]=true;return true
+   end} end}}},
+   ['ReplicatedStorage.TS.util.block-utils']={BlockUtils={getBlocksFromLocation=function(p) return world[p.X] and {true} or {} end}},
+   ['ReplicatedStorage.Shared.SharedConfig']={CLIENT_REACH=20},
+  }
+  r.Navigation={Stop=function(owner) table.insert(stops,owner);return true end,Approach=function(who,target,reach,active,positionOf,mode,owner)
+   assert(who==player and mode=='Walk' and owner=='Build' and reach==16 and target.Parent~=nil and active(),'real adapter must use walking, scoped ownership and a margin inside normal reach')
+   walks+=1;task.wait(.1)
+   if active() then root.Position=positionOf(target);return true end
+   return false,'Travel stopped'
+  end}
+  player.Character={FindFirstChild=function() return root end}
+  b.Cells={{CFrame={Position=pos(80)},Material='grass'}};b.LayerIndex=nil;b.Failures={}
+  assert(b.TravelMode=='Stay' and b.Buttons.Travel.Position.Y.Offset>=b.Buttons.Reach.Position.Y.Offset+b.Buttons.Reach.Size.Y.Offset,'Auto Walk must default OFF and fit below reach controls without overlap')
+  b.Buttons.Travel.Activated:Fire();assert(b.TravelMode=='Walk' and walks==0 and #trace==0,'the toggle selects movement without starting a path or placement')
+  b.Buttons.Start.Activated:Fire();assert(b.Running and b.Progress.State=='Walking to block' and walks==1)
+  b.Buttons.Travel.Activated:Fire();assert(b.TravelMode=='Walk','real UI must lock travel changes during a run')
+  b.Buttons.Stop.Activated:Fire();assert(stops[#stops]=='Build' and b.WorkerToken,'real Stop must cancel only Build movement while path cleanup remains locked')
+  for _=1,3 do stepWorkers() end
+  assert(#trace==0 and not b.WorkerToken and b.Progress.State=='Stopped','cancelled UI path cannot dispatch placement')
+  b.Buttons.Start.Activated:Fire();for _=1,5 do stepWorkers() end
+  assert(walks==2 and #trace==1 and trace[1]==80 and b.Progress.Placed==1 and not b.WorkerToken,'real Resume must re-approach and confirm placement with the existing request envelope')
+  for _,owner in ipairs(stops) do assert(owner=='Build','Build must not issue an unscoped navigation stop') end
+  enabled=true;assert(string.find(r.BuildTravelBlocked(),'Fishing',1,true));enabled=false
+  harvestEnabled=true;local walk=CONFIG.HarvestWalk;CONFIG.HarvestWalk=true
+  assert(string.find(r.BuildTravelBlocked(),'farming',1,true));harvestEnabled=false;CONFIG.HarvestWalk=walk
+  local chestWorker,chestTravel=r.ChestAutoWorker,r.ChestTravel;r.ChestAutoWorker=true;r.ChestTravel='Walk'
+  assert(string.find(r.BuildTravelBlocked(),'chest',1,true));r.ChestAutoWorker,r.ChestTravel=chestWorker,chestTravel
+  r.Navigation.Humanoid={};r.Navigation.Owner='Chest';assert(r.BuildTravelBlocked());r.Navigation.Owner='Build';assert(not r.BuildTravelBlocked())
+  b.Buttons.Travel.Activated:Fire();assert(b.TravelMode=='Stay')
+  r.Navigation,r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Navigation,saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
+  b.HistoryIndex=0;b.SetupReport=nil;b.SetupResult=nil;b.VisualSnapshot=nil;b.VisualCounts=nil;b.LastTravelResult=nil;b:RefreshFailureUI()
   end)()
  showTab('Auto Build');flush()
  assert(not buildController.Inputs.Width.Visible and not buildController.Buttons.Load.Visible,'tab intro must not reveal collapsed Auto Build fields')
@@ -943,7 +985,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-markers-84',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-walk-85',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1668,7 +1710,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-markers-84 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-walk-85 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

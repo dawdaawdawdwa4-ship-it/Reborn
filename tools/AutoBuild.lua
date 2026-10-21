@@ -127,7 +127,7 @@ function AutoBuild.RayBox(cf,origin,direction,half,limit)
     return near
 end
 function AutoBuild.new(ctx)
-    local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
+    local self={TravelMode="Stay",Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons,commits={},{},{}
     self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
     self.Failures=setmetatable({}, {__mode="k"})
@@ -157,8 +157,22 @@ function AutoBuild.new(ctx)
         if buttons.Reach then buttons.Reach.Text=self.RangeMarkers and "Mark reach: ON" or "Mark reach: OFF" end
         if self.MaterialSummary then self.MaterialSummary.Text="Preview or load a blueprint to see its material counts." end
     end
+    local function stopTravel()
+        if ctx.StopTravel then pcall(ctx.StopTravel) end
+    end
+    function self:SetTravelMode(mode)
+        if mode~="Stay" and mode~="Walk" then return false end
+        if self.Running or self.WorkerToken then status("Stop building and wait for cleanup before changing Auto Walk.");return false end
+        self.TravelMode=mode
+        self.SetupReport=nil;self.SetupResult=nil
+        buttons.Travel.Text=mode=="Walk" and "Auto Walk: ON" or "Auto Walk: OFF"
+        status(mode=="Walk" and "Auto Walk ON: Start build walks toward distant cells. Blocked paths pause the run; preview stays available."
+            or "Auto Walk OFF: build waits for you to move within normal reach.")
+        return true
+    end
     function self:Stop()
         self.Token+=1;self.Running=false
+        stopTravel()
         if self.RefreshFailureUI then self:RefreshFailureUI() end
         buttons.Start.Text=self.Cells and "Resume build" or "Start build"
         if self.Progress then self.Progress.State="Stopped" end
@@ -562,6 +576,7 @@ function AutoBuild.new(ctx)
         local failures=self:FailureCounts()
         return table.concat({"Reborn Auto Build diagnostics", "Placement ready: "..tostring(ready).." · "..tostring(reason),
             "Running: "..tostring(self.Running).."; request cleanup: "..tostring(self.WorkerToken~=nil),
+            "Build movement: "..self.TravelMode.."; last walk: "..tostring(self.LastTravelResult or "none"),
             "Preview cells: "..tostring(self.Cells and #self.Cells or 0).."; selected: "..#self:SelectedCells(),
             "State: "..tostring(p.State or "not started").."; cell: "..tostring(p.Index or 0).." / "..tostring(p.Total or 0),
             "Confirmed: "..tostring(p.Placed or 0).."; skipped: "..tostring(p.Skipped or 0).."; failed: "..tostring(p.Failed or 0),
@@ -578,6 +593,12 @@ function AutoBuild.new(ctx)
         if ctx.BuildBlocked then local reason=ctx.BuildBlocked();if reason then status(reason);return false end end
         if self.Running then return false end
         if self.WorkerToken then status("Wait for the previous build request to finish before resuming.");return false end
+        local travelMode=self.TravelMode
+        if travelMode=="Walk" then
+            if not ctx.Approach then status("Auto Walk unavailable. Turn it OFF to build while moving manually.");return false end
+            local reason=ctx.TravelBlocked and ctx.TravelBlocked()
+            if reason then status(tostring(reason));return false end
+        end
         if ctx.PlacementReady then
             local ready,reason=ctx.PlacementReady()
             if not ready then status(reason);return false end
@@ -595,6 +616,8 @@ function AutoBuild.new(ctx)
             if #cells==0 then status("No eligible rejected cells in this layer. Uncertain requests need island review; use normal Resume after inspecting them.");return false end
         end
         if #cells==0 then status("No blocks selected. Choose All layers or create a new preview.");return false end
+        if self.Running or self.WorkerToken then return false end
+        if self.TravelMode~=travelMode then status("Build movement changed during setup. Press Start again.");return false end
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
@@ -609,6 +632,48 @@ function AutoBuild.new(ctx)
         self:RefreshFailureUI()
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
+        -- Both the initial request and cooldown retries use fresh reach/occupancy
+        -- observations. A path result alone never authorizes a placement.
+        local function ensureReach(cell,reach,index)
+            local function blocked() return ctx.TravelBlocked and ctx.TravelBlocked() end
+            local function pause(reason)
+                stopTravel()
+                self.LastTravelResult=tostring(reason)
+                progress.State="Walking paused"
+                status("Auto Walk paused: "..tostring(reason).." Preview kept; fix the route or turn Auto Walk OFF, then Resume build.")
+                return false
+            end
+            while active() do
+                if travelMode=="Walk" then
+                    local reason=blocked()
+                    if reason then return pause(reason) end
+                end
+                if occupied(cell.CFrame,self.BlockSize) then return true end
+                local _,root=characterRoot()
+                if root and (root.Position-cell.CFrame.Position).Magnitude<=reach then return true end
+                if root and travelMode=="Walk" then
+                    progress.State="Walking to block"
+                    status(string.format("Walking to block %d/%d · normal reach %g studs · Stop cancels movement",index,#cells,reach))
+                    local arrived,reason=ctx.Approach(cell,reach,function() return active() and not blocked() end)
+                    if not active() then return false end
+                    local conflict=blocked()
+                    if conflict then return pause(conflict) end
+                    if occupied(cell.CFrame,self.BlockSize) then return true end
+                    if not arrived then return pause(reason or "Could not reach this block") end
+                    _,root=characterRoot()
+                    if not root or (root.Position-cell.CFrame.Position).Magnitude>reach then
+                        return pause("Walk finished outside placement reach")
+                    end
+                    self.LastTravelResult="Reached block "..index
+                else
+                    progress.State="Waiting for reach"
+                    status(root and string.format("Move within %g studs of block %d/%d, or press Stop.",reach,index,#cells)
+                        or "Waiting for your character · Stop cancels the build")
+                    scheduler.wait(.2)
+                end
+            end
+            return false
+        end
         scheduler.spawn(function()
             local placed,skipped,failed,streak=0,0,0,0
             local ok,err=pcall(function()
@@ -620,16 +685,9 @@ function AutoBuild.new(ctx)
                     if existing then
                         skipped+=1
                     else
-                        local _,root=characterRoot()
                         local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
                         if type(reach)~="number" or not (reach>0 and reach<math.huge) then reach=20 end
-                        while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
-                            self.Progress.State="Waiting for reach"
-                            status(string.format("Move within %d studs of block %d/%d, or press Stop.",reach,index,#cells))
-                            scheduler.wait(.2);_,root=characterRoot()
-                            if active() then existing=occupied(cell.CFrame,self.BlockSize) end
-                            if existing then break end
-                        end
+                        if not ensureReach(cell,reach,index) then return end
                         if not active() then return end
                         existing=existing or occupied(cell.CFrame,self.BlockSize)
                         if existing then
@@ -665,13 +723,9 @@ function AutoBuild.new(ctx)
                                 end
                                 if not active() then return end
                                 if occupied(cell.CFrame,self.BlockSize) then existing=true;sent=true;break end
-                                -- Cooldown waits can outlive the actor's reach. Wait
-                                -- before retrying this same cell; never send from afar.
-                                _,root=characterRoot()
-                                while active() and (not root or (root.Position-cell.CFrame.Position).Magnitude>reach) do
-                                    progress.State="Waiting for reach";status("Move back within placement reach, or Stop.")
-                                    scheduler.wait(.2);_,root=characterRoot()
-                                end
+                                if not ensureReach(cell,reach,index) then return end
+                                if not active() then return end
+                                if occupied(cell.CFrame,self.BlockSize) then existing=true;sent=true;break end
                             until not active()
                             if not active() then return end
                             if origin=="transport" or origin=="unavailable" then
@@ -708,6 +762,7 @@ function AutoBuild.new(ctx)
                 end
                 if active() then self.Progress.State="Finished";status(string.format("Finished: %d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
+            stopTravel()
             if self.WorkerToken==token then self.WorkerToken=nil end
             if self.Token==token then
                 self.Running=false;buttons.Start.Text=progress.State=="Finished" and "Start build" or "Resume build"
@@ -914,9 +969,9 @@ function AutoBuild.new(ctx)
         if not ctx.Alive() then return false end
         if self.Running or self.WorkerToken then status("Stop building and wait for request cleanup before checking setup.");return false end
         self.SetupReport=nil;self.SetupResult=nil
-        local cells,token,layer,revision=self.Cells,self.Token,self.LayerIndex,self.PlanRevision
+        local cells,token,layer,revision,travelMode=self.Cells,self.Token,self.LayerIndex,self.PlanRevision,self.TravelMode
         local function current()
-            return ctx.Alive() and self.Cells==cells and self.Token==token and self.LayerIndex==layer and self.PlanRevision==revision and not self.Running and not self.WorkerToken
+            return ctx.Alive() and self.Cells==cells and self.Token==token and self.LayerIndex==layer and self.PlanRevision==revision and self.TravelMode==travelMode and not self.Running and not self.WorkerToken
         end
         local result={Checks={},States={},Actions=0,Unknown=0}
         local function add(name,state,detail)
@@ -929,6 +984,12 @@ function AutoBuild.new(ctx)
             if not ok then add("Automation","UNKNOWN","Could not check other automation")
             elseif reason then add("Automation","ACTION",tostring(reason))
             else add("Automation","OK","No build blocker reported") end
+        end
+        add("Movement","INFO",self.TravelMode=="Walk" and "Auto Walk ON; paths are checked only during a run" or "Auto Walk OFF; move manually when outside reach")
+        if self.TravelMode=="Walk" and ctx.TravelBlocked then
+            local ok,reason=pcall(ctx.TravelBlocked)
+            if not ok then add("Walking","UNKNOWN","Could not check movement conflicts")
+            elseif reason then add("Walking","ACTION",tostring(reason)) end
         end
         if ctx.PlacementReady then
             local ok,ready,reason=pcall(ctx.PlacementReady)
@@ -976,7 +1037,9 @@ function AutoBuild.new(ctx)
             while #missing>5 do table.remove(missing) end
             nextStep("Collect missing blocks: "..table.concat(missing,", ")..(result.Materials.ShortTypes>5 and " …" or "")..". Refresh after restocking.")
         end
-        if result.States.Reach=="ACTION" then nextStep("Move within normal reach or choose a nearer layer; Check setup does not move you.") end
+        if result.States.Walking=="ACTION" then nextStep("Stop the movement automation named above before using Auto Walk.") end
+        if result.States.Reach=="ACTION" then nextStep(self.TravelMode=="Walk" and "Auto Walk will try paths after Start; unreachable cells pause the run. Check setup does not move you."
+            or "Move within normal reach or choose a nearer layer; Check setup does not move you.") end
         if result.Unknown>0 then nextStep("Let inventory/world data settle, refresh Check setup, or copy the report if a check stays unknown.") end
         result.Failures=self:FailureCounts()
         if result.Failures.Review>0 then nextStep("Inspect "..result.Failures.Review.." uncertain cells on the island. Retry failed excludes them; normal Resume remains available after review.") end
@@ -1307,9 +1370,9 @@ function AutoBuild.new(ctx)
         if not self.Running then presetMenu.Visible=not presetMenu.Visible;if self.MoveMenu then self.MoveMenu.Visible=false end end
     end)
     local moveMenu=Instance.new("Frame")
-    moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,220);moveMenu.Position=UDim2.fromOffset(6,84)
+    moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,256);moveMenu.Position=UDim2.fromOffset(6,84)
     moveMenu.BackgroundColor3=Color3.fromRGB(29,39,48);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
-    button("Movement","Move blueprint  ▼",.5,48,.5,function()
+    button("Movement","Move / Auto Walk  ▼",.5,48,.5,function()
         presetMenu.Visible=false
         moveMenu.Visible=not moveMenu.Visible
     end)
@@ -1340,6 +1403,9 @@ function AutoBuild.new(ctx)
         status(self.RangeMarkers and (self.SetupMarkers and "Reach markers ON; setup occupied/failure colors take priority. Check setup refreshes occupancy." or "Reach markers ON: original colors are in reach, orange is beyond reach, gray is unknown. Selected preview ghosts update while the hub runs.")
             or (self.SetupMarkers and "Reach markers OFF. Setup snapshot markers remain ON; Check setup refreshes them." or "Reach markers OFF. Original preview colors restored."))
     end))
+    buttons.Travel=ctx.Button({Parent=moveMenu,Text="Auto Walk: OFF",TextSize=12,Size=UDim2.new(1,-6,0,30),Position=UDim2.fromOffset(3,220)})
+    buttons.Travel.ZIndex=36
+    ctx.Track(buttons.Travel.Activated:Connect(function() self:SetTravelMode(self.TravelMode=="Walk" and "Stay" or "Walk") end))
     for index,preset in ipairs(presets) do
         local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(.5,-4,0,34),Position=UDim2.new((index-1)%2*.5,2,0,math.floor((index-1)/2)*36)})
         option.ZIndex=36
