@@ -951,3 +951,25 @@ for active/finishing workers and leave Start/resume and routing unchanged.
 Fresh setup reports support the existing clipboard/console path. Tests verify
 state classification, read-only isolation, stale-result rejection and real UI
 controls; live Roblox remains unverified.
+
+
+### Explicit rejected-cell retries (build-retry-83)
+
+v83 retains recorder v31, all 146 catalog endpoints and placement payloads.
+Retries reuse the existing placement controller and live bindings; no envelope
+or remote is persisted with a failure. Eligibility requires a recorded explicit
+rejection (origin rejected, success=false, or a normal explicit TOO_FAST reply),
+with transport/unavailable origins excluded. Old recorder failures lacking
+reliable rejection evidence remain review cases.
+
+Every dispatched attempt is marked uncertain until its response/occupancy is
+observed. Late responses after cancellation cannot turn the interrupted call
+into an automatic retry candidate. Accepted/unconfirmed and transport failures
+are excluded from Retry failed. A cooldown-shaped transport error stops rather
+than resends. Each explicit retry filters the current selected layer by cell
+identity, CFrame and material and retains normal occupancy/reach/Stop guards.
+
+Setup next steps and retry/history/diagnostic counts remain local observations,
+not evidence of server permission or exact block material. No automatic retries
+are added for ambiguous outcomes. Tests cover eligibility, scope, cleanup,
+uncertainty and real controls; live Roblox remains unverified.

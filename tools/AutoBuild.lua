@@ -130,6 +130,7 @@ function AutoBuild.new(ctx)
     local self={Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons,commits={},{},{}
     self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
+    self.Failures=setmetatable({}, {__mode="k"})
     self.Backups={};self.BackupPersistence={}
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
@@ -141,6 +142,8 @@ function AutoBuild.new(ctx)
     end
     function self:ClearPreview()
         self.PlanRevision=(self.PlanRevision or 0)+1
+        self.Failures=setmetatable({}, {__mode="k"})
+        if self.RefreshFailureUI then self:RefreshFailureUI() end
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
         self.Cells=nil;self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil;self.LayerIndex=nil;self.BaseAnchor=nil
         self.SelectedCell=nil;self.Picking=false
@@ -153,6 +156,7 @@ function AutoBuild.new(ctx)
     end
     function self:Stop()
         self.Token+=1;self.Running=false
+        if self.RefreshFailureUI then self:RefreshFailureUI() end
         buttons.Start.Text=self.Cells and "Resume build" or "Start build"
         if self.Progress then self.Progress.State="Stopped" end
         local p=self.Progress
@@ -306,6 +310,7 @@ function AutoBuild.new(ctx)
         self.LayerIndex=index<=#heights and index or nil
         self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil
         local selected=self:SelectedCells()
+        self:RefreshFailureUI()
         self:RefreshSelection()
         local included={}
         for _,cell in ipairs(selected) do included[cell]=true end
@@ -446,6 +451,7 @@ function AutoBuild.new(ctx)
         self.HistoryReport=string.format("Reborn build result %d/%d (newest first)\n%s · %s\n%s · %d selected / %d total planned\n%d confirmed · %d occupied/skipped · %d failed\n%d unprocessed · %.1fs elapsed",
             self.HistoryIndex,#self.History,run.Name,run.State,run.Layer,run.Total,run.WholeTotal,run.Placed,run.Skipped,run.Failed,
             math.max(0,run.Total-run.Placed-run.Skipped-run.Failed),run.Elapsed)
+        self.HistoryReport..=run.RetryOnly and "\nRun type: Retry failed (explicitly rejected cells only)" or "\nRun type: Normal Start/Resume"
         self.HistoryLabel.Text=self.HistoryReport
         return self.HistoryReport
     end
@@ -453,20 +459,55 @@ function AutoBuild.new(ctx)
         local state=progress.State
         if state=="Building" or state=="Waiting for reach" then state="Stopped" end
         table.insert(self.History,1,{Name=meta.Name,Layer=meta.Layer,WholeTotal=meta.WholeTotal,Total=progress.Total,
-            Placed=progress.Placed,Skipped=progress.Skipped,Failed=progress.Failed,State=state,Elapsed=math.max(0,now()-meta.Started)})
+            Placed=progress.Placed,Skipped=progress.Skipped,Failed=progress.Failed,State=state,Elapsed=math.max(0,now()-meta.Started),RetryOnly=meta.RetryOnly==true})
         while #self.History>5 do table.remove(self.History) end
         self.HistoryIndex=0;self.HistoryReport=nil
         if ctx.Alive() then self.HistoryLabel.Text="Latest build recorded. View results to inspect the last "..#self.History.." runs (session only)." end
     end
+    function self:FailureCounts()
+        local counts={Retryable=0,Review=0}
+        for _,cell in ipairs(self:SelectedCells()) do
+            local failure=self.Failures[cell]
+            if failure and failure.CFrame==cell.CFrame and failure.Material==cell.Material then
+                if failure.Retryable then counts.Retryable+=1 else counts.Review+=1 end
+            end
+        end
+        return counts
+    end
+    function self:FailureReport()
+        local lines,total={},0
+        for _,cell in ipairs(self:SelectedCells()) do
+            local failure=self.Failures[cell]
+            if failure and failure.CFrame==cell.CFrame and failure.Material==cell.Material then
+                total+=1
+                if total<=8 then table.insert(lines,(failure.Retryable and "REJECTED" or "REVIEW").." · blueprint block #"..tostring(table.find(self.Cells,cell)).." · "..cell.Material.." · "..failure.Reason) end
+            end
+        end
+        if total>8 then table.insert(lines,(total-8).." more tracked failures; report shows the first 8 in this layer.") end
+        return #lines>0 and table.concat(lines,"\n") or "No matching placement failures in this layer."
+    end
+    function self:RefreshFailureUI()
+        if not buttons.RetryFailed then return end
+        local counts=self:FailureCounts()
+        local available=ctx.Alive() and not self.Running and not self.WorkerToken and counts.Retryable>0
+        buttons.RetryFailed.Active=available==true;buttons.RetryFailed.Selectable=available==true
+    end
+    local function markFailure(cell,reason,retryable)
+        self.Failures[cell]={CFrame=cell.CFrame,Material=cell.Material,Reason=tostring(reason),Retryable=retryable==true}
+    end
+    function self:RetryFailures() return self:Start(true) end
     function self:DiagnosticReport()
         local ready,reason=true,"Placement readiness check unavailable"
         if ctx.PlacementReady then ready,reason=ctx.PlacementReady() end
         local p=self.Progress or {}
+        local failures=self:FailureCounts()
         return table.concat({"Reborn Auto Build diagnostics", "Placement ready: "..tostring(ready).." · "..tostring(reason),
             "Running: "..tostring(self.Running).."; request cleanup: "..tostring(self.WorkerToken~=nil),
             "Preview cells: "..tostring(self.Cells and #self.Cells or 0).."; selected: "..#self:SelectedCells(),
             "State: "..tostring(p.State or "not started").."; cell: "..tostring(p.Index or 0).." / "..tostring(p.Total or 0),
             "Confirmed: "..tostring(p.Placed or 0).."; skipped: "..tostring(p.Skipped or 0).."; failed: "..tostring(p.Failed or 0),
+            "Rejected cells eligible for Retry failed: "..failures.Retryable.."; uncertain cells needing review: "..failures.Review,
+            self:FailureReport(),
             "Last placement: "..tostring(self.LastPlacementResult or "none"),"Status: "..tostring(self.Status.Text),
             "Setup snapshot: "..tostring(self.SetupReport or "not checked; use Check setup")},"\n")
     end
@@ -474,7 +515,7 @@ function AutoBuild.new(ctx)
         if type(value)=="table" then return tostring(value.error or value.code or value.message or value.success or "unrecognized server result") end
         return tostring(value)
     end
-    function self:Start()
+    function self:Start(retryFailed)
         if ctx.BuildBlocked then local reason=ctx.BuildBlocked();if reason then status(reason);return false end end
         if self.Running then return false end
         if self.WorkerToken then status("Wait for the previous build request to finish before resuming.");return false end
@@ -482,19 +523,30 @@ function AutoBuild.new(ctx)
             local ready,reason=ctx.PlacementReady()
             if not ready then status(reason);return false end
         end
+        if retryFailed==true and not self.Cells then status("No failed cells in a current preview. Preview and build first.");return false end
         if not self.Cells and not self:Preview() then return end
         local cells=self:SelectedCells()
+        if retryFailed==true then
+            local rejected={}
+            for _,cell in ipairs(cells) do
+                local failure=self.Failures[cell]
+                if failure and failure.Retryable and failure.CFrame==cell.CFrame and failure.Material==cell.Material then table.insert(rejected,cell) end
+            end
+            cells=rejected
+            if #cells==0 then status("No eligible rejected cells in this layer. Uncertain requests need island review; use normal Resume after inspecting them.");return false end
+        end
         if #cells==0 then status("No blocks selected. Choose All layers or create a new preview.");return false end
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
         self.SetupReport=nil;self.SetupResult=nil
-        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building"}
+        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true}
         local progress=self.Progress
-        local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now()}
+        local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now(),RetryOnly=retryFailed==true}
         self.Picking=false;self.SelectedCell=nil;self:RefreshSelection()
         if buttons.Pick then buttons.Pick.Text="Pick block: OFF" end
         self.Running=true;buttons.Start.Text="Building…"
+        self:RefreshFailureUI()
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
         scheduler.spawn(function()
@@ -529,10 +581,15 @@ function AutoBuild.new(ctx)
                             local retries=0
                             repeat
                                 if not active() then return end
+                                markFailure(cell,"Request in flight or confirmation not observed",false)
                                 sent,reason,origin=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
                                 self.LastPlacementResult=(sent and "Accepted: " or "Rejected: ")..resultText(reason)
                                 if not active() then return end
-                                local cooldown=not sent and type(reason)=="table" and (reason.error=="TOO_FAST" or reason.code=="TOO_FAST")
+                                local cooldown=not sent and origin~="transport" and origin~="unavailable" and type(reason)=="table" and (reason.error=="TOO_FAST" or reason.code=="TOO_FAST")
+                                if not sent then
+                                    local rejected=origin=="rejected" or type(reason)=="table" and reason.success==false or cooldown
+                                    markFailure(cell,resultText(reason),rejected and origin~="transport" and origin~="unavailable")
+                                end
                                 if not cooldown then break end
                                 retries+=1
                                 if retries>5 then
@@ -585,6 +642,7 @@ function AutoBuild.new(ctx)
                         end
                     end
                     self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
+                    if existing or confirmed then self.Failures[cell]=nil end
                     if (existing or confirmed) and cell.Preview then cell.Preview:Destroy();cell.Preview=nil end
                     scheduler.wait(.2)
                 end
@@ -595,8 +653,10 @@ function AutoBuild.new(ctx)
                 self.Running=false;buttons.Start.Text=progress.State=="Finished" and "Start build" or "Resume build"
                 if not ok then self.Progress.State="Error";status("Build stopped: "..tostring(err)) end
             end
+            if ctx.Alive() then self:RefreshFailureUI() end
             recordBuild(progress,meta)
         end)
+        return true
     end
     function self:RefreshFavorites()
         for key,control in pairs(self.FavoriteButtons or {}) do
@@ -640,6 +700,7 @@ function AutoBuild.new(ctx)
     function self:UpdateMaterials(cells)
         self.PlanRevision=(self.PlanRevision or 0)+1
         self.SetupReport=nil;self.SetupResult=nil
+        self:RefreshFailureUI()
         local counts,names={},{}
         for _,cell in ipairs(cells or {}) do
             if not counts[cell.Material] then counts[cell.Material]=0;table.insert(names,cell.Material) end
@@ -787,9 +848,10 @@ function AutoBuild.new(ctx)
         local function current()
             return ctx.Alive() and self.Cells==cells and self.Token==token and self.LayerIndex==layer and self.PlanRevision==revision and not self.Running and not self.WorkerToken
         end
-        local result={Checks={},Actions=0,Unknown=0}
+        local result={Checks={},States={},Actions=0,Unknown=0}
         local function add(name,state,detail)
             table.insert(result.Checks,{Name=name,State=state,Detail=detail})
+            result.States[name]=state
             if state=="ACTION" then result.Actions+=1 elseif state=="UNKNOWN" then result.Unknown+=1 end
         end
         if ctx.BuildBlocked then
@@ -831,7 +893,26 @@ function AutoBuild.new(ctx)
         -- worker, a different selected layer or a destroyed hub.
         if not current() then return false end
         result.Summary=result.Materials and result.Materials.Remaining==0 and "NOTHING TO PLACE" or result.Actions>0 and "ACTION NEEDED" or result.Unknown>0 and "CHECKS INCOMPLETE" or "LOCAL CHECKS PASS"
-        local lines={"AUTO BUILD SETUP · snapshot",result.Summary.." · "..result.Actions.." action checks · "..result.Unknown.." unknown checks"}
+        result.NextSteps={}
+        local function nextStep(text) table.insert(result.NextSteps,text) end
+        if result.States.Character=="ACTION" then nextStep("Wait for your character to spawn, then check setup again.") end
+        if result.States.Preview=="ACTION" then nextStep("Press Preview at the intended position and choose a non-empty layer.") end
+        if result.States.Automation=="ACTION" then nextStep("Finish the automation or cleanup named above, then check again.") end
+        if result.States.Placement=="ACTION" then nextStep("Press Learn placement, hide the hub and place one block manually, then check again.") end
+        if result.Materials and result.Materials.ShortTypes>0 then
+            local missing={}
+            for name,quantity in pairs(result.Materials.Quantities) do if quantity.Missing and quantity.Missing>0 then table.insert(missing,name.." ×"..quantity.Missing) end end
+            table.sort(missing)
+            while #missing>5 do table.remove(missing) end
+            nextStep("Collect missing blocks: "..table.concat(missing,", ")..(result.Materials.ShortTypes>5 and " …" or "")..". Refresh after restocking.")
+        end
+        if result.States.Reach=="ACTION" then nextStep("Move within normal reach or choose a nearer layer; Check setup does not move you.") end
+        if result.Unknown>0 then nextStep("Let inventory/world data settle, refresh Check setup, or copy the report if a check stays unknown.") end
+        result.Failures=self:FailureCounts()
+        if result.Failures.Review>0 then nextStep("Inspect "..result.Failures.Review.." uncertain cells on the island. Retry failed excludes them; normal Resume remains available after review.") end
+        if result.Failures.Retryable>0 then nextStep("After fixing the cause, Retry failed targets "..result.Failures.Retryable.." explicitly rejected cells in this layer only.") end
+        if #result.NextSteps==0 then nextStep(result.Summary=="NOTHING TO PLACE" and "All selected cells are occupied. Move the preview or choose another layer to build elsewhere." or "Check the preview position, then Start build. The server still checks support and island permissions.") end
+        local lines={"AUTO BUILD SETUP · snapshot",result.Summary.." · "..result.Actions.." action checks · "..result.Unknown.." unknown checks", "Next: "..result.NextSteps[1]}
         for _,check in ipairs(result.Checks) do table.insert(lines,"["..check.State.."] "..check.Name..": "..check.Detail) end
         if result.Materials then
             local names={};for name in pairs(result.Materials.Quantities) do table.insert(names,name) end;table.sort(names)
@@ -840,6 +921,9 @@ function AutoBuild.new(ctx)
                 table.insert(lines,name.." · need "..quantity.Need.." · owned "..tostring(quantity.Owned or "unknown").." · short "..tostring(quantity.Missing or "unknown"))
             end
         end
+        if result.Failures.Retryable+result.Failures.Review>0 then table.insert(lines,self:FailureReport()) end
+        table.insert(lines,"NEXT STEPS")
+        for index,step in ipairs(result.NextSteps) do table.insert(lines,index..". "..step) end
         table.insert(lines,"Read-only snapshot; no blocks placed. Refresh after inventory, position or world changes. Support and island permissions are checked by the server.")
         result.Text=table.concat(lines,"\n")
         self.SetupReport=result.Text;self.SetupResult=result
@@ -1241,9 +1325,10 @@ function AutoBuild.new(ctx)
         local ok,reason=ctx.LearnPlacement();status(reason)
     end)
     button("Start","Start build",.7,446,.3,function() self:Start() end)
-    button("Stop","Stop build",0,486,.3,function() self:Stop() end)
-    button("CheckSetup","Check setup",.3,486,.4,function() self:CheckSetup() end)
-    button("Clear","Clear preview",.7,486,.3,function() if not self.Running and not self.WorkerToken then self:ClearPreview();status("Preview cleared.") else status("Wait for build request cleanup before clearing the preview.") end end)
+    button("Stop","Stop",0,486,.22,function() self:Stop() end)
+    button("RetryFailed","Retry failed",.22,486,.28,function() self:RetryFailures() end)
+    button("CheckSetup","Check setup",.5,486,.28,function() self:CheckSetup() end)
+    button("Clear","Clear",.78,486,.22,function() if not self.Running and not self.WorkerToken then self:ClearPreview();status("Preview cleared.") else status("Wait for build request cleanup before clearing the preview.") end end)
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
     local materialView=Instance.new("ScrollingFrame")
@@ -1402,6 +1487,7 @@ function AutoBuild.new(ctx)
     if ctx.RegisterPicker then ctx.RegisterPicker(function(origin,direction,limit) return self:PickRay(origin,direction,limit) end) end
     if ctx.RegisterMenuCloser then ctx.RegisterMenuCloser(function() self:CloseMenus() end) end
     self:LayoutSections()
+    self:RefreshFailureUI()
     self.Buttons=buttons;self.Inputs=inputs
     return self
 end

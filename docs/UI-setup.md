@@ -2091,3 +2091,42 @@ read-only behavior, snapshot invalidation and changed-context reads, plus actual
 setup/copy controls, compact layout and console fallback. The full regression
 suite is required. Live Roblox placement, permissions and rendering remain
 unverified.
+
+
+### Rejected-cell retry and setup next steps (v83)
+
+**Retry failed** appears beside Stop and Check setup. After a worker finishes,
+it starts an explicit run containing only cells in the current selected layer
+whose placement was clearly rejected. It preserves blueprint order and reuses
+normal placement readiness, reach checks, cooldown handling, occupancy skips,
+confirmation and Stop/cleanup behavior. Successful/skipped cells and cells never
+attempted are not added. Normal Start/Resume still visits the full selected plan.
+
+A rejected cell already filled by the time Retry runs is skipped without a new
+request. Confirmed/skipped retry cells leave the failure set. Run progress counts
+only the retry subset, and recent build results identify **Retry failed** versus
+a normal run. The button is disabled when no eligible cells exist or any worker
+is running/finishing. It cannot implicitly create a preview or bypass setup.
+
+Transport uncertainty, requests interrupted while in flight, accepted requests
+without an observed block, and older recorder failures without an explicit
+rejection origin remain **review** cases. Retry failed excludes them; inspect
+the island and deliberately use normal Resume when appropriate. A transport
+error resembling TOO_FAST cannot cause an automatic cooldown resend. Failure
+tracking is session-only and matches the exact cell, position/orientation and
+material; changed geometry/materials are ineligible and clearing/recreating the
+preview clears its tracked failures. Layer changes simply narrow the selection.
+
+Setup reports now include ordered **Next steps**: manual placement learning,
+character/preview setup, named missing blocks with quantities, reach guidance,
+unknown-data refresh and eligible/review counts. The first step appears directly
+below the summary. Setup and diagnostic copies retain reasons for the first eight matching cells
+in the selected layer, even when a later placement succeeds. Diagnostic copies
+include both counts, while Copy setup still
+refreshes its snapshot without placing anything. No retry starts automatically.
+
+Validation covers mixed success/rejection runs, occupied retry targets, selected
+layers, untouched cells, changed geometry/materials, in-flight Stop, unconfirmed
+and transport outcomes (including cooldown-shaped errors), successful retry
+cleanup, result history and actual UI handlers. The full regression suite is
+required; live Roblox placement and rendering remain unverified.

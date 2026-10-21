@@ -315,6 +315,7 @@ check:ClearPreview();assert(not check.BuildReport and not check:CheckMaterials()
  ctx.ItemCount=function() return 0 end
  local before=requests;local token=value.Token
  local report=value:CheckSetup()
+ assert(report.NextSteps and string.find(report.Text,'Collect missing blocks: grass ×2',1,true),'setup must name concrete missing materials in its next steps')
  assert(report.Summary=='ACTION NEEDED' and report.Materials.Occupied==1 and report.Materials.Remaining==2 and report.Materials.Quantities.grass.Missing==2)
  assert(find(report,'Placement').State=='ACTION' and find(report,'Automation').State=='ACTION' and find(report,'Reach').State=='ACTION' and find(report,'Materials').State=='ACTION')
  assert(requests==before and not value.WorkerToken and not value.Running and value.Token==token and value.Cells[1].Material=='grass','setup cannot send, launch or mutate the blueprint')
@@ -352,6 +353,69 @@ check:ClearPreview();assert(not check.BuildReport and not check:CheckMaterials()
  ctx.ItemCount=old.ItemCount;ctx.PlacementReady=function() value.Token+=1;return true end
  assert(not value:CheckSetup(),'new cycle during placement lookup must discard the old setup')
  for _,field in ipairs(fields) do ctx[field]=old[field] end
+ end)()
+-- Retry failed uses only rejected cells from the current plan/layer.
+;(function()
+ local originalPlace,originalReady=ctx.Place,ctx.PlacementReady
+ local function drain() for _=1,2500 do if coroutine.status(worker)=='dead' then return end;step() end;error('retry worker did not settle') end
+ local function fresh(n)
+  occupied={};root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+  local value=A.new(ctx);value.Cells=cells(n);value.BlockSize=3;return value
+ end
+ local trace,allow={},false
+ ctx.Place=function(body)
+  local pos=body.cframe.Position;table.insert(trace,pos)
+  if not allow and (pos==1 or pos==3) then return false,{success=false,error='MISSING_MATERIALS'},'rejected' end
+  occupied[pos]=true;return true
+ end
+ local value=fresh(4)
+ assert(not value.Buttons.RetryFailed.Active and not value:RetryFailures(),'fresh plans cannot retry cells they have never attempted')
+ assert(value:Start());drain()
+ assert(value.Progress.Failed==2 and value:FailureCounts().Retryable==2 and value.Buttons.RetryFailed.Active,'explicitly rejected cells must become retry candidates after worker cleanup')
+ assert(string.find(value:FailureReport(),'blueprint block #1 · grass · MISSING_MATERIALS',1,true) and string.find(value:DiagnosticReport(),'MISSING_MATERIALS',1,true),'per-cell reasons must survive a later successful placement result')
+ allow=true;trace={};assert(value:RetryFailures());drain()
+ assert(#trace==2 and trace[1]==1 and trace[2]==3 and value.Progress.RetryOnly and value.Progress.Total==2 and value.Progress.Placed==2,'Retry failed must exclude successful and unattempted cells while preserving order')
+ assert(value:FailureCounts().Retryable==0 and not value.Buttons.RetryFailed.Active and value.History[1].RetryOnly,'successful retry must clear candidates and label result history')
+ -- A rejected target that has since become occupied is skipped without resending.
+ ctx.Place=function() return false,{success=false,error='DENIED'},'rejected' end
+ value=fresh(1);value:Start();drain();occupied[1]=true
+ ctx.Place=function() error('occupied retry must not send') end
+ assert(value:RetryFailures());drain();assert(value.Progress.Skipped==1 and value:FailureCounts().Retryable==0)
+ -- Unknown transport and accepted/no-gain outcomes need review, not automatic replay.
+ trace={};ctx.Place=function(body)
+  table.insert(trace,body.cframe.Position)
+  if body.cframe.Position==1 then return false,{success=false,error='DENIED'},'rejected' end
+  return false,'connection lost','transport'
+ end
+ value=fresh(3);value:Start();drain()
+ assert(value:FailureCounts().Retryable==1 and value:FailureCounts().Review==1 and #trace==2)
+ trace={};ctx.Place=function(body) table.insert(trace,body.cframe.Position);occupied[body.cframe.Position]=true;return true end
+ assert(value:RetryFailures());drain()
+ assert(#trace==1 and trace[1]==1 and value:FailureCounts().Review==1,'retry cannot include an uncertain request or an untouched later cell')
+ assert(not value:RetryFailures())
+ local attempts=0;ctx.Place=function() attempts+=1;return false,{error='TOO_FAST'},'transport' end
+ value=fresh(1);value:Start();drain()
+ assert(attempts==1 and value:FailureCounts().Review==1 and value:FailureCounts().Retryable==0,'transport-origin cooldown-shaped errors must never trigger a resend')
+ ctx.Place=function() return true end;value=fresh(1);value:Start();drain()
+ assert(value:FailureCounts().Review==1 and value:FailureCounts().Retryable==0 and not value:RetryFailures(),'accepted/unconfirmed calls cannot enter rejected-only retries')
+ -- Stop during a dispatched request retains its review marker until inspected.
+ ctx.Place=function() ctx.Scheduler.wait(.1);return false,{success=false,error='DENIED'},'rejected' end
+ value=fresh(1);value:Start();value:Stop()
+ assert(not value:RetryFailures() and not value.Buttons.RetryFailed.Active,'in-flight cleanup must lock retry even after Stop')
+ drain();assert(value:FailureCounts().Review==1 and value:FailureCounts().Retryable==0)
+ -- Layer selection narrows the same rejected set; changed geometry/materials do not match it.
+ ctx.Place=function() return false,{success=false,error='DENIED'},'rejected' end
+ value=fresh(3);value.Cells[1].LayerY=0;value.Cells[2].LayerY=0;value.Cells[3].LayerY=3
+ value:Start();drain();assert(value:CycleLayer() and value:FailureCounts().Retryable==2)
+ trace={};ctx.Place=function(body) table.insert(trace,body.cframe.Position);occupied[body.cframe.Position]=true;return true end
+ assert(value:RetryFailures());drain();assert(#trace==2 and trace[1]==1 and trace[2]==2)
+ assert(value:CycleLayer() and value:FailureCounts().Retryable==1)
+ value.Cells[3].Material='stone';value:UpdateMaterials(value:SelectedCells())
+ assert(not value.Buttons.RetryFailed.Active and not value:RetryFailures(),'a changed material must not reuse an old rejection')
+ value.Cells[3].Material='grass';value.Cells[3].CFrame={Position=30};value:UpdateMaterials(value:SelectedCells())
+ assert(value:FailureCounts().Retryable==0,'moved geometry must not reuse old coordinates')
+ value:ClearPreview();assert(next(value.Failures)==nil)
+ ctx.Place,ctx.PlacementReady=originalPlace,originalReady
  end)()
 -- Slot inspection validates files without selecting their plans or starting work.
 ctx.ReadBlueprint=function(slot)
