@@ -3352,7 +3352,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-reports-86",
+    Subtitle = "queue-share-87",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3862,7 +3862,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-reports-86",
+    return table.concat({"Reborn queue-share-87",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5758,7 +5758,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn chest-reports-86 · Propeller loot history (UTC)",
+    return table.concat({"Reborn queue-share-87 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -5862,7 +5862,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn chest-reports-86 · Propeller tracker",
+    return table.concat({"Reborn queue-share-87 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -5898,7 +5898,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn chest-reports-86", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn queue-share-87", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -7978,7 +7978,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-reports-86\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn queue-share-87\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8040,7 +8040,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn chest-reports-86 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn queue-share-87 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -8631,7 +8631,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-reports-86\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn queue-share-87\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -9115,7 +9115,7 @@ function RemoteCatalog.MakeCraftJob(item,mode,batch,target,allowContinuous)
 end
 function RemoteCatalog.CraftQueueEditable()
     local recorder=RemoteCatalog.Recorder
-    return gui.Parent~=nil and not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftEnabled and not RemoteCatalog.CraftPresetBusy
+    return gui.Parent~=nil and not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftEnabled and not RemoteCatalog.CraftPresetBusy and not RemoteCatalog.CraftTransferBusy
         and not RemoteCatalog.CraftCatalogLoading and not RemoteCatalog.CraftLearning and not (recorder and recorder.LearnCraftOnly)
 end
 function RemoteCatalog.CraftQueueChanged()
@@ -9267,7 +9267,7 @@ function RemoteCatalog.CraftPresetIdle()
     local slot=RemoteCatalog.CraftPresetSlot
     if type(slot)~="number" or slot%1~=0 or slot<1 or slot>3 then RemoteCatalog.CraftMessage("Choose a queue preset slot from 1 to 3.");return false end
     if player.UserId~=RemoteCatalog.CraftPresetOwner or type(player.UserId)~="number" or player.UserId<1 or player.UserId%1~=0 then RemoteCatalog.CraftMessage("Queue presets belong to this hub's account. Reload the hub for another account.");return false end
-    if RemoteCatalog.CraftPresetBusy or RemoteCatalog.CraftWorker or RemoteCatalog.CraftEnabled or RemoteCatalog.CraftCatalogLoading or RemoteCatalog.CraftLearning or RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnCraftOnly then
+    if RemoteCatalog.CraftTransferBusy or RemoteCatalog.CraftPresetBusy or RemoteCatalog.CraftWorker or RemoteCatalog.CraftEnabled or RemoteCatalog.CraftCatalogLoading or RemoteCatalog.CraftLearning or RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnCraftOnly then
         RemoteCatalog.CraftMessage("Finish or stop crafting, recipe loading/learning and preset file work before editing presets.");return false
     end
     return true
@@ -9276,16 +9276,18 @@ function RemoteCatalog.RefreshCraftPresets()
     if not gui.Parent or not RemoteCatalog.CraftPresetSummary then return end
     local slot=RemoteCatalog.CraftPresetSlot
     local preset=RemoteCatalog.CraftPresets[slot]
-    local busy=RemoteCatalog.CraftPresetBusy or RemoteCatalog.CraftWorker~=nil or RemoteCatalog.CraftEnabled or RemoteCatalog.CraftCatalogLoading or RemoteCatalog.CraftLearning or RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnCraftOnly
-    for _,key in ipairs({"CraftPresetSlotButton","CraftPresetSaveButton","CraftPresetLoadButton"}) do
+    local busy=RemoteCatalog.CraftTransferBusy or RemoteCatalog.CraftPresetBusy or RemoteCatalog.CraftWorker~=nil or RemoteCatalog.CraftEnabled or RemoteCatalog.CraftCatalogLoading or RemoteCatalog.CraftLearning or RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnCraftOnly
+    for _,key in ipairs({"CraftPresetSlotButton","CraftPresetSaveButton","CraftPresetLoadButton","CraftExportButton","CraftCopyQueueButton","CraftImportButton"}) do
         local control=RemoteCatalog[key]
         if control then
             local available=not busy and (key~="CraftPresetLoadButton" or preset~=nil)
+                and (key~="CraftExportButton" and key~="CraftCopyQueueButton" or #RemoteCatalog.CraftQueue>0)
             control.Active=available;control.Selectable=available;control.AutoButtonColor=available
             control.TextColor3=available and COLORS.text or COLORS.muted
         end
     end
     if RemoteCatalog.CraftPresetName then RemoteCatalog.CraftPresetName.TextEditable=not busy end
+    if RemoteCatalog.CraftTransferText then RemoteCatalog.CraftTransferText.TextEditable=not busy end
     if RemoteCatalog.CraftPresetSlotButton then RemoteCatalog.CraftPresetSlotButton.Text="Preset: "..tostring(slot).." / 3" end
     RemoteCatalog.CraftPresetSummary.Text=(preset and (preset.Name.." · "..#preset.Jobs.." jobs · "..(RemoteCatalog.CraftPresetPersistence[slot] or "Session only")) or ("Empty preset "..tostring(slot))).."\n"..RemoteCatalog.CraftPresetFileState.."\nLoad replaces the working queue and keeps crafting OFF. Learn each recipe on this character/server before Run Queue."
 end
@@ -9368,6 +9370,75 @@ function RemoteCatalog.LoadCraftPreset()
     RemoteCatalog.RefreshCraftUI()
     return true
 end
+function RemoteCatalog.CraftTransferMessage(text,notice)
+    RemoteCatalog.CraftMessage(text)
+    if gui.Parent and RemoteCatalog.CraftTransferHint then RemoteCatalog.CraftTransferHint.Text=notice or text end
+end
+function RemoteCatalog.SetCraftTransferOpen(open)
+    if not gui.Parent or not RemoteCatalog.CraftTransferPanel then return false end
+    RemoteCatalog.CloseMenus()
+    RemoteCatalog.CraftTransferPanel.Visible=open==true
+    RemoteCatalog.CraftTransferPanel.Size=UDim2.new(1,-12,0,open and 250 or 0)
+    RemoteCatalog.CraftTransferButton.Text=open and "Queue backup / share  ▴" or "Queue backup / share  ▾"
+    if not open then pcall(function() RemoteCatalog.CraftTransferText:ReleaseFocus() end) end
+    return true
+end
+function RemoteCatalog.CraftTransferReady()
+    if not gui.Parent then return false end
+    if player.UserId~=RemoteCatalog.CraftPresetOwner then RemoteCatalog.CraftTransferMessage("Reload the hub after changing accounts before importing/exporting queues.");return false end
+    if not RemoteCatalog.CraftQueueEditable() then RemoteCatalog.CraftTransferMessage("Stop crafting and wait for learning, catalog, file and request cleanup before importing/exporting queues.","Stop and wait for crafting, learning and file work before transferring.");return false end
+    return true
+end
+function RemoteCatalog.ExportCraftQueue(copy)
+    if not RemoteCatalog.CraftTransferReady() then return false end
+    RemoteCatalog.CloseMenus()
+    local queue,generation=RemoteCatalog.CraftQueue,RemoteCatalog.CraftGeneration
+    local name=RemoteCatalog.CraftPresetName and RemoteCatalog.CraftPresetName.Text:match("^%s*(.-)%s*$") or "Shared craft queue"
+    if name=="" then name="Shared craft queue" end
+    RemoteCatalog.CraftTransferBusy=true;RemoteCatalog.RefreshCraftUI()
+    local ok,encoded=pcall(function()
+        -- Export a fresh descriptor snapshot; learned packets never enter JSON.
+        local preset=RemoteCatalog.ValidateCraftPreset({Version=1,Name=name,Jobs=queue})
+        local text=HttpService:JSONEncode(preset)
+        assert(type(text)=="string" and #text>0 and #text<=32768,"Queue export must fit within 32 KiB")
+        return text
+    end)
+    RemoteCatalog.CraftTransferBusy=false;RemoteCatalog.RefreshCraftUI()
+    if not RemoteCatalog.CraftTransferReady() or RemoteCatalog.CraftQueue~=queue or RemoteCatalog.CraftGeneration~=generation then
+        RemoteCatalog.CraftTransferMessage("Queue or crafting state changed during transfer. Try again when idle.");return false
+    end
+    if not ok then RemoteCatalog.CraftTransferMessage("Export failed: "..tostring(encoded)..". Queue and transfer text kept.","Export failed. Existing transfer text kept; see craft status for details.");return false end
+    RemoteCatalog.CraftTransferText.Text=encoded
+    RemoteCatalog.SetCraftTransferOpen(true)
+    local copied=false
+    if copy then
+        local copier=setclipboard or toclipboard
+        if type(copier)=="function" then local ran,result=pcall(copier,encoded);copied=ran and result~=false end
+    end
+    RemoteCatalog.CraftTransferMessage(copy and (copied and "Queue JSON copied. Export is also shown below." or "Clipboard unavailable or failed. Select and copy the queue JSON shown below.")
+        or "Queue exported below. Copy JSON to back it up or share it. No crafting started.")
+    return true,encoded
+end
+function RemoteCatalog.ImportCraftQueue(text)
+    if not RemoteCatalog.CraftTransferReady() then return false end
+    if type(text)~="string" or #text==0 or #text>32768 then RemoteCatalog.CraftTransferMessage("Paste queue JSON of 1–32768 bytes. Current queue kept.");return false end
+    RemoteCatalog.CloseMenus()
+    local queue,generation=RemoteCatalog.CraftQueue,RemoteCatalog.CraftGeneration
+    RemoteCatalog.CraftTransferBusy=true;RemoteCatalog.RefreshCraftUI()
+    local ok,preset=pcall(function() return RemoteCatalog.ValidateCraftPreset(HttpService:JSONDecode(text)) end)
+    RemoteCatalog.CraftTransferBusy=false;RemoteCatalog.RefreshCraftUI()
+    if not RemoteCatalog.CraftTransferReady() or RemoteCatalog.CraftQueue~=queue or RemoteCatalog.CraftGeneration~=generation then
+        RemoteCatalog.CraftTransferMessage("Queue or crafting state changed during transfer. Try again when idle.");return false
+    end
+    if not ok then RemoteCatalog.CraftTransferMessage("Import rejected: "..tostring(preset)..". Current queue and saved presets kept.","Import rejected. Working queue and saved presets kept; see craft status for details.");return false end
+    RemoteCatalog.CraftQueue=preset.Jobs;RemoteCatalog.CraftQueueSelected=nil
+    RemoteCatalog.CraftQueueChanged();RemoteCatalog.CraftQueueRunning=false;RemoteCatalog.CraftPaused=false
+    if RemoteCatalog.CraftPresetName then RemoteCatalog.CraftPresetName.Text=preset.Name end
+    RemoteCatalog.CraftTransferMessage("Imported "..preset.Name..": "..#preset.Jobs.." jobs. Working queue replaced; saved presets kept. Learn each recipe here, then Run Queue. Save a preset to retain it.",
+        "Imported "..#preset.Jobs.." jobs. Crafting stays OFF. Save a preset to retain this queue.")
+    RemoteCatalog.RefreshCraftUI()
+    return true
+end
 -- CRAFT PRESETS END
 
 function RemoteCatalog.SetCraftPaused(state)
@@ -9378,6 +9449,7 @@ function RemoteCatalog.SetCraftPaused(state)
     return true
 end
 function RemoteCatalog.SetCraftEnabled(state,queued)
+    if state and RemoteCatalog.CraftTransferBusy then RemoteCatalog.CraftMessage("Wait for queue import/export to finish before starting crafting.");return false end
     if state and RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish before starting crafting.");return false end
     if state and RemoteCatalog.CraftCatalogLoading then RemoteCatalog.CraftMessage("Wait for recipe loading to finish first.");return false end
     if not state then
@@ -9530,7 +9602,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn chest-reports-86 · Craft diagnostics",
+    return table.concat({"Reborn queue-share-87 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -9607,7 +9679,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn chest-reports-86 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn queue-share-87 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -9661,6 +9733,31 @@ end))
 table.insert(RemoteCatalog.MenuClosers,function() pcall(function() RemoteCatalog.CraftPresetName:ReleaseFocus() end) end)
 track(RemoteCatalog.CraftPresetSaveButton.Activated:Connect(RemoteCatalog.SaveCraftPreset))
 track(RemoteCatalog.CraftPresetLoadButton.Activated:Connect(RemoteCatalog.LoadCraftPreset))
+RemoteCatalog.CraftTransferButton=button({Parent=RemoteCatalog.CraftPage,Text="Queue backup / share  ▾",TextSize=12,Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,1524)})
+RemoteCatalog.CraftTransferPanel=Instance.new("Frame")
+RemoteCatalog.CraftTransferPanel.Name="CraftQueueTransferPanel";RemoteCatalog.CraftTransferPanel.Position=UDim2.fromOffset(6,1566)
+RemoteCatalog.CraftTransferPanel.Size=UDim2.new(1,-12,0,0);RemoteCatalog.CraftTransferPanel.Visible=false;RemoteCatalog.CraftTransferPanel.ClipsDescendants=true
+RemoteCatalog.CraftTransferPanel.BackgroundColor3=COLORS.panel;RemoteCatalog.CraftTransferPanel.BorderSizePixel=0;RemoteCatalog.CraftTransferPanel.Parent=RemoteCatalog.CraftPage;corner(RemoteCatalog.CraftTransferPanel,8)
+RemoteCatalog.CraftExportButton=button({Parent=RemoteCatalog.CraftTransferPanel,Text="Export queue",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,6)})
+RemoteCatalog.CraftCopyQueueButton=button({Parent=RemoteCatalog.CraftTransferPanel,Text="Copy queue JSON",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,6)})
+RemoteCatalog.CraftTransferView=Instance.new("ScrollingFrame")
+RemoteCatalog.CraftTransferView.Name="CraftQueueTransferView";RemoteCatalog.CraftTransferView.Size=UDim2.new(1,-12,0,108);RemoteCatalog.CraftTransferView.Position=UDim2.fromOffset(6,48)
+RemoteCatalog.CraftTransferView.BackgroundTransparency=1;RemoteCatalog.CraftTransferView.BorderSizePixel=0;RemoteCatalog.CraftTransferView.ScrollBarThickness=5
+RemoteCatalog.CraftTransferView.AutomaticCanvasSize=Enum.AutomaticSize.Y;RemoteCatalog.CraftTransferView.CanvasSize=UDim2.new();RemoteCatalog.CraftTransferView.Parent=RemoteCatalog.CraftTransferPanel
+RemoteCatalog.CraftTransferText=Instance.new("TextBox")
+RemoteCatalog.CraftTransferText.Name="CraftQueueTransfer";RemoteCatalog.CraftTransferText.Text="";RemoteCatalog.CraftTransferText.PlaceholderText="Paste queue JSON here, or export the working queue."
+RemoteCatalog.CraftTransferText.MultiLine=true;RemoteCatalog.CraftTransferText.ClearTextOnFocus=false;RemoteCatalog.CraftTransferText.TextWrapped=true
+RemoteCatalog.CraftTransferText.TextSize=12;RemoteCatalog.CraftTransferText.TextXAlignment=Enum.TextXAlignment.Left;RemoteCatalog.CraftTransferText.TextYAlignment=Enum.TextYAlignment.Top
+RemoteCatalog.CraftTransferText.TextColor3=COLORS.text;RemoteCatalog.CraftTransferText.BackgroundColor3=COLORS.panel
+RemoteCatalog.CraftTransferText.Size=UDim2.new(1,-14,0,96);RemoteCatalog.CraftTransferText.Position=UDim2.fromOffset(2,2);RemoteCatalog.CraftTransferText.AutomaticSize=Enum.AutomaticSize.Y;RemoteCatalog.CraftTransferText.Parent=RemoteCatalog.CraftTransferView
+RemoteCatalog.CraftImportButton=button({Parent=RemoteCatalog.CraftTransferPanel,Text="Import JSON → replace working queue",TextSize=12,Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,164)})
+RemoteCatalog.CraftTransferHint=label({Parent=RemoteCatalog.CraftTransferPanel,Text="Import replaces the working queue only. Saved presets stay unchanged. Recipes must be learned here before running; import never starts crafting.",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,202)})
+RemoteCatalog.CraftTransferHint.TextWrapped=true
+track(RemoteCatalog.CraftTransferButton.Activated:Connect(function() RemoteCatalog.SetCraftTransferOpen(not RemoteCatalog.CraftTransferPanel.Visible) end))
+track(RemoteCatalog.CraftExportButton.Activated:Connect(function() RemoteCatalog.ExportCraftQueue(false) end))
+track(RemoteCatalog.CraftCopyQueueButton.Activated:Connect(function() RemoteCatalog.ExportCraftQueue(true) end))
+track(RemoteCatalog.CraftImportButton.Activated:Connect(function() RemoteCatalog.ImportCraftQueue(RemoteCatalog.CraftTransferText.Text) end))
+table.insert(RemoteCatalog.MenuClosers,function() pcall(function() RemoteCatalog.CraftTransferText:ReleaseFocus() end) end)
 RemoteCatalog.ReadCraftPresets()
 RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText())
 RemoteCatalog.RefreshCraftUI()

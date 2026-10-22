@@ -1032,3 +1032,21 @@ uncredited. Cooldown exhaustion and unreadable inventory receive distinct histor
 outcomes; stop/retry behavior stays unchanged. Copy runs reads these text snapshots
 and uses clipboard or console output without replaying anything. Tests cover real
 workers and real UI handlers, with full regressions; live Roblox remains unverified.
+
+### Portable crafting queue descriptors (queue-share-87)
+
+v87 retains recorder v31, the 146 endpoint catalog and all crafting request
+formats, caps, confirmation and context checks. Queue sharing serializes the
+existing validated version-1 single-preset shape: Name and 1–8 finite Jobs, each
+containing Item, Mode, Batch and Target. Validation constructs fresh descriptors;
+unknown fields and captured bindings are not exported or retained on import.
+JSON input/output is capped at 32 KiB. No imported text is executed.
+
+Import changes only the working queue and name field, resets old run/edit state
+and leaves automation OFF. Export/copy changes only transfer text and optional
+clipboard output. Neither path writes preset files, sends requests or fabricates
+learned context. The existing Run Queue whole-queue binding preflight still blocks
+unlearned or expired recipes before the first craft. Busy/account checks and
+queue/generation checks discard stale codec results. Tests exercise real core and
+UI handlers, concurrency guards, schema/size failures and cleanup, plus the full
+regression suite; live Roblox remains unverified.

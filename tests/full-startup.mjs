@@ -985,7 +985,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn chest-reports-86',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn queue-share-87',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1723,7 +1723,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn chest-reports-86 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn queue-share-87 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -1959,13 +1959,64 @@ end)()
  for _,field in ipairs(fields) do r[field]=old[field] end;r.RefreshPropellers()
  end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2]}
+;(function()
+ local r=RemoteCatalog
+ local fields={'CraftQueue','CraftQueueDone','CraftQueueTotal','CraftQueueIndex','CraftQueueRunSize','CraftQueueActiveItem','CraftQueueSelected','CraftMaterialRun','CraftPaused','CraftTransferBusy'}
+ local old={};for _,field in ipairs(fields) do old[field]=r[field] end
+ local name,text,hint=r.CraftPresetName.Text,r.CraftTransferText.Text,r.CraftTransferHint.Text
+ local encoder,decoder,clipboard,writer=HttpService.JSONEncode,HttpService.JSONDecode,setclipboard,writefile
+ local archive,sequence,copied,writes={},0,nil,0
+ HttpService.JSONEncode=function(_,data) sequence+=1;local token='queue-json-'..sequence;archive[token]=data;return token end
+ HttpService.JSONDecode=function(_,value) assert(archive[value],'invalid JSON');return archive[value] end
+ writefile=function() writes+=1 end
+ local function job(item) return {Item=item,Mode='Make amount',Batch=100,Target=100} end
+ r.CraftQueue={job('bait'),job('unknownRecipe')};r.CraftQueue[1].Binding={Secret='not portable'};r.CraftPresetName.Text=' Queue backup '
+ r.CraftQueueSelected=1;r.CraftQueueDone=1;r.CraftQueueTotal=100
+ r.RefreshCraftUI()
+ assert(not r.CraftTransferPanel.Visible and r.CraftTransferPanel.Size.Y.Offset==0,'sharing must start collapsed without a tall empty panel')
+ r.CraftTransferButton.Activated:Fire()
+ assert(r.CraftTransferPanel.Visible and r.CraftTransferPanel.Size.Y.Offset==250,'sharing toggle must reveal the panel')
+ assert(r.CraftTransferButton.Position.Y.Offset>=r.CraftPresetSummary.Position.Y.Offset+r.CraftPresetSummary.Size.Y.Offset and r.CraftTransferPanel.Position.Y.Offset>=r.CraftTransferButton.Position.Y.Offset+r.CraftTransferButton.Size.Y.Offset,'sharing must sit below presets without overlapping them')
+ assert(r.CraftTransferText.Parent==r.CraftTransferView and r.CraftTransferText.AutomaticSize==Enum.AutomaticSize.Y and r.CraftTransferView.AutomaticCanvasSize==Enum.AutomaticSize.Y,'long queue JSON must grow inside a scrolling field')
+ local y=r.CraftTransferPanel.Position.Y.Offset
+ r.CraftModeButton.Activated:Fire();assert(r.CraftTransferPanel.Position.Y.Offset>y,'open dropdowns must push sharing below their options')
+ r.CraftTransferButton.Activated:Fire();assert(not r.CraftTransferPanel.Visible and r.CraftTransferPanel.Position.Y.Offset==y,'closing sharing must close menus and restore its base layout')
+ r.CraftTransferButton.Activated:Fire()
+ local queue,presets=r.CraftQueue,r.CraftPresets
+ r.CraftExportButton.Activated:Fire()
+ assert(r.CraftTransferText.Text~='' and archive[r.CraftTransferText.Text].Name=='Queue backup' and archive[r.CraftTransferText.Text].Jobs[1].Binding==nil,'real Export must serialize clean descriptors and populate the field')
+ assert(r.CraftQueue==queue and not r.CraftWorker and writes==0,'real Export cannot craft, replace the queue or write preset files')
+ setclipboard=function() return false end;r.CraftCopyQueueButton.Activated:Fire()
+ assert(string.find(r.CraftTransferHint.Text,'Select and copy',1,true),'clipboard failure must give feedback beside the JSON field')
+ setclipboard=function(value) copied=value end;r.CraftCopyQueueButton.Activated:Fire()
+ assert(copied==r.CraftTransferText.Text and string.find(r.CraftTransferHint.Text,'copied',1,true),'Copy must use the fresh export and report success locally')
+ r.CraftTransferText.Text='broken';r.CraftImportButton.Activated:Fire()
+ assert(r.CraftQueue==queue and r.CraftPresets==presets and string.find(r.CraftTransferHint.Text,'Import rejected',1,true),'malformed JSON must preserve both queues and show a local error')
+ archive.imported={Version=1,Name='Imported queue',Jobs={job('unknownRecipe'),job('bait')}}
+ r.CraftTransferText.Text='imported';r.CraftImportButton.Activated:Fire()
+ assert(r.CraftQueue~=queue and r.CraftQueue[1].Item=='unknownRecipe' and r.CraftQueueDone==0 and not r.CraftQueueSelected and r.CraftQueueTotal==0 and r.CraftPresetName.Text=='Imported queue','real Import must install the ordered descriptors and clear previous progress')
+ assert(not r.CraftWorker and not r.CraftEnabled and r.CraftPresets==presets and writes==0 and string.find(r.CraftTransferHint.Text,'Crafting stays OFF',1,true),'real Import must keep crafting OFF and require explicit preset saving')
+ queue=r.CraftQueue;r.CraftWorker=true;r.RefreshCraftUI()
+ assert(not r.CraftImportButton.Active and not r.CraftExportButton.Active and not r.CraftCopyQueueButton.Active and not r.CraftTransferText.TextEditable,'in-flight cleanup must visibly lock sharing buttons and text editing')
+ r.CraftImportButton.Activated:Fire();r.CraftExportButton.Activated:Fire()
+ assert(r.CraftQueue==queue and not r.CraftTransferBusy,'locked callbacks must not import or export')
+ r.CraftWorker=nil;r.RefreshCraftUI();r.SetCraftTransferOpen(false)
+ for _,field in ipairs(fields) do r[field]=old[field] end
+ r.CraftPresetName.Text=name;r.CraftTransferText.Text=text;r.CraftTransferHint.Text=hint
+ HttpService.JSONEncode,HttpService.JSONDecode,setclipboard,writefile=encoder,decoder,clipboard,writer
+ r.RefreshCraftUI()
+ end)()
+
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton}
 RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
 RemoteCatalog.CraftItem="cleanup-sentinel";cleanupOptions.Recipe.Activated:Fire()
 assert(RemoteCatalog.CraftItem=="cleanup-sentinel","GUI cleanup must disconnect dynamic recipe option callbacks")
 RemoteCatalog.CraftMaterialsScope="cleanup-sentinel";cleanupOptions.Materials.Activated:Fire()
 assert(RemoteCatalog.CraftMaterialsScope=="cleanup-sentinel","GUI cleanup must disconnect material scope callbacks")
+RemoteCatalog.ImportCraftQueue=function() error('import callback survived GUI removal') end
+RemoteCatalog.ExportCraftQueue=function() error('export callback survived GUI removal') end
+cleanupOptions.Import.Activated:Fire();cleanupOptions.Export.Activated:Fire()
 assert(not RemoteCatalog.StopTimerDeadline,'destroying the hub must clear its timer')
 assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'

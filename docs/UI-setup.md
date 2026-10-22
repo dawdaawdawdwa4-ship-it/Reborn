@@ -2246,3 +2246,43 @@ request, cooldown exhaustion, unreadable inventory, transport/worker errors,
 settings snapshot isolation, bad clocks, whole-history export, direct priority
 buttons, disabled states and row layout. The full regression suite is required.
 Live Roblox behavior and rendering remain unverified.
+
+### Crafting queue backup and sharing (v87)
+
+Open **Crafting → Queue backup / share** below the saved presets. The section
+starts collapsed. **Export queue** puts the current working queue in a scrollable
+JSON field; **Copy queue JSON** refreshes that export and copies it. If the
+clipboard API is missing, throws or returns false, the JSON remains available
+for manual selection/copy. A blank preset-name field uses “Shared craft queue”
+for the exported name. Export does not change the queue or save a file.
+
+Paste an exported queue into the field and click **Import JSON → replace working
+queue**. Import replaces only the working descriptors and name field, clears the
+old edit selection/run totals and keeps crafting OFF. Saved presets are unchanged;
+explicitly Save a preset to retain the imported queue through the existing file
+workflow. Importing or exporting does not start a run, learn recipes or withdraw
+items. Run Queue still validates all current learned bindings before its first
+request; unlearned recipes may be shared/imported but must be learned here before
+running. Each normal crafting request remains capped at 100.
+
+The portable format is a single version-1 queue preset with Name and Jobs. It
+contains only recipe IDs, finite Make amount/Top up stock modes, batch and target.
+Session IDs, remote paths, workbench objects and learned packets are omitted.
+Existing validation requires 1–8 consecutive jobs, supported batch/target choices,
+bounded names and recipe IDs. Imports accept at most 32 KiB and decode JSON as
+plain data. Malformed/unsupported/oversized data preserves both the current queue
+and saved presets; failed export preserves the previous text draft. Feedback
+appears beside the field as well as in crafting status.
+
+Both transfer directions lock during crafting, Pause/cleanup, recipe learning,
+catalog loading and preset file work. Starting a run, editing jobs or applying a
+preset also waits for a pending transfer. A changed queue, Stop cycle, account or
+removed hub invalidates a pending codec result. The panel follows inline dropdown
+expansion without overlapping existing presets, and long JSON scrolls within its
+fixed viewport.
+
+Tests cover descriptor-only round trips, unknown-recipe preflight, invalid data,
+size limits, snapshot isolation, clipboard fallbacks, concurrent/busy/account
+states, stale callback cleanup, actual controls, scroll/layout behavior and event
+disconnection on GUI removal. The full regression suite is required. Live Roblox
+rendering, clipboard hosts and crafting remain unverified.
