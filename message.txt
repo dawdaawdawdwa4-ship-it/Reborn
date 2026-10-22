@@ -3465,7 +3465,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "build-floors-90",
+    Subtitle = "chest-backup-91",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3975,7 +3975,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-floors-90",
+    return table.concat({"Reborn chest-backup-91",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -4875,7 +4875,7 @@ track(RemoteCatalog.ChestQuickButton.Activated:Connect(function()
     setStatus("Fast slot setup: learned slots across matching chests. Items retained; press START COLLECTING. Use Whole chest ON if items move.",COLORS.good)
 end))
 RemoteCatalog.ChestProfilesPanel=Instance.new("Frame")
-RemoteCatalog.ChestProfilesPanel.Name="ChestProfiles";RemoteCatalog.ChestProfilesPanel.Size=UDim2.new(1,-12,0,152)
+RemoteCatalog.ChestProfilesPanel.Name="ChestProfiles";RemoteCatalog.ChestProfilesPanel.Size=UDim2.new(1,-12,0,196)
 RemoteCatalog.ChestProfilesPanel.Position=UDim2.fromOffset(6,254);RemoteCatalog.ChestProfilesPanel.BackgroundColor3=COLORS.panel
 RemoteCatalog.ChestProfilesPanel.BorderSizePixel=0;RemoteCatalog.ChestProfilesPanel.Visible=false;RemoteCatalog.ChestProfilesPanel.Parent=RemoteCatalog.ChestPage
 RemoteCatalog.ChestProfileSlotButton=button({Parent=RemoteCatalog.ChestProfilesPanel,Text="Profile: 1 / 3",TextSize=12,
@@ -4892,6 +4892,42 @@ RemoteCatalog.ChestProfileLoadButton=button({Parent=RemoteCatalog.ChestProfilesP
 RemoteCatalog.ChestProfileSummary=label({Parent=RemoteCatalog.ChestProfilesPanel,Text="No profile saved.",TextSize=12,Color=COLORS.muted,
     Size=UDim2.new(1,-12,0,70),Position=UDim2.fromOffset(6,76)})
 RemoteCatalog.ChestProfileSummary.TextWrapped=true
+RemoteCatalog.ChestTransferButton=button({Parent=RemoteCatalog.ChestProfilesPanel,Text="Backup / share setup  ▾",TextSize=12,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,152)})
+RemoteCatalog.ChestTransferPanel=Instance.new("Frame")
+RemoteCatalog.ChestTransferPanel.Name="ChestSetupTransfer";RemoteCatalog.ChestTransferPanel.Position=UDim2.fromOffset(6,194)
+RemoteCatalog.ChestTransferPanel.Size=UDim2.new(1,-12,0,246);RemoteCatalog.ChestTransferPanel.Visible=false
+RemoteCatalog.ChestTransferPanel.BackgroundColor3=COLORS.bg;RemoteCatalog.ChestTransferPanel.BorderSizePixel=0
+RemoteCatalog.ChestTransferPanel.Parent=RemoteCatalog.ChestProfilesPanel;corner(RemoteCatalog.ChestTransferPanel,8)
+RemoteCatalog.ChestExportButton=button({Parent=RemoteCatalog.ChestTransferPanel,Text="Export current setup",TextSize=12,
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,4)})
+RemoteCatalog.ChestCopySetupButton=button({Parent=RemoteCatalog.ChestTransferPanel,Text="Copy setup JSON",TextSize=12,
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,4)})
+RemoteCatalog.ChestTransferView=Instance.new("ScrollingFrame")
+RemoteCatalog.ChestTransferView.Name="ChestSetupJSONView";RemoteCatalog.ChestTransferView.Size=UDim2.new(1,-12,0,108)
+RemoteCatalog.ChestTransferView.Position=UDim2.fromOffset(6,46);RemoteCatalog.ChestTransferView.BackgroundTransparency=1
+RemoteCatalog.ChestTransferView.BorderSizePixel=0;RemoteCatalog.ChestTransferView.ScrollBarThickness=5
+RemoteCatalog.ChestTransferView.AutomaticCanvasSize=Enum.AutomaticSize.Y;RemoteCatalog.ChestTransferView.CanvasSize=UDim2.new()
+RemoteCatalog.ChestTransferView.Parent=RemoteCatalog.ChestTransferPanel
+RemoteCatalog.ChestTransferText=Instance.new("TextBox")
+RemoteCatalog.ChestTransferText.Name="ChestSetupJSON";RemoteCatalog.ChestTransferText.Text=""
+RemoteCatalog.ChestTransferText.PlaceholderText="Paste setup JSON here, or export your current chest settings."
+RemoteCatalog.ChestTransferText.MultiLine=true;RemoteCatalog.ChestTransferText.ClearTextOnFocus=false;RemoteCatalog.ChestTransferText.TextWrapped=true
+RemoteCatalog.ChestTransferText.TextSize=12;RemoteCatalog.ChestTransferText.TextXAlignment=Enum.TextXAlignment.Left
+RemoteCatalog.ChestTransferText.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.ChestTransferText.TextColor3=COLORS.text
+RemoteCatalog.ChestTransferText.BackgroundColor3=COLORS.panel;RemoteCatalog.ChestTransferText.Size=UDim2.new(1,-14,0,96)
+RemoteCatalog.ChestTransferText.Position=UDim2.fromOffset(2,2);RemoteCatalog.ChestTransferText.AutomaticSize=Enum.AutomaticSize.Y
+RemoteCatalog.ChestTransferText.Parent=RemoteCatalog.ChestTransferView
+RemoteCatalog.ChestImportButton=button({Parent=RemoteCatalog.ChestTransferPanel,Text="Import JSON → apply settings",TextSize=12,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,162)})
+RemoteCatalog.ChestTransferHint=label({Parent=RemoteCatalog.ChestTransferPanel,
+    Text="Apply changes current settings. Save profile to keep them. Saved slots stay unchanged; collection stays OFF.",
+    TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-16,0,44),Position=UDim2.fromOffset(8,200)})
+RemoteCatalog.ChestTransferHint.TextWrapped=true
+track(RemoteCatalog.ChestTransferButton.Activated:Connect(function() RemoteCatalog.SetChestTransferOpen(not RemoteCatalog.ChestTransferPanel.Visible) end))
+track(RemoteCatalog.ChestExportButton.Activated:Connect(function() RemoteCatalog.ExportChestSetup(false) end))
+track(RemoteCatalog.ChestCopySetupButton.Activated:Connect(function() RemoteCatalog.ExportChestSetup(true) end))
+track(RemoteCatalog.ChestImportButton.Activated:Connect(function() RemoteCatalog.ImportChestSetup(RemoteCatalog.ChestTransferText.Text) end))
 track(RemoteCatalog.ChestProfilesButton.Activated:Connect(function()
     local open=not RemoteCatalog.ChestProfilesPanel.Visible
     RemoteCatalog.CloseMenus();RemoteCatalog.ChestProfilesPanel.Visible=open
@@ -4975,11 +5011,11 @@ function RemoteCatalog.LayoutChestControls()
         if base.Y.Offset>=490 then y+=stockOffset end
         if base.Y.Offset>=260 then y+=itemOffset end
         if child~=RemoteCatalog.ChestConveyorButton and child~=RemoteCatalog.ChestProfilesButton and child~=RemoteCatalog.ChestProfilesPanel and child~=RemoteCatalog.ChestQuickButton and base.Y.Offset>=214 then
-            y+=44+(RemoteCatalog.ChestProfilesPanel.Visible and 160 or 0)
+            y+=44+(RemoteCatalog.ChestProfilesPanel.Visible and RemoteCatalog.ChestProfilesPanel.Size.Y.Offset+8 or 0)
         end
         child.Position=UDim2.new(base.X.Scale,base.X.Offset,base.Y.Scale,y)
     end
-    local profileOffset=88+batchOffset+(RemoteCatalog.ChestProfilesPanel.Visible and 160 or 0)
+    local profileOffset=88+batchOffset+(RemoteCatalog.ChestProfilesPanel.Visible and RemoteCatalog.ChestProfilesPanel.Size.Y.Offset+8 or 0)
     RemoteCatalog.ChestItemMenu.Position=UDim2.fromOffset(6,254+profileOffset)
     RemoteCatalog.ChestAmountMenu.Position=UDim2.new(0,6,0,716+selectOffset+itemOffset+profileOffset+stockOffset+orderOffset+exclusionOffset-(RemoteCatalog.ChestDetailsOpen and 0 or 134))
     RemoteCatalog.ChestOrderMenu.Menu.Position=UDim2.fromOffset(6,RemoteCatalog.ChestOrderButton.Position.Y.Offset+RemoteCatalog.ChestOrderButton.Size.Y.Offset+6)
@@ -4993,6 +5029,9 @@ table.insert(RemoteCatalog.MenuClosers,function()
     RemoteCatalog.ChestSelectMenu.Visible=false;RemoteCatalog.ChestAmountMenu.Visible=false;RemoteCatalog.ChestItemMenu.Visible=false
     if RemoteCatalog.ChestItemSearch then pcall(function() RemoteCatalog.ChestItemSearch:ReleaseFocus() end) end
     RemoteCatalog.ChestProfilesPanel.Visible=false;RemoteCatalog.ChestProfilesButton.Text="Chest profiles  ▾"
+    RemoteCatalog.ChestTransferPanel.Visible=false;RemoteCatalog.ChestProfilesPanel.Size=UDim2.new(1,-12,0,196)
+    RemoteCatalog.ChestTransferButton.Text="Backup / share setup  ▾"
+    pcall(function() RemoteCatalog.ChestTransferText:ReleaseFocus() end)
     pcall(function() RemoteCatalog.ChestProfileName:ReleaseFocus() end)
     RemoteCatalog.LayoutChestControls()
 end)
@@ -5871,7 +5910,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn build-floors-90 · Propeller loot history (UTC)",
+    return table.concat({"Reborn chest-backup-91 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -5975,7 +6014,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn build-floors-90 · Propeller tracker",
+    return table.concat({"Reborn chest-backup-91 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6011,7 +6050,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-floors-90", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-backup-91", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -7368,6 +7407,7 @@ function RemoteCatalog.StopChestLearning()
     end
 end
 track(RemoteCatalog.ChestLearnButton.Activated:Connect(function()
+    if RemoteCatalog.ChestTransferBusy then setStatus("Wait for chest setup import/export to finish",COLORS.warn);return end
     if RemoteCatalog.SetChestAuto then RemoteCatalog.SetChestAuto(false) end
     RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
     if RemoteCatalog.ChestBusy then setStatus("Wait for the current chest request to finish",COLORS.warn);return end
@@ -7703,6 +7743,7 @@ function RemoteCatalog.PreviewChestSelection()
     return text
 end
 function RemoteCatalog.ChestRequestReady(binding)
+    if RemoteCatalog.ChestTransferBusy then return false,"Wait for chest setup import/export to finish" end
     if RemoteCatalog.ChestIsExcluded(binding) then return false,"This chest is explicitly excluded for this hub session. Choose it in Targets and Allow selected chest to undo." end
     if RemoteCatalog.ChestConveyorProtected(binding) then return false,"Conveyor I/O chest skipped. Choose Include to withdraw from it." end
     local chest=binding and binding.Chest
@@ -7924,6 +7965,7 @@ end
 RemoteCatalog.ChestProfiles={}
 RemoteCatalog.ChestProfilePersistence={}
 RemoteCatalog.ChestProfileSlot=1
+RemoteCatalog.ChestProfileOwner=player.UserId
 function RemoteCatalog.ValidateChestProfile(data)
     assert(type(data)=="table" and data.Version==1,"Unsupported chest profile version")
     assert(type(data.Name)=="string" and #data.Name>=1 and #data.Name<=48 and data.Name:match("^%s*(.-)%s*$")==data.Name and not data.Name:find("[%c]"),"Use a profile name of 1–48 bytes")
@@ -7992,6 +8034,9 @@ function RemoteCatalog.ReadChestProfiles()
     return true
 end
 function RemoteCatalog.ChestProfileIdle()
+    if not gui.Parent then return false end
+    if player.UserId~=RemoteCatalog.ChestProfileOwner then setStatus("Reload the hub after changing accounts before using chest profiles",COLORS.warn);return false end
+    if RemoteCatalog.ChestTransferBusy then setStatus("Wait for chest setup import/export to finish",COLORS.warn);return false end
     local slot=RemoteCatalog.ChestProfileSlot
     if type(slot)~="number" or slot%1~=0 or slot<1 or slot>3 then setStatus("Choose a chest profile slot from 1 to 3",COLORS.warn);return false end
     if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy or RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnChestOnly then
@@ -7999,8 +8044,7 @@ function RemoteCatalog.ChestProfileIdle()
     end
     return true
 end
-function RemoteCatalog.SaveChestProfile()
-    if not RemoteCatalog.ChestProfileIdle() then return false end
+function RemoteCatalog.CurrentChestProfile()
     local selected,mode={},"All"
     if RemoteCatalog.ChestItem then
         mode="Selected"
@@ -8010,9 +8054,13 @@ function RemoteCatalog.SaveChestProfile()
         for item,enabled in pairs(RemoteCatalog.ChestItems) do if enabled then table.insert(selected,item) end end
     end
     local name=RemoteCatalog.ChestProfileName.Text:match("^%s*(.-)%s*$")
-    local ok,profile=pcall(RemoteCatalog.ValidateChestProfile,{Version=1,Name=name,ItemMode=mode,Items=selected,
+    return RemoteCatalog.ValidateChestProfile({Version=1,Name=name,ItemMode=mode,Items=selected,
         Discover=RemoteCatalog.ChestDiscover,Whole=RemoteCatalog.ChestWhole,Speed=RemoteCatalog.ChestSpeed,
         Travel=RemoteCatalog.ChestTravel,Range=RemoteCatalog.ChestScanRange,Goal=RemoteCatalog.ChestGoal or 0,StockTarget=RemoteCatalog.ChestStockTarget or 0,Repeat=RemoteCatalog.ChestRepeat==true,AutoBatch=RemoteCatalog.ChestAutoBatch,Order=RemoteCatalog.ChestOrder})
+end
+function RemoteCatalog.SaveChestProfile()
+    if not RemoteCatalog.ChestProfileIdle() then return false end
+    local ok,profile=pcall(RemoteCatalog.CurrentChestProfile)
     if not ok then setStatus("Profile not saved: "..tostring(profile),COLORS.warn);return false end
     local slot=RemoteCatalog.ChestProfileSlot
     RemoteCatalog.ChestProfiles[slot]=profile;RemoteCatalog.ChestProfileName.Text=profile.Name
@@ -8034,10 +8082,10 @@ function RemoteCatalog.SaveChestProfile()
     setStatus("Saved chest profile "..slot..": "..profile.Name..(saved and " (file + session)" or " (session only; file saving unavailable or failed)"),COLORS.good)
     return true
 end
-function RemoteCatalog.LoadChestProfile()
+function RemoteCatalog.ApplyChestProfile(data)
     if not RemoteCatalog.ChestProfileIdle() then return false end
-    local ok,profile=pcall(RemoteCatalog.ValidateChestProfile,RemoteCatalog.ChestProfiles[RemoteCatalog.ChestProfileSlot])
-    if not ok then setStatus("Save a valid profile in this slot before loading it",COLORS.warn);return false end
+    local ok,profile=pcall(RemoteCatalog.ValidateChestProfile,data)
+    if not ok then setStatus("Invalid chest setup: "..tostring(profile):sub(1,180),COLORS.warn);return false end
     local items
     if profile.ItemMode=="Selected" then items={};for _,item in ipairs(profile.Items) do items[item]=true end end
     RemoteCatalog.ChestItems=items;RemoteCatalog.ChestItem=nil;RemoteCatalog.ChestSelection=nil
@@ -8060,9 +8108,94 @@ function RemoteCatalog.LoadChestProfile()
     RemoteCatalog.ChestWholeButton.Text=profile.Whole and "Whole chest: ON" or "Whole chest: OFF"
     RemoteCatalog.ChestItemButton.Text="Items: "..RemoteCatalog.ChestItemSelectionText().."  ▾"
     RemoteCatalog.CloseMenus();RemoteCatalog.UpdateChestSelectionUI();RemoteCatalog.PreviewChestSelection();RemoteCatalog.RefreshChestProfiles()
+    return true
+end
+function RemoteCatalog.LoadChestProfile()
+    if not RemoteCatalog.ChestProfileIdle() then return false end
+    local profile=RemoteCatalog.ChestProfiles[RemoteCatalog.ChestProfileSlot]
+    if not profile then setStatus("Save a valid profile in this slot before loading it",COLORS.warn);return false end
+    if not RemoteCatalog.ApplyChestProfile(profile) then return false end
     setStatus("Loaded "..profile.Name..". Chest choice reset to all in scope; learn slots this session, then press START COLLECTING.",COLORS.good)
     return true
 end
+-- CHEST SETUP TRANSFER BEGIN
+function RemoteCatalog.ChestTransferMessage(text,notice)
+    if not gui.Parent then return end
+    if RemoteCatalog.ChestTransferHint then RemoteCatalog.ChestTransferHint.Text=notice or text end
+    setStatus(text,COLORS.warn)
+end
+function RemoteCatalog.SetChestTransferOpen(open)
+    if not gui.Parent then return false end
+    RemoteCatalog.CloseMenus()
+    RemoteCatalog.ChestProfilesPanel.Visible=true;RemoteCatalog.ChestProfilesButton.Text="Chest profiles  ▴"
+    RemoteCatalog.ChestTransferPanel.Visible=open==true
+    RemoteCatalog.ChestProfilesPanel.Size=UDim2.new(1,-12,0,open and 448 or 196)
+    RemoteCatalog.ChestTransferButton.Text=open and "Backup / share setup  ▴" or "Backup / share setup  ▾"
+    RemoteCatalog.LayoutChestControls()
+    return true
+end
+RemoteCatalog.ChestTransferFields={"ChestProfileSlot","ChestItem","ChestItems","ChestSelection","ChestDiscover","ChestWhole",
+    "ChestSpeed","ChestTravel","ChestScanRange","ChestGoal","ChestStockTarget","ChestRepeat","ChestAutoBatch","ChestOrder"}
+function RemoteCatalog.ChestTransferContext()
+    local context={Name=RemoteCatalog.ChestProfileName.Text,Items={}}
+    for _,key in ipairs(RemoteCatalog.ChestTransferFields) do context[key]=RemoteCatalog[key] end
+    for item,value in pairs(RemoteCatalog.ChestItems or {}) do context.Items[item]=value end
+    return context
+end
+function RemoteCatalog.ChestTransferUnchanged(context)
+    if not RemoteCatalog.ChestProfileIdle() then return false end
+    local same=context.Name==RemoteCatalog.ChestProfileName.Text
+    for _,key in ipairs(RemoteCatalog.ChestTransferFields) do if context[key]~=RemoteCatalog[key] then same=false end end
+    for item,value in pairs(context.Items) do if not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[item]~=value then same=false end end
+    for item,value in pairs(RemoteCatalog.ChestItems or {}) do if context.Items[item]~=value then same=false end end
+    if not same then RemoteCatalog.ChestTransferMessage("Chest settings changed during transfer. Try again when idle.");return false end
+    return true
+end
+function RemoteCatalog.ExportChestSetup(copy)
+    if not RemoteCatalog.ChestProfileIdle() then return false end
+    local context=RemoteCatalog.ChestTransferContext()
+    RemoteCatalog.ChestTransferBusy=true
+    local ok,encoded=pcall(function()
+        local profile=RemoteCatalog.CurrentChestProfile()
+        local text=HttpService:JSONEncode({Version=1,Kind="RebornChestSetup",Profile=profile})
+        assert(type(text)=="string" and #text>0 and #text<=32768,"Setup JSON must fit within 32 KiB")
+        return text
+    end)
+    RemoteCatalog.ChestTransferBusy=false
+    if not RemoteCatalog.ChestTransferUnchanged(context) then return false end
+    if not ok then RemoteCatalog.ChestTransferMessage("Export failed. Existing JSON kept. "..tostring(encoded):sub(1,180),"Export failed. Existing JSON kept; see status for details.");return false end
+    RemoteCatalog.ChestTransferText.Text=encoded
+    RemoteCatalog.SetChestTransferOpen(true)
+    local copied=false
+    if copy then
+        local copier=setclipboard or toclipboard
+        if type(copier)=="function" then local ran,result=pcall(copier,encoded);copied=ran and result~=false end
+    end
+    if not RemoteCatalog.ChestTransferUnchanged(context) then return false end
+    RemoteCatalog.ChestTransferMessage(copy and (copied and "Setup JSON copied; also shown below."
+        or "Clipboard unavailable or failed. Select and copy the setup JSON below.")
+        or "Current setup exported below. Copy the JSON to back it up or share it.")
+    return true,encoded
+end
+function RemoteCatalog.ImportChestSetup(text)
+    if not RemoteCatalog.ChestProfileIdle() then return false end
+    if type(text)~="string" or #text==0 or #text>32768 then RemoteCatalog.ChestTransferMessage("Paste setup JSON of 1–32768 bytes. Current settings kept.");return false end
+    local context=RemoteCatalog.ChestTransferContext()
+    RemoteCatalog.ChestTransferBusy=true
+    local ok,profile=pcall(function()
+        local data=HttpService:JSONDecode(text)
+        assert(type(data)=="table" and data.Version==1 and data.Kind=="RebornChestSetup","Use an exported Reborn chest setup")
+        return RemoteCatalog.ValidateChestProfile(data.Profile)
+    end)
+    RemoteCatalog.ChestTransferBusy=false
+    if not RemoteCatalog.ChestTransferUnchanged(context) then return false end
+    if not ok then RemoteCatalog.ChestTransferMessage("Import rejected. Current settings and saved profiles kept. "..tostring(profile):sub(1,180),"Import rejected. Settings and saved profiles kept; see status for details.");return false end
+    if not RemoteCatalog.ApplyChestProfile(profile) then return false end
+    RemoteCatalog.SetChestTransferOpen(true)
+    RemoteCatalog.ChestTransferMessage("Applied "..profile.Name..". Collection stays OFF. Save profile to retain these settings; saved slots unchanged.")
+    return true
+end
+-- CHEST SETUP TRANSFER END
 RemoteCatalog.ReadChestProfiles()
 if RemoteCatalog.ChestProfiles[RemoteCatalog.ChestProfileSlot] then RemoteCatalog.ChestProfileName.Text=RemoteCatalog.ChestProfiles[RemoteCatalog.ChestProfileSlot].Name end
 RemoteCatalog.RefreshChestProfiles()
@@ -8097,7 +8230,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-floors-90\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-backup-91\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8159,7 +8292,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn build-floors-90 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn chest-backup-91 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -8336,6 +8469,7 @@ function RemoteCatalog.ChestAutoStates(targets,batch,probe)
     return states
 end
 function RemoteCatalog.SetChestAuto(state)
+    if state and RemoteCatalog.ChestTransferBusy then RemoteCatalog.ChestAutoMessage("Wait for chest setup import/export to finish");return false end
     if state and RemoteCatalog.CraftWorker then RemoteCatalog.ChestAutoMessage("Stop crafting and wait for its current request to finish first");return false end
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);RemoteCatalog.ChestAutoMessage("Wait for Auto Plow input cleanup");return false end
     if not state then
@@ -8750,7 +8884,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-floors-90\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-backup-91\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -9861,7 +9995,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn build-floors-90 · Craft diagnostics",
+    return table.concat({"Reborn chest-backup-91 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -9940,7 +10074,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn build-floors-90 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn chest-backup-91 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end

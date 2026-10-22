@@ -985,7 +985,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-floors-90',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn chest-backup-91',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1723,7 +1723,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-floors-90 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn chest-backup-91 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2121,7 +2121,68 @@ end)()
  for _,section in ipairs(b.Sections) do if open[section.Key] then b:ToggleSection(section.Key) end end
  end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp}
+ ;(function()
+ local r=RemoteCatalog
+ local old=r.ChestTransferContext()
+ local oldProfiles,oldPersistence,oldText,oldHint=r.ChestProfiles,r.ChestProfilePersistence,r.ChestTransferText.Text,r.ChestTransferHint.Text
+ local oldEncode,oldDecode,oldWrite,oldCopy=HttpService.JSONEncode,HttpService.JSONDecode,writefile,setclipboard
+ local archive,sequence,writes={},0,0
+ HttpService.JSONEncode=function(_,data) sequence+=1;local text='chest-share-'..sequence;archive[text]=data;return text end
+ HttpService.JSONDecode=function(_,text) return assert(archive[text],'bad JSON') end
+ writefile=function(path,text) assert(path=='RebornChestProfiles_7.json' and archive[text].Profiles['1'].Name=='Shared supplies');writes+=1 end
+ setclipboard=function() return false end
+ r.ChestProfiles={};r.ChestProfilePersistence={};r.ChestProfileSlot=1
+ r.ChestProfileName.Text='Shared supplies';r.ChestItems={wood=true};r.ChestItem=nil;r.ChestSelection=nil
+ r.ChestDiscover=true;r.ChestWhole=false;r.ChestSpeed='Fast';r.ChestTravel='Stay';r.ChestScanRange=60
+ r.ChestGoal=250;r.ChestStockTarget=100;r.ChestRepeat=true;r.ChestAutoBatch='Max';r.ChestOrder='Balance chests'
+ showTab('Chests');flush()
+ local initial=r.ChestItemButton.Position.Y.Offset
+ assert(not r.ChestTransferPanel.Visible and not r.ChestProfilesPanel.Visible,'backup editor starts collapsed')
+ r.ChestProfilesButton.Activated:Fire();r.ChestTransferButton.Activated:Fire()
+ assert(r.ChestProfilesPanel.Visible and r.ChestTransferPanel.Visible and r.ChestProfilesPanel.Size.Y.Offset>=r.ChestTransferPanel.Position.Y.Offset+r.ChestTransferPanel.Size.Y.Offset,'backup editor must fit inside expanded profiles')
+ assert(r.ChestItemButton.Position.Y.Offset>=r.ChestProfilesPanel.Position.Y.Offset+r.ChestProfilesPanel.Size.Y.Offset,'expanded JSON editor must push following controls down')
+ assert(r.ChestTransferView:IsA('ScrollingFrame') and r.ChestTransferText.MultiLine and r.ChestTransferText.TextWrapped,'JSON must be editable and scrollable')
+ r.ChestExportButton.Activated:Fire()
+ local text=r.ChestTransferText.Text
+ assert(archive[text].Kind=='RebornChestSetup' and archive[text].Profile.AutoBatch=='Max' and writes==0 and not r.ChestAutoEnabled,'Export button must show current settings without saving or collecting')
+ r.ChestCopySetupButton.Activated:Fire()
+ assert(string.find(r.ChestTransferHint.Text,'Select and copy',1,true) and archive[r.ChestTransferText.Text],'failed clipboard API must explain the editable text fallback')
+ r.ChestSpeed='Standard';r.ChestItems={}
+ r.ChestImportButton.Activated:Fire()
+ assert(r.ChestSpeed=='Fast' and r.ChestItems.wood and r.ChestStockTarget==100 and r.ChestAutoBatch=='Max' and r.ChestOrder=='Balance chests','Import button must restore full working preferences')
+ assert(next(r.ChestProfiles)==nil and writes==0 and not r.ChestAutoEnabled and not r.ChestAutoWorker,'import must leave saved slots and workers untouched')
+ r.ChestProfileSaveButton.Activated:Fire()
+ assert(writes==1 and r.ChestProfiles[1].Name=='Shared supplies' and r.ChestProfiles[1].Items[1]=='wood','explicit Save must persist the imported setup normally')
+ for _,field in ipairs({'ChestAutoEnabled','ChestAutoWorker','ChestBusy'}) do
+  r[field]=true;r.ChestTransferText.Text='keep draft'
+  r.ChestImportButton.Activated:Fire();r.ChestExportButton.Activated:Fire()
+  assert(r.ChestTransferText.Text=='keep draft' and r.ChestItems.wood and writes==1,'busy actual callbacks must preserve settings and JSON')
+  r[field]=nil
+ end
+ local originalCapture=r.StartCapture
+ r.StartCapture=function() error('learning must not begin during transfer') end
+ HttpService.JSONEncode=function(_,data)
+  assert(r.ChestTransferBusy and not r.SetChestAuto(true),'auto collection cannot start during encoding')
+  assert(not r.ChestRequestReady(nil),'manual dispatch cannot pass preflight during transfer')
+  r.ChestLearnButton.Activated:Fire()
+  sequence+=1;local value='chest-share-'..sequence;archive[value]=data;return value
+ end
+ r.ChestExportButton.Activated:Fire()
+ assert(r.ChestTransferText.Text~='keep draft' and not r.ChestTransferBusy and not r.ChestAutoEnabled,'transfer must release lock after host reentry checks')
+ r.StartCapture=originalCapture
+ text=r.ChestTransferText.Text
+ showTab('Fishing');flush()
+ assert(not r.ChestTransferPanel.Visible and not r.ChestProfilesPanel.Visible and r.ChestItemButton.Position.Y.Offset==initial and r.ChestTransferText.Text==text,'tab cleanup must collapse JSON and restore layout while preserving draft')
+ for _=1,3 do r.ChestProfilesButton.Activated:Fire();r.ChestTransferButton.Activated:Fire();r.ChestTransferButton.Activated:Fire();r.CloseMenus() end
+ assert(r.ChestItemButton.Position.Y.Offset==initial,'nested editor toggles must not accumulate layout drift')
+ for _,key in ipairs(r.ChestTransferFields) do r[key]=old[key] end
+ r.ChestProfileName.Text=old.Name;r.ChestProfiles,r.ChestProfilePersistence=oldProfiles,oldPersistence
+ r.ChestTransferText.Text=oldText;r.ChestTransferHint.Text=oldHint
+ HttpService.JSONEncode,HttpService.JSONDecode,writefile,setclipboard=oldEncode,oldDecode,oldWrite,oldCopy
+ r.RefreshChestProfiles();r.CloseMenus()
+ end)()
+
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton}
 RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
 RemoteCatalog.CraftItem="cleanup-sentinel";cleanupOptions.Recipe.Activated:Fire()
@@ -2133,6 +2194,9 @@ RemoteCatalog.ExportCraftQueue=function() error('export callback survived GUI re
 cleanupOptions.Import.Activated:Fire();cleanupOptions.Export.Activated:Fire()
 buildController.RepeatLayout=function() error('repeat callback survived GUI removal') end;cleanupOptions.Repeat.Activated:Fire();cleanupOptions.RepeatUp.Activated:Fire()
 RemoteCatalog.CheckCraftQueue=function() error('queue-check callback survived GUI removal') end;cleanupOptions.QueueCheck.Activated:Fire()
+RemoteCatalog.ImportChestSetup=function() error('chest import callback survived GUI removal') end
+RemoteCatalog.ExportChestSetup=function() error('chest export callback survived GUI removal') end
+cleanupOptions.ChestImport.Activated:Fire();cleanupOptions.ChestExport.Activated:Fire();cleanupOptions.ChestCopy.Activated:Fire()
 assert(not RemoteCatalog.StopTimerDeadline,'destroying the hub must clear its timer')
 assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'

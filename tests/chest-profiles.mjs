@@ -6,6 +6,7 @@ const code=`
 local function template()
  return {Version=1,Name='Wood run',ItemMode='Selected',Items={'wood','stone'},Discover=false,Whole=false,Speed='Fast',Travel='Walk',Range=60,Goal=100}
 end
+local gui={Parent=true}
 local player={UserId=7}
 local COLORS={warn=1,good=2}
 local message

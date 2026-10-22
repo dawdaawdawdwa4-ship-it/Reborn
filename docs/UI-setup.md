@@ -2401,3 +2401,43 @@ Tests cover vertical/tilted bounds, layer grouping, retained layers/materials,
 overlap rejection, selected-cell limits, Undo/Redo at moved anchors, explicit
 selection, real buttons/layout, cleanup locks and early capture rejection, plus
 the full regression suite. Live Roblox rendering and placement remain unverified.
+
+## Chest setup backup and sharing (v91)
+
+Open **Chests > Chest profiles > Backup / share setup**. **Export current setup**
+shows the current collection settings as JSON in a scrollable, editable field;
+**Copy setup JSON** also tries the clipboard. If copying is unavailable or fails,
+the JSON stays visible for manual copying. The name comes from the profile name
+field. Export uses current settings, including edits since the last profile save.
+
+Paste an exported setup and press **Import JSON → apply settings** to restore its
+item filter, scope, whole-chest choice, movement/range, pace, batch size, order,
+goal, per-item top-up target and repeat preference. Collection stays OFF. Import
+resets the physical chest selection and refreshes the existing read-only preview.
+Use **Save profile (overwrites)** to retain the imported settings in the selected
+slot; importing alone preserves all three saved slots and writes no files. To
+back up a saved slot, load it first, then export the current setup.
+
+The portable envelope is Version 1 with Kind `RebornChestSetup` and a validated
+Version 1 `Profile`. Only preference fields are copied. Learned requests, chest
+instances, request IDs, inventory counters, cooldowns, session priorities and
+exclusions are excluded. Existing exclusions, priorities, learned bindings and
+the current conveyor inclusion choice remain in place after import. All items
+and an explicitly empty item filter remain distinct.
+
+Both directions reject work while collection, a manual chest request, learning,
+request cleanup or another transfer owns the chest controls. Auto collection,
+manual request preflight and starting chest learning also wait during JSON work.
+Input is limited to 32 KiB and validated completely before applying; malformed,
+unsupported or oversized input leaves current preferences, saved slots and the
+JSON draft intact. Export errors also keep the draft. Removed hubs, changed
+accounts and settings changed during host JSON work cannot apply stale results.
+Profiles now reject save/load after hub removal or an account change as well.
+
+The editor is collapsed initially, expands within the profile section, and moves
+following controls down. Tab changes and other menus collapse it and release
+text focus while retaining the draft. Tests cover preference round trips,
+All/None filters, validation failures, clipboard fallback, busy/context guards,
+saved-slot preservation, explicit saving after import, actual buttons, layout
+restoration and listener cleanup. The full regression suite is required; live
+Roblox rendering, clipboard host support and server behavior remain unverified.
