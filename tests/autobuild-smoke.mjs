@@ -36,6 +36,39 @@ do
   assert(not pcall(A.ValidateFavorites,bad),'malformed favorites must be rejected')
  end
 end
+-- Repeating whole layouts preserves transforms and respects existing limits.
+;(function()
+ local function cell(x,y,z,material,rotation)
+  local c={x,y,z};for _,n in ipairs(rotation or {1,0,0,0,1,0,0,0,1}) do table.insert(c,n) end
+  return {Material=material or 'grass',Components=c}
+ end
+ local function plan(cells,size) return {Version=1,Name='Repeat test',BlockSize=size or 3,Cells=cells} end
+ local original=plan({cell(0,0,0),cell(3,3,0,'stone')})
+ local repeated,step=A.RepeatPlan(original,'Right',3,1)
+ assert(step==9 and #repeated.Cells==6,'three copies of a two-column layout with a one-block gap must use nine-stud spacing')
+ local points={}
+ for _,value in ipairs(repeated.Cells) do points[value.Components[1]..','..value.Components[2]]=value.Material end
+ for _,x in ipairs({0,9,18}) do assert(points[x..',0']=='grass' and points[(x+3)..',3']=='stone','each copy must preserve height and material') end
+ assert(#original.Cells==2 and original.Cells[1].Components[1]==0,'repeat planning cannot mutate its source')
+ repeated.Cells[1].Components[1]=123;assert(original.Cells[1].Components[1]==0 and repeated.Cells[2].Components[1]~=123,'source and repeated transforms must be independent')
+ repeated,step=A.RepeatPlan(plan({cell(0,0,0),cell(0,0,-3)}),'Forward',2,0)
+ local zs={};for _,value in ipairs(repeated.Cells) do zs[value.Components[3]]=true end
+ assert(step==6 and zs[0] and zs[-3] and zs[-6] and zs[-9],'forward means negative local Z with adjacent copies when gap is zero')
+ local q=math.sqrt(.5);local rotation={q,0,q,0,1,0,-q,0,q}
+ repeated,step=A.RepeatPlan(plan({cell(0,0,0,'stone',rotation)}),'Right',2,0)
+ assert(step==6 and repeated.Cells[2].Components[1]==6,'rotated block extents must be rounded up to whole grid steps')
+ for _,value in ipairs(repeated.Cells) do for i=1,9 do assert(value.Components[i+3]==rotation[i],'repeat must preserve the full rotation matrix') end end
+ repeated,step=A.RepeatPlan(plan({cell(0,0,0),cell(1.5,0,0)}),'Right',2,0)
+ assert(step==6 and repeated.Cells[4].Components[1]==7.5,'off-grid captures must retain their internal positions and pad copy spacing to grid steps')
+ repeated,step=A.RepeatPlan(plan({cell(0,0,0)},2.5),'Right',2,1);assert(step==5 and repeated.BlockSize==2.5)
+ local large={};for x=0,149 do table.insert(large,cell(x*3,0,0)) end
+ assert(#A.RepeatPlan(plan(large),'Right',2,0).Cells==300,'the 300-cell boundary must remain usable')
+ table.insert(large,cell(450,0,0));assert(not pcall(A.RepeatPlan,plan(large),'Right',2,0),'over-limit repeats must reject before editing')
+ assert(not pcall(A.RepeatPlan,plan({cell(2999,0,0)}),'Right',2,0),'repeats outside existing coordinate bounds must reject')
+ for _,copies in ipairs({1,5,2.5,math.huge,0/0,'2',false}) do assert(not pcall(A.RepeatPlan,original,'Right',copies,0)) end
+ for _,gap in ipairs({-1,9,.5,math.huge,0/0,'0',false}) do assert(not pcall(A.RepeatPlan,original,'Right',2,gap)) end
+ assert(not pcall(A.RepeatPlan,original,'Up',2,0) and not pcall(A.RepeatPlan,plan({}),'Right',2,0))
+ end)()
 local function signal()
  local callbacks={}
  return {Connect=function(_,callback) table.insert(callbacks,callback);return {} end,
@@ -758,6 +791,52 @@ do
  assert(not f:ToggleFavorite('missing') and not f:UseFavorite('missing') and requests==previous,'preferences must never send placements')
  ctx.ReadFavorites,ctx.WriteFavorites=originalRead,originalWrite
 end
+-- Repeating is an explicit local geometry edit with staged preview/Undo.
+;(function()
+ local oldWrite,oldPlace,oldAlive=ctx.WriteBlueprint,ctx.Place,ctx.Alive
+ local written,dispatches=nil,0
+ ctx.WriteBlueprint=function(_,data) written=A.Validate(data);return true end
+ ctx.Place=function(body) dispatches+=1;occupied[body.cframe.Position]=true;return true end
+ local function fresh()
+  local e=A.new(ctx);e.Anchor=frame(12,3,30,math.pi/2);e.BaseAnchor=e.Anchor;e.BlockSize=3;e.Rotation=90
+  e.Cells={{CFrame=e.Anchor*frame(0,0,-3),LayerY=0,Material='grass',Preview=control()},
+   {CFrame=e.Anchor*frame(3,3,-3),LayerY=3,Material='stone',Preview=control()}}
+  return e
+ end
+ local e=fresh();local anchor=e.Anchor;local oldCells=e.Cells
+ e.LayerIndex=1;e.SelectedCell=e.Cells[1];e.Picking=true;e.SetupReport='stale';e.BuildReport='stale';e.Failures[e.Cells[1]]={}
+ assert(e:RepeatLayout('Right',2,1) and #e.Cells==4 and #e.SavedPlan.Cells==4 and e.Anchor==anchor and e.BaseAnchor==anchor and e.Rotation==90,'repeating must preserve the anchor and orientation while expanding every layer')
+ assert(oldCells[1].Preview.Destroyed and oldCells[2].Preview.Destroyed and e.PreviewFolder.Parent==ctx.Workspace and not e.LayerIndex and not e.SelectedCell and not e.Picking,'old ghosts/selections must be replaced as one complete preview')
+ assert(e.PlanDirty and #e.UndoStack==1 and not e.SetupReport and not e.BuildReport and next(e.Failures)==nil and dispatches==0 and not written,'repeat must invalidate old observations and remain unsaved/unbuilt')
+ local points={}
+ for _,cell in ipairs(e.Cells) do local p=cell.CFrame.Position;points[math.round(p.Z)]=p end
+ assert(points[30] and points[27] and points[21] and points[18] and math.abs(points[21].X-9)<.001,'copy direction must follow the rotated local axes')
+ assert(e:Move(1,0,1) and e:RotatePreview());anchor=e.Anchor
+ assert(e:UndoMaterial() and #e.Cells==2 and not e.PlanDirty and e.Anchor==anchor,'Undo must restore the original layout at the current moved/rotated anchor')
+ assert(e:RedoEdit() and #e.Cells==4 and e.PlanDirty and e.Anchor==anchor,'Redo must restore the repeated geometry without moving its anchor')
+ assert(e:ReplaceMaterial('grass','stone') and e:UndoMaterial() and e:UndoMaterial() and #e.Cells==2 and e:RedoEdit() and e:RedoEdit(),'material edits must compose correctly with repeat Undo/Redo')
+ for _,cell in ipairs(e.Cells) do assert(cell.Material=='stone') end
+ assert(e:SavePreview() and written and #written.Cells==4 and #e.UndoStack==0,'only explicit Save preview must persist the repeated layout')
+ written=nil;e=fresh();local cells=e.Cells
+ assert(not e:RepeatLayout('Up') and not e:RepeatLayout('Right',false,0) and not e:RepeatLayout('Right',2,-1) and e.Cells==cells and #e.UndoStack==0,'bad repeat options must leave data and history intact')
+ e.WorkerToken=99
+ assert(not e:RepeatLayout('Right') and not e:CycleRepeatOption('Copies') and e.RepeatCopies==2 and e.Cells==cells,'in-flight cleanup must lock repeat options and edits')
+ e.WorkerToken=nil;e.Running=true;assert(not e:RepeatLayout('Right'));e.Running=false
+ local factory=Instance.new;local staged
+ Instance.new=function(kind) if kind=='Part' then error('preview factory failed') end;staged=factory(kind);return staged end
+ assert(not e:RepeatLayout('Right') and e.Cells==cells and not cells[1].Preview.Destroyed and not e.SavedPlan and #e.UndoStack==0 and staged.Destroyed,'failed preview staging must leave the old layout/history intact and clean up temporary ghosts')
+ Instance.new=factory
+ e:ClearPreview();e.SavedPlan=valid();local library=A.Validate(e.SavedPlan);e.Library[1]=library
+ assert(e:RepeatLayout('Forward',2,0) and not e.Cells and #e.SavedPlan.Cells==2 and e.Library[1]==library and #library.Cells==1,'loaded layouts can repeat as data without preview creation or saved-slot changes')
+ assert(e:UndoMaterial() and #e.SavedPlan.Cells==1 and not e.Cells and e:RedoEdit() and #e.SavedPlan.Cells==2,'data-only repetition must support Undo/Redo without creating ghosts')
+ ctx.Alive=function() return false end
+ assert(not e:RepeatLayout('Right') and #e.SavedPlan.Cells==2,'destroyed hubs cannot edit layouts');ctx.Alive=oldAlive
+ e=fresh();assert(e:RepeatLayout('Right',2,0));occupied={};root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+ assert(e:Start() and not e.Buttons.RepeatRight.Active and not e.Buttons.RepeatCopies.Active,'running workers must visibly disable repeat editing');while coroutine.status(worker)~='dead' do step() end
+ assert(e.Buttons.RepeatRight.Active and e.Buttons.RepeatCopies.Active,'completed workers must restore repeat controls')
+ assert(dispatches==4 and e.Progress.Placed==4,'only explicit Start must send and confirm every repeated cell through the existing worker')
+ ctx.WriteBlueprint,ctx.Place,ctx.Alive=oldWrite,oldPlace,oldAlive;occupied={}
+ end)()
 -- Removing blueprint cells is local, reversible and reflected in saves/queues.
 do
  local e=A.new(ctx);local savedWrites=writes47;local previous=requests

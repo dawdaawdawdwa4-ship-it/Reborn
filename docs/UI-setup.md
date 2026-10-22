@@ -2286,3 +2286,37 @@ size limits, snapshot isolation, clipboard fallbacks, concurrent/busy/account
 states, stale callback cleanup, actual controls, scroll/layout behavior and event
 disconnection on GUI removal. The full regression suite is required. Live Roblox
 rendering, clipboard hosts and crafting remain unverified.
+
+### Repeat complete Auto Build layouts (v88)
+
+Under **Auto Build → Blueprint block editing**, choose **Copies** (2, 3 or 4,
+including the original) and **Gap** (0, 1, 2 or 4 additional block steps), then
+press **Repeat right** or **Repeat forward**. Options are staged until a direction
+is pressed. Repeat affects the entire working layout, including layers outside
+the current layer selection. It works on an existing preview or a loaded/imported
+working blueprint; data-only edits still need Preview to show their position.
+
+Right follows positive local X; Forward follows negative local Z of the preview
+anchor. The current world anchor, movement offset and overall orientation stay
+in place. Materials, per-block rotations, heights and internal offsets are copied.
+Spacing uses rotated block-sized bounds rounded up to whole block steps, plus the
+chosen gap. Off-grid/tilted captured layouts may therefore get extra padding.
+Copies are revalidated and sorted bottom-up under the existing 300-cell and
+coordinate limits. Over-limit repeats leave the working plan and edit history
+unchanged.
+
+A repeat is one unsaved geometry edit. Existing previews are rebuilt at the same
+anchor; creation is staged so a failed new preview retains the old one. Layer and
+block picking reset to All layers/OFF, and old setup/failure observations are
+invalidated. Undo/Redo restores the whole edit and works after subsequent preview
+movement or rotation, alongside material edits. Saved library slots change only
+when explicitly saved. Repeating never starts building or sends a placement
+request; normal Start/Resume, reach/occupancy checks, Auto Walk and server
+validation still govern the resulting layout.
+
+The four controls are inside the existing collapsed editor, keeping the default
+page compact. They visibly lock while building or waiting for in-flight cleanup.
+Tests cover spacing, rotated bounds, source isolation, limits, local axes,
+preview staging failure, Undo/Redo/material composition, save isolation,
+explicit placement, real controls/layout and callback cleanup, plus the full
+regression suite. Live Roblox rendering and placement remain unverified.

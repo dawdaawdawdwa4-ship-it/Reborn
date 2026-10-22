@@ -985,7 +985,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn queue-share-87',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-repeat-88',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1723,7 +1723,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn queue-share-87 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-repeat-88 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2007,7 +2007,43 @@ end)()
  r.RefreshCraftUI()
  end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton}
+;(function()
+ local b=buildController
+ local fields={'SavedPlan','Cells','PlanDirty','LayerIndex','SelectedCell','Picking','RepeatCopies','RepeatGap','UndoStack','RedoStack','Preset','PlanRevision','Failures','SetupReport','SetupResult','BuildReport','VisualSnapshot','VisualCounts','ReachCounts'}
+ local old,open={},{};for _,field in ipairs(fields) do old[field]=b[field] end
+ for _,section in ipairs(b.Sections) do open[section.Key]=section.Open;if section.Open then b:ToggleSection(section.Key) end end
+ assert(not b.Buttons.RepeatRight.Visible and not b.Buttons.RepeatCopies.Visible and b.LayoutHeight<650,'repeat editing must remain inside the collapsed editor without enlarging the default page')
+ b.SectionButtons.Materials.Activated:Fire()
+ assert(b.Buttons.RepeatRight.Visible and b.Buttons.RepeatForward.Visible and b.Buttons.RepeatGap.Visible,'opening the editor must expose repeat actions/options')
+ assert(b.Buttons.RepeatCopies.Position.Y.Offset+b.Buttons.RepeatCopies.Size.Y.Offset<=b.Buttons.RepeatRight.Position.Y.Offset and b.Buttons.RepeatRight.Position.Y.Offset+b.Buttons.RepeatRight.Size.Y.Offset<b.SectionButtons.History.Position.Y.Offset,'repeat controls must sit in distinct rows above result history')
+ local slot=b.Library[1]
+ local function cell(x,y,material) return {Material=material,Components={x,y,0,1,0,0,0,1,0,0,0,1}} end
+ b.Cells=nil;b.SavedPlan={Version=1,Name='Repeat UI test',BlockSize=3,Cells={cell(0,0,'grass'),cell(3,3,'stone')}}
+ b.PlanDirty=false;b:ClearEdits();b.RepeatCopies=2;b.RepeatGap=0
+ local source=b.SavedPlan
+ b.Buttons.RepeatCopies.Activated:Fire();b.Buttons.RepeatGap.Activated:Fire()
+ assert(b.RepeatCopies==3 and b.RepeatGap==1 and b.SavedPlan==source and #b.UndoStack==0 and not b.WorkerToken,'option choices must be staged without changing the layout')
+ b.Buttons.RepeatForward.Activated:Fire()
+ assert(#b.SavedPlan.Cells==6 and b.PlanDirty and not b.Cells and not b.LayerIndex and #b.UndoStack==1 and b.Library[1]==slot and not b.WorkerToken,'actual Repeat must edit the entire loaded layout while retaining saved slots and keeping building OFF')
+ local levels={};for _,cell in ipairs(b.SavedPlan.Cells) do levels[cell.Components[3]]=true end
+ assert(levels[0] and levels[-6] and levels[-12],'actual options must produce three forward copies with the chosen one-block gap')
+ b.Buttons.UndoMaterial.Activated:Fire();assert(#b.SavedPlan.Cells==2 and not b.PlanDirty,'actual Undo must restore the pre-repeat layout')
+ b.Buttons.Redo.Activated:Fire();assert(#b.SavedPlan.Cells==6 and b.PlanDirty,'actual Redo must restore repeated geometry')
+ local current=b.SavedPlan;b.WorkerToken=88;b:RefreshFailureUI()
+ for _,key in ipairs({'RepeatCopies','RepeatGap','RepeatRight','RepeatForward'}) do assert(not b.Buttons[key].Active,'cleanup must visibly lock every repeat control');b.Buttons[key].Activated:Fire() end
+ assert(b.SavedPlan==current and b.RepeatCopies==3 and b.RepeatGap==1,'disabled callbacks must retain geometry and options')
+ b.WorkerToken=nil;b:RefreshFailureUI()
+ b.Buttons.UndoMaterial.Activated:Fire();b.RepeatCopies=2;b.RepeatGap=0;b.Buttons.RepeatRight.Activated:Fire()
+ assert(#b.SavedPlan.Cells==4 and b.SavedPlan.Cells[3].Components[1]==3,'actual Right action must repeat using local positive X while maintaining bottom-up order')
+ for _,section in ipairs(b.Sections) do if section.Open then b:ToggleSection(section.Key) end end
+ assert(b.LayoutHeight<650 and not b.Buttons.RepeatRight.Visible,'closing the editor must restore the compact page exactly')
+ for _,field in ipairs(fields) do b[field]=old[field] end
+ b.Buttons.RepeatCopies.Text='Copies: '..b.RepeatCopies..' total';b.Buttons.RepeatGap.Text='Gap: '..b.RepeatGap..' blocks'
+ b.Buttons.Preset.Text=b.Preset..'  ▼';b:RefreshEdits();b:RefreshFailureUI()
+ for _,section in ipairs(b.Sections) do if open[section.Key] then b:ToggleSection(section.Key) end end
+ end)()
+
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight}
 RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
 RemoteCatalog.CraftItem="cleanup-sentinel";cleanupOptions.Recipe.Activated:Fire()
@@ -2017,6 +2053,7 @@ assert(RemoteCatalog.CraftMaterialsScope=="cleanup-sentinel","GUI cleanup must d
 RemoteCatalog.ImportCraftQueue=function() error('import callback survived GUI removal') end
 RemoteCatalog.ExportCraftQueue=function() error('export callback survived GUI removal') end
 cleanupOptions.Import.Activated:Fire();cleanupOptions.Export.Activated:Fire()
+buildController.RepeatLayout=function() error('repeat callback survived GUI removal') end;cleanupOptions.Repeat.Activated:Fire()
 assert(not RemoteCatalog.StopTimerDeadline,'destroying the hub must clear its timer')
 assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'

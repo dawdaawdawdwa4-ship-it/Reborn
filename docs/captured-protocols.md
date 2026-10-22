@@ -1050,3 +1050,21 @@ unlearned or expired recipes before the first craft. Busy/account checks and
 queue/generation checks discard stale codec results. Tests exercise real core and
 UI handlers, concurrency guards, schema/size failures and cleanup, plus the full
 regression suite; live Roblox remains unverified.
+
+### Repeated blueprint geometry (build-repeat-88)
+
+v88 retains recorder v31, the 146 endpoint catalog and all placement transports,
+request envelopes, reach checks, retry/confirmation rules and limits. Repeat
+layout is a client-only geometry edit: the original validated blueprint is
+translated into 2–4 total copies along positive local X or negative local Z.
+Spacing is derived from rotated block-sized extents, rounded to block-grid steps,
+with the chosen extra gap. Per-cell materials and rotation matrices are copied;
+no existing island block is removed, moved or replaced.
+
+The result is validated against the existing 300-cell, coordinate and rotation
+bounds before replacing any data. Preview construction is staged before commit,
+and the existing geometry Undo/Redo path restores edits at the current anchor.
+Saving and Start remain explicit actions. Building/in-flight cleanup locks the
+edit; setup/failure snapshots reset after successful geometry changes. Regression
+fixtures cover pure planning, controller/worker behavior and actual UI handlers;
+all existing suites remain required. Live Roblox remains unverified.
