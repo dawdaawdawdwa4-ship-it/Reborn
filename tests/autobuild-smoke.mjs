@@ -1149,6 +1149,72 @@ end
  value.WorkerToken=nil;value.Running=true;assert(not value:SetBuildSpeed('Fast'));value.Running=false
  assert(value:SetBuildSpeed('Fast') and string.find(value:DiagnosticReport(),'Build speed: Fast',1,true),'diagnostics must identify the selected speed')
 end)()
-return 'Auto Build blueprints, paths, placement confirmation, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
+;(function()
+ local function fixture(count)
+  local f={Stock=count,Calls=0,Clock=0,World={},Walks=0,Distance=0}
+  local actor={Position=setmetatable({},{__sub=function() return {Magnitude=f.Distance} end})}
+  local options={Parent={},Player={Character={FindFirstChild=function() return actor end}},Workspace={},
+   Label=function(props) return control(props) end,Button=function(props) return control(props) end,Track=function() end,
+   Alive=function() return true end,Now=function() return f.Clock end,
+   Scheduler={spawn=function(fn) f.Worker=coroutine.create(fn);local ok,e=coroutine.resume(f.Worker);assert(ok,e) end,
+    wait=function(dt) f.Clock+=dt;coroutine.yield() end},
+   ItemCount=function(item) assert(item=='grass');if f.Read then return f.Read() end;return f.Stock end,
+   GameModule=function(_,key)
+    if key=='CLIENT_REACH' then return 20 end
+    if key=='BlockUtils' then return {getBlocksFromLocation=function(pos) return f.World[pos] and {true} or {} end} end
+   end,
+   Place=function(body)
+    f.Calls+=1
+    if f.Response then return f.Response(body) end
+    f.Stock=math.max(0,(f.Stock or 0)-1);f.World[body.cframe.Position]=true;return true
+   end,
+   Approach=function() f.Walks+=1;f.Distance=0;return true end}
+  f.Value=A.new(options);f.Value.Cells=cells(2);f.Value.BlockSize=3
+  function f:Step() local ok,e=coroutine.resume(self.Worker);assert(ok,e) end
+  function f:Drain() local guard=0;while coroutine.status(self.Worker)~='dead' do guard+=1;assert(guard<200,'worker did not settle: '..self.Value.Progress.State..' stock '..tostring(self.Stock));self:Step() end end
+  return f,options
+ end
+ local f=fixture(0);local b=f.Value
+ local plan=b.Cells;b:Start();local owner=b.WorkerToken
+ assert(f.Calls==0 and b.Running and owner and b.Progress.State=='Waiting for materials' and b.WaitingMaterial=='grass','empty stock must keep ON without dispatch')
+ assert(b.Progress.Failed==0 and b.Progress.Checked==0 and b:FailureCounts().Review==0 and b.Buttons.Start.Text=='Restock · 0/2','unsent empty-stock cells are neither failed nor checked and must show restock at the top')
+ for _=1,4 do f:Step() end
+ assert(f.Calls==0 and b.WorkerToken==owner and #b.History==0,'waiting must keep one worker and one run')
+ f.Stock=1;f:Step()
+ assert(f.Calls==1 and b.Progress.Placed==1 and b.Progress.Checked==1 and b.Buttons.Start.Text=='Building · 1/2','restocking must resume and update checked progress after confirmation')
+ f:Step();assert(f.Calls==1 and b.Buttons.Start.Text=='Restock · 1/2' and b.WaitingMaterial=='grass')
+ f.Stock=1;f:Drain()
+ assert(f.Calls==2 and b.Progress.Placed==2 and b.Progress.Checked==2 and not b.Running and not b.WaitingMaterial and #b.History==1 and b.Cells==plan,'repeated restocks must complete the original plan/run without replacing cells')
+ f=fixture(0);b=f.Value;b:Start();b:Stop()
+ assert(not b:Start() and f.Calls==0,'Stop keeps restart locked until the material wait exits')
+ f.Stock=100;f:Drain()
+ assert(f.Calls==0 and not b.WorkerToken and not b.WaitingMaterial and b.Progress.State=='Stopped','late restocking after Stop cannot send a request')
+ f=fixture(0);b=f.Value;b:Start()
+ for _,invalid in ipairs({false,'1',-1,.5,math.huge,0/0}) do
+  f.Stock=invalid;f:Step();assert(f.Calls==0 and b.Running and b.WaitingMaterial=='grass','unreadable quantities after empty stock cannot pretend to be a restock')
+ end
+ f.Read=function() error('inventory unavailable') end;f:Step();assert(f.Calls==0)
+ f.Read=nil;f.Stock=2;f:Drain();assert(f.Calls==2 and b.Progress.Placed==2)
+ f=fixture(nil);f.Read=function() return nil end;b=f.Value;b:Start();f:Drain();assert(f.Calls==2,'initially unknown inventory must retain normal server validation')
+ f=fixture(0);b=f.Value;b:Start();f.World[1]=true;f.World[2]=true;f:Drain()
+ assert(f.Calls==0 and b.Progress.Skipped==2 and b.Progress.Checked==2 and not b.WaitingMaterial,'blocks supplied by the world while waiting must skip without requiring stock')
+ f=fixture(0);b=f.Value;b:SetTravelMode('Walk');f.Distance=50;b:Start()
+ assert(f.Walks==0 and f.Calls==0,'Auto Walk must not begin a trip while known stock is empty')
+ f.Stock=2;f:Drain();assert(f.Walks==1 and f.Calls==2,'restocking must resume normal reach checks and walking')
+ local options;f,options=fixture(1);b=f.Value;b.Cells=cells(1)
+ f.Response=function(body)
+  if f.Calls==1 then f.Stock=0;return false,{success=false,error='TOO_FAST'},'rejected' end
+  f.World[body.cframe.Position]=true;return true
+ end
+ b:Start()
+ while b.Progress.State~='Waiting for materials' do f:Step() end
+ assert(f.Calls==1 and b.Running and b.BuildCooldowns==1,'cooldown retries must check stock again before resending')
+ f.Stock=1;f:Drain();assert(f.Calls==2 and b.Progress.Placed==1)
+ f,options=fixture(2);b=f.Value
+ options.ItemCount=function() coroutine.yield();return 2 end
+ b:Start();assert(f.Calls==0);b:Stop();f:Drain()
+ assert(f.Calls==0 and not b.WorkerToken,'Stop during a yielding inventory lookup must cancel before dispatch')
+end)()
+return 'Auto Build blueprints, paths, placement confirmation, restock waits, live progress, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

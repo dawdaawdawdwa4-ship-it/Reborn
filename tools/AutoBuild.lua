@@ -172,7 +172,18 @@ function AutoBuild.new(ctx)
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
     local now=ctx.Now or os.clock
+    local function refreshProgress()
+        local p=self.Progress
+        if not p then return end
+        local checked=math.min(p.Total or 0,(p.Placed or 0)+(p.Skipped or 0)+(p.Failed or 0))
+        p.Checked=checked
+        if self.Running and buttons.Start then
+            local label=p.State=="Waiting for materials" and "Restock" or p.State=="Waiting for reach" and "Move closer" or "Building"
+            buttons.Start.Text=label.." · "..checked.."/"..tostring(p.Total or 0)
+        end
+    end
     local function status(message)
+        refreshProgress()
         local p=self.Progress
         local counts=self.Running and p and p.State~="Finished" and string.format("\nRun: %d confirmed · %d skipped · %d failed",p.Placed,p.Skipped,p.Failed) or ""
         self.Status.Text=tostring(message)..counts
@@ -183,6 +194,7 @@ function AutoBuild.new(ctx)
         if self.RefreshFailureUI then self:RefreshFailureUI() end
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
         self.Cells=nil;self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil;self.LayerIndex=nil;self.BaseAnchor=nil
+        self.WaitingMaterial=nil
         self.VisualSnapshot=nil;self.VisualCounts=nil
         self:RefreshPreviewColors()
         self.SelectedCell=nil;self.Picking=false
@@ -564,7 +576,7 @@ function AutoBuild.new(ctx)
     end
     local function recordBuild(progress,meta)
         local state=progress.State
-        if state=="Building" or state=="Waiting for reach" then state="Stopped" end
+        if state=="Building" or state=="Waiting for reach" or state=="Waiting for materials" then state="Stopped" end
         table.insert(self.History,1,{Name=meta.Name,Layer=meta.Layer,WholeTotal=meta.WholeTotal,Total=progress.Total,
             Placed=progress.Placed,Skipped=progress.Skipped,Failed=progress.Failed,State=state,Elapsed=math.max(0,now()-meta.Started),RetryOnly=meta.RetryOnly==true})
         while #self.History>5 do table.remove(self.History) end
@@ -621,6 +633,7 @@ function AutoBuild.new(ctx)
         local failures=self:FailureCounts()
         return table.concat({"Reborn Auto Build diagnostics", "Placement ready: "..tostring(ready).." · "..tostring(reason),
             "Running: "..tostring(self.Running).."; request cleanup: "..tostring(self.WorkerToken~=nil),
+            "Waiting for material: "..tostring(self.WaitingMaterial or "none"),
             "Build speed: "..self.BuildSpeed.."; current request gap: "..tostring(self.CurrentBuildGap or (self.BuildSpeed=="Fast" and .05 or .2)).."; cooldowns: "..tostring(self.BuildCooldowns or 0),
             "Build movement: "..self.TravelMode.."; last walk: "..tostring(self.LastTravelResult or "none"),
             "Preview cells: "..tostring(self.Cells and #self.Cells or 0).."; selected: "..#self:SelectedCells(),
@@ -681,7 +694,7 @@ function AutoBuild.new(ctx)
         self:CloseMenus()
         local minimumGap=self.BuildSpeed=="Fast" and .05 or .2
         local gap,successes=minimumGap,0
-        self.CurrentBuildGap=gap;self.BuildCooldowns=0
+        self.CurrentBuildGap=gap;self.BuildCooldowns=0;self.WaitingMaterial=nil
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
@@ -696,6 +709,26 @@ function AutoBuild.new(ctx)
         self:RefreshFailureUI()
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
+        local function ensureMaterials(cell,index)
+            local waited=false
+            while active() do
+                if occupied(cell.CFrame,self.BlockSize) then self.WaitingMaterial=nil;return true end
+                local ok,quantity=false,nil
+                if type(ctx.ItemCount)=="function" then ok,quantity=pcall(ctx.ItemCount,cell.Material) end
+                if not active() then return false end
+                local valid=ok and type(quantity)=="number" and quantity==quantity and quantity>=0 and quantity<math.huge and quantity%1==0
+                if valid and quantity>0 or not valid and not waited then
+                    self.WaitingMaterial=nil
+                    return true
+                end
+                waited=true;self.WaitingMaterial=cell.Material
+                progress.State="Waiting for materials"
+                status("Waiting for "..cell.Material.." · block "..index.."/"..#cells
+                    ..(valid and " · inventory is empty. Restock to continue, or press Stop." or " · waiting for a readable quantity after empty stock. Stop cancels."))
+                scheduler.wait(.25)
+            end
+            return false
+        end
         -- Both the initial request and cooldown retries use fresh reach/occupancy
         -- observations. A path result alone never authorizes a placement.
         local function ensureReach(cell,reach,index)
@@ -752,18 +785,23 @@ function AutoBuild.new(ctx)
                     else
                         local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
                         if type(reach)~="number" or not (reach>0 and reach<math.huge) then reach=20 end
+                        if not ensureMaterials(cell,index) then return end
                         if not ensureReach(cell,reach,index) then return end
                         if not active() then return end
                         existing=existing or occupied(cell.CFrame,self.BlockSize)
                         if existing then
                             skipped+=1
                         else
-                            self.Progress.State="Building"
-                            status(string.format("Building %d/%d: %s",index,#cells,cell.Material))
                             local sent,reason,origin
                             local retries=0
                             repeat
                                 if not active() then return end
+                                if not ensureMaterials(cell,index) then return end
+                                if not ensureReach(cell,reach,index) then return end
+                                if not active() then return end
+                                if occupied(cell.CFrame,self.BlockSize) then existing=true;sent=true;break end
+                                progress.State="Building"
+                                status(string.format("Building %d/%d: %s",index,#cells,cell.Material))
                                 markFailure(cell,"Request in flight or confirmation not observed",false)
                                 cycleAt=now()
                                 sent,reason,origin=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
@@ -826,6 +864,7 @@ function AutoBuild.new(ctx)
                         end
                     end
                     self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
+                    refreshProgress()
                     if existing or confirmed then self.Failures[cell]=nil end
                     if (existing or confirmed) and cell.Preview then cell.Preview:Destroy();cell.Preview=nil end
                     -- Server time and replication already consumed part of the target
@@ -836,7 +875,7 @@ function AutoBuild.new(ctx)
                 if active() then self.Progress.State="Finished";status(string.format("Finished: %d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
             stopTravel()
-            if self.WorkerToken==token then self.WorkerToken=nil end
+            if self.WorkerToken==token then self.WorkerToken=nil;self.WaitingMaterial=nil end
             if self.Token==token then
                 self.Running=false;buttons.Start.Text=progress.State=="Finished" and "Start build" or "Resume build"
                 if not ok then self.Progress.State="Error";status("Build stopped: "..tostring(err)) end

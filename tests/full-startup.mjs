@@ -104,7 +104,8 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
 
  ;(function()
   local b,r=buildController,RemoteCatalog
-  local saved={Cache=r.ModuleCache,Cells=b.Cells,Layer=b.LayerIndex,Character=player.Character,Failures=b.Failures,Progress=b.Progress,History=b.History}
+  local saved={Count=r.CarrotCount,Cache=r.ModuleCache,Cells=b.Cells,Layer=b.LayerIndex,Character=player.Character,Failures=b.Failures,Progress=b.Progress,History=b.History}
+  r.CarrotCount=function() return 100 end
   local world,trace,allow={},{},false
   local function pos(x) return setmetatable({X=x,Y=0,Z=0},{__sub=function(a,c) return {Magnitude=math.abs(a.X-c.X)} end}) end
   r.ModuleCache={
@@ -130,12 +131,14 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   assert(#trace==4 and b.Progress.RetryOnly and b.Progress.Total==2 and b.Progress.Placed==2 and not b.Buttons.RetryFailed.Active,'actual Retry failed must use the normal confirmed worker and clear completed candidates')
   assert(b.History[1].RetryOnly and string.find(b:ShowHistory(),'Run type: Retry failed',1,true),'retry history must identify its narrower run scope')
   assert(b.Buttons.RetryFailed.Position.Y.Offset==b.Buttons.Clear.Position.Y.Offset and b.LayoutHeight<650,'retry action must fit the compact action row')
+  r.CarrotCount=saved.Count
   r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
   b.HistoryIndex=0;b.SetupReport=nil;b.SetupResult=nil;b.SetupMarkers=false;b.VisualSnapshot=nil;b.VisualCounts=nil;b:RefreshFailureUI()
   end)()
  ;(function()
   local b,r=buildController,RemoteCatalog
-  local saved={Navigation=r.Navigation,Cache=r.ModuleCache,Cells=b.Cells,Layer=b.LayerIndex,Character=player.Character,Failures=b.Failures,Progress=b.Progress,History=b.History}
+  local saved={Count=r.CarrotCount,Navigation=r.Navigation,Cache=r.ModuleCache,Cells=b.Cells,Layer=b.LayerIndex,Character=player.Character,Failures=b.Failures,Progress=b.Progress,History=b.History}
+  r.CarrotCount=function() return 100 end
   local world,trace,walks,stops={},{},0,{}
   local function pos(x) return setmetatable({X=x,Y=0,Z=0},{__sub=function(a,c) return {Magnitude=math.abs(a.X-c.X)} end}) end
   local root={Position=pos(0)}
@@ -172,6 +175,7 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   assert(string.find(r.BuildTravelBlocked(),'chest',1,true));r.ChestAutoWorker,r.ChestTravel=chestWorker,chestTravel
   r.Navigation.Humanoid={};r.Navigation.Owner='Chest';assert(r.BuildTravelBlocked());r.Navigation.Owner='Build';assert(not r.BuildTravelBlocked())
   b.Buttons.Travel.Activated:Fire();assert(b.TravelMode=='Stay')
+  r.CarrotCount=saved.Count
   r.Navigation,r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Navigation,saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
   b.HistoryIndex=0;b.SetupReport=nil;b.SetupResult=nil;b.VisualSnapshot=nil;b.VisualCounts=nil;b.LastTravelResult=nil;b:RefreshFailureUI()
   end)()
@@ -988,7 +992,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-speed-95',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-restock-96',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1726,7 +1730,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-speed-95 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-restock-96 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2306,6 +2310,40 @@ end)()
  assert(not b.Buttons.Speed.Active and b.BuildSpeed=='Fast' and not b.SpeedMenu.Visible,'speed buttons must lock through request cleanup')
  b.WorkerToken=nil;b:RefreshFailureUI();assert(b.Buttons.Speed.Active and b:SetBuildSpeed(original))
  assert(not b.Running and not b.WorkerToken,'layout and speed selection cannot start placement')
+end)()
+
+;(function()
+ local b,r=buildController,RemoteCatalog
+ local saved={Count=r.CarrotCount,Cache=r.ModuleCache,Cells=b.Cells,Layer=b.LayerIndex,Character=player.Character,Failures=b.Failures,Progress=b.Progress,History=b.History,Speed=b.BuildSpeed}
+ local world,stock,requests={},0,0
+ local function pos(x) return setmetatable({X=x,Y=0,Z=0},{__sub=function(a,c) return {Magnitude=math.abs(a.X-c.X)} end}) end
+ r.CarrotCount=function(item) assert(item=='grass');return stock end
+ r.ModuleCache={
+  ['ReplicatedStorage.TS.network.requests']={Requests={Client={Get=function() return {CallServer=function(_,body)
+   assert(stock>0,'known empty stock must never reach the game endpoint')
+   stock-=1;requests+=1;world[body.cframe.Position.X]=true;return true
+  end} end}}},
+  ['ReplicatedStorage.TS.util.block-utils']={BlockUtils={getBlocksFromLocation=function(p) return world[p.X] and {true} or {} end}},
+  ['ReplicatedStorage.Shared.SharedConfig']={CLIENT_REACH=20},
+ }
+ player.Character={FindFirstChild=function() return {Position=pos(0)} end}
+ b.Cells={{CFrame={Position=pos(4)},Material='grass'},{CFrame={Position=pos(7)},Material='grass'},{CFrame={Position=pos(10)},Material='grass'}}
+ b.LayerIndex=nil;b.Failures={};b.History={};assert(b:SetBuildSpeed('Fast'))
+ showTab('Auto Build');flush();b.Buttons.Start.Activated:Fire()
+ local owner=b.WorkerToken
+ assert(b.Running and owner and requests==0 and b.Buttons.Start.Text=='Restock · 0/3' and b.WaitingMaterial=='grass','native Start must stay ON at empty stock and display restock in the primary button')
+ for _=1,3 do stepWorkers() end
+ assert(requests==0 and b.Progress.Failed==0 and b.WorkerToken==owner,'waiting cannot generate failures or replacement workers')
+ stock=1;stepWorkers()
+ assert(requests==1 and b.Progress.Checked==1 and b.Buttons.Start.Text=='Building · 1/3','confirmed progress must be visible in the top action row')
+ stepWorkers();assert(b.Buttons.Start.Text=='Restock · 1/3' and requests==1)
+ stock=2;for _=1,5 do stepWorkers() end
+ assert(requests==3 and b.Progress.Checked==3 and b.Progress.Placed==3 and #b.History==1 and not b.WorkerToken and not b.WaitingMaterial,'restocking must complete the same native run')
+ b.Cells={{CFrame={Position=pos(13)},Material='grass'}};b.Buttons.Start.Activated:Fire()
+ assert(b.Running and b.WaitingMaterial=='grass');b.Buttons.Stop.Activated:Fire();stock=10;stepWorkers()
+ assert(requests==3 and not b.WorkerToken and not b.WaitingMaterial,'actual Stop must cancel a restock wait before late stock arrives')
+ r.CarrotCount,r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Count,saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
+ b:SetBuildSpeed(saved.Speed)
 end)()
 
 local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2]}

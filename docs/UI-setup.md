@@ -2565,3 +2565,35 @@ tests cover action bounds at 640/720/1080-pixel window widths, menu expansion,
 selected-state feedback, cleanup, section/tab restoration and unchanged build
 controls. The full regression suite is required. These new timings and the
 revised layout have not been verified in live Roblox.
+
+## Auto Build restocking and visible progress (v96)
+
+Auto Build now waits when the current block's inventory quantity is readable and
+zero. The run stays ON with its existing worker and blueprint. The primary build
+button shows **Restock · checked/total**, and the status names the material to
+replenish. After stock becomes positive, the same run resumes without another
+Start click. This check runs before walking and again before placement/retries;
+restocking does not bypass fresh reach, occupancy or cancellation checks.
+
+While a known empty stock is waiting, subsequent missing/invalid/erroring quantity
+reads keep the wait active until a positive readable quantity arrives. If stock
+was unreadable from the outset, the existing server-validation path remains
+available. Counts must be nonnegative finite integers to be treated as readable.
+Waiting does not reserve stock, withdraw from chests, mark unsent cells as failed,
+create additional workers or reset progress. If a waiting cell becomes occupied,
+it is skipped without requiring inventory. Stop, Stop All and hub removal cancel
+the wait; a late inventory update cannot send another placement.
+
+The Start button now shows **Building · checked/total** during work and **Move
+closer · checked/total** during a reach wait. Checked includes confirmed,
+occupied/skipped and failed cells; it is not a count of newly placed blocks.
+The existing detailed status and run history still report these counts separately.
+The first-row progress updates after each processed cell, so it remains visible
+without scrolling to the status/report. Diagnostics include the waiting material.
+No extra layout height or new automatic inventory actions are introduced.
+
+Tests cover repeated restocks in one run, readable-zero/unknown transitions,
+occupied cells supplied while waiting, walking after restock, cooldown rechecks,
+Stop during a yielding inventory read, real button text and native endpoint
+dispatch. The full regression suite remains required. This new wait/progress
+behavior has not been verified in live Roblox.
