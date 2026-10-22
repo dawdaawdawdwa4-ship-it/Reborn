@@ -2441,3 +2441,33 @@ All/None filters, validation failures, clipboard fallback, busy/context guards,
 saved-slot preservation, explicit saving after import, actual buttons, layout
 restoration and listener cleanup. The full regression suite is required; live
 Roblox rendering, clipboard host support and server behavior remain unverified.
+
+## Repeated Q drop input (v92)
+
+**Settings > AUTO DROP · Q** repeats the game's normal Q action. Select the item
+you want the game to drop, choose **Q interval (seconds)**, and enable **AUTO
+DROP**. Available intervals are 0.10, 0.15 (default), 0.25, 0.50 and 1 second;
+each includes a 0.03-second key hold. The feature starts OFF, is never persisted
+as ON, and has its own **STOP DROP** button. The counter reports completed Q
+presses for the current run, not confirmed item drops or quantities.
+
+Text/chat focus, unreadable text focus, a missing/dead character, Auto Plow and
+existing fishing/bait/resource mouse-input actions pause the worker while it
+stays ON. It resumes when those conditions clear. Losing window focus switches
+it OFF and releases Q immediately. OFF, STOP DROP, Stop All (including the stop
+timer), and hub removal also release the key. Restart and interval changes wait
+for the previous worker's cleanup, preventing overlapping presses or an old
+worker releasing a newer worker's key.
+
+Paired host `keypress`/`keyrelease` functions use virtual-key code `0x51` when
+available; otherwise the feature uses `VirtualInputManager:SendKeyEvent` with
+`Enum.KeyCode.Q`. A failed press stops and attempts key release without replaying
+through another transport. If release fails, its transport is retained so STOP
+can retry; starting a new run requires successful release first. No chest/drop
+remote is learned or invoked, and game permissions and actual drop behavior are
+unchanged. The script does not choose an item or confirm that the game dropped it.
+
+Tests cover cadence, focus/character/input pauses, immediate key release,
+OFF→ON cleanup, host and VIM transports, failed presses/releases, actual settings
+buttons/dropdown, Stop All, window focus and destruction. The full regression
+suite remains required; host input support and live Roblox drops are unverified.

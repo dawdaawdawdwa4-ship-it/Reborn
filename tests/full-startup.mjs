@@ -985,7 +985,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn chest-backup-91',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn q-drop-92',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1723,7 +1723,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn chest-backup-91 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn q-drop-92 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2182,9 +2182,54 @@ end)()
  r.RefreshChestProfiles();r.CloseMenus()
  end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton}
+ ;(function()
+ local r=RemoteCatalog
+ local oldFocus,oldSend,oldCharacter=UserInputService.GetFocusedTextBox,VirtualInputManager.SendKeyEvent,player.Character
+ local events={}
+ UserInputService.GetFocusedTextBox=function() return nil end
+ VirtualInputManager.SendKeyEvent=function(_,down,key) assert(key==Enum.KeyCode.Q);table.insert(events,down and 'down' or 'up') end
+ player.Character={Parent=true,FindFirstChildOfClass=function() return {Health=100} end,FindFirstChild=function() return {} end}
+ showTab('Settings');flush()
+ assert(not r.DropEnabled and r.DropButton.Text=='AUTO DROP: OFF' and r.DropCount==0,'Q repeat must be OFF at startup')
+ local initial=r.DropInfo.Position.Y.Offset
+ r.DropIntervalButton.Activated:Fire()
+ assert(r.DropIntervalMenu.Menu.Visible and r.DropInfo.Position.Y.Offset>initial,'Q interval dropdown must expand without covering the status')
+ r.DropIntervalMenu.Options[1].Activated:Fire()
+ assert(r.DropInterval==.1 and not r.DropIntervalMenu.Menu.Visible and r.DropInfo.Position.Y.Offset==initial,'Q interval selection must restore the exact compact layout')
+ r.DropButton.Activated:Fire()
+ assert(r.DropEnabled and events[1]=='down' and r.DropButton.Text=='AUTO DROP: ON','actual ON must send Q')
+ r.DropIntervalButton.Activated:Fire();assert(not r.DropIntervalMenu.Menu.Visible,'interval changes must wait for press cleanup')
+ UserInputService.WindowFocusReleased:Fire()
+ assert(not r.DropEnabled and events[2]=='up' and not r.DropHeld,'losing window focus must release Q immediately and disable repeat')
+ stepWorkers();assert(not r.DropWorker,'old worker must finish before restart')
+ r.DropButton.Activated:Fire();assert(r.DropEnabled and events[#events]=='down')
+ r.DropStopButton.Activated:Fire();assert(not r.DropEnabled and events[#events]=='up','dedicated Stop must release Q')
+ stepWorkers();r.DropButton.Activated:Fire();assert(r.DropEnabled)
+ r.StopAllAutomation();assert(not r.DropEnabled and events[#events]=='up','Stop All must stop and release Q')
+ stepWorkers();assert(not r.DropWorker and not r.DropHeld)
+ UserInputService.GetFocusedTextBox=function() return {} end
+ r.DropButton.Activated:Fire()
+ assert(r.DropEnabled and string.find(r.DropInfo.Text,'typing',1,true),'text focus must pause without switching OFF')
+ r.DropStopButton.Activated:Fire();stepWorkers()
+ UserInputService.GetFocusedTextBox,VirtualInputManager.SendKeyEvent,player.Character=oldFocus,oldSend,oldCharacter
+ r.DropInterval=.15;r.DropIntervalMenu:Refresh();r.DropCount=0;r.RefreshDropUI()
+ end)()
+
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={}}
+ ;(function()
+ local oldPress,oldRelease,oldFocus,oldCharacter=keypress,keyrelease,UserInputService.GetFocusedTextBox,player.Character
+ local events=cleanupOptions.DropEvents
+ keypress=function() table.insert(events,'down') end;keyrelease=function() table.insert(events,'up') end
+ UserInputService.GetFocusedTextBox=function() return nil end
+ player.Character={Parent=true,FindFirstChildOfClass=function() return {Health=100} end,FindFirstChild=function() return {} end}
+ assert(RemoteCatalog.SetDropEnabled(true) and events[1]=='down')
+ keypress,keyrelease,UserInputService.GetFocusedTextBox,player.Character=oldPress,oldRelease,oldFocus,oldCharacter
+ end)()
 RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
+assert(cleanupOptions.DropEvents[2]=='up' and not RemoteCatalog.DropEnabled and not RemoteCatalog.DropHeld and not RemoteCatalog.DropWorker,'destroying the hub must release Q and end the drop worker')
+RemoteCatalog.SetDropEnabled=function() error('Q drop callback survived GUI removal') end
+cleanupOptions.Drop.Activated:Fire();cleanupOptions.DropStop.Activated:Fire();UserInputService.WindowFocusReleased:Fire()
 RemoteCatalog.CraftItem="cleanup-sentinel";cleanupOptions.Recipe.Activated:Fire()
 assert(RemoteCatalog.CraftItem=="cleanup-sentinel","GUI cleanup must disconnect dynamic recipe option callbacks")
 RemoteCatalog.CraftMaterialsScope="cleanup-sentinel";cleanupOptions.Materials.Activated:Fire()

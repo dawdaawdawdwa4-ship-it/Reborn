@@ -3465,7 +3465,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "chest-backup-91",
+    Subtitle = "q-drop-92",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3975,7 +3975,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-backup-91",
+    return table.concat({"Reborn q-drop-92",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5910,7 +5910,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn chest-backup-91 · Propeller loot history (UTC)",
+    return table.concat({"Reborn q-drop-92 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6014,7 +6014,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn chest-backup-91 · Propeller tracker",
+    return table.concat({"Reborn q-drop-92 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6050,7 +6050,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn chest-backup-91", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn q-drop-92", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -8230,7 +8230,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-backup-91\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn q-drop-92\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8292,7 +8292,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn chest-backup-91 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn q-drop-92 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -8884,7 +8884,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-backup-91\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn q-drop-92\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -9995,7 +9995,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn chest-backup-91 · Craft diagnostics",
+    return table.concat({"Reborn q-drop-92 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -10074,7 +10074,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn chest-backup-91 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn q-drop-92 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -10571,7 +10571,120 @@ function RemoteCatalog.SetPlowEnabled(state)
 end
 -- AUTO PLOW END
 
+-- AUTO DROP BEGIN
+RemoteCatalog.DropEnabled=false
+RemoteCatalog.DropInterval=.15
+RemoteCatalog.DropCount=0
+function RemoteCatalog.RefreshDropUI(message)
+    if not gui.Parent or not RemoteCatalog.DropButton then return end
+    local cleanup=not RemoteCatalog.DropEnabled and RemoteCatalog.DropWorker~=nil
+    RemoteCatalog.DropButton.Text=cleanup and "STOPPING · releasing Q" or RemoteCatalog.DropEnabled and "AUTO DROP: ON" or "AUTO DROP: OFF"
+    RemoteCatalog.DropButton.BackgroundColor3=RemoteCatalog.DropEnabled and COLORS.on or COLORS.off
+    if message then RemoteCatalog.DropDetail=message end
+    RemoteCatalog.DropInfo.Text=(RemoteCatalog.DropDetail or "Repeats the game's Q drop action. Choose your item, then enable.")
+        .."\nQ presses this run: "..RemoteCatalog.DropCount.." · item drops are not confirmed."
+end
+function RemoteCatalog.ReleaseDropKey(press)
+    press=press or RemoteCatalog.DropHeld
+    if not press then return true end
+    local ok,result=pcall(press.Send,false)
+    if ok and result~=false then
+        if RemoteCatalog.DropHeld==press then RemoteCatalog.DropHeld=nil end
+        return true
+    end
+    RemoteCatalog.DropHeld=press
+    return false
+end
+function RemoteCatalog.DropPauseReason()
+    local checked,field=pcall(function() return UserInputService:GetFocusedTextBox() end)
+    if not checked then return "Paused · text focus unavailable" end
+    if field then return "Paused · finish typing in chat or a text field" end
+    local char=player.Character
+    local humanoid=char and char:FindFirstChildOfClass("Humanoid")
+    if not char or not char.Parent or not humanoid or humanoid.Health<=0 or not char:FindFirstChild("HumanoidRootPart") then return "Paused · waiting for your character" end
+    if RemoteCatalog.FishingMouseInput or RemoteCatalog.BaitMouseInput or RemoteCatalog.ResourceInputBusy or RemoteCatalog.PlowWorker then
+        return "Paused · another input action is active"
+    end
+end
+function RemoteCatalog.SetDropEnabled(on)
+    if not on then
+        RemoteCatalog.DropEnabled=false
+        local released=RemoteCatalog.ReleaseDropKey()
+        RemoteCatalog.RefreshDropUI(released and "Stopped · no more Q presses" or "Q release failed · press STOP to retry")
+        return released
+    end
+    if not gui.Parent then return false end
+    if RemoteCatalog.DropEnabled then return true end
+    if RemoteCatalog.DropWorker then RemoteCatalog.RefreshDropUI("Wait for the previous Q press to finish releasing");return false end
+    if not RemoteCatalog.ReleaseDropKey() then RemoteCatalog.RefreshDropUI("Q release failed · press STOP to retry");return false end
+    if not table.find({.1,.15,.25,.5,1},RemoteCatalog.DropInterval) then RemoteCatalog.RefreshDropUI("Choose a supported Q interval");return false end
+    local pressKey,releaseKey=keypress,keyrelease
+    local send
+    if type(pressKey)=="function" and type(releaseKey)=="function" then
+        send=function(down) return (down and pressKey or releaseKey)(0x51) end
+    else
+        send=function(down) return VirtualInputManager:SendKeyEvent(down,Enum.KeyCode.Q,false,game) end
+    end
+    local token={}
+    RemoteCatalog.DropWorker=token;RemoteCatalog.DropEnabled=true;RemoteCatalog.DropCount=0
+    RemoteCatalog.RefreshDropUI("Repeating Q · select the item you want to drop")
+    task.spawn(function()
+        local function active() return gui.Parent~=nil and RemoteCatalog.DropEnabled and RemoteCatalog.DropWorker==token end
+        local ok,failure=pcall(function()
+            while active() do
+                local paused=RemoteCatalog.DropPauseReason()
+                if paused then RemoteCatalog.RefreshDropUI(paused);task.wait(.1)
+                else
+                    local press={Send=send}
+                    RemoteCatalog.DropHeld=press
+                    local ran,result=pcall(send,true)
+                    if not ran or result==false then error("Q input unavailable; no fallback replay sent") end
+                    task.wait(.03)
+                    if not RemoteCatalog.ReleaseDropKey(press) then error("Q release failed · press STOP to retry") end
+                    RemoteCatalog.DropCount+=1
+                    if not active() then break end
+                    RemoteCatalog.RefreshDropUI("Repeating Q · select the item you want to drop")
+                    task.wait(math.max(.07,RemoteCatalog.DropInterval-.03))
+                end
+            end
+        end)
+        local released=RemoteCatalog.ReleaseDropKey()
+        if RemoteCatalog.DropWorker==token then
+            RemoteCatalog.DropWorker=nil;RemoteCatalog.DropEnabled=false
+            RemoteCatalog.RefreshDropUI(not released and "Q release failed · press STOP to retry"
+                or not ok and ("Stopped · "..tostring(failure):sub(1,160)) or "Stopped · no more Q presses")
+        end
+    end)
+    return true
+end
+-- AUTO DROP END
+-- AUTO DROP UI BEGIN
+pageHeading(settingsPage,"AUTO DROP · Q",610)
+RemoteCatalog.DropButton=button({Parent=settingsPage,Text="AUTO DROP: OFF",TextSize=13,
+    Size=UDim2.new(.5,-9,0,38),Position=UDim2.fromOffset(6,638)})
+RemoteCatalog.DropStopButton=button({Parent=settingsPage,Text="STOP DROP",TextSize=13,Bg=COLORS.bad,
+    Size=UDim2.new(.5,-9,0,38),Position=UDim2.new(.5,3,0,638)})
+RemoteCatalog.DropIntervalButton=button({Parent=settingsPage,Text="Interval: 0.15s",TextSize=12,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,684)})
+RemoteCatalog.DropInfo=label({Parent=settingsPage,Text="",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,76),Position=UDim2.fromOffset(8,726)})
+RemoteCatalog.DropInfo.TextWrapped=true;RemoteCatalog.DropInfo.TextYAlignment=Enum.TextYAlignment.Top
+RemoteCatalog.DropIntervalMenu=RemoteCatalog.ChoiceDropdown(settingsPage,RemoteCatalog.DropIntervalButton,{.1,.15,.25,.5,1},{
+    Name="DropIntervalDropdown",Title="Q interval (seconds)",Get=function() return RemoteCatalog.DropInterval end,
+    Set=function(value) RemoteCatalog.DropInterval=value;RemoteCatalog.RefreshDropUI() end,
+    Locked=function() return RemoteCatalog.DropWorker~=nil or RemoteCatalog.DropHeld~=nil end})
+track(RemoteCatalog.DropButton.Activated:Connect(function()
+    RemoteCatalog.CloseMenus();RemoteCatalog.SetDropEnabled(not RemoteCatalog.DropEnabled)
+end))
+track(RemoteCatalog.DropStopButton.Activated:Connect(function() RemoteCatalog.SetDropEnabled(false) end))
+track(UserInputService.WindowFocusReleased:Connect(function()
+    if RemoteCatalog.DropEnabled or RemoteCatalog.DropHeld then RemoteCatalog.SetDropEnabled(false) end
+end))
+RemoteCatalog.RefreshDropUI()
+-- AUTO DROP UI END
+
 function RemoteCatalog.StopAllAutomation()
+    RemoteCatalog.SetDropEnabled(false)
     RemoteCatalog.SetCraftEnabled(false)
     RemoteCatalog.StopCraftLearning()
     RemoteCatalog.SetPlowEnabled(false)
@@ -10951,6 +11064,7 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
+    RemoteCatalog.SetDropEnabled(false)
     RemoteCatalog.PropellerWindow=nil;RemoteCatalog.PropellerPendingWindow=nil
     RemoteCatalog.SetCraftEnabled(false)
     RemoteCatalog.StopCraftLearning()
