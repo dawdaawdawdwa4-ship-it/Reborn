@@ -985,7 +985,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn q-drop-92',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn settings-layout-93',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1723,7 +1723,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn q-drop-92 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn settings-layout-93 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2215,7 +2215,59 @@ end)()
  r.DropInterval=.15;r.DropIntervalMenu:Refresh();r.DropCount=0;r.RefreshDropUI()
  end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={}}
+;(function()
+ local r=RemoteCatalog
+ local cards={r.SettingsControlCard,r.SettingsDropCard,r.SettingsQuickCard,r.SettingsInterfaceCard,r.SettingsAdvancedCard}
+ local function checkLayout()
+  for _,windowWidth in ipairs({640,720,1080}) do
+   local pageWidth=windowWidth-190-36
+   local previousBottom=0
+   for _,card in ipairs(cards) do
+    assert(card.Parent==settingsPage and card.Position.Y.Offset>=previousBottom+8,'settings cards must have distinct vertical space')
+    previousBottom=card.Position.Y.Offset+card.Size.Y.Offset
+    local function checkChildren(parent,width)
+     local boxes={}
+     for _,child in ipairs(parent:GetChildren()) do
+      if child:IsA('GuiObject') and child.Visible then
+       local x=child.Position.X.Scale*width+child.Position.X.Offset
+       local y=child.Position.Y.Offset
+       local w=child.Size.X.Scale*width+child.Size.X.Offset
+       local h=child.Size.Y.Offset
+       assert(x>=0 and y>=0 and x+w<=width and y+h<=parent.Size.Y.Offset,'settings controls must stay within their card at every supported width')
+       for _,box in ipairs(boxes) do
+        assert(x>=box.X+box.W or box.X>=x+w or y>=box.Y+box.H or box.Y>=y+h,'settings controls must not overlap')
+       end
+       table.insert(boxes,{X=x,Y=y,W=w,H=h})
+       if child:IsA('Frame') then checkChildren(child,w) end
+      end
+     end
+    end
+    checkChildren(card,card.Size.X.Scale*pageWidth+card.Size.X.Offset)
+   end
+  end
+ end
+ assert(r.SettingsLayoutHeight<600 and not r.SettingsQuickBody.Visible and not r.SettingsAdvancedBody.Visible,'default Settings must be compact with optional details collapsed')
+ assert(stopAllButton.Parent==r.SettingsControlCard and r.AntiAFKButton.Parent==r.SettingsControlCard and r.DropButton.Parent==r.SettingsDropCard,'primary controls must be grouped at the top')
+ assert(r.SettingsDropCard.Position.Y.Offset<200,'Q repeat must be reachable near the top of Settings')
+ checkLayout()
+ local initial=r.SettingsLayoutHeight
+ r.DropIntervalButton.Activated:Fire();assert(r.DropIntervalMenu.Menu.Visible)
+ checkLayout()
+ r.DropIntervalMenu.Options[2].Activated:Fire();assert(r.SettingsLayoutHeight==initial,'dropdown selection must restore layout exactly')
+ for _=1,3 do
+  r.SettingsQuickButton.Activated:Fire();assert(r.SettingsQuickBody.Visible and not r.SettingsAdvancedBody.Visible)
+  checkLayout()
+  r.SettingsAdvancedButton.Activated:Fire();assert(r.SettingsAdvancedBody.Visible and not r.SettingsQuickBody.Visible,'opening a detail section should keep one section expanded')
+  checkLayout()
+  r.DropIntervalButton.Activated:Fire();assert(not r.SettingsAdvancedBody.Visible,'opening interval choices must dismiss optional settings')
+  checkLayout()
+  showTab('Fishing');flush();assert(not r.DropIntervalMenu.Menu.Visible and r.SettingsLayoutHeight==initial,'tab switches must restore the compact layout without drift')
+ end
+ showTab('Settings');flush()
+ assert(not r.DropEnabled and not r.DropWorker,'layout actions cannot start Q automation')
+end)()
+
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds')}
  ;(function()
  local oldPress,oldRelease,oldFocus,oldCharacter=keypress,keyrelease,UserInputService.GetFocusedTextBox,player.Character
  local events=cleanupOptions.DropEvents
@@ -2230,6 +2282,8 @@ gui:Destroy();stepWorkers()
 assert(cleanupOptions.DropEvents[2]=='up' and not RemoteCatalog.DropEnabled and not RemoteCatalog.DropHeld and not RemoteCatalog.DropWorker,'destroying the hub must release Q and end the drop worker')
 RemoteCatalog.SetDropEnabled=function() error('Q drop callback survived GUI removal') end
 cleanupOptions.Drop.Activated:Fire();cleanupOptions.DropStop.Activated:Fire();UserInputService.WindowFocusReleased:Fire()
+RemoteCatalog.LayoutSettings=function() error('settings layout callback survived GUI removal') end
+cleanupOptions.SettingsQuick.Activated:Fire();cleanupOptions.SettingsAdvanced.Activated:Fire();cleanupOptions.DropTextBounds:Fire()
 RemoteCatalog.CraftItem="cleanup-sentinel";cleanupOptions.Recipe.Activated:Fire()
 assert(RemoteCatalog.CraftItem=="cleanup-sentinel","GUI cleanup must disconnect dynamic recipe option callbacks")
 RemoteCatalog.CraftMaterialsScope="cleanup-sentinel";cleanupOptions.Materials.Activated:Fire()

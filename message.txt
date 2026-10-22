@@ -3465,7 +3465,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "q-drop-92",
+    Subtitle = "settings-layout-93",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3975,7 +3975,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn q-drop-92",
+    return table.concat({"Reborn settings-layout-93",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5369,7 +5369,6 @@ track(RemoteCatalog.AntiAFKButton.Activated:Connect(function() RemoteCatalog.Ant
 RemoteCatalog.AntiAFK:SetEnabled(true)
 -- ANTI AFK END
 
-pageHeading(settingsPage, "QUICK ACTIONS", 100)
 local reset = button({
     Parent = settingsPage, Text = "Reset statistics", TextSize = 12,
     Color = COLORS.muted, Size = UDim2.new(1, -12, 0, 32),
@@ -5386,7 +5385,6 @@ local plantBtn = button({
     Position = UDim2.fromOffset(6, 204),
 })
 
-pageHeading(settingsPage, "CURRENT SETTINGS", 248)
 local stopAllButton = button({ Parent = settingsPage, Text = "STOP ALL AUTOMATION", TextSize = 13,
     Bg = COLORS.bad, Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
 
@@ -5403,7 +5401,6 @@ local settingsText = label({
 })
 settingsText.TextYAlignment = Enum.TextYAlignment.Top
 settingsText.TextWrapped = true
-settingsText.Text = settingsText.Text .. "\n\nV5: optional saved preferences, scan-delay controls, mode status."
 
 local modeStatus = label({
     Parent = settingsPage, Text = "Fishing: OFF  |  Crops: OFF  |  Wood: OFF  |  Mining: OFF",
@@ -5411,14 +5408,13 @@ local modeStatus = label({
     Position = UDim2.fromOffset(8, 382),
 })
 modeStatus.TextWrapped = true
-local delayButton = button({ Parent = settingsPage, Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  (click to adjust",
+local delayButton = button({ Parent = settingsPage, Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  ↻",
     TextSize = 11, Size = UDim2.new(1, -12, 0, 30), Position = UDim2.fromOffset(6, 420) })
-local scanButton = button({ Parent = settingsPage, Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  (click to adjust",
+local scanButton = button({ Parent = settingsPage, Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  ↻",
     TextSize = 11, Size = UDim2.new(1, -12, 0, 30), Position = UDim2.fromOffset(6, 454) })
 local saveButton = button({ Parent = settingsPage, Text = preferencesLoaded and "Preferences loaded" or "Save preferences",
     TextSize = 11, Size = UDim2.new(1, -12, 0, 30), Position = UDim2.fromOffset(6, 488) })
 
-pageHeading(settingsPage, "INTERFACE SIZE", 532)
 local smallerUI = button({ Parent = settingsPage, Text = "A−", TextSize = 14,
     Size = UDim2.new(0.25, -6, 0, 34), Position = UDim2.fromOffset(6, 556) })
 local largerUI = button({ Parent = settingsPage, Text = "A+", TextSize = 14,
@@ -5759,8 +5755,8 @@ replantToggle.Text = CONFIG.AutoReplant and "AUTO-REPLANT: ON" or "AUTO-REPLANT:
 replantToggle.BackgroundColor3 = CONFIG.AutoReplant and COLORS.on or COLORS.off
 woodRangeBtn.Text = "Wood range: " .. CONFIG.WoodRange .. " studs  (+ / −)"
 mineRangeBtn.Text = "Mining range: " .. CONFIG.MineRange .. " studs  (+ / −)"
-delayButton.Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  (click to adjust)"
-scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  (click to adjust)"
+delayButton.Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  ↻"
+scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  ↻"
 saveButton.Text = preferencesLoaded and "Preferences loaded" or "Save preferences"
 showTab("Fishing")
 
@@ -5910,7 +5906,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn q-drop-92 · Propeller loot history (UTC)",
+    return table.concat({"Reborn settings-layout-93 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6014,7 +6010,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn q-drop-92 · Propeller tracker",
+    return table.concat({"Reborn settings-layout-93 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6050,7 +6046,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn q-drop-92", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn settings-layout-93", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -8230,7 +8226,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn q-drop-92\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn settings-layout-93\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8292,7 +8288,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn q-drop-92 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn settings-layout-93 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -8884,7 +8880,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn q-drop-92\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn settings-layout-93\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -9995,7 +9991,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn q-drop-92 · Craft diagnostics",
+    return table.concat({"Reborn settings-layout-93 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -10074,7 +10070,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn q-drop-92 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn settings-layout-93 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -10658,21 +10654,114 @@ function RemoteCatalog.SetDropEnabled(on)
     return true
 end
 -- AUTO DROP END
+-- SETTINGS LAYOUT BEGIN
+function RemoteCatalog.CreateSettingsCard(name,height)
+    local card=Instance.new("Frame")
+    card.Name=name;card.Size=UDim2.new(1,-12,0,height);card.BackgroundColor3=COLORS.panel
+    card.BorderSizePixel=0;card.Parent=settingsPage;corner(card,10)
+    local stroke=Instance.new("UIStroke")
+    stroke.Color=COLORS.stroke;stroke.Transparency=.45;stroke.Thickness=1;stroke.Parent=card
+    return card
+end
+RemoteCatalog.SettingsControlCard=RemoteCatalog.CreateSettingsCard("AutomationControls",126)
+RemoteCatalog.SettingsDropCard=RemoteCatalog.CreateSettingsCard("AutoDropControls",198)
+RemoteCatalog.SettingsQuickCard=RemoteCatalog.CreateSettingsCard("QuickActions",42)
+RemoteCatalog.SettingsInterfaceCard=RemoteCatalog.CreateSettingsCard("InterfaceControls",90)
+RemoteCatalog.SettingsAdvancedCard=RemoteCatalog.CreateSettingsCard("AdvancedSettings",42)
+RemoteCatalog.SettingsQuickOpen=false;RemoteCatalog.SettingsAdvancedOpen=false
+do
+    local function place(control,parent,size,position)
+        control.Parent=parent;control.Size=size;control.Position=position
+    end
+    pageHeading(RemoteCatalog.SettingsControlCard,"AUTOMATION",10).Position=UDim2.fromOffset(10,10)
+    place(stopAllButton,RemoteCatalog.SettingsControlCard,UDim2.new(.5,-16,0,38),UDim2.fromOffset(10,36))
+    stopAllButton.BackgroundColor3=Color3.fromRGB(106,40,51);stopAllButton.Font=Enum.Font.GothamBold
+    place(RemoteCatalog.AntiAFKButton,RemoteCatalog.SettingsControlCard,UDim2.new(.5,-16,0,38),UDim2.new(.5,6,0,36))
+    place(modeStatus,RemoteCatalog.SettingsControlCard,UDim2.new(1,-20,0,36),UDim2.fromOffset(10,82))
+    pageHeading(RemoteCatalog.SettingsInterfaceCard,"INTERFACE",10).Position=UDim2.fromOffset(10,10)
+    place(smallerUI,RemoteCatalog.SettingsInterfaceCard,UDim2.new(.25,-12,0,36),UDim2.fromOffset(10,40))
+    place(largerUI,RemoteCatalog.SettingsInterfaceCard,UDim2.new(.25,-12,0,36),UDim2.new(.25,4,0,40))
+    place(resetUI,RemoteCatalog.SettingsInterfaceCard,UDim2.new(.5,-16,0,36),UDim2.new(.5,6,0,40))
+    RemoteCatalog.SettingsQuickBody=Instance.new("Frame")
+    RemoteCatalog.SettingsQuickBody.Name="QuickActionsBody";RemoteCatalog.SettingsQuickBody.BackgroundTransparency=1
+    RemoteCatalog.SettingsQuickBody.Position=UDim2.fromOffset(0,44);RemoteCatalog.SettingsQuickBody.Size=UDim2.new(1,0,0,88)
+    RemoteCatalog.SettingsQuickBody.Visible=false;RemoteCatalog.SettingsQuickBody.Parent=RemoteCatalog.SettingsQuickCard
+    place(reset,RemoteCatalog.SettingsQuickBody,UDim2.new(.5,-16,0,36),UDim2.fromOffset(10,0))
+    place(layoutBtn,RemoteCatalog.SettingsQuickBody,UDim2.new(.5,-16,0,36),UDim2.new(.5,6,0,0))
+    place(plantBtn,RemoteCatalog.SettingsQuickBody,UDim2.new(1,-20,0,36),UDim2.fromOffset(10,44))
+    RemoteCatalog.SettingsAdvancedBody=Instance.new("Frame")
+    RemoteCatalog.SettingsAdvancedBody.Name="AdvancedSettingsBody";RemoteCatalog.SettingsAdvancedBody.BackgroundTransparency=1
+    RemoteCatalog.SettingsAdvancedBody.Position=UDim2.fromOffset(0,44);RemoteCatalog.SettingsAdvancedBody.Size=UDim2.new(1,0,0,192)
+    RemoteCatalog.SettingsAdvancedBody.Visible=false;RemoteCatalog.SettingsAdvancedBody.Parent=RemoteCatalog.SettingsAdvancedCard
+    place(delayButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(.5,-16,0,36),UDim2.fromOffset(10,0))
+    place(scanButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(.5,-16,0,36),UDim2.new(.5,6,0,0))
+    place(saveButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(1,-20,0,36),UDim2.fromOffset(10,44))
+    place(settingsText,RemoteCatalog.SettingsAdvancedBody,UDim2.new(1,-20,0,100),UDim2.fromOffset(10,90))
+    settingsText.TextTruncate=Enum.TextTruncate.None
+    for _,control in ipairs({reset,layoutBtn,plantBtn,smallerUI,largerUI,resetUI,delayButton,scanButton,saveButton}) do
+        control.BackgroundColor3=COLORS.off
+    end
+end
+RemoteCatalog.SettingsQuickButton=button({Parent=RemoteCatalog.SettingsQuickCard,Text="Quick actions  ▾",TextSize=13,
+    Size=UDim2.new(1,-16,0,34),Position=UDim2.fromOffset(8,4)})
+RemoteCatalog.SettingsAdvancedButton=button({Parent=RemoteCatalog.SettingsAdvancedCard,Text="Advanced settings  ▾",TextSize=13,
+    Size=UDim2.new(1,-16,0,34),Position=UDim2.fromOffset(8,4)})
+RemoteCatalog.SettingsQuickButton.TextXAlignment=Enum.TextXAlignment.Left
+RemoteCatalog.SettingsAdvancedButton.TextXAlignment=Enum.TextXAlignment.Left
+function RemoteCatalog.LayoutSettings()
+    if not gui.Parent then return end
+    local menu=RemoteCatalog.DropIntervalMenu and RemoteCatalog.DropIntervalMenu.Menu
+    local offset=menu and menu.Visible and menu.Size.Y.Offset+12 or 0
+    if menu then menu.Position=UDim2.fromOffset(10,122);menu.Size=UDim2.new(1,-20,0,menu.Size.Y.Offset) end
+    local infoHeight=RemoteCatalog.DropInfo and math.max(64,math.ceil(RemoteCatalog.DropInfo.TextBounds.Y)+8) or 64
+    if RemoteCatalog.DropInfo then
+        RemoteCatalog.DropInfo.Position=UDim2.fromOffset(10,124+offset)
+        RemoteCatalog.DropInfo.Size=UDim2.new(1,-20,0,infoHeight)
+    end
+    RemoteCatalog.SettingsDropCard.Size=UDim2.new(1,-12,0,134+infoHeight+offset)
+    RemoteCatalog.SettingsQuickBody.Visible=RemoteCatalog.SettingsQuickOpen
+    RemoteCatalog.SettingsAdvancedBody.Visible=RemoteCatalog.SettingsAdvancedOpen
+    RemoteCatalog.SettingsQuickCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsQuickOpen and 140 or 42)
+    RemoteCatalog.SettingsAdvancedCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsAdvancedOpen and 244 or 42)
+    RemoteCatalog.SettingsQuickButton.Text=RemoteCatalog.SettingsQuickOpen and "Quick actions  ▴" or "Quick actions  ▾"
+    RemoteCatalog.SettingsAdvancedButton.Text=RemoteCatalog.SettingsAdvancedOpen and "Advanced settings  ▴" or "Advanced settings  ▾"
+    local y=8
+    for _,card in ipairs({RemoteCatalog.SettingsControlCard,RemoteCatalog.SettingsDropCard,RemoteCatalog.SettingsQuickCard,
+        RemoteCatalog.SettingsInterfaceCard,RemoteCatalog.SettingsAdvancedCard}) do
+        card.Position=UDim2.fromOffset(6,y);y+=card.Size.Y.Offset+12
+    end
+    RemoteCatalog.SettingsLayoutHeight=y-12
+end
+track(RemoteCatalog.SettingsQuickButton.Activated:Connect(function()
+    local open=not RemoteCatalog.SettingsQuickOpen
+    RemoteCatalog.CloseMenus();RemoteCatalog.SettingsQuickOpen=open;RemoteCatalog.LayoutSettings()
+end))
+track(RemoteCatalog.SettingsAdvancedButton.Activated:Connect(function()
+    local open=not RemoteCatalog.SettingsAdvancedOpen
+    RemoteCatalog.CloseMenus();RemoteCatalog.SettingsAdvancedOpen=open;RemoteCatalog.LayoutSettings()
+end))
+table.insert(RemoteCatalog.MenuClosers,function()
+    RemoteCatalog.SettingsQuickOpen=false;RemoteCatalog.SettingsAdvancedOpen=false;RemoteCatalog.LayoutSettings()
+end)
+-- SETTINGS LAYOUT END
 -- AUTO DROP UI BEGIN
-pageHeading(settingsPage,"AUTO DROP · Q",610)
-RemoteCatalog.DropButton=button({Parent=settingsPage,Text="AUTO DROP: OFF",TextSize=13,
-    Size=UDim2.new(.5,-9,0,38),Position=UDim2.fromOffset(6,638)})
-RemoteCatalog.DropStopButton=button({Parent=settingsPage,Text="STOP DROP",TextSize=13,Bg=COLORS.bad,
-    Size=UDim2.new(.5,-9,0,38),Position=UDim2.new(.5,3,0,638)})
-RemoteCatalog.DropIntervalButton=button({Parent=settingsPage,Text="Interval: 0.15s",TextSize=12,
-    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,684)})
-RemoteCatalog.DropInfo=label({Parent=settingsPage,Text="",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,76),Position=UDim2.fromOffset(8,726)})
+pageHeading(RemoteCatalog.SettingsDropCard,"AUTO DROP · Q",10).Position=UDim2.fromOffset(10,10)
+RemoteCatalog.DropButton=button({Parent=RemoteCatalog.SettingsDropCard,Text="AUTO DROP: OFF",TextSize=13,Primary=true,
+    Size=UDim2.new(.5,-16,0,38),Position=UDim2.fromOffset(10,36)})
+RemoteCatalog.DropStopButton=button({Parent=RemoteCatalog.SettingsDropCard,Text="STOP DROP",TextSize=13,Bg=Color3.fromRGB(87,39,47),
+    Size=UDim2.new(.5,-16,0,38),Position=UDim2.new(.5,6,0,36)})
+RemoteCatalog.DropIntervalButton=button({Parent=RemoteCatalog.SettingsDropCard,Text="Interval: 0.15s",TextSize=12,
+    Size=UDim2.new(1,-20,0,34),Position=UDim2.fromOffset(10,82)})
+RemoteCatalog.DropInfo=label({Parent=RemoteCatalog.SettingsDropCard,Text="",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-20,0,64),Position=UDim2.fromOffset(10,124)})
+RemoteCatalog.DropInfo.TextTruncate=Enum.TextTruncate.None
+track(RemoteCatalog.DropInfo:GetPropertyChangedSignal("TextBounds"):Connect(RemoteCatalog.LayoutSettings))
 RemoteCatalog.DropInfo.TextWrapped=true;RemoteCatalog.DropInfo.TextYAlignment=Enum.TextYAlignment.Top
-RemoteCatalog.DropIntervalMenu=RemoteCatalog.ChoiceDropdown(settingsPage,RemoteCatalog.DropIntervalButton,{.1,.15,.25,.5,1},{
-    Name="DropIntervalDropdown",Title="Q interval (seconds)",Get=function() return RemoteCatalog.DropInterval end,
+RemoteCatalog.DropIntervalMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.SettingsDropCard,RemoteCatalog.DropIntervalButton,{.1,.15,.25,.5,1},{
+    Name="DropIntervalDropdown",Title="Q interval · seconds",Get=function() return RemoteCatalog.DropInterval end,
     Set=function(value) RemoteCatalog.DropInterval=value;RemoteCatalog.RefreshDropUI() end,
-    Locked=function() return RemoteCatalog.DropWorker~=nil or RemoteCatalog.DropHeld~=nil end})
+    Locked=function() return RemoteCatalog.DropWorker~=nil or RemoteCatalog.DropHeld~=nil end,
+    Layout=function() RemoteCatalog.LayoutSettings() end})
 track(RemoteCatalog.DropButton.Activated:Connect(function()
     RemoteCatalog.CloseMenus();RemoteCatalog.SetDropEnabled(not RemoteCatalog.DropEnabled)
 end))
@@ -10681,6 +10770,7 @@ track(UserInputService.WindowFocusReleased:Connect(function()
     if RemoteCatalog.DropEnabled or RemoteCatalog.DropHeld then RemoteCatalog.SetDropEnabled(false) end
 end))
 RemoteCatalog.RefreshDropUI()
+RemoteCatalog.LayoutSettings()
 -- AUTO DROP UI END
 
 function RemoteCatalog.StopAllAutomation()
@@ -10878,12 +10968,12 @@ end))
 
 track(delayButton.Activated:Connect(function()
     CONFIG.MineDelay = CONFIG.MineDelay >= 0.40 and 0.08 or math.min(0.40, CONFIG.MineDelay + 0.04)
-    delayButton.Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  (click to adjust)"
+    delayButton.Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  ↻"
     savePreferences()
 end))
 track(scanButton.Activated:Connect(function()
     CONFIG.MineScanInterval = CONFIG.MineScanInterval >= 1.0 and 0.15 or math.min(1.0, CONFIG.MineScanInterval + 0.15)
-    scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  (click to adjust)"
+    scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  ↻"
     savePreferences()
 end))
 track(saveButton.Activated:Connect(function()

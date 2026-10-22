@@ -2471,3 +2471,31 @@ Tests cover cadence, focus/character/input pauses, immediate key release,
 OFF→ON cleanup, host and VIM transports, failed presses/releases, actual settings
 buttons/dropdown, Stop All, window focus and destruction. The full regression
 suite remains required; host input support and live Roblox drops are unverified.
+
+## Settings layout (v93)
+
+Settings now groups its controls in five rounded cards with consistent padding,
+button heights and column gaps. The automation card comes first with Stop All,
+Anti AFK and the live mode status. Auto Drop follows directly below, bringing
+its toggle, dedicated Stop and interval dropdown near the top of the page.
+
+**Quick actions** expands to show Reset statistics, Apply hotbar layout and Plant
+selected crop. **Interface** keeps A−, A+ and Reset view visible. **Advanced
+settings** expands to show the existing timing controls, Save preferences and
+current configuration. Quick actions and Advanced settings start collapsed;
+opening either closes the other. Timing buttons use shorter labels with a cycle
+arrow, retaining their existing values and callbacks. The obsolete V5 description
+has been removed.
+
+The normal collapsed layout is 554 logical pixels high, down from the previous
+Auto Drop status ending at 802. Actual height can grow to accommodate wrapped
+Auto Drop status text. Its interval menu expands the card and pushes all following
+cards down, with no overlay on the status or other controls. Positions are
+recomputed from the current sizes instead of accumulating offsets. Opening
+another menu, switching tabs or hiding the hub restores the compact sections
+without changing automation state or current preferences.
+
+Full-application tests check visible control bounds and overlaps at window widths
+640, 720 and 1080, section/dropdown transitions, layout restoration, grouping,
+listener cleanup and unchanged Auto Drop input behavior. The full test suite is
+required; live Roblox rendering and input routing remain unverified.
