@@ -2075,6 +2075,9 @@ function AutoBuild.new(ctx)
             buttons.Stop.Active=canStop==true;buttons.Stop.Selectable=canStop==true
             buttons.Stop.Text=not self.Running and self.WorkerToken and "Stopping…" or "Stop"
         end
+        for _,key in ipairs({"Check","CopyMissing","CopyCheck","CopySetup","CheckSetup"}) do
+            if buttons[key] then buttons[key].Active=editing==true;buttons[key].Selectable=editing==true end
+        end
         for _,key in ipairs({"RepeatCopies","RepeatGap","RepeatScope","RepeatRight","RepeatForward","RepeatUp"}) do
             if buttons[key] then
                 buttons[key].Active=editing==true;buttons[key].Selectable=editing==true;buttons[key].AutoButtonColor=editing==true
@@ -2535,6 +2538,7 @@ function AutoBuild.new(ctx)
         if not ctx.Alive() then return false end
         if self.Running or self.WorkerToken then status("Finish or stop the current build request before checking materials.");return false end
         if not self.Cells then status("Preview at the intended position before checking materials.");return false end
+        self.BuildReport=nil
         local cells=self:SelectedCells()
         local checkedCells,checkedToken,checkedLayer,revision=self.Cells,self.Token,self.LayerIndex,self.PlanRevision
         local checkedCharacter=ctx.Player.Character
@@ -2542,9 +2546,10 @@ function AutoBuild.new(ctx)
         self.SetupReport=nil;self.SetupResult=nil
         if #cells==0 then status("No blocks selected. Choose All layers or refresh the preview.");return false end
         local pending,skipped,reachable,states={},0,0,{}
-        local _,root=characterRoot()
-        local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
-        local fallback=type(reach)~="number" or not (reach>0 and reach<math.huge)
+        local rootRead,_,root=pcall(characterRoot)
+        if not rootRead then root=nil end
+        local reachRead,reach=pcall(ctx.GameModule,"ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
+        local fallback=not reachRead or type(reach)~="number" or not (reach>0 and reach<math.huge)
         if fallback then reach=20 end
         local ok,err=pcall(function()
             for _,cell in ipairs(cells) do
@@ -2583,7 +2588,33 @@ function AutoBuild.new(ctx)
         self.MaterialSummary.Text=self.BuildReport
         status("Build check ready. No blocks were placed. Refresh after inventory or world changes.")
         return {Remaining=total,Occupied=skipped,Reachable=reachable,Materials=pending,Selected=#cells,Excluded=#self.Cells-#cells,
-            Quantities=quantities,ShortTypes=short,UnknownTypes=unknown,RootAvailable=root~=nil,Reach=reach,ReachFallback=fallback}
+            Quantities=quantities,ShortTypes=short,UnknownTypes=unknown,RootAvailable=root~=nil,Reach=reach,ReachFallback=fallback,Layer=checkedLayer}
+    end
+    function self:CopyMissingMaterials()
+        local check=self:CheckMaterials()
+        if not check then return false end
+        local names={}
+        for name,quantity in pairs(check.Quantities) do
+            if quantity.Missing==nil or quantity.Missing>0 then table.insert(names,name) end
+        end
+        table.sort(names)
+        local lines={"Reborn Auto Build · Restock list",
+            check.Layer and ("Selected layer: "..check.Layer) or "All layers",
+            check.Selected.." selected · "..check.Occupied.." occupied/skipped · "..check.Remaining.." remaining",
+            "Known shortages: "..check.ShortTypes.." material types · unknown quantities: "..check.UnknownTypes}
+        for _,name in ipairs(names) do
+            local quantity=check.Quantities[name]
+            table.insert(lines,quantity.Missing==nil
+                and (name.." · need "..quantity.Need.." · owned unknown; shortage unknown")
+                or (name.." ×"..quantity.Missing.." · need "..quantity.Need.." · owned "..quantity.Owned))
+        end
+        if check.Remaining==0 then table.insert(lines,"No blocks needed; all selected cells are occupied.")
+        elseif #names==0 then table.insert(lines,"Readable inventory covers all remaining selected cells.") end
+        table.insert(lines,"Fresh read-only snapshot. Recheck after restocking or world changes. No blocks placed, materials reserved or chests accessed.")
+        local report=table.concat(lines,"\n")
+        if not ctx.CopyReport then status("Report copying is unavailable.");return false end
+        ctx.CopyReport(report)
+        return report
     end
     function self:CheckSetup()
         if not ctx.Alive() then return false end
@@ -3236,9 +3267,10 @@ function AutoBuild.new(ctx)
     end)
     local hint=label("Save preview stores its shape and materials. Save island area stores nearby placed blocks on your own island. Saving overwrites the selected slot. Load never starts building. Chest contents, inventories and scripts are not saved.",966,110)
     hint.TextWrapped=true
-    button("Check","Check remaining materials",0,1088,1,function() self:CheckMaterials() end)
+    button("Check","Check materials",0,1088,.5,function() self:CheckMaterials() end)
+    button("CopyMissing","Copy restock",.5,1088,.5,function() self:CopyMissingMaterials() end)
     button("CopyCheck","Copy build check",0,1128,.5,function()
-        if not self.BuildReport then status("Run Check remaining materials first.");return end
+        if not self.BuildReport then status("Run Check materials first.");return end
         if ctx.CopyReport then ctx.CopyReport(self.BuildReport) else status("Report copying is unavailable.") end
     end)
     button("CopySetup","Copy setup check",.5,1128,.5,function()
@@ -3752,7 +3784,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "build-progress-100",
+    Subtitle = "build-restock-list-101",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -4016,9 +4048,15 @@ local function setStatus(text, color)
     status.TextColor3 = color or COLORS.muted
 end
 function RemoteCatalog.CopyBuildReport(report)
-    local copy=setclipboard or toclipboard
-    if type(copy)=="function" and pcall(copy,report) then setStatus("Build report copied",COLORS.good)
-    else print(report);setStatus("Build report printed to console",COLORS.warn) end
+    local function tryCopy(copy)
+        if type(copy)~="function" then return false end
+        local ok,result=pcall(copy,report)
+        return ok and result~=false
+    end
+    if tryCopy(setclipboard) or toclipboard~=setclipboard and tryCopy(toclipboard) then
+        setStatus("Build report copied",COLORS.good);return true
+    end
+    print(report);setStatus("Build report printed to console",COLORS.warn);return false
 end
 
 local function pageHeading(parent, text, y)
@@ -4262,7 +4300,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-progress-100",
+    return table.concat({"Reborn build-restock-list-101",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6193,7 +6231,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn build-progress-100 · Propeller loot history (UTC)",
+    return table.concat({"Reborn build-restock-list-101 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6297,7 +6335,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn build-progress-100 · Propeller tracker",
+    return table.concat({"Reborn build-restock-list-101 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6333,7 +6371,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-progress-100", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn build-restock-list-101", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -8513,7 +8551,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-progress-100\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn build-restock-list-101\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8575,7 +8613,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn build-progress-100 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn build-restock-list-101 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9167,7 +9205,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-progress-100\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn build-restock-list-101\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -10278,7 +10316,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn build-progress-100 · Craft diagnostics",
+    return table.concat({"Reborn build-restock-list-101 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -10357,7 +10395,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn build-progress-100 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn build-restock-list-101 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end

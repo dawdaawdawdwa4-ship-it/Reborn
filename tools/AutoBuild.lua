@@ -689,6 +689,9 @@ function AutoBuild.new(ctx)
             buttons.Stop.Active=canStop==true;buttons.Stop.Selectable=canStop==true
             buttons.Stop.Text=not self.Running and self.WorkerToken and "Stopping…" or "Stop"
         end
+        for _,key in ipairs({"Check","CopyMissing","CopyCheck","CopySetup","CheckSetup"}) do
+            if buttons[key] then buttons[key].Active=editing==true;buttons[key].Selectable=editing==true end
+        end
         for _,key in ipairs({"RepeatCopies","RepeatGap","RepeatScope","RepeatRight","RepeatForward","RepeatUp"}) do
             if buttons[key] then
                 buttons[key].Active=editing==true;buttons[key].Selectable=editing==true;buttons[key].AutoButtonColor=editing==true
@@ -1149,6 +1152,7 @@ function AutoBuild.new(ctx)
         if not ctx.Alive() then return false end
         if self.Running or self.WorkerToken then status("Finish or stop the current build request before checking materials.");return false end
         if not self.Cells then status("Preview at the intended position before checking materials.");return false end
+        self.BuildReport=nil
         local cells=self:SelectedCells()
         local checkedCells,checkedToken,checkedLayer,revision=self.Cells,self.Token,self.LayerIndex,self.PlanRevision
         local checkedCharacter=ctx.Player.Character
@@ -1156,9 +1160,10 @@ function AutoBuild.new(ctx)
         self.SetupReport=nil;self.SetupResult=nil
         if #cells==0 then status("No blocks selected. Choose All layers or refresh the preview.");return false end
         local pending,skipped,reachable,states={},0,0,{}
-        local _,root=characterRoot()
-        local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
-        local fallback=type(reach)~="number" or not (reach>0 and reach<math.huge)
+        local rootRead,_,root=pcall(characterRoot)
+        if not rootRead then root=nil end
+        local reachRead,reach=pcall(ctx.GameModule,"ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
+        local fallback=not reachRead or type(reach)~="number" or not (reach>0 and reach<math.huge)
         if fallback then reach=20 end
         local ok,err=pcall(function()
             for _,cell in ipairs(cells) do
@@ -1197,7 +1202,33 @@ function AutoBuild.new(ctx)
         self.MaterialSummary.Text=self.BuildReport
         status("Build check ready. No blocks were placed. Refresh after inventory or world changes.")
         return {Remaining=total,Occupied=skipped,Reachable=reachable,Materials=pending,Selected=#cells,Excluded=#self.Cells-#cells,
-            Quantities=quantities,ShortTypes=short,UnknownTypes=unknown,RootAvailable=root~=nil,Reach=reach,ReachFallback=fallback}
+            Quantities=quantities,ShortTypes=short,UnknownTypes=unknown,RootAvailable=root~=nil,Reach=reach,ReachFallback=fallback,Layer=checkedLayer}
+    end
+    function self:CopyMissingMaterials()
+        local check=self:CheckMaterials()
+        if not check then return false end
+        local names={}
+        for name,quantity in pairs(check.Quantities) do
+            if quantity.Missing==nil or quantity.Missing>0 then table.insert(names,name) end
+        end
+        table.sort(names)
+        local lines={"Reborn Auto Build · Restock list",
+            check.Layer and ("Selected layer: "..check.Layer) or "All layers",
+            check.Selected.." selected · "..check.Occupied.." occupied/skipped · "..check.Remaining.." remaining",
+            "Known shortages: "..check.ShortTypes.." material types · unknown quantities: "..check.UnknownTypes}
+        for _,name in ipairs(names) do
+            local quantity=check.Quantities[name]
+            table.insert(lines,quantity.Missing==nil
+                and (name.." · need "..quantity.Need.." · owned unknown; shortage unknown")
+                or (name.." ×"..quantity.Missing.." · need "..quantity.Need.." · owned "..quantity.Owned))
+        end
+        if check.Remaining==0 then table.insert(lines,"No blocks needed; all selected cells are occupied.")
+        elseif #names==0 then table.insert(lines,"Readable inventory covers all remaining selected cells.") end
+        table.insert(lines,"Fresh read-only snapshot. Recheck after restocking or world changes. No blocks placed, materials reserved or chests accessed.")
+        local report=table.concat(lines,"\n")
+        if not ctx.CopyReport then status("Report copying is unavailable.");return false end
+        ctx.CopyReport(report)
+        return report
     end
     function self:CheckSetup()
         if not ctx.Alive() then return false end
@@ -1850,9 +1881,10 @@ function AutoBuild.new(ctx)
     end)
     local hint=label("Save preview stores its shape and materials. Save island area stores nearby placed blocks on your own island. Saving overwrites the selected slot. Load never starts building. Chest contents, inventories and scripts are not saved.",966,110)
     hint.TextWrapped=true
-    button("Check","Check remaining materials",0,1088,1,function() self:CheckMaterials() end)
+    button("Check","Check materials",0,1088,.5,function() self:CheckMaterials() end)
+    button("CopyMissing","Copy restock",.5,1088,.5,function() self:CopyMissingMaterials() end)
     button("CopyCheck","Copy build check",0,1128,.5,function()
-        if not self.BuildReport then status("Run Check remaining materials first.");return end
+        if not self.BuildReport then status("Run Check materials first.");return end
         if ctx.CopyReport then ctx.CopyReport(self.BuildReport) else status("Report copying is unavailable.") end
     end)
     button("CopySetup","Copy setup check",.5,1128,.5,function()

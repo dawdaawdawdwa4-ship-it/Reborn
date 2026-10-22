@@ -2719,3 +2719,39 @@ restock, Stop during a pending request, late completion, repeated runs, preview
 revision/layer changes, history retention, removed hubs, and actual UI control
 states/layout with inline dropdowns. Live Roblox rendering and behavior remain
 unverified.
+
+## Fresh build restock lists (v101)
+
+Open **Saved blueprints & checks** and use **Copy restock**, next to **Check
+materials**. It runs a fresh read-only check of the current preview and selected
+layer, excludes occupied cells, subtracts readable owned quantities, and copies a
+sorted list of remaining shortages. Covered materials are omitted. Unknown
+inventory quantities retain their required count and explicitly unknown shortage;
+they never become an invented zero or a claim that stock is sufficient. An
+all-occupied selection and a fully covered inventory have distinct explanations.
+
+The list includes selected/occupied/remaining counts and its layer scope. It does
+not access chests, reserve materials or send placement requests. Copying again
+refreshes the world/inventory check after restocking. Empty previews, active or
+paused builds, pending worker cleanup, unreadable occupancy, and checks overtaken
+by preview/run/layer/character changes or GUI removal do not export a stale list.
+The check and copy controls are visibly disabled throughout active work/cleanup.
+The split row fits inside the existing section without increasing the compact
+page height.
+
+Material checks now tolerate a failed reach-configuration lookup using the existing
+normal 20-stud fallback estimate; failed occupancy reads still abort the check.
+An attempted fresh check invalidates its older cached build report. Known shortage
+counts remain snapshot estimates: occupied block types are not verified, and
+support/permissions remain server-controlled.
+
+Build report copying now treats an explicit clipboard `false` as a failure while
+retaining nil-returning clipboard API compatibility. It tries a distinct alternate
+clipboard function when available, then prints to the console with accurate
+status. An aliased clipboard function is never invoked twice. This applies to the
+new restock list and existing build diagnostics, setup/check and history exports.
+
+Validation covers sorted mixed shortages, unknown/covered inventory, occupied
+cells, selected layers, failed reach metadata, active/cleanup locks, concurrent
+snapshot cancellation, clipboard failures/alternate APIs, layout and listener
+cleanup. The full suite remains required; live Roblox behavior is unverified.

@@ -1000,7 +1000,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-progress-100',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-restock-list-101',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1738,7 +1738,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-progress-100 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-restock-list-101 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2368,7 +2368,51 @@ end)()
  b:SetBuildSpeed(saved.Speed)
 end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause,BuildCopyAll=buildController.Buttons.CopyAllHistory}
+;(function()
+ local b,r=buildController,RemoteCatalog
+ local saved={Count=r.CarrotCount,Cache=r.ModuleCache,Cells=b.Cells,Layer=b.LayerIndex,Character=player.Character,Copy=setclipboard,Alternate=toclipboard}
+ local fields={'BuildReport','SetupReport','SetupResult','VisualSnapshot','VisualCounts'}
+ local old={};for _,key in ipairs(fields) do old[key]=b[key] end
+ local function pos(x) return setmetatable({X=x,Y=0,Z=0},{__sub=function(a,c) return {Magnitude=math.abs(a.X-c.X)} end}) end
+ r.ModuleCache={
+  ['ReplicatedStorage.TS.util.block-utils']={BlockUtils={getBlocksFromLocation=function(p) return p.X==1 and {true} or {} end}},
+  ['ReplicatedStorage.Shared.SharedConfig']={CLIENT_REACH=20}}
+ player.Character={FindFirstChild=function() return {Position=pos(0)} end}
+ b.Cells={{CFrame={Position=pos(1)},Material='grass'},{CFrame={Position=pos(4)},Material='grass'},{CFrame={Position=pos(7)},Material='stone'}};b.LayerIndex=nil
+ r.CarrotCount=function(name) if name=='grass' then return 0 end end
+ local copied,attempts=nil,0
+ setclipboard=function() attempts+=1;return false end
+ toclipboard=function(text) copied=text end
+ b.Buttons.CopyMissing.Activated:Fire()
+ assert(copied and string.find(copied,'grass ×1',1,true) and string.find(copied,'stone · need 1 · owned unknown',1,true) and string.find(status.Text,'copied',1,true),'native restock action must copy a fresh shortage list through the alternate clipboard API')
+ assert(attempts==1 and not b.Running and not b.WorkerToken,'native export must not start automation or repeat the rejected clipboard API')
+ local same=function() attempts+=1;return false end
+ setclipboard=same;toclipboard=same;local count=attempts
+ assert(r.CopyBuildReport('restock clipboard fallback')==false and attempts==count+1 and string.find(status.Text,'printed to console',1,true),'explicit false with aliased APIs must print once and never claim a copy')
+ setclipboard=function() error('clipboard unavailable') end;toclipboard=nil
+ assert(r.CopyBuildReport('restock exception fallback')==false and string.find(status.Text,'printed to console',1,true))
+ setclipboard=true;toclipboard=function(text) copied=text end
+ assert(r.CopyBuildReport('alternate available')==true and copied=='alternate available','a non-function primary clipboard value cannot hide a usable alternate')
+ setclipboard=function(text) copied=text end;toclipboard=nil
+ assert(r.CopyBuildReport('nil return means success')==true and copied=='nil return means success')
+ b.WorkerToken=101;b:RefreshFailureUI();copied=nil
+ b.Buttons.CopyMissing.Activated:Fire()
+ assert(not copied and not b.Buttons.CopyMissing.Active and not b.Buttons.Check.Active,'cleanup must disable the two material-check actions and reject forced callbacks')
+ b.WorkerToken=nil;b:RefreshFailureUI()
+ local height=b.LayoutHeight
+ if not b.Buttons.CopyMissing.Visible then b:ToggleSection('Library') end
+ assert(b.Buttons.CopyMissing.Visible and b.Buttons.CopyMissing.Position.Y.Offset==b.Buttons.Check.Position.Y.Offset,'restock action must fit beside the material check in the saved-blueprint section')
+ for _,width in ipairs({414,494,854}) do
+  local check,copy=b.Buttons.Check,b.Buttons.CopyMissing
+  assert(check.Position.X.Offset+check.Size.X.Scale*width+check.Size.X.Offset<=copy.Position.X.Scale*width+copy.Position.X.Offset,'restock and check controls cannot overlap at supported widths')
+ end
+ b:ToggleSection('Library');assert(b.LayoutHeight==height and b.LayoutHeight<650,'the compact default height must be preserved')
+ r.CarrotCount,r.ModuleCache,b.Cells,b.LayerIndex,player.Character,setclipboard,toclipboard=saved.Count,saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Copy,saved.Alternate
+ for _,key in ipairs(fields) do b[key]=old[key] end
+ b:RefreshFailureUI()
+end)()
+
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause,BuildCopyAll=buildController.Buttons.CopyAllHistory,BuildRestock=buildController.Buttons.CopyMissing}
  ;(function()
  local oldPress,oldRelease,oldFocus,oldCharacter=keypress,keyrelease,UserInputService.GetFocusedTextBox,player.Character
  local events=cleanupOptions.DropEvents
@@ -2396,6 +2440,7 @@ buildController.RepeatLayout=function() error('repeat callback survived GUI remo
 buildController.SetBuildSpeed=function() error('speed callback survived GUI removal') end;cleanupOptions.BuildFast.Activated:Fire()
 buildController.SetPaused=function() error('pause callback survived GUI removal') end;cleanupOptions.BuildPause.Activated:Fire()
 buildController.CopyAllHistory=function() error('history export callback survived GUI removal') end;cleanupOptions.BuildCopyAll.Activated:Fire()
+buildController.CopyMissingMaterials=function() error('restock export callback survived GUI removal') end;cleanupOptions.BuildRestock.Activated:Fire()
 RemoteCatalog.CheckCraftQueue=function() error('queue-check callback survived GUI removal') end;cleanupOptions.QueueCheck.Activated:Fire()
 RemoteCatalog.ImportChestSetup=function() error('chest import callback survived GUI removal') end
 RemoteCatalog.ExportChestSetup=function() error('chest export callback survived GUI removal') end

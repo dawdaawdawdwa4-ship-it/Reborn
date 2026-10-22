@@ -1408,6 +1408,61 @@ end)()
  assert(not value.Buttons.Start.Active and not value.Buttons.Stop.Active and not value.Buttons.Pause.Active,'removed hubs cannot present active build actions')
  ctx.Place,ctx.ItemCount,ctx.Alive,occupied,root.Position=saved.Place,saved.Count,saved.Alive,saved.World,saved.Root
 end)()
+;(function()
+ local saved={Count=ctx.ItemCount,Module=ctx.GameModule,Copy=ctx.CopyReport,Alive=ctx.Alive,World=occupied,Root=root.Position,Character=ctx.Player.Character}
+ local copied,copies,reads=nil,0,{}
+ ctx.CopyReport=function(text) copied=text;copies+=1 end
+ root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+ local baseModule=ctx.GameModule
+ ctx.GameModule=function(path,key) if key=='CLIENT_REACH' then error('reach config temporarily unavailable') end;return baseModule(path,key) end
+ ctx.ItemCount=function(name) reads[name]=(reads[name] or 0)+1;if name=='grass' then return 1 elseif name=='wood' then return 10 end end
+ local value=A.new(ctx);value.BlockSize=3
+ value.Cells={
+  {CFrame={Position=1},LayerY=0,Material='grass'},{CFrame={Position=2},LayerY=0,Material='grass'},
+  {CFrame={Position=3},LayerY=0,Material='grass'},{CFrame={Position=4},LayerY=3,Material='stone'},
+  {CFrame={Position=5},LayerY=3,Material='wood'}}
+ occupied={[1]=true};local before=requests
+ local report=value:CopyMissingMaterials()
+ assert(report==copied and copies==1 and string.find(report,'grass ×1 · need 2 · owned 1',1,true),'restock list must subtract readable stock and exclude occupied cells')
+ assert(string.find(report,'stone · need 1 · owned unknown; shortage unknown',1,true) and not string.find(report,'wood',1,true),'unknown quantities must be explicit and covered materials omitted')
+ assert(string.find(report,'grass',1,true)<string.find(report,'stone',1,true) and reads.grass==1 and reads.stone==1 and reads.wood==1,'list must be sorted with one inventory read per material')
+ assert(not value.WorkerToken and requests==before and value.BuildReport,'copying cannot place blocks or create a worker, including when reach metadata fails')
+ value.LayerIndex=1;report=value:CopyMissingMaterials()
+ assert(string.find(report,'Selected layer: 1',1,true) and not string.find(report,'stone',1,true) and string.find(report,'3 selected · 1 occupied/skipped · 2 remaining',1,true),'restock must respect the selected layer')
+ ctx.ItemCount=function() return 100 end
+ report=value:CopyMissingMaterials();assert(string.find(report,'covers all remaining selected cells',1,true),'fully covered stock needs no additional blocks')
+ occupied={[1]=true,[2]=true,[3]=true};report=value:CopyMissingMaterials()
+ assert(string.find(report,'No blocks needed',1,true),'all-occupied selections must report nothing to restock')
+ occupied={};value.LayerIndex=nil
+ local read=ctx.ItemCount;local count=copies
+ value.WorkerToken=101;value:RefreshFailureUI()
+ assert(not value:CopyMissingMaterials() and copies==count and not value.Buttons.CopyMissing.Active,'cleanup must lock fresh restock copies')
+ value.WorkerToken=nil;value.Running=true;value:RefreshFailureUI()
+ assert(not value:CopyMissingMaterials() and copies==count and not value.Buttons.CopyMissing.Active,'active and paused builds cannot run another scan')
+ value.Running=false;value:RefreshFailureUI();assert(value.Buttons.CopyMissing.Active)
+ -- No stale report may be copied after a yielding inventory read.
+ for _,change in ipairs({
+  function() value.PlanRevision=(value.PlanRevision or 0)+1 end,
+  function() value.Token+=1 end,
+  function() value.LayerIndex=1 end,
+  function() ctx.Player.Character={} end,
+  function() ctx.Alive=function() return false end end
+ }) do
+  value.LayerIndex=nil;ctx.Player.Character=saved.Character;ctx.Alive=saved.Alive
+  ctx.ItemCount=function() coroutine.yield();return 0 end
+  local result
+  local co=coroutine.create(function() result=value:CopyMissingMaterials() end)
+  assert(coroutine.resume(co));change()
+  while coroutine.status(co)~='dead' do assert(coroutine.resume(co)) end
+  assert(result==false and copies==count,'changed plan/run/layer/character or removed UI must cancel the copy')
+ end
+ ctx.ItemCount=read;ctx.Alive=saved.Alive;ctx.Player.Character=saved.Character;value.LayerIndex=nil
+ ctx.GameModule=function() error('world unavailable') end
+ assert(not value:CopyMissingMaterials() and copies==count and not value.BuildReport,'failed occupancy checks cannot export a previous successful snapshot')
+ ctx.GameModule=baseModule;ctx.CopyReport=nil
+ assert(not value:CopyMissingMaterials(),'missing copy adapter must be reported without throwing')
+ ctx.ItemCount,ctx.GameModule,ctx.CopyReport,ctx.Alive,occupied,root.Position,ctx.Player.Character=saved.Count,saved.Module,saved.Copy,saved.Alive,saved.World,saved.Root,saved.Character
+end)()
 return 'Auto Build blueprints, paths, placement confirmation, result snapshots/export, pause/resume, restock waits, live progress, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}
