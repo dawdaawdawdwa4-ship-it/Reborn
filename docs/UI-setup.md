@@ -2526,3 +2526,42 @@ rotated/direct packets, extra/nil arguments, original-packet preservation,
 ambiguity rejection, removed endpoints, server rejection, recorder migration,
 report ordering and native UI scroll reset, plus the full regression suite.
 Live Roblox placement and rendering remain unverified.
+
+## Auto Build speed and action layout (v95)
+
+The supplied recording shows build progress and some placement failures. This
+update reduces avoidable local delay; it does not resolve missing materials,
+unsupported blocks, island permissions or other server rejections.
+
+**Start build / Stop** now share the first action row below the blueprint/settings
+controls. **Preview / Learn placement / Check setup** share the next row. The
+layer selector and new **Speed** dropdown sit together, followed by compact
+Rotate, Center, Retry and Clear buttons. Start/Stop are larger, setup buttons use
+size 13 text, and rotation uses a short arrow label. The collapsed tab height is
+unchanged. The Standard/Fast menu expands in flow, pushes later controls and the
+report down, and restores their positions on selection, another menu, a section
+change or tab/hub closure. It never starts a build.
+
+Speed defaults to **Standard**, with a target interval of 0.20 seconds between
+placement request starts. **Fast** uses a 0.05-second target. Both count the
+preceding request's server/confirmation time toward the target instead of adding
+the full interval afterward. A short yield remains when that time already
+exceeds the target. Cells already occupied yield 0.01 seconds instead of waiting
+0.20 seconds each. Actual speed depends on server latency, replication and limits;
+requests remain sequential and require the existing confirmation checks.
+
+An observed server `TOO_FAST` still uses the existing bounded retry/backoff for
+the same cell. It also increases the run's request gap up to 0.80 seconds. After
+five confirmed placements, the gap recovers gradually toward the selected speed.
+The increased gap applies after an accepted retry too. Each new run starts at its
+selected target. Transport failures keep the existing no-replay/review behavior.
+Speed edits lock during a run and request cleanup; diagnostics show the selected
+speed, current gap and cooldown count. Speed is a session setting and is not
+stored in blueprint JSON.
+
+Deterministic tests cover Standard/Fast cadence, slow RPCs, occupied-layout
+throughput, cooldown recovery, speed locks and sequential confirmation. Full UI
+tests cover action bounds at 640/720/1080-pixel window widths, menu expansion,
+selected-state feedback, cleanup, section/tab restoration and unchanged build
+controls. The full regression suite is required. These new timings and the
+revised layout have not been verified in live Roblox.

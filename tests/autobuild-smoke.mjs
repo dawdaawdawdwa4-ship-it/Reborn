@@ -104,10 +104,10 @@ local function signal()
  return {Connect=function(_,callback) table.insert(callbacks,callback);return {} end,
  Fire=function() for _,callback in ipairs(callbacks) do callback() end end}
 end
-local function control() return {Activated=signal(),FocusLost=signal(),Destroy=function(self) self.Destroyed=true end} end
+local function control(props) local value={Activated=signal(),FocusLost=signal(),Destroy=function(self) self.Destroyed=true end};for key,item in pairs(props or {}) do value[key]=item end;return value end
 local Instance={new=function() return control() end}
 local Vector2={zero={X=0,Y=0}}
-local UDim2={new=function() return {} end,fromOffset=function() return {} end}
+local UDim2={new=function(xs,x,ys,y) return {X={Scale=xs,Offset=x},Y={Scale=ys,Offset=y}} end}\nUDim2.fromOffset=function(x,y) return UDim2.new(0,x,0,y) end
 local Color3={fromRGB=function() return {} end}
 local fm={}
 local function frame(x,y,z,yaw)
@@ -149,7 +149,7 @@ local A=(function() ${source} end)()
 local ticks,worker,requests=0,nil,0
 local occupied={}
 local root={Position=setmetatable({},{__sub=function() return {Magnitude=0} end})}
-local ctx={Player={Character={FindFirstChild=function() return root end}},Parent={},Label=function() return control() end,Button=function() return control() end,Track=function() end,Alive=function() return true end,Workspace={},Now=function() return ticks end,
+local ctx={Player={Character={FindFirstChild=function() return root end}},Parent={},Label=function(props) return control(props) end,Button=function(props) return control(props) end,Track=function() end,Alive=function() return true end,Workspace={},Now=function() return ticks end,
  Scheduler={spawn=function(fn) worker=coroutine.create(fn);local ok,e=coroutine.resume(worker);assert(ok,e) end,wait=function(dt) ticks+=dt;coroutine.yield() end},
  GameModule=function(_,name) if name=='BlockUtils' then return {getBlocksFromLocation=function(pos) return occupied[pos] and {true} or {} end} end end,
  Place=function(body) requests+=1;occupied[body.cframe.Position]=true;return true end}
@@ -1108,6 +1108,47 @@ do
  c.EncodeBlueprint=function() error('encoder failed') end
  assert(not b:ExportBlueprint(false) and b.Inputs.Transfer.Text=='canonical-json','encoder failures must retain the last useful export')
 end
-return 'Auto Build blueprints, paths, placement confirmation, distant occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
+;(function()
+ local function scenario(speed,latency,count,prebuilt,rateLimit)
+  local clock,co,attempts,world,starts,waits=0,nil,0,{},{},{}
+  for i=1,(prebuilt or 0) do world[i]=true end
+  local fixture={Player={Character={FindFirstChild=function() return root end}},Parent={},
+   Label=function(props) return control(props) end,Button=function(props) return control(props) end,Track=function() end,
+   Alive=function() return true end,Workspace={},Now=function() return clock end,
+   Scheduler={spawn=function(fn) co=coroutine.create(fn);local ok,e=coroutine.resume(co);assert(ok,e) end,
+    wait=function(dt) table.insert(waits,dt);clock+=dt;coroutine.yield() end},
+   GameModule=function(_,name) if name=='BlockUtils' then return {getBlocksFromLocation=function(pos) return world[pos] and {true} or {} end} end end,
+   Place=function(body)
+    attempts+=1;table.insert(starts,clock);clock+=latency
+    if rateLimit and attempts==1 then return false,{success=false,error='TOO_FAST'},'rejected' end
+    world[body.cframe.Position]=true;return true
+   end}
+  local value=A.new(fixture);value.Cells=cells(count);value.BlockSize=3
+  assert(value:SetBuildSpeed(speed));value:Start()
+  local guard=0
+  while coroutine.status(co)~='dead' do guard+=1;assert(guard<2000);local ok,e=coroutine.resume(co);assert(ok,e) end
+  return value,starts,clock,waits
+ end
+ local standard,normal,normalTime=scenario('Standard',0,6)
+ local fast,quick,fastTime=scenario('Fast',0,6)
+ assert(standard.Progress.Placed==6 and fast.Progress.Placed==6 and normalTime>fastTime*3,'Fast must reduce local delay while retaining confirmed counts')
+ for i=2,#normal do assert(math.abs(normal[i]-normal[i-1]-.2)<.00001) end
+ for i=2,#quick do assert(math.abs(quick[i]-quick[i-1]-.05)<.00001) end
+ local slow,sent,total=scenario('Fast',.12,4)
+ assert(slow.Progress.Placed==4 and total<.6,'slow server replies must count toward the interval rather than incur another full delay')
+ for i=2,#sent do assert(sent[i]-sent[i-1]>=.12 and sent[i]-sent[i-1]<.15,'requests remain sequential after server replies') end
+ local skipped,none,skipTime=scenario('Standard',0,100,100)
+ assert(#none==0 and skipped.Progress.Skipped==100 and skipTime<1.1,'occupied layouts must skip quickly without sending placement requests')
+ local cooled,retried=scenario('Fast',0,8,0,true)
+ assert(cooled.Progress.Placed==8 and #retried==9 and cooled.BuildCooldowns==1,'TOO_FAST must retry the same block through existing confirmation rules')
+ assert(retried[2]-retried[1]>=.5 and retried[3]-retried[2]>=.099,'the accepted retry must also respect the increased gap before the next cell')
+ assert(cooled.CurrentBuildGap>.05 and cooled.CurrentBuildGap<.1,'pace should recover gradually after confirmed placements')
+ local value=A.new(ctx);local saved=value.BuildSpeed
+ assert(not value:SetBuildSpeed('Turbo') and value.BuildSpeed==saved)
+ value.WorkerToken=99;assert(not value:SetBuildSpeed('Fast') and value.BuildSpeed==saved,'speed must lock during cleanup')
+ value.WorkerToken=nil;value.Running=true;assert(not value:SetBuildSpeed('Fast'));value.Running=false
+ assert(value:SetBuildSpeed('Fast') and string.find(value:DiagnosticReport(),'Build speed: Fast',1,true),'diagnostics must identify the selected speed')
+end)()
+return 'Auto Build blueprints, paths, placement confirmation, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

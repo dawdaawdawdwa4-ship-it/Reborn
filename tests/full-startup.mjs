@@ -64,8 +64,8 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   setclipboard=function() error('unavailable') end;b.Buttons.CopySetup.Activated:Fire()
   assert(string.find(status.Text,'printed to console',1,true),'setup copy must support console fallback')
   setclipboard=copy
-  assert(b.Buttons.CheckSetup.Visible and b.Buttons.CheckSetup.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.LayoutHeight<650,'setup action must remain visible inside the compact action row')
-  assert(b.Buttons.Stop.Position.X.Scale+b.Buttons.Stop.Size.X.Scale<=b.Buttons.CheckSetup.Position.X.Scale and b.Buttons.CheckSetup.Position.X.Scale+b.Buttons.CheckSetup.Size.X.Scale<=b.Buttons.Clear.Position.X.Scale,'action buttons must not overlap horizontally')
+  assert(b.Buttons.CheckSetup.Visible and b.Buttons.CheckSetup.Position.Y.Offset==b.Buttons.Preview.Position.Y.Offset and b.LayoutHeight<650,'setup action must remain visible inside the compact action row')
+  assert(b.Buttons.Preview.Position.X.Scale+b.Buttons.Preview.Size.X.Scale<=b.Buttons.LearnPlacement.Position.X.Scale and b.Buttons.LearnPlacement.Position.X.Scale+b.Buttons.LearnPlacement.Size.X.Scale<=b.Buttons.CheckSetup.Position.X.Scale,'action buttons must not overlap horizontally')
   b.WorkerToken=82;b.Buttons.CheckSetup.Activated:Fire();assert(dispatches==0);b.WorkerToken=nil
   local base={}
   for _,cell in ipairs(b.Cells) do cell.Preview={Color=base};cell.PreviewColor=base end
@@ -129,7 +129,7 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   allow=true;b.Buttons.RetryFailed.Activated:Fire();for _=1,4 do stepWorkers() end
   assert(#trace==4 and b.Progress.RetryOnly and b.Progress.Total==2 and b.Progress.Placed==2 and not b.Buttons.RetryFailed.Active,'actual Retry failed must use the normal confirmed worker and clear completed candidates')
   assert(b.History[1].RetryOnly and string.find(b:ShowHistory(),'Run type: Retry failed',1,true),'retry history must identify its narrower run scope')
-  assert(b.Buttons.RetryFailed.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.LayoutHeight<650,'retry action must fit the compact action row')
+  assert(b.Buttons.RetryFailed.Position.Y.Offset==b.Buttons.Clear.Position.Y.Offset and b.LayoutHeight<650,'retry action must fit the compact action row')
   r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
   b.HistoryIndex=0;b.SetupReport=nil;b.SetupResult=nil;b.SetupMarkers=false;b.VisualSnapshot=nil;b.VisualCounts=nil;b:RefreshFailureUI()
   end)()
@@ -293,7 +293,7 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
  buildController.History={};buildController.HistoryIndex=0;buildController.HistoryReport=nil
  setclipboard=oldCopy
  assert(not buildController.LayerIndex and buildController.Buttons.Layer.Text=='Build: All layers','layer filter must default to the complete plan')
- assert(buildController.Buttons.Layer.Position.Y.Offset+buildController.Buttons.Layer.Size.Y.Offset<=buildController.Buttons.Preview.Position.Y.Offset,'layer control must fit above the build actions')
+ assert(buildController.Buttons.Layer.Position.Y.Offset==buildController.Buttons.Speed.Position.Y.Offset and buildController.Buttons.Start.Position.Y.Offset<buildController.Buttons.Preview.Position.Y.Offset,'layer control must fit above the build actions')
  local upperGhost={}
  buildController.Cells={{LayerY=0,Material='grass'},{LayerY=3,Material='stone',Preview=upperGhost}}
  buildController.Buttons.Layer.Activated:Fire()
@@ -988,7 +988,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-placement-94',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-speed-95',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1726,7 +1726,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-placement-94 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-speed-95 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2270,7 +2270,45 @@ end)()
  assert(not r.DropEnabled and not r.DropWorker,'layout actions cannot start Q automation')
 end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds')}
+;(function()
+ local b=buildController
+ local original=b.BuildSpeed
+ showTab('Auto Build');flush()
+ local initial=b.LayoutHeight
+ assert(b.BuildSpeed=='Standard' and b.Buttons.Start.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.Buttons.Start.Position.Y.Offset<b.Buttons.Preview.Position.Y.Offset,'Start and Stop must share the first action row')
+ local controls={b.Buttons.Start,b.Buttons.Stop,b.Buttons.Preview,b.Buttons.LearnPlacement,b.Buttons.CheckSetup,b.Buttons.Layer,b.Buttons.Speed,b.Buttons.Rotate,b.Buttons.Center,b.Buttons.RetryFailed,b.Buttons.Clear}
+ for _,width in ipairs({640-190-36,720-190-36,1080-190-36}) do
+  for i,control in ipairs(controls) do
+   local x=control.Position.X.Scale*width+control.Position.X.Offset
+   local w=control.Size.X.Scale*width+control.Size.X.Offset
+   assert(x>=0 and x+w<=width and w>60,'action controls must fit at every supported window width')
+   for j=i+1,#controls do
+    local other=controls[j]
+    if control.Position.Y.Offset==other.Position.Y.Offset then
+     local ox=other.Position.X.Scale*width+other.Position.X.Offset
+     local ow=other.Size.X.Scale*width+other.Size.X.Offset
+     assert(x+w<=ox or ox+ow<=x,'build action columns must not overlap')
+    end
+   end
+  end
+ end
+ for _=1,3 do
+  b.Buttons.Speed.Activated:Fire()
+  assert(b.SpeedMenu.Visible and b.Buttons.Rotate.Position.Y.Offset>b.SpeedMenu.Position.Y.Offset+b.SpeedMenu.Size.Y.Offset and b.LayoutHeight>initial,'speed choices must expand in flow and push the editing row and report down')
+  b.SpeedOptions[2].Activated:Fire()
+  assert(b.BuildSpeed=='Fast' and not b.SpeedMenu.Visible and b.LayoutHeight==initial and string.find(b.SpeedOptions[2].Text,'✓',1,true),'speed selection must mark Fast and restore the exact compact layout')
+  b.Buttons.Speed.Activated:Fire();b.Buttons.Movement.Activated:Fire()
+  assert(not b.SpeedMenu.Visible and b.MoveMenu.Visible and b.LayoutHeight==initial,'movement must dismiss speed options')
+  b:CloseMenus();b.Buttons.Speed.Activated:Fire();showTab('Fishing');flush()
+  assert(not b.SpeedMenu.Visible and b.LayoutHeight==initial,'tab cleanup must close speed options without layout drift')
+ end
+ b.WorkerToken=95;b:RefreshFailureUI();b.Buttons.Speed.Activated:Fire();b.SpeedOptions[1].Activated:Fire()
+ assert(not b.Buttons.Speed.Active and b.BuildSpeed=='Fast' and not b.SpeedMenu.Visible,'speed buttons must lock through request cleanup')
+ b.WorkerToken=nil;b:RefreshFailureUI();assert(b.Buttons.Speed.Active and b:SetBuildSpeed(original))
+ assert(not b.Running and not b.WorkerToken,'layout and speed selection cannot start placement')
+end)()
+
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2]}
  ;(function()
  local oldPress,oldRelease,oldFocus,oldCharacter=keypress,keyrelease,UserInputService.GetFocusedTextBox,player.Character
  local events=cleanupOptions.DropEvents
@@ -2295,6 +2333,7 @@ RemoteCatalog.ImportCraftQueue=function() error('import callback survived GUI re
 RemoteCatalog.ExportCraftQueue=function() error('export callback survived GUI removal') end
 cleanupOptions.Import.Activated:Fire();cleanupOptions.Export.Activated:Fire()
 buildController.RepeatLayout=function() error('repeat callback survived GUI removal') end;cleanupOptions.Repeat.Activated:Fire();cleanupOptions.RepeatUp.Activated:Fire()
+buildController.SetBuildSpeed=function() error('speed callback survived GUI removal') end;cleanupOptions.BuildFast.Activated:Fire()
 RemoteCatalog.CheckCraftQueue=function() error('queue-check callback survived GUI removal') end;cleanupOptions.QueueCheck.Activated:Fire()
 RemoteCatalog.ImportChestSetup=function() error('chest import callback survived GUI removal') end
 RemoteCatalog.ExportChestSetup=function() error('chest export callback survived GUI removal') end

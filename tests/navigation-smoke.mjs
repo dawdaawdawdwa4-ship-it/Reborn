@@ -84,9 +84,9 @@ assert(Navigation.Stop('Chest') and Navigation.Generation==gen+1 and not Navigat
 -- Real Auto Build + real navigation: paths, reach and cancellation compose.
 ;(function()
  local function signal() return {Connect=function() return {} end} end
- local function control() return {Activated=signal(),FocusLost=signal(),Destroy=function() end} end
+ local function control(props) local value={Activated=signal(),FocusLost=signal(),Destroy=function() end};if type(props)=="table" then for key,item in pairs(props) do value[key]=item end end;return value end
  local Instance={new=control}
- local UDim2={new=function() return {} end,fromOffset=function() return {} end}
+ local UDim2={new=function(xs,x,ys,y) return {X={Scale=xs,Offset=x},Y={Scale=ys,Offset=y}} end}\n UDim2.fromOffset=function(x,y) return UDim2.new(0,x,0,y) end
  local Color3={fromRGB=function() return {} end}
  local Enum={RaycastFilterType={Exclude=1},Material={ForceField=1},AutomaticSize={Y=1},TextTruncate={None=1},TextXAlignment={Left=1},TextYAlignment={Top=1}}
  local AutoBuild=(function() ${builder} end)()

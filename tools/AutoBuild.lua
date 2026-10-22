@@ -163,7 +163,7 @@ function AutoBuild.RayBox(cf,origin,direction,half,limit)
     return near
 end
 function AutoBuild.new(ctx)
-    local self={RepeatScope="Entire layout",RepeatCopies=2,RepeatGap=0,TravelMode="Stay",Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
+    local self={BuildSpeed="Standard",RepeatScope="Entire layout",RepeatCopies=2,RepeatGap=0,TravelMode="Stay",Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons,commits={},{},{}
     self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
     self.Failures=setmetatable({}, {__mode="k"})
@@ -517,7 +517,7 @@ function AutoBuild.new(ctx)
         self.BaseAnchor=base*turn
         transformPreview(self.Anchor*turn)
         self.OffsetX,self.OffsetZ=self.OffsetZ,-self.OffsetX
-        self.Rotation=(self.Rotation+90)%360;buttons.Rotate.Text="Rotate: "..self.Rotation.."°"
+        self.Rotation=(self.Rotation+90)%360;buttons.Rotate.Text="↻ "..self.Rotation.."°"
         updateOffsetLabel()
         status("Preview rotated 90° around its anchor. Layers and unsaved material edits are retained; saved slots are unchanged.")
         return true
@@ -601,6 +601,9 @@ function AutoBuild.new(ctx)
                 buttons[key].Active=editing==true;buttons[key].Selectable=editing==true;buttons[key].AutoButtonColor=editing==true
             end
         end
+        if buttons.Speed then
+            buttons.Speed.Active=editing==true;buttons.Speed.Selectable=editing==true
+        end
         local counts=self:FailureCounts()
         local available=ctx.Alive() and not self.Running and not self.WorkerToken and counts.Retryable>0
         buttons.RetryFailed.Active=available==true;buttons.RetryFailed.Selectable=available==true
@@ -618,6 +621,7 @@ function AutoBuild.new(ctx)
         local failures=self:FailureCounts()
         return table.concat({"Reborn Auto Build diagnostics", "Placement ready: "..tostring(ready).." · "..tostring(reason),
             "Running: "..tostring(self.Running).."; request cleanup: "..tostring(self.WorkerToken~=nil),
+            "Build speed: "..self.BuildSpeed.."; current request gap: "..tostring(self.CurrentBuildGap or (self.BuildSpeed=="Fast" and .05 or .2)).."; cooldowns: "..tostring(self.BuildCooldowns or 0),
             "Build movement: "..self.TravelMode.."; last walk: "..tostring(self.LastTravelResult or "none"),
             "Preview cells: "..tostring(self.Cells and #self.Cells or 0).."; selected: "..#self:SelectedCells(),
             "State: "..tostring(p.State or "not started").."; cell: "..tostring(p.Index or 0).." / "..tostring(p.Total or 0),
@@ -630,6 +634,20 @@ function AutoBuild.new(ctx)
     local function resultText(value)
         if type(value)=="table" then return tostring(value.error or value.code or value.message or value.success or "unrecognized server result") end
         return tostring(value)
+    end
+    function self:SetBuildSpeed(value)
+        if not ctx.Alive() then return false end
+        if self.Running or self.WorkerToken then status("Stop the build and wait for cleanup before changing speed.");return false end
+        if value~="Standard" and value~="Fast" then return false end
+        self.BuildSpeed=value
+        buttons.Speed.Text="Speed: "..value.."  ▼"
+        for index,choice in ipairs({"Standard","Fast"}) do
+            self.SpeedOptions[index].Text=(choice==value and "✓  " or "    ")..choice..(choice=="Fast" and " · 0.05s target" or " · 0.20s target")
+        end
+        self:CloseMenus()
+        status(value=="Fast" and "Fast: target 0.05s between requests, including server/confirmation time. Server cooldown adapts the pace."
+            or "Standard: target 0.20s between requests, including server/confirmation time. Existing blocks skip quickly.")
+        return true
     end
     function self:Start(retryFailed)
         if ctx.BuildBlocked then local reason=ctx.BuildBlocked();if reason then status(reason);return false end end
@@ -660,6 +678,10 @@ function AutoBuild.new(ctx)
         if #cells==0 then status("No blocks selected. Choose All layers or create a new preview.");return false end
         if self.Running or self.WorkerToken then return false end
         if self.TravelMode~=travelMode then status("Build movement changed during setup. Press Start again.");return false end
+        self:CloseMenus()
+        local minimumGap=self.BuildSpeed=="Fast" and .05 or .2
+        local gap,successes=minimumGap,0
+        self.CurrentBuildGap=gap;self.BuildCooldowns=0
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
@@ -721,6 +743,7 @@ function AutoBuild.new(ctx)
             local ok,err=pcall(function()
                 for index,cell in ipairs(cells) do
                     if not active() then return end
+                    local cycleAt=now()
                     self.Progress.Index=index
                     local existing=occupied(cell.CFrame,self.BlockSize)
                     local confirmed=false
@@ -742,6 +765,7 @@ function AutoBuild.new(ctx)
                             repeat
                                 if not active() then return end
                                 markFailure(cell,"Request in flight or confirmation not observed",false)
+                                cycleAt=now()
                                 sent,reason,origin=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
                                 self.LastPlacementResult=(sent and "Accepted: " or "Rejected: ")..resultText(reason)
                                 if not active() then return end
@@ -751,6 +775,8 @@ function AutoBuild.new(ctx)
                                     markFailure(cell,resultText(reason),rejected and origin~="transport" and origin~="unavailable")
                                 end
                                 if not cooldown then break end
+                                successes=0;gap=math.min(.8,math.max(gap*1.5,gap+.05))
+                                self.CurrentBuildGap=gap;self.BuildCooldowns+=1
                                 retries+=1
                                 if retries>5 then
                                     progress.Failed+=1;progress.State="Paused after cooldown"
@@ -787,7 +813,9 @@ function AutoBuild.new(ctx)
                                 until now()>=deadline
                             end
                             if existing then skipped+=1;streak=0
-                            elseif confirmed then placed+=1;streak=0
+                            elseif confirmed then
+                                placed+=1;streak=0;successes+=1
+                                if successes>=5 then gap=math.max(minimumGap,gap*.85);self.CurrentBuildGap=gap;successes=0 end
                             else failed+=1;streak+=1 end
                             self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
                             if streak>=3 then
@@ -800,7 +828,10 @@ function AutoBuild.new(ctx)
                     self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
                     if existing or confirmed then self.Failures[cell]=nil end
                     if (existing or confirmed) and cell.Preview then cell.Preview:Destroy();cell.Preview=nil end
-                    scheduler.wait(.2)
+                    -- Server time and replication already consumed part of the target
+                    -- interval. Existing cells only need a short cancellation yield.
+                    local elapsed=math.max(0,now()-cycleAt)
+                    scheduler.wait(existing and .01 or math.max(.01,gap-elapsed))
                 end
                 if active() then self.Progress.State="Finished";status(string.format("Finished: %d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
@@ -1416,7 +1447,7 @@ function AutoBuild.new(ctx)
         self.Preset="Saved: "..copy.Name..(dirty and " *" or "");buttons.Preset.Text=self.Preset.."  ▼"
         inputs.Name.Text=copy.Name
         self.OffsetX,self.OffsetY,self.OffsetZ=0,0,0
-        self.Rotation=0;buttons.Rotate.Text="Rotate: 0°"
+        self.Rotation=0;buttons.Rotate.Text="↻ 0°"
         self:UpdateMaterials(self.SavedPlan.Cells)
     end
     function self:LoadBlueprint()
@@ -1473,8 +1504,9 @@ function AutoBuild.new(ctx)
         return register(ctx.Label({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(1,-12,0,height or 24),Position=UDim2.fromOffset(6,layoutY(y))}),layoutY(y),height or 24)
     end
     local function button(name,text,x,y,width,callback)
-        local b=ctx.Button({Parent=ctx.Parent,Text=text,TextSize=12,Size=UDim2.new(width or 1,-12,0,32),Position=UDim2.new(x or 0,6,0,layoutY(y))})
-        buttons[name]=b;register(b,layoutY(y),32,x)
+        local rowY=(name=="Preview" or name=="LearnPlacement" or name=="CheckSetup") and 446 or layoutY(y)
+        local b=ctx.Button({Parent=ctx.Parent,Text=text,TextSize=13,Size=UDim2.new(width or 1,-12,0,32),Position=UDim2.new(x or 0,6,0,rowY)})
+        buttons[name]=b;register(b,rowY,32,x)
         ctx.Track(b.Activated:Connect(callback));return b
     end
     local function invalidate()
@@ -1486,14 +1518,15 @@ function AutoBuild.new(ctx)
     presetMenu.Name="BlueprintOptions";presetMenu.Size=UDim2.new(1,-12,0,144);presetMenu.Position=UDim2.fromOffset(6,84)
     presetMenu.BackgroundColor3=Color3.fromRGB(29,39,48);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
     button("Preset","Farm plots  ▼",0,48,.5,function()
-        if not self.Running then presetMenu.Visible=not presetMenu.Visible;if self.MoveMenu then self.MoveMenu.Visible=false end end
+        if not self.Running and not self.WorkerToken then
+            local open=not presetMenu.Visible;self:CloseMenus();presetMenu.Visible=open
+        end
     end)
     local moveMenu=Instance.new("Frame")
     moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,256);moveMenu.Position=UDim2.fromOffset(6,84)
     moveMenu.BackgroundColor3=Color3.fromRGB(29,39,48);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
     button("Movement","Move / Auto Walk  ▼",.5,48,.5,function()
-        presetMenu.Visible=false
-        moveMenu.Visible=not moveMenu.Visible
+        local open=not moveMenu.Visible;self:CloseMenus();moveMenu.Visible=open
     end)
     local function moveButton(key,text,x,y,dx,dy,dz)
         local item=ctx.Button({Parent=moveMenu,Text=text,Size=UDim2.new(.5,-6,0,32),Position=UDim2.new(x,3,0,y)})
@@ -1569,26 +1602,48 @@ function AutoBuild.new(ctx)
         button("UseFavorite"..key,"Next ★",.75,y,.25,function() self:UseFavorite(key) end)
     end
     self:LoadFavorites();self:RefreshFavorites()
-    button("Rotate","Rotate: 0°",0,406,.5,function()
+    button("Rotate","↻ 0°",0,486,.25,function()
         if self.Running or self.WorkerToken then return end
         if self.Cells then self:RotatePreview()
-        else self.Rotation=(self.Rotation+90)%360;buttons.Rotate.Text="Rotate: "..self.Rotation.."°";invalidate() end
+        else self.Rotation=(self.Rotation+90)%360;buttons.Rotate.Text="↻ "..self.Rotation.."°";invalidate() end
     end)
-    button("Center","Center in front",.5,406,.5,function() self:CenterPreview() end)
-    buttons.Layer=ctx.Button({Parent=ctx.Parent,Text="Build: All layers",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,446)})
-    register(buttons.Layer,446,32)
+    button("Center","Center",.25,486,.25,function() self:CenterPreview() end)
+    buttons.Layer=ctx.Button({Parent=ctx.Parent,Text="Build: All layers",TextSize=13,Size=UDim2.new(.5,-12,0,32),Position=UDim2.fromOffset(6,446)})
+    register(buttons.Layer,layoutY(446),32)
     ctx.Track(buttons.Layer.Activated:Connect(function() self:CycleLayer() end))
-    button("Preview","Preview",0,446,.3,function() self:Preview() end)
-    button("LearnPlacement","Learn placement",.3,446,.4,function()
+    button("Preview","Preview",0,406,.3,function() self:Preview() end)
+    button("LearnPlacement","Learn placement",.3,406,.4,function()
         if self.Running or self.WorkerToken then status("Stop building and wait for request cleanup before learning.");return end
         if not ctx.LearnPlacement then status("Placement learning unavailable in this host.");return end
         local ok,reason=ctx.LearnPlacement();status(reason)
     end)
-    button("Start","Start build",.7,446,.3,function() self:Start() end)
-    button("Stop","Stop",0,486,.22,function() self:Stop() end)
-    button("RetryFailed","Retry failed",.22,486,.28,function() self:RetryFailures() end)
-    button("CheckSetup","Check setup",.5,486,.28,function() self:CheckSetup() end)
-    button("Clear","Clear",.78,486,.22,function() if not self.Running and not self.WorkerToken then self:ClearPreview();status("Preview cleared.") else status("Wait for build request cleanup before clearing the preview.") end end)
+    buttons.Start=ctx.Button({Parent=ctx.Parent,Text="Start build",TextSize=14,Primary=true,Size=UDim2.new(.7,-12,0,36),Position=UDim2.fromOffset(6,406)})
+    register(buttons.Start,406,36)
+    ctx.Track(buttons.Start.Activated:Connect(function() self:Start() end))
+    buttons.Stop=ctx.Button({Parent=ctx.Parent,Text="Stop",TextSize=14,Bg=Color3.fromRGB(87,39,47),Size=UDim2.new(.3,-12,0,36),Position=UDim2.new(.7,6,0,406)})
+    register(buttons.Stop,406,36,.7)
+    ctx.Track(buttons.Stop.Activated:Connect(function() self:Stop() end))
+    button("RetryFailed","Retry",.5,486,.25,function() self:RetryFailures() end)
+    button("CheckSetup","Check setup",.7,406,.3,function() self:CheckSetup() end)
+    button("Clear","Clear",.75,486,.25,function() if not self.Running and not self.WorkerToken then self:ClearPreview();status("Preview cleared.") else status("Wait for build request cleanup before clearing the preview.") end end)
+    button("Speed","Speed: Standard  ▼",.5,446,.5,function()
+        if self.Running or self.WorkerToken then status("Stop building before changing speed.");return end
+        local open=not self.SpeedMenu.Visible
+        self:CloseMenus();self.SpeedMenu.Visible=open
+        buttons.Speed.Text="Speed: "..self.BuildSpeed..(open and "  ▲" or "  ▼")
+        self:LayoutSections()
+    end)
+    local speedMenu=Instance.new("Frame")
+    self.SpeedMenu=speedMenu
+    speedMenu.Name="BuildSpeedOptions";speedMenu.Size=UDim2.new(1,-12,0,88)
+    speedMenu.BackgroundColor3=Color3.fromRGB(29,39,48);speedMenu.BorderSizePixel=0;speedMenu.Visible=false;speedMenu.ZIndex=35;speedMenu.Parent=ctx.Parent
+    self.SpeedOptions={}
+    for index,value in ipairs({"Standard","Fast"}) do
+        local option=ctx.Button({Parent=speedMenu,Text=value=="Standard" and "✓  Standard · 0.20s target" or "    Fast · 0.05s target",TextSize=13,
+            Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,6+(index-1)*40)})
+        option.ZIndex=36;self.SpeedOptions[index]=option
+        ctx.Track(option.Activated:Connect(function() self:SetBuildSpeed(value) end))
+    end
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
     self.Status.TextSize=14;self.Status.TextTruncate=Enum.TextTruncate.None
@@ -1709,6 +1764,9 @@ function AutoBuild.new(ctx)
     self.SectionButtons={}
     function self:CloseMenus()
         presetMenu.Visible=false;moveMenu.Visible=false
+        if self.SpeedMenu then self.SpeedMenu.Visible=false end
+        if buttons.Speed then buttons.Speed.Text="Speed: "..self.BuildSpeed.."  ▼" end
+        if self.LayoutSections then self:LayoutSections() end
         self.Picking=false;if buttons.Pick then buttons.Pick.Text="Pick block: OFF" end
     end
     function self:LayoutSections()
@@ -1722,10 +1780,12 @@ function AutoBuild.new(ctx)
                     elseif item.Y>=section.Finish then y+=section.Open and section.Expanded or section.Collapsed end
                 end
             end
+            if speedMenu.Visible and item.Y>=layoutY(486) then y+=speedMenu.Size.Y.Offset+12 end
             item.Control.Visible=visible
             item.Control.Position=UDim2.new(item.X,item.Offset,0,y)
             if visible then bottom=math.max(bottom,y+item.Height) end
         end
+        speedMenu.Position=UDim2.fromOffset(6,buttons.Speed.Position.Y.Offset+buttons.Speed.Size.Y.Offset+6)
         self.LayoutHeight=bottom+16
         ctx.Parent.AutomaticCanvasSize=Enum.AutomaticSize.None
         ctx.Parent.CanvasSize=UDim2.new(0,0,0,self.LayoutHeight)
