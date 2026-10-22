@@ -2755,3 +2755,41 @@ Validation covers sorted mixed shortages, unknown/covered inventory, occupied
 cells, selected layers, failed reach metadata, active/cleanup locks, concurrent
 snapshot cancellation, clipboard failures/alternate APIs, layout and listener
 cleanup. The full suite remains required; live Roblox behavior is unverified.
+
+## Islands reference styling (v102)
+
+The supplied `Insane_version_clean.lua` was inspected as a visual reference for
+its Airflow palette, fonts and control treatment. Its game logic and remote
+requests were not imported. Reborn now uses the same navy background/surface roles,
+blue accent and Builder Sans family across the window and hand-built controls.
+The sidebar identifies the product as **Reborn / Islands Farming**; release IDs
+remain in diagnostic reports. Existing tab ordering, settings and workers remain.
+
+Buttons use flat rounded surfaces with restrained borders instead of a gradient.
+Primary actions without an explicit state background use the accent with dark
+text. Hover/press/disabled feedback is retained. Fishing, Auto Bait, crop/wood
+farming, mining, Anti AFK, Auto Drop and Auto Plow have compact switch indicators
+with the original status text alongside. The indicator follows ON/OFF text rather
+than transient result coloring, so a failed bait application cannot show its
+still-enabled automation as OFF. These are decorations on existing buttons;
+click handlers, cancellation and cleanup are unchanged.
+
+Dropdown triggers split their existing text into a title, selected-value chip and
+chevron. Menu-only triggers have a small arrow chip. Text/disabled/ZIndex changes
+update the decoration; ordinary action text restores the original button display.
+The original Text property remains intact for diagnostics and existing callers.
+Value chips are capped at 190 pixels, long values truncate, and title/value areas
+stay separate at supported widths. Existing inline expansion, menu exclusivity,
+selection and keyboard/mouse/touch behavior remain in use.
+
+Input fields receive matching fonts, padding, rounded surfaces and focus borders
+when their tab is selected. Styling is installed once per field; revisiting a tab
+does not reset values, reposition controls or add duplicate focus listeners.
+Auto Build menus and its progress track use matching navy surfaces. No new
+network downloads, polling tasks, saved preferences or automation are introduced.
+
+Validation covers visual-state synchronization, mixed result/ON state, dropdown
+restoration and width bounds, field focus and repeated styling, existing real
+switch handlers, all tabs, resize/reset, supported/unsupported recorder hosts and
+the full regression suite. Roblox rendering and live game behavior remain
+unverified; the supplied script was not executed.

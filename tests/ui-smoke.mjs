@@ -78,7 +78,7 @@ assert(not RemoteCatalog.Recorder and hookCount==0,'recording must not start or 
 ;(function()
  local control=RemoteCatalog.CraftQueueRunButton
  local stroke=control:FindFirstChild('ControlStroke')
- assert(stroke and control:FindFirstChild('ControlSurface'),'shared buttons must have their styled border/surface')
+ assert(stroke and not control:FindFirstChildOfClass('UIGradient'),'shared buttons must use the flat Islands control style')
  control.MouseEnter:Fire();assert(stroke.Color==COLORS.accent and stroke.Transparency==.1)
  control.Active=false;control.MouseEnter:Fire();control.InputBegan:Fire({UserInputType=Enum.UserInputType.Touch})
  assert(stroke.Color==COLORS.stroke and stroke.Transparency==.8 and stroke.Thickness==1 and control.TextTransparency>0,'disabled controls must stay visibly locked under hover/touch')
@@ -91,13 +91,67 @@ assert(not RemoteCatalog.Recorder and hookCount==0,'recording must not start or 
  control.BackgroundColor3=previous;RemoteCatalog.RefreshCraftQueue()
  end)()
 
+-- The visual choice labels follow existing Text changes without owning selection.
+;(function()
+ local control=buildController.Buttons.Speed
+ local chip=assert(control:FindFirstChild('ChoiceChip'))
+ local title=assert(control:FindFirstChild('ChoiceTitle'))
+ local value=assert(chip:FindFirstChild('ChoiceValue'))
+ local arrow=assert(chip:FindFirstChild('ChoiceArrow'))
+ local text,active,z=control.Text,control.Active,control.ZIndex
+ assert(title.Text=='Speed' and value.Text=='Standard' and control.TextTransparency==1,'choice title/value must replace the combined display without changing its underlying Text')
+ control.Text='Speed: Fast  ▲';control:GetPropertyChangedSignal('Text'):Fire()
+ assert(title.Text=='Speed' and value.Text=='Fast' and arrow.Text=='⌃' and buildController.BuildSpeed=='Standard','visual synchronization cannot change the actual selected setting')
+ control.Active=false;control:GetPropertyChangedSignal('Active'):Fire()
+ assert(value.TextTransparency>.4 and arrow.TextTransparency>.4,'disabled dropdown values must dim with their trigger')
+ control.ZIndex=40;control:GetPropertyChangedSignal('ZIndex'):Fire()
+ assert(chip.ZIndex==41 and value.ZIndex==42,'choice decorations must stay above their trigger in inline menus')
+ for _,width in ipairs({195,235,415,795}) do
+  local titleRight=title.Position.X.Offset+title.Size.X.Scale*width+title.Size.X.Offset
+  local chipWidth=math.min(190,chip.Size.X.Scale*width+chip.Size.X.Offset)
+  local chipLeft=width+chip.Position.X.Offset-chipWidth
+  assert(titleRight<=chipLeft and chipLeft>=0 and chipLeft+chipWidth<=width,'choice title and value cannot overlap at supported sizes')
+ end
+ control.Text='Working';control.Active=true;control:GetPropertyChangedSignal('Text'):Fire()
+ assert(not chip.Visible and not title.Visible and control.TextTransparency==0,'a control changing to an ordinary action must display its actual text')
+ control.Text='Blueprint  ▼';control:GetPropertyChangedSignal('Text'):Fire()
+ assert(title.Text=='Blueprint' and not value.Visible and chip.Size.X.Offset==34,'menu-only controls need a compact arrow without an invented selected value')
+ control.Text=text;control.Active=active;control.ZIndex=z;control:GetPropertyChangedSignal('Text'):Fire()
+ local count=0;for _,child in ipairs(control:GetChildren()) do if child.Name=='ChoiceChip' then count+=1 end end
+ assert(count==1 and value.Text=='Standard' and not RemoteCatalog.CraftWorker and not buildController.WorkerToken,'repeated text changes must not duplicate decorations or start workers')
+end)()
+;(function()
+ local field=buildController.Inputs.Width
+ local stroke=assert(field:FindFirstChild('FieldStroke'),'visited pages must style their input fields')
+ local value,position,size=field.Text,field.Position,field.Size
+ local listeners=#connections
+ for _=1,3 do RemoteCatalog.StyleFields(buildPage) end
+ assert(#connections==listeners and field.Text==value and field.Position==position and field.Size==size,'revisiting input fields cannot change values/layout or add focus listeners')
+ assert(field.FontFace==COLORS.fonts.Regular and field:FindFirstChildOfClass('UICorner'),'input fields must use the Islands typography and rounded surfaces')
+ field.Focused:Fire();assert(stroke.Color==COLORS.accent,'focused fields need a visible accent border')
+ field.FocusLost:Fire();assert(stroke.Color==COLORS.stroke,'unfocused fields must return to the quiet border')
+ assert(Airflow.Theme.Background.R==COLORS.bg.R and Airflow.Theme.Accent.B==COLORS.accent.B,'window and hand-built controls must share the same navy palette')
+end)()
+
 -- Exercise the actual switch callbacks with no learned remote IDs.
 for _,button in ipairs({harvestToggle,woodToggle,mineToggle,toggle,baitToggle}) do
  button.Activated:Fire()
  assert(string.find(button.Text,'ON',1,true),'switch failed to turn ON without recorder/session IDs')
+ local rail=assert(button:FindFirstChild('SwitchTrack'));local knob=assert(rail:FindFirstChild('SwitchKnob'))
+ button:GetPropertyChangedSignal('Text'):Fire()
+ assert(knob.Position.X.Offset==17 and rail.BackgroundColor3==COLORS.accent and button:FindFirstChild('SwitchLabel').Text==button.Text,'enabled switch indicator and visible label must follow the real toggle state')
  button.Activated:Fire()
  assert(string.find(button.Text,'OFF',1,true),'switch failed to turn OFF')
+ button:GetPropertyChangedSignal('Text'):Fire()
+ assert(knob.Position.X.Offset==3 and rail.BackgroundColor3==COLORS.surface3,'OFF must restore the switch indicator without an extra action')
 end
+;(function()
+ local text,color=baitToggle.Text,baitToggle.BackgroundColor3
+ baitToggle.Text='AUTO BAIT ON · WAITING';baitToggle.BackgroundColor3=COLORS.off
+ baitToggle:GetPropertyChangedSignal('Text'):Fire()
+ assert(baitToggle:FindFirstChild('SwitchTrack'):FindFirstChild('SwitchKnob').Position.X.Offset==17,'bait application feedback cannot falsely turn its enabled switch OFF')
+ baitToggle.Text=text;baitToggle.BackgroundColor3=color;baitToggle:GetPropertyChangedSignal('Text'):Fire()
+end)()
 flush()
 workerFails=true
 woodToggle.Activated:Fire();assert(woodEnabled,'wood switch failed to enable')

@@ -3094,7 +3094,7 @@ function AutoBuild.new(ctx)
     local presets={"Farm plots","Platform","Wall","Stairs","Room","Bridge","Fence"}
     local presetMenu=Instance.new("Frame")
     presetMenu.Name="BlueprintOptions";presetMenu.Size=UDim2.new(1,-12,0,144);presetMenu.Position=UDim2.fromOffset(6,84)
-    presetMenu.BackgroundColor3=Color3.fromRGB(29,39,48);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
+    presetMenu.BackgroundColor3=Color3.fromRGB(21,27,44);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
     button("Preset","Farm plots  ▼",0,48,.5,function()
         if not self.Running and not self.WorkerToken then
             local open=not presetMenu.Visible;self:CloseMenus();presetMenu.Visible=open
@@ -3102,7 +3102,7 @@ function AutoBuild.new(ctx)
     end)
     local moveMenu=Instance.new("Frame")
     moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,256);moveMenu.Position=UDim2.fromOffset(6,84)
-    moveMenu.BackgroundColor3=Color3.fromRGB(29,39,48);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
+    moveMenu.BackgroundColor3=Color3.fromRGB(21,27,44);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
     button("Movement","Move / Auto Walk  ▼",.5,48,.5,function()
         local open=not moveMenu.Visible;self:CloseMenus();moveMenu.Visible=open
     end)
@@ -3149,7 +3149,7 @@ function AutoBuild.new(ctx)
         label(title,y)
         local field=Instance.new("TextBox");field.Name=key;field.Text=tostring(value);field.PlaceholderText=title
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240)
-        field.BackgroundColor3=Color3.fromRGB(29,39,48);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
+        field.BackgroundColor3=Color3.fromRGB(21,27,44);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
         inputs[key]=field;register(field,y+24,30,0,6,nil,true)
         local committed=field.Text
         local function commit()
@@ -3217,7 +3217,7 @@ function AutoBuild.new(ctx)
     local speedMenu=Instance.new("Frame")
     self.SpeedMenu=speedMenu
     speedMenu.Name="BuildSpeedOptions";speedMenu.Size=UDim2.new(1,-12,0,88)
-    speedMenu.BackgroundColor3=Color3.fromRGB(29,39,48);speedMenu.BorderSizePixel=0;speedMenu.Visible=false;speedMenu.ZIndex=35;speedMenu.Parent=ctx.Parent
+    speedMenu.BackgroundColor3=Color3.fromRGB(21,27,44);speedMenu.BorderSizePixel=0;speedMenu.Visible=false;speedMenu.ZIndex=35;speedMenu.Parent=ctx.Parent
     self.SpeedOptions={}
     for index,value in ipairs({"Standard","Fast"}) do
         local option=ctx.Button({Parent=speedMenu,Text=value=="Standard" and "✓  Standard · 0.20s target" or "    Fast · 0.05s target",TextSize=13,
@@ -3229,7 +3229,7 @@ function AutoBuild.new(ctx)
     self.Status.TextWrapped=true
     self.Status.TextSize=14;self.Status.TextTruncate=Enum.TextTruncate.None
     local progressTrack=Instance.new("Frame")
-    progressTrack.Name="BuildProgress";progressTrack.BackgroundColor3=Color3.fromRGB(48,59,70)
+    progressTrack.Name="BuildProgress";progressTrack.BackgroundColor3=Color3.fromRGB(34,43,66)
     progressTrack.BorderSizePixel=0;progressTrack.ClipsDescendants=true
     progressTrack.Size=UDim2.new(1,-12,0,4);progressTrack.Parent=ctx.Parent
     self.ProgressTrack=register(progressTrack,layoutY(610),4)
@@ -3250,7 +3250,7 @@ function AutoBuild.new(ctx)
         Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
     self.MaterialSummary.TextWrapped=true;self.MaterialSummary.AutomaticSize=Enum.AutomaticSize.Y;self.MaterialSummary.TextTruncate=Enum.TextTruncate.None
     local name=Instance.new("TextBox");name.Name="BlueprintName";name.Text="My island build";name.PlaceholderText="Blueprint name (1–48 bytes)"
-    name.ClearTextOnFocus=false;name.TextSize=14;name.TextColor3=Color3.fromRGB(226,232,240);name.BackgroundColor3=Color3.fromRGB(29,39,48)
+    name.ClearTextOnFocus=false;name.TextSize=14;name.TextColor3=Color3.fromRGB(226,232,240);name.BackgroundColor3=Color3.fromRGB(21,27,44)
     name.Size=UDim2.new(1,-12,0,32);name.Position=UDim2.fromOffset(6,layoutY(764));name.Parent=ctx.Parent;inputs.Name=name;register(name,layoutY(764),32,0,6,nil,true)
     button("Slot","Blueprint slot: 1 / 5",0,804,1,function()
         if self.Running then status("Stop the build before changing its blueprint slot.");return end
@@ -3302,7 +3302,7 @@ function AutoBuild.new(ctx)
     transfer.Name="BlueprintTransfer";transfer.Text="";transfer.PlaceholderText="Paste blueprint JSON to import, or export a layout here."
     transfer.MultiLine=true;transfer.ClearTextOnFocus=false;transfer.TextSize=11;transfer.TextWrapped=true
     transfer.TextXAlignment=Enum.TextXAlignment.Left;transfer.TextYAlignment=Enum.TextYAlignment.Top
-    transfer.TextColor3=Color3.fromRGB(226,232,240);transfer.BackgroundColor3=Color3.fromRGB(29,39,48)
+    transfer.TextColor3=Color3.fromRGB(226,232,240);transfer.BackgroundColor3=Color3.fromRGB(21,27,44)
     transfer.Size=UDim2.new(1,-12,0,104);transfer.Position=UDim2.fromOffset(6,layoutY(1640));transfer.Parent=ctx.Parent
     inputs.Transfer=transfer;register(transfer,layoutY(1640),104,0,6,nil,true)
     button("ExportWorking","Export working layout",0,1752,.5,function() self:ExportBlueprint(false) end)
@@ -3311,7 +3311,7 @@ function AutoBuild.new(ctx)
     transferHint.TextWrapped=true
     for index,key in ipairs({"ReplaceFrom","ReplaceTo"}) do
         local field=Instance.new("TextBox");field.Name=key;field.Text="";field.PlaceholderText=index==1 and "Existing block name" or "Replacement block name"
-        field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240);field.BackgroundColor3=Color3.fromRGB(29,39,48)
+        field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240);field.BackgroundColor3=Color3.fromRGB(21,27,44)
         field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,layoutY(1942));field.Parent=ctx.Parent
         inputs[key]=field;register(field,layoutY(1942),32,(index-1)*.5,6,nil,true)
     end
@@ -3517,19 +3517,27 @@ end
 -- Colors / sizes
 --------------------------------------------------------------------
 local COLORS = {
-	bg = Color3.fromRGB(18, 20, 27),
-	panel = Color3.fromRGB(29, 33, 44),
-	stroke = Color3.fromRGB(58, 66, 84),
-	text = Color3.fromRGB(238, 242, 250),
-	muted = Color3.fromRGB(159, 171, 191),
-	on = Color3.fromRGB(24, 81, 70),
-	off = Color3.fromRGB(35, 42, 56),
+	bg = Color3.fromRGB(13, 17, 28),
+	panel = Color3.fromRGB(21, 27, 44),
+	stroke = Color3.fromRGB(32, 41, 63),
+	text = Color3.fromRGB(226, 232, 240),
+	muted = Color3.fromRGB(128, 141, 166),
+	on = Color3.fromRGB(34, 52, 79),
+	off = Color3.fromRGB(21, 27, 44),
 	gold = Color3.fromRGB(255, 200, 60),
 	good = Color3.fromRGB(80, 230, 130),
 	bad = Color3.fromRGB(240, 80, 80),
 	warn = Color3.fromRGB(255, 170, 50),
 	harvest = Color3.fromRGB(122, 162, 247),
-	accent = Color3.fromRGB(110, 218, 189),
+	accent = Color3.fromRGB(122, 162, 247),
+    surface = Color3.fromRGB(17, 22, 36),
+    surface3 = Color3.fromRGB(34, 43, 66),
+    accentDark = Color3.fromRGB(10, 14, 24),
+    fonts = {
+        Regular=Font.new("rbxasset://fonts/families/BuilderSans.json",Enum.FontWeight.Regular),
+        Medium=Font.new("rbxasset://fonts/families/BuilderSans.json",Enum.FontWeight.Medium),
+        Bold=Font.new("rbxasset://fonts/families/BuilderSans.json",Enum.FontWeight.SemiBold),
+    },
 }
 
 
@@ -3555,7 +3563,7 @@ end
 local function label(props)
 	local l = Instance.new("TextLabel")
 	l.BackgroundTransparency = 1
-	l.Font = props.Font or Enum.Font.Gotham
+	l.FontFace = props.Font==Enum.Font.GothamBold and COLORS.fonts.Bold or COLORS.fonts.Regular
 	l.TextSize = math.max(props.TextSize or 13, 12)
 	l.TextColor3 = props.Color or COLORS.text
 	l.TextXAlignment = props.Align or Enum.TextXAlignment.Left
@@ -3571,10 +3579,10 @@ local function button(props)
 	local b = Instance.new("TextButton")
 	b.Size = props.Size or UDim2.new(0, 100, 0, 32)
 	b.Position = props.Position or UDim2.new(0, 0, 0, 0)
-	b.BackgroundColor3 = props.Bg or COLORS.panel
+	b.BackgroundColor3 = props.Bg or (props.Primary and COLORS.accent or COLORS.panel)
 	b.TextColor3 = props.Color or COLORS.text
 	b.Text = props.Text
-	b.Font = props.Primary and Enum.Font.GothamBold or Enum.Font.GothamMedium
+	b.FontFace = props.Primary and COLORS.fonts.Bold or COLORS.fonts.Medium
 	b.TextSize = math.max(props.TextSize or 13, 12)
 	b.BorderSizePixel = 0
 	b.AutoButtonColor = false
@@ -3587,16 +3595,54 @@ local function button(props)
     padding.PaddingRight = UDim.new(0, 10)
     padding.Parent = b
 	b.Parent = props.Parent
-	corner(b, props.Radius or 6)
+	corner(b, props.Radius or 8)
     local stroke = Instance.new("UIStroke")
     stroke.Color = COLORS.stroke
     stroke.Thickness = 1
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = b
     stroke.Name="ControlStroke"
-    local gradient=Instance.new("UIGradient")
-    gradient.Name="ControlSurface";gradient.Rotation=90
-    gradient.Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(220,228,240));gradient.Parent=b
+    local choiceTitle,choiceValue,choiceArrow,choiceChip,switchTrack,switchKnob,switchLabel
+    local function updateChoice()
+        local text=tostring(b.Text)
+        local dropdown=text:find("▼",1,true) or text:find("▲",1,true)
+        if dropdown and not choiceChip then
+            choiceTitle=label({Parent=b,Text="",Size=UDim2.new(.48,-20,1,0),Position=UDim2.fromOffset(12,0),TextSize=b.TextSize})
+            choiceTitle.Name="ChoiceTitle";choiceTitle.FontFace=COLORS.fonts.Medium
+            choiceChip=Instance.new("Frame");choiceChip.Name="ChoiceChip"
+            choiceChip.AnchorPoint=Vector2.new(1,.5);choiceChip.Position=UDim2.new(1,-10,.5,0)
+            choiceChip.BackgroundColor3=COLORS.surface;choiceChip.BorderSizePixel=0;choiceChip.ClipsDescendants=true;choiceChip.Parent=b
+            corner(choiceChip,6)
+            local constraint=Instance.new("UISizeConstraint")
+            constraint.MaxSize=Vector2.new(190,24);constraint.Parent=choiceChip
+            choiceValue=label({Parent=choiceChip,Text="",Size=UDim2.new(1,-30,1,0),Position=UDim2.fromOffset(8,0),TextSize=13,Color=COLORS.muted})
+            choiceValue.Name="ChoiceValue"
+            choiceArrow=label({Parent=choiceChip,Text="",Size=UDim2.new(0,18,1,0),Position=UDim2.new(1,-22,0,0),TextSize=12,Color=COLORS.muted,Align=Enum.TextXAlignment.Center})
+            choiceArrow.Name="ChoiceArrow"
+        end
+        if choiceChip then
+            choiceChip.Visible=dropdown~=nil;choiceTitle.Visible=dropdown~=nil
+            local clean=text:gsub("▼",""):gsub("▲",""):match("^%s*(.-)%s*$")
+            local title,value=clean:match("^(.-):%s*(.*)$")
+            choiceTitle.Text=title or clean;choiceValue.Text=value or "";choiceValue.Visible=value~=nil
+            choiceTitle.Size=value and UDim2.new(.48,-20,1,0) or UDim2.new(1,-58,1,0)
+            choiceChip.Size=value and UDim2.new(.52,-12,0,24) or UDim2.new(0,34,0,24)
+            choiceArrow.Text=text:find("▲",1,true) and "⌃" or "⌄"
+            choiceChip.ZIndex=(b.ZIndex or 1)+1;choiceTitle.ZIndex=(b.ZIndex or 1)+1
+            choiceValue.ZIndex=(b.ZIndex or 1)+2;choiceArrow.ZIndex=(b.ZIndex or 1)+2
+        end
+        return dropdown~=nil
+    end
+    if props.Switch then
+        padding.PaddingLeft=UDim.new(0,0);padding.PaddingRight=UDim.new(0,0)
+        switchLabel=label({Parent=b,Text=b.Text,Size=UDim2.new(1,-66,1,0),Position=UDim2.fromOffset(12,0),TextSize=b.TextSize})
+        switchLabel.Name="SwitchLabel";switchLabel.FontFace=COLORS.fonts.Medium
+        switchTrack=Instance.new("Frame");switchTrack.Name="SwitchTrack"
+        switchTrack.AnchorPoint=Vector2.new(1,.5);switchTrack.Position=UDim2.new(1,-12,.5,0)
+        switchTrack.Size=UDim2.fromOffset(34,20);switchTrack.BorderSizePixel=0;switchTrack.Parent=b;corner(switchTrack,10)
+        switchKnob=Instance.new("Frame");switchKnob.Name="SwitchKnob"
+        switchKnob.Size=UDim2.fromOffset(14,14);switchKnob.BorderSizePixel=0;switchKnob.Parent=switchTrack;corner(switchKnob,7)
+    end
     local hovered,pressed=false,false
     local function refreshStyle()
         local available=b.Active
@@ -3604,7 +3650,27 @@ local function button(props)
         stroke.Color=available and (hovered or pressed or selected or props.Primary) and COLORS.accent or COLORS.stroke
         stroke.Transparency=not available and .8 or pressed and 0 or hovered and .1 or selected and .25 or props.Primary and .25 or .55
         stroke.Thickness=available and pressed and 2 or 1
-        b.TextTransparency=available and 0 or .42
+        local dropdown=updateChoice()
+        b.TextTransparency=(dropdown or switchTrack) and 1 or available and 0 or .42
+        local inset=(dropdown or switchTrack) and 0 or 10
+        padding.PaddingLeft=UDim.new(0,inset);padding.PaddingRight=UDim.new(0,inset)
+        b.TextColor3=props.Primary and b.BackgroundColor3==COLORS.accent and COLORS.accentDark or props.Color or COLORS.text
+        if choiceTitle then
+            choiceTitle.TextTransparency=available and 0 or .42
+            choiceValue.TextTransparency=available and 0 or .42
+            choiceArrow.TextTransparency=available and 0 or .42
+        end
+        if switchTrack then
+            local on=tostring(b.Text):find(" ON",1,true)~=nil
+            switchLabel.Text=b.Text;switchLabel.TextTransparency=available and 0 or .42
+            switchLabel.ZIndex=(b.ZIndex or 1)+1
+            switchTrack.BackgroundColor3=on and COLORS.accent or COLORS.surface3
+            switchKnob.BackgroundColor3=on and COLORS.accentDark or COLORS.muted
+            switchKnob.Position=UDim2.fromOffset(on and 17 or 3,3)
+            switchTrack.BackgroundTransparency=available and 0 or .5
+            switchKnob.BackgroundTransparency=available and 0 or .5
+            switchTrack.ZIndex=(b.ZIndex or 1)+1;switchKnob.ZIndex=(b.ZIndex or 1)+2
+        end
     end
     track(b.MouseEnter:Connect(function() hovered=true;refreshStyle() end))
     track(b.MouseLeave:Connect(function() hovered=false;pressed=false;refreshStyle() end))
@@ -3616,12 +3682,10 @@ local function button(props)
     end))
     track(b:GetPropertyChangedSignal("Active"):Connect(function() if not b.Active then hovered=false;pressed=false end;refreshStyle() end))
     track(b:GetPropertyChangedSignal("BackgroundColor3"):Connect(refreshStyle))
+    track(b:GetPropertyChangedSignal("Text"):Connect(refreshStyle))
+    track(b:GetPropertyChangedSignal("ZIndex"):Connect(refreshStyle))
     refreshStyle()
-    if string.find(props.Text or "", "▼", 1, true) then
-        b.TextXAlignment = Enum.TextXAlignment.Left
-        padding.PaddingLeft = UDim.new(0, 12)
-        padding.PaddingRight = UDim.new(0, 12)
-    end
+
 	return b
 end
 
@@ -3657,7 +3721,7 @@ local R=game:GetService"TweenService"local p=game:GetService"UserInputService"lo
 -- NAVY. Upstream ships a plum palette; these are the same roles in blue. AccentDark is
 -- the text that sits ON the accent (primary buttons, the toggle knob), so it stays the
 -- darkest colour here -- swapping it for a blue would leave that text unreadable.
-g.Theme={Background=Color3.fromRGB(18,20,27),Surface=Color3.fromRGB(23,26,35),Surface2=Color3.fromRGB(29,33,44),Surface3=Color3.fromRGB(35,42,56),Stroke=Color3.fromRGB(58,66,84),StrokeHover=Color3.fromRGB(110,218,189),Accent=Color3.fromRGB(110,218,189),AccentDark=Color3.fromRGB(10,14,24),Text=Color3.fromRGB(238,242,250),Muted=Color3.fromRGB(159,171,191),Warning=Color3.fromRGB(240,176,108),Success=Color3.fromRGB(150,220,170),Error=Color3.fromRGB(240,120,120)}
+g.Theme={Background=Color3.fromRGB(13,17,28),Surface=Color3.fromRGB(17,22,36),Surface2=Color3.fromRGB(21,27,44),Surface3=Color3.fromRGB(34,43,66),Stroke=Color3.fromRGB(32,41,63),StrokeHover=Color3.fromRGB(66,88,130),Accent=Color3.fromRGB(122,162,247),AccentDark=Color3.fromRGB(10,14,24),Text=Color3.fromRGB(226,232,240),Muted=Color3.fromRGB(128,141,166),Warning=Color3.fromRGB(240,176,108),Success=Color3.fromRGB(150,220,170),Error=Color3.fromRGB(240,120,120)}
 g.Assets={Shadow="rbxassetid://6014261993",Glow="rbxassetid://8992230677",Logo="rbxassetid://6031090998"}
 -- ICONS COME FROM THE SCRIPT, NOT FROM THE INTERNET. Upstream resolved lucide names by
 -- downloading a table from a third-party GitHub repo and running it -- a dependency that
@@ -3783,13 +3847,13 @@ local hub = Airflow:Window({
     Name = "AutoFishingGUI",
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
-    Title = "Islands",
-    Subtitle = "build-restock-list-101",
+    Title = "Reborn",
+    Subtitle = "Islands Farming",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
     Size = UDim2.fromOffset(720, 470),
-    OpenButton = { Title = "Islands Farming Hub", Draggable = false },
+    OpenButton = { Title = "Reborn", Draggable = false },
 })
 local gui = hub.Gui
 local frame = hub.Root
@@ -3886,10 +3950,30 @@ function RemoteCatalog.ChoiceDropdown(page,anchor,options,settings)
     self:Refresh()
     return self
 end
+function RemoteCatalog.StyleFields(page)
+    if not page then return end
+    for _,field in ipairs(page:GetDescendants()) do
+        if field:IsA("TextBox") and not field:FindFirstChild("FieldStroke") then
+            field.FontFace=COLORS.fonts.Regular;field.TextSize=math.max(13,field.TextSize)
+            field.TextColor3=COLORS.text;field.PlaceholderColor3=COLORS.muted
+            field.BackgroundColor3=COLORS.surface;field.BorderSizePixel=0
+            if not field:FindFirstChildOfClass("UICorner") then corner(field,8) end
+            local stroke=Instance.new("UIStroke");stroke.Name="FieldStroke"
+            stroke.Color=COLORS.stroke;stroke.Thickness=1;stroke.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;stroke.Parent=field
+            if not field:FindFirstChildOfClass("UIPadding") then
+                local padding=Instance.new("UIPadding")
+                padding.PaddingLeft=UDim.new(0,10);padding.PaddingRight=UDim.new(0,10);padding.Parent=field
+            end
+            track(field.Focused:Connect(function() stroke.Color=COLORS.accent end))
+            track(field.FocusLost:Connect(function() stroke.Color=COLORS.stroke end))
+        end
+    end
+end
 local selectTabOriginal=hub.SelectTab
-hub.SelectTab=function(self,...)
+hub.SelectTab=function(self,tab,...)
     RemoteCatalog.CloseMenus()
-    return selectTabOriginal(self,...)
+    RemoteCatalog.StyleFields(tab and tab.List)
+    return selectTabOriginal(self,tab,...)
 end
 local toggleOriginal=hub.Toggle
 hub.Toggle=function(self,...)
@@ -4068,7 +4152,7 @@ local function pageHeading(parent, text, y)
 end
 
 local toggle = button({
-    Parent = fishingPage,
+    Parent = fishingPage, Switch = true,
     Text = "FISH OFF  [" .. CONFIG.ToggleKey.Name .. "]",
     TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36),
@@ -4275,7 +4359,7 @@ local woodEnabled = false
 local mineEnabled = false
 local baitCycleId = 0
 local baitToggle = button({
-    Parent = fishingPage, Text = "AUTO BAIT OFF  [60s]", TextSize = 12, Bg = COLORS.off,
+    Parent = fishingPage, Switch = true, Text = "AUTO BAIT OFF  [60s]", TextSize = 12, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 90),
 })
 local baitInfo = label({
@@ -4300,7 +4384,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-restock-list-101",
+    return table.concat({"Reborn clean-islands-ui-102",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -4791,7 +4875,7 @@ track(RemoteCatalog.PropellerHistoryClear.Activated:Connect(function()
 end))
 
 local harvestToggle = button({
-    Parent = harvestPage, Text = "CROP FARM OFF", TextSize = 13, Bg = COLORS.off,
+    Parent = harvestPage, Switch = true, Text = "CROP FARM OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8),
 })
 local harvestInfo = label({
@@ -5412,7 +5496,7 @@ end
 RemoteCatalog.TravelSelector(harvestPage,286)
 RemoteCatalog.TravelSelector(woodPage,280)
 
-local woodToggle = button({ Parent = woodPage, Text = "WOOD FARM OFF", TextSize = 13, Bg = COLORS.off,
+local woodToggle = button({ Parent = woodPage, Switch = true, Text = "WOOD FARM OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
 local woodInfo = label({ Parent = woodPage, Text = "Normal cuts nearby trees without moving. Walk, Tween and Teleport are optional movement modes.",
     Color = COLORS.muted, TextSize = 11, Size = UDim2.new(1, -16, 0, 44), Position = UDim2.fromOffset(8, 50) })
@@ -5429,7 +5513,7 @@ local woodToolIndex = table.find(woodToolOptions, woodToolPreference) or 1
 local woodToolSelect = button({ Parent = woodPage, Text = "Axe: " .. woodToolPreference .. "  ▼", TextSize = 12,
     Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 232) })
 
-local mineToggle = button({ Parent = minePage, Text = "MINING OFF", TextSize = 13, Bg = COLORS.off,
+local mineToggle = button({ Parent = minePage, Switch = true, Text = "MINING OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
 local mineInfo = label({ Parent = minePage, Text = "Mine rocks/ores via API or normal tool input. Input mode needs a visible target within tool reach.", Color = COLORS.muted,
     TextSize = 11, Size = UDim2.new(1, -16, 0, 40), Position = UDim2.fromOffset(8, 50) })
@@ -5683,7 +5767,7 @@ end
 return AntiAFK
 
 end)()
-RemoteCatalog.AntiAFKButton=button({Parent=settingsPage,Text="ANTI AFK OFF",TextSize=12,Bg=COLORS.off,
+RemoteCatalog.AntiAFKButton=button({Parent=settingsPage,Switch=true,Text="ANTI AFK OFF",TextSize=12,Bg=COLORS.off,
     Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,52)})
 RemoteCatalog.AntiAFK=RemoteCatalog.AntiAFKClass.new(player,function() return game:GetService("VirtualUser") end,
     function() return workspace.CurrentCamera end,function(on,reason)
@@ -6231,7 +6315,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn build-restock-list-101 · Propeller loot history (UTC)",
+    return table.concat({"Reborn clean-islands-ui-102 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6335,7 +6419,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn build-restock-list-101 · Propeller tracker",
+    return table.concat({"Reborn clean-islands-ui-102 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6371,7 +6455,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-restock-list-101", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn clean-islands-ui-102", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -8551,7 +8635,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-restock-list-101\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn clean-islands-ui-102\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8613,7 +8697,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn build-restock-list-101 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn clean-islands-ui-102 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9205,7 +9289,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-restock-list-101\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn clean-islands-ui-102\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -10316,7 +10400,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn build-restock-list-101 · Craft diagnostics",
+    return table.concat({"Reborn clean-islands-ui-102 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -10395,7 +10479,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn build-restock-list-101 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn clean-islands-ui-102 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11071,7 +11155,7 @@ end)
 -- SETTINGS LAYOUT END
 -- AUTO DROP UI BEGIN
 pageHeading(RemoteCatalog.SettingsDropCard,"AUTO DROP · Q",10).Position=UDim2.fromOffset(10,10)
-RemoteCatalog.DropButton=button({Parent=RemoteCatalog.SettingsDropCard,Text="AUTO DROP: OFF",TextSize=13,Primary=true,
+RemoteCatalog.DropButton=button({Parent=RemoteCatalog.SettingsDropCard,Switch=true,Text="AUTO DROP: OFF",TextSize=13,Primary=true,
     Size=UDim2.new(.5,-16,0,38),Position=UDim2.fromOffset(10,36)})
 RemoteCatalog.DropStopButton=button({Parent=RemoteCatalog.SettingsDropCard,Text="STOP DROP",TextSize=13,Bg=Color3.fromRGB(87,39,47),
     Size=UDim2.new(.5,-16,0,38),Position=UDim2.new(.5,6,0,36)})
@@ -11420,7 +11504,7 @@ do
         if child:IsA("GuiObject") then bottom=math.max(bottom,child.Position.Y.Offset+child.Size.Y.Offset) end
     end
     pageHeading(harvestPage,"AUTO PLOW · OWN ISLAND",bottom+20)
-    RemoteCatalog.PlowButton=button({Parent=harvestPage,Text="AUTO PLOW: OFF",TextSize=13,
+    RemoteCatalog.PlowButton=button({Parent=harvestPage,Switch=true,Text="AUTO PLOW: OFF",TextSize=13,
         Size=UDim2.new(.5,-9,0,40),Position=UDim2.fromOffset(6,bottom+48)})
     RemoteCatalog.PlowStopButton=button({Parent=harvestPage,Text="STOP PLOW",TextSize=13,
         Size=UDim2.new(.5,-9,0,40),Position=UDim2.new(.5,3,0,bottom+48),Bg=Color3.fromRGB(87,39,47)})

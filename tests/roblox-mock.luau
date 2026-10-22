@@ -99,6 +99,17 @@ function methods:IsA(cls)
  return false
 end
 function methods:GetChildren() return table.clone(self._children) end
+function methods:GetDescendants()
+ local result={}
+ for _,child in ipairs(self:GetChildren()) do
+  table.insert(result,child)
+  for _,descendant in ipairs(child:GetDescendants()) do table.insert(result,descendant) end
+ end
+ return result
+end
+function methods:FindFirstChildOfClass(cls)
+ for _,child in ipairs(self:GetChildren()) do if child.ClassName==cls then return child end end
+end
 function methods:FindFirstChild(name)
  for _,child in ipairs(self._children) do if child.Name==name then return child end end
 end

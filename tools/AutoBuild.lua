@@ -1708,7 +1708,7 @@ function AutoBuild.new(ctx)
     local presets={"Farm plots","Platform","Wall","Stairs","Room","Bridge","Fence"}
     local presetMenu=Instance.new("Frame")
     presetMenu.Name="BlueprintOptions";presetMenu.Size=UDim2.new(1,-12,0,144);presetMenu.Position=UDim2.fromOffset(6,84)
-    presetMenu.BackgroundColor3=Color3.fromRGB(29,39,48);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
+    presetMenu.BackgroundColor3=Color3.fromRGB(21,27,44);presetMenu.BorderSizePixel=0;presetMenu.ZIndex=35;presetMenu.Visible=false;presetMenu.Parent=ctx.Parent
     button("Preset","Farm plots  ▼",0,48,.5,function()
         if not self.Running and not self.WorkerToken then
             local open=not presetMenu.Visible;self:CloseMenus();presetMenu.Visible=open
@@ -1716,7 +1716,7 @@ function AutoBuild.new(ctx)
     end)
     local moveMenu=Instance.new("Frame")
     moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,256);moveMenu.Position=UDim2.fromOffset(6,84)
-    moveMenu.BackgroundColor3=Color3.fromRGB(29,39,48);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
+    moveMenu.BackgroundColor3=Color3.fromRGB(21,27,44);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
     button("Movement","Move / Auto Walk  ▼",.5,48,.5,function()
         local open=not moveMenu.Visible;self:CloseMenus();moveMenu.Visible=open
     end)
@@ -1763,7 +1763,7 @@ function AutoBuild.new(ctx)
         label(title,y)
         local field=Instance.new("TextBox");field.Name=key;field.Text=tostring(value);field.PlaceholderText=title
         field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240)
-        field.BackgroundColor3=Color3.fromRGB(29,39,48);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
+        field.BackgroundColor3=Color3.fromRGB(21,27,44);field.BorderSizePixel=0;field.Size=UDim2.new(1,-12,0,30);field.Position=UDim2.fromOffset(6,y+24);field.Parent=ctx.Parent
         inputs[key]=field;register(field,y+24,30,0,6,nil,true)
         local committed=field.Text
         local function commit()
@@ -1831,7 +1831,7 @@ function AutoBuild.new(ctx)
     local speedMenu=Instance.new("Frame")
     self.SpeedMenu=speedMenu
     speedMenu.Name="BuildSpeedOptions";speedMenu.Size=UDim2.new(1,-12,0,88)
-    speedMenu.BackgroundColor3=Color3.fromRGB(29,39,48);speedMenu.BorderSizePixel=0;speedMenu.Visible=false;speedMenu.ZIndex=35;speedMenu.Parent=ctx.Parent
+    speedMenu.BackgroundColor3=Color3.fromRGB(21,27,44);speedMenu.BorderSizePixel=0;speedMenu.Visible=false;speedMenu.ZIndex=35;speedMenu.Parent=ctx.Parent
     self.SpeedOptions={}
     for index,value in ipairs({"Standard","Fast"}) do
         local option=ctx.Button({Parent=speedMenu,Text=value=="Standard" and "✓  Standard · 0.20s target" or "    Fast · 0.05s target",TextSize=13,
@@ -1843,7 +1843,7 @@ function AutoBuild.new(ctx)
     self.Status.TextWrapped=true
     self.Status.TextSize=14;self.Status.TextTruncate=Enum.TextTruncate.None
     local progressTrack=Instance.new("Frame")
-    progressTrack.Name="BuildProgress";progressTrack.BackgroundColor3=Color3.fromRGB(48,59,70)
+    progressTrack.Name="BuildProgress";progressTrack.BackgroundColor3=Color3.fromRGB(34,43,66)
     progressTrack.BorderSizePixel=0;progressTrack.ClipsDescendants=true
     progressTrack.Size=UDim2.new(1,-12,0,4);progressTrack.Parent=ctx.Parent
     self.ProgressTrack=register(progressTrack,layoutY(610),4)
@@ -1864,7 +1864,7 @@ function AutoBuild.new(ctx)
         Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
     self.MaterialSummary.TextWrapped=true;self.MaterialSummary.AutomaticSize=Enum.AutomaticSize.Y;self.MaterialSummary.TextTruncate=Enum.TextTruncate.None
     local name=Instance.new("TextBox");name.Name="BlueprintName";name.Text="My island build";name.PlaceholderText="Blueprint name (1–48 bytes)"
-    name.ClearTextOnFocus=false;name.TextSize=14;name.TextColor3=Color3.fromRGB(226,232,240);name.BackgroundColor3=Color3.fromRGB(29,39,48)
+    name.ClearTextOnFocus=false;name.TextSize=14;name.TextColor3=Color3.fromRGB(226,232,240);name.BackgroundColor3=Color3.fromRGB(21,27,44)
     name.Size=UDim2.new(1,-12,0,32);name.Position=UDim2.fromOffset(6,layoutY(764));name.Parent=ctx.Parent;inputs.Name=name;register(name,layoutY(764),32,0,6,nil,true)
     button("Slot","Blueprint slot: 1 / 5",0,804,1,function()
         if self.Running then status("Stop the build before changing its blueprint slot.");return end
@@ -1916,7 +1916,7 @@ function AutoBuild.new(ctx)
     transfer.Name="BlueprintTransfer";transfer.Text="";transfer.PlaceholderText="Paste blueprint JSON to import, or export a layout here."
     transfer.MultiLine=true;transfer.ClearTextOnFocus=false;transfer.TextSize=11;transfer.TextWrapped=true
     transfer.TextXAlignment=Enum.TextXAlignment.Left;transfer.TextYAlignment=Enum.TextYAlignment.Top
-    transfer.TextColor3=Color3.fromRGB(226,232,240);transfer.BackgroundColor3=Color3.fromRGB(29,39,48)
+    transfer.TextColor3=Color3.fromRGB(226,232,240);transfer.BackgroundColor3=Color3.fromRGB(21,27,44)
     transfer.Size=UDim2.new(1,-12,0,104);transfer.Position=UDim2.fromOffset(6,layoutY(1640));transfer.Parent=ctx.Parent
     inputs.Transfer=transfer;register(transfer,layoutY(1640),104,0,6,nil,true)
     button("ExportWorking","Export working layout",0,1752,.5,function() self:ExportBlueprint(false) end)
@@ -1925,7 +1925,7 @@ function AutoBuild.new(ctx)
     transferHint.TextWrapped=true
     for index,key in ipairs({"ReplaceFrom","ReplaceTo"}) do
         local field=Instance.new("TextBox");field.Name=key;field.Text="";field.PlaceholderText=index==1 and "Existing block name" or "Replacement block name"
-        field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240);field.BackgroundColor3=Color3.fromRGB(29,39,48)
+        field.ClearTextOnFocus=false;field.TextSize=14;field.TextColor3=Color3.fromRGB(226,232,240);field.BackgroundColor3=Color3.fromRGB(21,27,44)
         field.Size=UDim2.new(.5,-12,0,32);field.Position=UDim2.new((index-1)*.5,6,0,layoutY(1942));field.Parent=ctx.Parent
         inputs[key]=field;register(field,layoutY(1942),32,(index-1)*.5,6,nil,true)
     end
