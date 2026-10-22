@@ -163,7 +163,7 @@ function AutoBuild.RayBox(cf,origin,direction,half,limit)
     return near
 end
 function AutoBuild.new(ctx)
-    local self={BuildSpeed="Standard",RepeatScope="Entire layout",RepeatCopies=2,RepeatGap=0,TravelMode="Stay",Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
+    local self={Paused=false,PauseEpoch=0,BuildSpeed="Standard",RepeatScope="Entire layout",RepeatCopies=2,RepeatGap=0,TravelMode="Stay",Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons,commits={},{},{}
     self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
     self.Failures=setmetatable({}, {__mode="k"})
@@ -178,7 +178,7 @@ function AutoBuild.new(ctx)
         local checked=math.min(p.Total or 0,(p.Placed or 0)+(p.Skipped or 0)+(p.Failed or 0))
         p.Checked=checked
         if self.Running and buttons.Start then
-            local label=p.State=="Waiting for materials" and "Restock" or p.State=="Waiting for reach" and "Move closer" or "Building"
+            local label=self.Paused and "Paused" or p.State=="Waiting for materials" and "Restock" or p.State=="Waiting for reach" and "Move closer" or "Building"
             buttons.Start.Text=label.." · "..checked.."/"..tostring(p.Total or 0)
         end
     end
@@ -186,6 +186,10 @@ function AutoBuild.new(ctx)
         refreshProgress()
         local p=self.Progress
         local counts=self.Running and p and p.State~="Finished" and string.format("\nRun: %d confirmed · %d skipped · %d failed",p.Placed,p.Skipped,p.Failed) or ""
+        if self.Running and self.Paused then
+            message=self.RequestPending and "Pausing · waiting for the current server request. Resume keeps this run."
+                or "Paused · Resume continues this run; Stop ends it."
+        end
         self.Status.Text=tostring(message)..counts
     end
     function self:ClearPreview()
@@ -218,8 +222,17 @@ function AutoBuild.new(ctx)
             or "Auto Walk OFF: build waits for you to move within normal reach.")
         return true
     end
+    function self:SetPaused(value)
+        if type(value)~="boolean" or not ctx.Alive() or not self.Running or not self.WorkerToken then return false end
+        if self.Paused==value then return true end
+        self.Paused=value
+        if value then self.PauseEpoch+=1;stopTravel() end
+        self:RefreshFailureUI()
+        status(value and "Paused" or "Resuming the current build. Reach, material and occupancy checks remain active.")
+        return true
+    end
     function self:Stop()
-        self.Token+=1;self.Running=false
+        self.Token+=1;self.Running=false;self.Paused=false
         stopTravel()
         if self.RefreshFailureUI then self:RefreshFailureUI() end
         buttons.Start.Text=self.Cells and "Resume build" or "Start build"
@@ -616,6 +629,11 @@ function AutoBuild.new(ctx)
         if buttons.Speed then
             buttons.Speed.Active=editing==true;buttons.Speed.Selectable=editing==true
         end
+        if buttons.Pause then
+            local canPause=ctx.Alive() and self.Running and self.WorkerToken~=nil
+            buttons.Pause.Active=canPause==true;buttons.Pause.Selectable=canPause==true
+            buttons.Pause.Text=self.Paused and "Resume" or "Pause"
+        end
         local counts=self:FailureCounts()
         local available=ctx.Alive() and not self.Running and not self.WorkerToken and counts.Retryable>0
         buttons.RetryFailed.Active=available==true;buttons.RetryFailed.Selectable=available==true
@@ -633,6 +651,7 @@ function AutoBuild.new(ctx)
         local failures=self:FailureCounts()
         return table.concat({"Reborn Auto Build diagnostics", "Placement ready: "..tostring(ready).." · "..tostring(reason),
             "Running: "..tostring(self.Running).."; request cleanup: "..tostring(self.WorkerToken~=nil),
+            "Paused: "..tostring(self.Paused).."; request in flight: "..tostring(self.RequestPending==true),
             "Waiting for material: "..tostring(self.WaitingMaterial or "none"),
             "Build speed: "..self.BuildSpeed.."; current request gap: "..tostring(self.CurrentBuildGap or (self.BuildSpeed=="Fast" and .05 or .2)).."; cooldowns: "..tostring(self.BuildCooldowns or 0),
             "Build movement: "..self.TravelMode.."; last walk: "..tostring(self.LastTravelResult or "none"),
@@ -694,7 +713,7 @@ function AutoBuild.new(ctx)
         self:CloseMenus()
         local minimumGap=self.BuildSpeed=="Fast" and .05 or .2
         local gap,successes=minimumGap,0
-        self.CurrentBuildGap=gap;self.BuildCooldowns=0;self.WaitingMaterial=nil
+        self.CurrentBuildGap=gap;self.BuildCooldowns=0;self.WaitingMaterial=nil;self.Paused=false;self.RequestPending=false
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
@@ -709,13 +728,20 @@ function AutoBuild.new(ctx)
         self:RefreshFailureUI()
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
+        local function awaitResume()
+            while active() and self.Paused do scheduler.wait(.1) end
+            return active()
+        end
         local function ensureMaterials(cell,index)
             local waited=false
             while active() do
+                if not awaitResume() then return false end
                 if occupied(cell.CFrame,self.BlockSize) then self.WaitingMaterial=nil;return true end
+                local epoch=self.PauseEpoch
                 local ok,quantity=false,nil
                 if type(ctx.ItemCount)=="function" then ok,quantity=pcall(ctx.ItemCount,cell.Material) end
                 if not active() then return false end
+                if self.PauseEpoch~=epoch then continue end
                 local valid=ok and type(quantity)=="number" and quantity==quantity and quantity>=0 and quantity<math.huge and quantity%1==0
                 if valid and quantity>0 or not valid and not waited then
                     self.WaitingMaterial=nil
@@ -741,6 +767,7 @@ function AutoBuild.new(ctx)
                 return false
             end
             while active() do
+                if not awaitResume() then return false end
                 if travelMode=="Walk" then
                     local reason=blocked()
                     if reason then return pause(reason) end
@@ -751,8 +778,10 @@ function AutoBuild.new(ctx)
                 if root and travelMode=="Walk" then
                     progress.State="Walking to block"
                     status(string.format("Walking to block %d/%d · normal reach %g studs · Stop cancels movement",index,#cells,reach))
-                    local arrived,reason=ctx.Approach(cell,reach,function() return active() and not blocked() end)
+                    local epoch=self.PauseEpoch
+                    local arrived,reason=ctx.Approach(cell,reach,function() return active() and not self.Paused and not blocked() end)
                     if not active() then return false end
+                    if self.PauseEpoch~=epoch then continue end
                     local conflict=blocked()
                     if conflict then return pause(conflict) end
                     if occupied(cell.CFrame,self.BlockSize) then return true end
@@ -775,7 +804,7 @@ function AutoBuild.new(ctx)
             local placed,skipped,failed,streak=0,0,0,0
             local ok,err=pcall(function()
                 for index,cell in ipairs(cells) do
-                    if not active() then return end
+                    if not awaitResume() then return end
                     local cycleAt=now()
                     self.Progress.Index=index
                     local existing=occupied(cell.CFrame,self.BlockSize)
@@ -795,16 +824,22 @@ function AutoBuild.new(ctx)
                             local sent,reason,origin
                             local retries=0
                             repeat
-                                if not active() then return end
+                                if not awaitResume() then return end
+                                local epoch=self.PauseEpoch
                                 if not ensureMaterials(cell,index) then return end
                                 if not ensureReach(cell,reach,index) then return end
                                 if not active() then return end
-                                if occupied(cell.CFrame,self.BlockSize) then existing=true;sent=true;break end
+                                local alreadyPlaced=occupied(cell.CFrame,self.BlockSize)
+                                if not active() then return end
+                                if self.PauseEpoch~=epoch then continue end
+                                if alreadyPlaced then existing=true;sent=true;break end
                                 progress.State="Building"
                                 status(string.format("Building %d/%d: %s",index,#cells,cell.Material))
                                 markFailure(cell,"Request in flight or confirmation not observed",false)
                                 cycleAt=now()
+                                self.RequestPending=true
                                 sent,reason,origin=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
+                                self.RequestPending=false
                                 self.LastPlacementResult=(sent and "Accepted: " or "Rejected: ")..resultText(reason)
                                 if not active() then return end
                                 local cooldown=not sent and origin~="transport" and origin~="unavailable" and type(reason)=="table" and (reason.error=="TOO_FAST" or reason.code=="TOO_FAST")
@@ -824,7 +859,7 @@ function AutoBuild.new(ctx)
                                 progress.State="Waiting for server cooldown"
                                 status("Server cooldown · retrying block "..index.." / "..#cells.." ("..retries.."/5)")
                                 for _=1,math.ceil(math.min(4,.5*2^(retries-1))/.1) do
-                                    if not active() then return end
+                                    if not awaitResume() then return end
                                     scheduler.wait(.1)
                                 end
                                 if not active() then return end
@@ -875,9 +910,9 @@ function AutoBuild.new(ctx)
                 if active() then self.Progress.State="Finished";status(string.format("Finished: %d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
             stopTravel()
-            if self.WorkerToken==token then self.WorkerToken=nil;self.WaitingMaterial=nil end
+            if self.WorkerToken==token then self.WorkerToken=nil;self.WaitingMaterial=nil;self.RequestPending=false end
             if self.Token==token then
-                self.Running=false;buttons.Start.Text=progress.State=="Finished" and "Start build" or "Resume build"
+                self.Running=false;self.Paused=false;buttons.Start.Text=progress.State=="Finished" and "Start build" or "Resume build"
                 if not ok then self.Progress.State="Error";status("Build stopped: "..tostring(err)) end
             end
             if ctx.Alive() then self:RefreshFailureUI() end
@@ -1656,11 +1691,14 @@ function AutoBuild.new(ctx)
         if not ctx.LearnPlacement then status("Placement learning unavailable in this host.");return end
         local ok,reason=ctx.LearnPlacement();status(reason)
     end)
-    buttons.Start=ctx.Button({Parent=ctx.Parent,Text="Start build",TextSize=14,Primary=true,Size=UDim2.new(.7,-12,0,36),Position=UDim2.fromOffset(6,406)})
+    buttons.Start=ctx.Button({Parent=ctx.Parent,Text="Start build",TextSize=14,Primary=true,Size=UDim2.new(.5,-12,0,36),Position=UDim2.fromOffset(6,406)})
     register(buttons.Start,406,36)
     ctx.Track(buttons.Start.Activated:Connect(function() self:Start() end))
-    buttons.Stop=ctx.Button({Parent=ctx.Parent,Text="Stop",TextSize=14,Bg=Color3.fromRGB(87,39,47),Size=UDim2.new(.3,-12,0,36),Position=UDim2.new(.7,6,0,406)})
-    register(buttons.Stop,406,36,.7)
+    buttons.Pause=ctx.Button({Parent=ctx.Parent,Text="Pause",TextSize=13,Size=UDim2.new(.25,-12,0,36),Position=UDim2.new(.5,6,0,406)})
+    register(buttons.Pause,406,36,.5)
+    ctx.Track(buttons.Pause.Activated:Connect(function() self:SetPaused(not self.Paused) end))
+    buttons.Stop=ctx.Button({Parent=ctx.Parent,Text="Stop",TextSize=14,Bg=Color3.fromRGB(87,39,47),Size=UDim2.new(.25,-12,0,36),Position=UDim2.new(.75,6,0,406)})
+    register(buttons.Stop,406,36,.75)
     ctx.Track(buttons.Stop.Activated:Connect(function() self:Stop() end))
     button("RetryFailed","Retry",.5,486,.25,function() self:RetryFailures() end)
     button("CheckSetup","Check setup",.7,406,.3,function() self:CheckSetup() end)

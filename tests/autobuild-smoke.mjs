@@ -1214,7 +1214,76 @@ end)()
  options.ItemCount=function() coroutine.yield();return 2 end
  b:Start();assert(f.Calls==0);b:Stop();f:Drain()
  assert(f.Calls==0 and not b.WorkerToken,'Stop during a yielding inventory lookup must cancel before dispatch')
+ -- Pause retains the exact worker, plan, counters and current run.
+ f=fixture(2);b=f.Value
+ assert(not b:SetPaused(true),'idle builds cannot pause')
+ b:Start();local owner,token=b.WorkerToken,b.Token
+ assert(f.Calls==1 and b.Progress.Checked==1 and b:SetPaused(true))
+ for _=1,5 do f:Step() end
+ assert(f.Calls==1 and b.Running and b.Paused and b.WorkerToken==owner and b.Token==token and #b.History==0,'paused builds cannot advance to a new request or create a second run')
+ assert(b.Buttons.Start.Text=='Paused · 1/2' and b.Buttons.Pause.Text=='Resume' and not b:SetBuildSpeed('Fast'),'paused UI must show Resume while editing stays locked')
+ assert(b:SetPaused(false));f:Drain()
+ assert(f.Calls==2 and b.Progress.Placed==2 and #b.History==1 and not b.Paused and not b.Buttons.Pause.Active,'Resume must finish the original worker and disable Pause afterward')
+ f=fixture(0);b=f.Value;b:Start();b:SetPaused(true)
+ local reads=0;f.Stock=2;f.Read=function() reads+=1;return f.Stock end
+ for _=1,4 do f:Step() end
+ assert(reads==0 and f.Calls==0 and b.WaitingMaterial=='grass','restocking while manually paused cannot restart inventory reads or placement')
+ b:SetPaused(false);f:Drain();assert(f.Calls==2)
+ f=fixture(2);b=f.Value;b:Start();b:SetPaused(true);b:Stop()
+ assert(not b.Paused and not b:Start());f:Drain()
+ assert(f.Calls==1 and not b.WorkerToken and b.History[1].State=='Stopped','Stop from Pause must discard the wait and prevent queued requests')
+ -- An already dispatched request may settle, but may not launch another one.
+ f=fixture(2);b=f.Value
+ f.Response=function(body)
+  if f.Calls==1 then coroutine.yield() end
+  f.World[body.cframe.Position]=true;return true
+ end
+ b:Start();assert(f.Calls==1 and b.RequestPending)
+ b:SetPaused(true);assert(string.find(b.Status.Text,'Pausing',1,true))
+ for _=1,4 do f:Step() end
+ assert(f.Calls==1 and b.Progress.Placed==1 and b.Paused and not b.RequestPending and b.Buttons.Start.Text=='Paused · 1/2','in-flight confirmation must be counted once while new requests remain paused')
+ b:SetPaused(false);f:Drain();assert(f.Calls==2 and b.Progress.Placed==2)
+ f=fixture(2);b=f.Value
+ f.Response=function() coroutine.yield();error('transport failed') end
+ b:Start();b:SetPaused(true);f:Drain()
+ assert(f.Calls==1 and b.Progress.State=='Error' and not b.Paused and not b.RequestPending,'transport errors during Pause must stop normally without hidden replay')
+ -- Pausing confirmation does not abandon the request or extend its deadline.
+ f=fixture(2);b=f.Value
+ f.Response=function(body) if f.Calls>1 then f.World[body.cframe.Position]=true end;return true end
+ b:Start();assert(b.Progress.State=='Confirming block');b:SetPaused(true)
+ for _=1,4 do f:Step() end
+ assert(f.Calls==1 and b.Progress.Placed==0)
+ f.World[1]=true;for _=1,3 do f:Step() end
+ assert(b.Progress.Placed==1 and f.Calls==1)
+ b:SetPaused(false);f:Drain();assert(b.Progress.Placed==2)
+ f=fixture(2);b=f.Value;f.Response=function() return true end
+ b:Start();b:SetPaused(true);for _=1,125 do f:Step() end
+ assert(f.Calls==1 and b.Progress.Failed==1 and b.Paused and b:FailureCounts().Review==1,'confirmation timeout must remain bounded during Pause without replaying the uncertain request')
+ b:Stop();f:Drain();assert(f.Calls==1)
+ -- Cooldown and inventory lookup resume through fresh preflight checks.
+ f=fixture(2);b=f.Value
+ f.Response=function(body)
+  if f.Calls==1 then return false,{success=false,error='TOO_FAST'},'rejected' end
+  f.World[body.cframe.Position]=true;return true
+ end
+ b:Start();b:SetPaused(true);for _=1,5 do f:Step() end
+ assert(f.Calls==1 and b.BuildCooldowns==1)
+ b:SetPaused(false);f:Drain();assert(f.Calls==3 and b.Progress.Placed==2)
+ f=fixture(2);b=f.Value;reads=0
+ f.Read=function() reads+=1;if reads==1 then coroutine.yield() end;return f.Stock end
+ b:Start();b:SetPaused(true);b:SetPaused(false);f:Drain()
+ assert(reads>=2 and f.Calls==2,'even a rapid Pause/Resume must refresh a yielding inventory lookup')
+ -- Rapid Resume before a cancelled path returns must not end the worker.
+ f,options=fixture(2);b=f.Value;f.Distance=50;b:SetTravelMode('Walk')
+ options.Approach=function()
+  f.Walks+=1
+  if f.Walks==1 then coroutine.yield();return false,'old path cancelled' end
+  f.Distance=0;return true
+ end
+ b:Start();owner=b.WorkerToken;assert(f.Walks==1 and f.Calls==0)
+ b:SetPaused(true);b:SetPaused(false);f:Drain()
+ assert(f.Walks==2 and f.Calls==2 and b.Progress.Placed==2 and #b.History==1,'Resume must recheck a cancelled old path in the same run')
 end)()
-return 'Auto Build blueprints, paths, placement confirmation, restock waits, live progress, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
+return 'Auto Build blueprints, paths, placement confirmation, pause/resume, restock waits, live progress, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

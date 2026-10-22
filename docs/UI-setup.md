@@ -2597,3 +2597,36 @@ occupied cells supplied while waiting, walking after restock, cooldown rechecks,
 Stop during a yielding inventory read, real button text and native endpoint
 dispatch. The full regression suite remains required. This new wait/progress
 behavior has not been verified in live Roblox.
+
+## Auto Build Pause / Resume (v97)
+
+The first action row now has **Start build / Pause / Stop**. Pause changes to
+**Resume** during an explicit pause, and the primary button shows **Paused ·
+checked/total**. Pause is disabled without an active run. The existing tab height
+is unchanged; the controls fit the supported window widths.
+
+An explicit pause retains the same worker, cell list, selected layer, speed,
+counters and run history entry. Material polling, reach waits, cooldown retries
+and new placement requests wait for Resume. Auto Walk stops through the scoped
+Build navigation owner. After Resume, reach, inventory and occupancy are checked
+again before dispatch. Even a quick Pause/Resume before a cancelled walk or
+inventory lookup returns cannot treat its stale result as permission to place.
+
+A request already sent to the server cannot be cancelled. While it is in flight,
+the UI says **Pausing**. Its response and normal five-second confirmation window
+are allowed to settle, so the confirmed/failed count can change for that one
+request during Pause. No further request starts until Resume. Transport errors
+and confirmation failures keep their existing review/no-replay behavior. A run
+that completes or errors clears its pause state normally.
+
+Stop still ends the run and invalidates its token, including from Pause. Stop
+All, the stop timer and hub removal use the same cancellation path. Plan, speed
+and travel edits stay locked through Pause and request cleanup. Pausing does not
+write files or create another worker/run; history elapsed time includes the time
+spent paused. Diagnostics show the pause and in-flight-request flags.
+
+Tests cover pause/resume between requests, material waits, stock arriving during
+Pause, cooldown, a pending RPC, confirmation and its deadline, transport failure,
+yielding inventory reads, rapid cancelled-path Resume, native buttons, bounds,
+Stop and listener cleanup. The full regression suite remains required. This new
+Pause/Resume behavior has not been verified in live Roblox.

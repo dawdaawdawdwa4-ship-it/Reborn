@@ -992,7 +992,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-restock-96',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-pause-97',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1730,7 +1730,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-restock-96 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-pause-97 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2279,8 +2279,8 @@ end)()
  local original=b.BuildSpeed
  showTab('Auto Build');flush()
  local initial=b.LayoutHeight
- assert(b.BuildSpeed=='Standard' and b.Buttons.Start.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.Buttons.Start.Position.Y.Offset<b.Buttons.Preview.Position.Y.Offset,'Start and Stop must share the first action row')
- local controls={b.Buttons.Start,b.Buttons.Stop,b.Buttons.Preview,b.Buttons.LearnPlacement,b.Buttons.CheckSetup,b.Buttons.Layer,b.Buttons.Speed,b.Buttons.Rotate,b.Buttons.Center,b.Buttons.RetryFailed,b.Buttons.Clear}
+ assert(b.BuildSpeed=='Standard' and b.Buttons.Start.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.Buttons.Start.Position.Y.Offset==b.Buttons.Pause.Position.Y.Offset and not b.Buttons.Pause.Active and b.Buttons.Start.Position.Y.Offset<b.Buttons.Preview.Position.Y.Offset,'Start and Stop must share the first action row')
+ local controls={b.Buttons.Start,b.Buttons.Pause,b.Buttons.Stop,b.Buttons.Preview,b.Buttons.LearnPlacement,b.Buttons.CheckSetup,b.Buttons.Layer,b.Buttons.Speed,b.Buttons.Rotate,b.Buttons.Center,b.Buttons.RetryFailed,b.Buttons.Clear}
  for _,width in ipairs({640-190-36,720-190-36,1080-190-36}) do
   for i,control in ipairs(controls) do
    local x=control.Position.X.Scale*width+control.Position.X.Offset
@@ -2334,19 +2334,25 @@ end)()
  assert(b.Running and owner and requests==0 and b.Buttons.Start.Text=='Restock · 0/3' and b.WaitingMaterial=='grass','native Start must stay ON at empty stock and display restock in the primary button')
  for _=1,3 do stepWorkers() end
  assert(requests==0 and b.Progress.Failed==0 and b.WorkerToken==owner,'waiting cannot generate failures or replacement workers')
+ b.Buttons.Pause.Activated:Fire()
+ assert(b.Paused and b.Buttons.Pause.Text=='Resume' and b.Buttons.Start.Text=='Paused · 0/3' and b.WorkerToken==owner,'native Pause must retain the run and show Resume beside Start')
+ stock=1;for _=1,4 do stepWorkers() end
+ assert(requests==0 and b.Paused,'restocking cannot override an explicit native pause')
+ b.Buttons.Pause.Activated:Fire()
+ assert(not b.Paused and b.Buttons.Pause.Text=='Pause' and b.WorkerToken==owner)
  stock=1;stepWorkers()
  assert(requests==1 and b.Progress.Checked==1 and b.Buttons.Start.Text=='Building · 1/3','confirmed progress must be visible in the top action row')
  stepWorkers();assert(b.Buttons.Start.Text=='Restock · 1/3' and requests==1)
  stock=2;for _=1,5 do stepWorkers() end
  assert(requests==3 and b.Progress.Checked==3 and b.Progress.Placed==3 and #b.History==1 and not b.WorkerToken and not b.WaitingMaterial,'restocking must complete the same native run')
  b.Cells={{CFrame={Position=pos(13)},Material='grass'}};b.Buttons.Start.Activated:Fire()
- assert(b.Running and b.WaitingMaterial=='grass');b.Buttons.Stop.Activated:Fire();stock=10;stepWorkers()
- assert(requests==3 and not b.WorkerToken and not b.WaitingMaterial,'actual Stop must cancel a restock wait before late stock arrives')
+ assert(b.Running and b.WaitingMaterial=='grass');b.Buttons.Pause.Activated:Fire();b.Buttons.Stop.Activated:Fire();stock=10;stepWorkers()
+ assert(requests==3 and not b.WorkerToken and not b.WaitingMaterial and not b.Paused and not b.Buttons.Pause.Active,'actual Stop must cancel a paused restock wait before late stock arrives')
  r.CarrotCount,r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Count,saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
  b:SetBuildSpeed(saved.Speed)
 end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2]}
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause}
  ;(function()
  local oldPress,oldRelease,oldFocus,oldCharacter=keypress,keyrelease,UserInputService.GetFocusedTextBox,player.Character
  local events=cleanupOptions.DropEvents
@@ -2372,6 +2378,7 @@ RemoteCatalog.ExportCraftQueue=function() error('export callback survived GUI re
 cleanupOptions.Import.Activated:Fire();cleanupOptions.Export.Activated:Fire()
 buildController.RepeatLayout=function() error('repeat callback survived GUI removal') end;cleanupOptions.Repeat.Activated:Fire();cleanupOptions.RepeatUp.Activated:Fire()
 buildController.SetBuildSpeed=function() error('speed callback survived GUI removal') end;cleanupOptions.BuildFast.Activated:Fire()
+buildController.SetPaused=function() error('pause callback survived GUI removal') end;cleanupOptions.BuildPause.Activated:Fire()
 RemoteCatalog.CheckCraftQueue=function() error('queue-check callback survived GUI removal') end;cleanupOptions.QueueCheck.Activated:Fire()
 RemoteCatalog.ImportChestSetup=function() error('chest import callback survived GUI removal') end
 RemoteCatalog.ExportChestSetup=function() error('chest export callback survived GUI removal') end
