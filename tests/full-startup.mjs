@@ -123,6 +123,8 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   b.SetupMarkers=true
   b.Buttons.Start.Activated:Fire();for _=1,4 do stepWorkers() end
   assert(not b.WorkerToken and b.Buttons.RetryFailed.Active and #trace==2,'real rejected placements must enable Retry failed after cleanup')
+  assert(b.History[1].Attempts==2 and b.History[1].Retryable==2 and b.History[1].Review==0 and string.find(b.History[1].LastResult,'MISSING_MATERIALS',1,true),'native history must retain the actual server reason and eligible rejected count')
+
   assert(b.Cells[1].SetupState=='Rejected' and b.Cells[2].SetupState=='Rejected','actual rejected requests must be visible as red diagnostics')
   b.Buttons.CheckSetup.Activated:Fire()
   assert(string.find(b.SetupReport,'Retry failed targets 2 explicitly rejected cells',1,true),'setup must explain the eligible retry count')
@@ -292,6 +294,12 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
  assert(buildController.Buttons.History.Visible,'build history must expand through its actual section control')
  buildController.Buttons.History.Activated:Fire()
  buildController.Buttons.CopyHistory.Activated:Fire()
+ ;(function()
+ local selection,shown=buildController.HistoryIndex,buildController.HistoryLabel.Text
+ buildController.Buttons.CopyAllHistory.Activated:Fire()
+ assert(string.find(copied,'all recorded results',1,true) and buildController.HistoryIndex==selection and buildController.HistoryLabel.Text==shown and not buildController.Running,'native Copy all must preserve browsing state and stay read-only')
+ assert(buildController.Buttons.CopyAllHistory.Position.Y.Offset==buildController.Buttons.History.Position.Y.Offset and buildController.Buttons.CopyAllHistory.Position.X.Scale>buildController.Buttons.CopyHistory.Position.X.Scale,'Copy all must share the history action row')
+ end)()
  assert(string.find(copied,'Bridge',1,true) and string.find(copied,'3 unprocessed',1,true),'history buttons must display and copy the selected plain-data result')
  buildController.SectionButtons.History.Activated:Fire()
  buildController.History={};buildController.HistoryIndex=0;buildController.HistoryReport=nil
@@ -992,7 +1000,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-pause-97',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-results-98',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1730,7 +1738,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-pause-97 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-results-98 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2352,7 +2360,7 @@ end)()
  b:SetBuildSpeed(saved.Speed)
 end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause}
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause,BuildCopyAll=buildController.Buttons.CopyAllHistory}
  ;(function()
  local oldPress,oldRelease,oldFocus,oldCharacter=keypress,keyrelease,UserInputService.GetFocusedTextBox,player.Character
  local events=cleanupOptions.DropEvents
@@ -2379,6 +2387,7 @@ cleanupOptions.Import.Activated:Fire();cleanupOptions.Export.Activated:Fire()
 buildController.RepeatLayout=function() error('repeat callback survived GUI removal') end;cleanupOptions.Repeat.Activated:Fire();cleanupOptions.RepeatUp.Activated:Fire()
 buildController.SetBuildSpeed=function() error('speed callback survived GUI removal') end;cleanupOptions.BuildFast.Activated:Fire()
 buildController.SetPaused=function() error('pause callback survived GUI removal') end;cleanupOptions.BuildPause.Activated:Fire()
+buildController.CopyAllHistory=function() error('history export callback survived GUI removal') end;cleanupOptions.BuildCopyAll.Activated:Fire()
 RemoteCatalog.CheckCraftQueue=function() error('queue-check callback survived GUI removal') end;cleanupOptions.QueueCheck.Activated:Fire()
 RemoteCatalog.ImportChestSetup=function() error('chest import callback survived GUI removal') end
 RemoteCatalog.ExportChestSetup=function() error('chest export callback survived GUI removal') end

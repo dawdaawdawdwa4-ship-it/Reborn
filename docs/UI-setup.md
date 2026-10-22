@@ -2630,3 +2630,41 @@ Pause, cooldown, a pending RPC, confirmation and its deadline, transport failure
 yielding inventory reads, rapid cancelled-path Resume, native buttons, bounds,
 Stop and listener cleanup. The full regression suite remains required. This new
 Pause/Resume behavior has not been verified in live Roblox.
+
+## Build result details and Copy all (v98)
+
+**Recent build results** now has **Next result / Copy result / Copy all** on one
+row. Copy all exports the five retained results newest first without changing the
+result currently being viewed. It can be used during a build; the active run is
+included only after it ends. An empty history leaves the clipboard untouched.
+The existing host clipboard/console helper handles export, and no files are
+written or build actions started by copying.
+
+New results retain their selected speed/movement, actual placement-attempt count,
+observed TOO_FAST count, last response, end/stop detail and last waiting reason.
+Material and reach waits that sent no requests cannot inherit another run's last
+server response. Elapsed time is captured when the worker ends and still includes
+manual pause time. Later preview edits, settings changes, Stop calls and current
+progress mutations do not modify these stored results.
+
+Each result counts its explicitly rejected and uncertain cells separately and
+retains details for the first eight in run order. Indices refer to this run's
+selected cell list, including Retry failed subsets. Reasons and other detail
+strings are bounded and flattened for reporting; the snapshots contain plain data,
+not live cells, CFrames, remotes, request templates or session bindings. Successful
+confirmed/occupied cells clear their tracked failures, including after cooldown
+retries. Unconfirmed or cancelled in-flight requests retain review guidance.
+
+A run that reaches its end with failures is displayed as **Finished with unresolved
+cells**, preserving its underlying Finished state and existing placement behavior.
+Its next-step text distinguishes Retry failed candidates from cells requiring
+manual island review. Stop and transport errors also retain their original run
+outcomes; late results after Stop never add confirmed placements. Reports are
+historical snapshots and remind the user to recheck the current island before
+retrying. Earlier count-only snapshots remain readable.
+
+Tests cover request/cooldown counts, cleared failures after success, bounded and
+independent failure lists, incomplete completion, review guidance, zero-request
+waits, late transport errors, all-five export ordering, active-run exclusion,
+unchanged browsing state, native buttons and listener cleanup, alongside the full
+regression suite. The new reports/UI have not been verified in live Roblox.

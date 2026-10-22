@@ -1284,6 +1284,68 @@ end)()
  b:SetPaused(true);b:SetPaused(false);f:Drain()
  assert(f.Walks==2 and f.Calls==2 and b.Progress.Placed==2 and #b.History==1,'Resume must recheck a cancelled old path in the same run')
 end)()
-return 'Auto Build blueprints, paths, placement confirmation, pause/resume, restock waits, live progress, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
+;(function()
+ local fields={'Place','ItemCount','CopyReport','Alive'}
+ local old={};for _,key in ipairs(fields) do old[key]=ctx[key] end
+ local oldWorld,oldRoot=occupied,root.Position
+ root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+ ctx.ItemCount=nil
+ local copied,copies,dispatches=nil,0,0
+ ctx.CopyReport=function(text) copied=text;copies+=1 end
+ local h=A.new(ctx)
+ assert(not h:CopyAllHistory() and copies==0,'empty history cannot overwrite the clipboard')
+ local function drain() local guard=0;while coroutine.status(worker)~='dead' do guard+=1;assert(guard<2000);step() end end
+ local function run(name,count,place)
+  occupied={};h.Preset=name;h.Cells=cells(count);h.BlockSize=3;h.Failures={};ctx.Place=function(body) dispatches+=1;return place(body) end
+  assert(h:Start());drain();return h.History[1]
+ end
+ local n=0
+ local success=run('Cooldown recovery',2,function(body)
+  n+=1;if n==1 then return false,{success=false,error='TOO_FAST'},'rejected' end
+  occupied[body.cframe.Position]=true;return true
+ end)
+ assert(success.Attempts==3 and success.Cooldowns==1 and success.Retryable==0 and success.Review==0 and #success.Failures==0,'successful cooldown retries must clear historical unresolved cells while keeping attempt counts')
+ assert(success.Speed=='Standard' and success.Travel=='Stay' and success.NextAction=='No unresolved cells in this run.')
+ local rejected=run('Mixed support failures',18,function(body)
+  if body.cframe.Position%2==0 then return false,{success=false,error='NO_SUPPORT'..string.char(10)..string.rep('x',800)},'rejected' end
+  occupied[body.cframe.Position]=true;return true
+ end)
+ assert(rejected.State=='Finished' and rejected.Failed==9 and rejected.Retryable==9 and rejected.Review==0 and #rejected.Failures==8 and rejected.Attempts==18,'mixed failures must preserve completed-run behavior and bound the historical cell list')
+ assert(rejected.Failures[1].Index==2 and rejected.Failures[8].Index==16 and #rejected.Failures[1].Reason<=512 and not rejected.Failures[1].Reason:find('[%c]'),'failure snapshots must be ordered and contain bounded plain reasons')
+ assert(not rejected.Failures[1].CFrame and not rejected.Failures[1].Cell and not rejected.Failures[1].Remote,'historical failures must exclude live instances and request bindings')
+ assert(string.find(h:ShowHistory(),'Finished with unresolved cells',1,true) and string.find(h.HistoryReport,'More tracked cells: 1',1,true) and string.find(rejected.NextAction,'Retry failed',1,true),'partial completion must expose failures and a concrete next step')
+ h:ClearPreview();h.LastPlacementResult='unrelated later result';h:SetBuildSpeed('Fast')
+ assert(rejected.Speed=='Standard' and rejected.Failures[1].Material=='grass' and string.find(rejected.LastResult,'NO_SUPPORT',1,true),'editing/clearing later previews cannot change old results or their settings')
+ local review=run('Unconfirmed response',1,function() return true end)
+ assert(review.Review==1 and review.Retryable==0 and review.Failed==1 and string.find(review.NextAction,'Inspect uncertain',1,true),'unconfirmed placements must retain review guidance instead of suggesting an automatic retry')
+ ctx.ItemCount=function() return 0 end
+ occupied={};h.Cells=cells(1);h.Preset='Restock stop';h:Start();h:Stop();drain()
+ local empty=h.History[1]
+ assert(empty.Attempts==0 and empty.LastResult=='No placement request sent' and empty.WaitReason=='Material: grass' and empty.State=='Stopped','a stopped restock wait must not inherit a previous server error')
+ ctx.ItemCount=nil
+ occupied={};h.Cells=cells(1);h.Preset='Late transport error'
+ ctx.Place=function() dispatches+=1;coroutine.yield();error('late transport failure') end
+ h:Start();h:Stop();drain()
+ local late=h.History[1]
+ assert(late.State=='Stopped' and late.Placed==0 and late.Attempts==1 and late.Review==1 and string.find(late.LastResult,'Transport error:',1,true),'late errors after Stop must remain unconfirmed while recording the actual result')
+ assert(#h.History==5)
+ h:ShowHistory();local selected,label,report=h.HistoryIndex,h.HistoryLabel.Text,h.HistoryReport
+ local before=dispatches
+ h.Buttons.CopyAllHistory.Activated:Fire()
+ assert(copied and string.find(copied,'5 / 5 retained',1,true) and string.find(copied,'Late transport error',1,true) and string.find(copied,'Cooldown recovery',1,true),'Copy all must include every retained snapshot newest first')
+ assert(string.find(copied,'Late transport error',1,true)<string.find(copied,'Cooldown recovery',1,true) and h.HistoryIndex==selected and h.HistoryLabel.Text==label and h.HistoryReport==report,'whole-history export must preserve the selected/displayed result')
+ ctx.ItemCount=function() return 0 end
+ occupied={};h.Cells=cells(1);h.Preset='ACTIVE NOT RECORDED';h:Start();local owner=h.WorkerToken
+ local full=h:CopyAllHistory()
+ assert(not string.find(full,'ACTIVE NOT RECORDED',1,true) and h.WorkerToken==owner and h.Running and dispatches==before,'copying during a run must export finished snapshots only without dispatching or stopping')
+ h:Stop();drain();ctx.ItemCount=nil
+ local originalCopy=ctx.CopyReport;ctx.CopyReport=nil
+ assert(not h:CopyAllHistory(),'unavailable copying must not be claimed as success');ctx.CopyReport=originalCopy
+ ctx.Alive=function() return false end;local count=copies
+ assert(not h:CopyAllHistory() and copies==count,'removed hubs cannot invoke history copying')
+ for _,key in ipairs(fields) do ctx[key]=old[key] end
+ occupied,root.Position=oldWorld,oldRoot
+end)()
+return 'Auto Build blueprints, paths, placement confirmation, result snapshots/export, pause/resume, restock waits, live progress, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

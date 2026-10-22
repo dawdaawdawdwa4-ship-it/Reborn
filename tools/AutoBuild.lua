@@ -185,6 +185,7 @@ function AutoBuild.new(ctx)
     local function status(message)
         refreshProgress()
         local p=self.Progress
+        if p and self.WorkerToken then p.Detail=tostring(message):sub(1,1024) end
         local counts=self.Running and p and p.State~="Finished" and string.format("\nRun: %d confirmed · %d skipped · %d failed",p.Placed,p.Skipped,p.Failed) or ""
         if self.Running and self.Paused then
             message=self.RequestPending and "Pausing · waiting for the current server request. Resume keeps this run."
@@ -576,22 +577,67 @@ function AutoBuild.new(ctx)
         status("Full preview centered in front of your facing direction on grid steps. Height, orientation and layer selection are retained. Check reach before building.")
         return true
     end
+    local function reportText(value)
+        return tostring(value):gsub("[%c]"," "):sub(1,512)
+    end
+    function self:FormatHistory(run,index,total)
+        local outcome=run.State=="Finished" and (run.Failed>0 or (run.Review or 0)>0 or (run.Retryable or 0)>0)
+            and "Finished with unresolved cells" or run.State
+        local text=string.format("Reborn build result %d/%d (newest first)\n%s · %s\n%s · %d selected / %d total planned\n%d confirmed · %d occupied/skipped · %d failed\n%d unprocessed · %.1fs elapsed",
+            index,total,run.Name,outcome,run.Layer,run.Total,run.WholeTotal,run.Placed,run.Skipped,run.Failed,
+            math.max(0,run.Total-run.Placed-run.Skipped-run.Failed),run.Elapsed)
+        text..=run.RetryOnly and "\nRun type: Retry failed (explicitly rejected cells only)" or "\nRun type: Normal Start/Resume"
+        if run.NextAction then
+            text..="\nNext: "..run.NextAction
+            text..="\nSettings: "..run.Speed.." · "..run.Travel.." · Attempts: "..run.Attempts.." · TOO_FAST: "..run.Cooldowns
+            text..="\nLast result: "..run.LastResult.."\nDetail: "..run.Detail
+            if run.WaitReason then text..="\nLast wait: "..run.WaitReason end
+            text..="\nTracked cells: "..run.Retryable.." rejected · "..run.Review.." need review"
+            for _,entry in ipairs(run.Failures) do
+                text..="\n"..(entry.Retryable and "REJECTED" or "REVIEW").." · run cell #"..entry.Index.." · "..entry.Material.." · "..entry.Reason
+            end
+            if run.Retryable+run.Review>#run.Failures then text..="\nMore tracked cells: "..(run.Retryable+run.Review-#run.Failures) end
+            text..="\nHistorical snapshot. Recheck the current island before retrying."
+        end
+        return text
+    end
     function self:ShowHistory()
         if #self.History==0 then self.HistoryLabel.Text="No completed or stopped builds this session.";return false end
         self.HistoryIndex=(self.HistoryIndex or 0)%#self.History+1
-        local run=self.History[self.HistoryIndex]
-        self.HistoryReport=string.format("Reborn build result %d/%d (newest first)\n%s · %s\n%s · %d selected / %d total planned\n%d confirmed · %d occupied/skipped · %d failed\n%d unprocessed · %.1fs elapsed",
-            self.HistoryIndex,#self.History,run.Name,run.State,run.Layer,run.Total,run.WholeTotal,run.Placed,run.Skipped,run.Failed,
-            math.max(0,run.Total-run.Placed-run.Skipped-run.Failed),run.Elapsed)
-        self.HistoryReport..=run.RetryOnly and "\nRun type: Retry failed (explicitly rejected cells only)" or "\nRun type: Normal Start/Resume"
+        self.HistoryReport=self:FormatHistory(self.History[self.HistoryIndex],self.HistoryIndex,#self.History)
         self.HistoryLabel.Text=self.HistoryReport
         return self.HistoryReport
+    end
+    function self:CopyAllHistory()
+        if not ctx.Alive() then return false end
+        if #self.History==0 then status("No recorded build results to copy. The current active run is recorded after it ends.");return false end
+        local history=table.clone(self.History)
+        local lines={"Reborn Auto Build · all recorded results","Newest first · "..#history.." / 5 retained · current hub session only"}
+        for index,run in ipairs(history) do table.insert(lines,self:FormatHistory(run,index,#history)) end
+        local text=table.concat(lines,"\n\n")
+        if ctx.CopyReport then ctx.CopyReport(text) else status("Report copying is unavailable.");return false end
+        return text
     end
     local function recordBuild(progress,meta)
         local state=progress.State
         if state=="Building" or state=="Waiting for reach" or state=="Waiting for materials" then state="Stopped" end
+        local failures,retryable,review={},0,0
+        for index=1,progress.Total do
+            local entry=meta.Failures[index]
+            if entry then
+                if entry.Retryable then retryable+=1 else review+=1 end
+                if #failures<8 then table.insert(failures,{Index=index,Material=entry.Material,Reason=entry.Reason,Retryable=entry.Retryable}) end
+            end
+        end
+        local nextAction=review>0 and "Inspect uncertain cells on the island before normal Resume. Retry failed excludes them."
+            or retryable>0 and "Fix the recorded rejection cause, then use Retry failed for eligible cells in the current preview."
+            or state=="Finished" and progress.Failed==0 and "No unresolved cells in this run."
+            or "Check the current preview and setup, then Resume build when ready."
         table.insert(self.History,1,{Name=meta.Name,Layer=meta.Layer,WholeTotal=meta.WholeTotal,Total=progress.Total,
-            Placed=progress.Placed,Skipped=progress.Skipped,Failed=progress.Failed,State=state,Elapsed=math.max(0,now()-meta.Started),RetryOnly=meta.RetryOnly==true})
+            Placed=progress.Placed,Skipped=progress.Skipped,Failed=progress.Failed,State=state,Elapsed=math.max(0,(meta.Ended or now())-meta.Started),RetryOnly=meta.RetryOnly==true,
+            Speed=meta.Speed,Travel=meta.Travel,Attempts=meta.Attempts,Cooldowns=meta.Cooldowns,LastResult=meta.LastResult,
+            Detail=reportText(progress.Detail or state),WaitReason=progress.WaitReason and reportText(progress.WaitReason) or nil,
+            Failures=failures,Retryable=retryable,Review=review,NextAction=nextAction})
         while #self.History>5 do table.remove(self.History) end
         self.HistoryIndex=0;self.HistoryReport=nil
         if ctx.Alive() then self.HistoryLabel.Text="Latest build recorded. View results to inspect the last "..#self.History.." runs (session only)." end
@@ -639,8 +685,9 @@ function AutoBuild.new(ctx)
         buttons.RetryFailed.Active=available==true;buttons.RetryFailed.Selectable=available==true
         if self.SetupMarkers then self:RefreshPreviewColors() end
     end
-    local function markFailure(cell,reason,retryable)
+    local function markFailure(cell,reason,retryable,run,index)
         self.Failures[cell]={CFrame=cell.CFrame,Material=cell.Material,Reason=tostring(reason),Retryable=retryable==true}
+        run.Failures[index]={Material=reportText(cell.Material),Reason=reportText(reason),Retryable=retryable==true}
         if self.SetupMarkers then self:RefreshPreviewColors() end
     end
     function self:RetryFailures() return self:Start(true) end
@@ -721,7 +768,8 @@ function AutoBuild.new(ctx)
         self.SetupReport=nil;self.SetupResult=nil
         self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true}
         local progress=self.Progress
-        local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now(),RetryOnly=retryFailed==true}
+        local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now(),RetryOnly=retryFailed==true,
+            Speed=self.BuildSpeed,Travel=travelMode,Attempts=0,Cooldowns=0,LastResult="No placement request sent",Failures={}}
         self.Picking=false;self.SelectedCell=nil;self:RefreshSelection()
         if buttons.Pick then buttons.Pick.Text="Pick block: OFF" end
         self.Running=true;buttons.Start.Text="Building…"
@@ -749,6 +797,7 @@ function AutoBuild.new(ctx)
                 end
                 waited=true;self.WaitingMaterial=cell.Material
                 progress.State="Waiting for materials"
+                progress.WaitReason="Material: "..cell.Material
                 status("Waiting for "..cell.Material.." · block "..index.."/"..#cells
                     ..(valid and " · inventory is empty. Restock to continue, or press Stop." or " · waiting for a readable quantity after empty stock. Stop cancels."))
                 scheduler.wait(.25)
@@ -763,6 +812,7 @@ function AutoBuild.new(ctx)
                 stopTravel()
                 self.LastTravelResult=tostring(reason)
                 progress.State="Walking paused"
+                progress.WaitReason="Walking: "..tostring(reason)
                 status("Auto Walk paused: "..tostring(reason).." Preview kept; fix the route or turn Auto Walk OFF, then Resume build.")
                 return false
             end
@@ -793,6 +843,7 @@ function AutoBuild.new(ctx)
                     self.LastTravelResult="Reached block "..index
                 else
                     progress.State="Waiting for reach"
+                    progress.WaitReason=root and ("Reach: move within "..reach.." studs of run cell #"..index) or "Character not ready"
                     status(root and string.format("Move within %g studs of block %d/%d, or press Stop.",reach,index,#cells)
                         or "Waiting for your character · Stop cancels the build")
                     scheduler.wait(.2)
@@ -835,21 +886,23 @@ function AutoBuild.new(ctx)
                                 if alreadyPlaced then existing=true;sent=true;break end
                                 progress.State="Building"
                                 status(string.format("Building %d/%d: %s",index,#cells,cell.Material))
-                                markFailure(cell,"Request in flight or confirmation not observed",false)
+                                markFailure(cell,"Request in flight or confirmation not observed",false,meta,index)
                                 cycleAt=now()
                                 self.RequestPending=true
+                                meta.Attempts+=1;meta.LastResult="Request sent; result pending"
                                 sent,reason,origin=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
                                 self.RequestPending=false
                                 self.LastPlacementResult=(sent and "Accepted: " or "Rejected: ")..resultText(reason)
+                                meta.LastResult=reportText(self.LastPlacementResult)
                                 if not active() then return end
                                 local cooldown=not sent and origin~="transport" and origin~="unavailable" and type(reason)=="table" and (reason.error=="TOO_FAST" or reason.code=="TOO_FAST")
                                 if not sent then
                                     local rejected=origin=="rejected" or type(reason)=="table" and reason.success==false or cooldown
-                                    markFailure(cell,resultText(reason),rejected and origin~="transport" and origin~="unavailable")
+                                    markFailure(cell,resultText(reason),rejected and origin~="transport" and origin~="unavailable",meta,index)
                                 end
                                 if not cooldown then break end
                                 successes=0;gap=math.min(.8,math.max(gap*1.5,gap+.05))
-                                self.CurrentBuildGap=gap;self.BuildCooldowns+=1
+                                self.CurrentBuildGap=gap;self.BuildCooldowns+=1;meta.Cooldowns+=1
                                 retries+=1
                                 if retries>5 then
                                     progress.Failed+=1;progress.State="Paused after cooldown"
@@ -857,6 +910,7 @@ function AutoBuild.new(ctx)
                                     return
                                 end
                                 progress.State="Waiting for server cooldown"
+                                progress.WaitReason="Server cooldown at run cell #"..index.." · retry "..retries.."/5"
                                 status("Server cooldown · retrying block "..index.." / "..#cells.." ("..retries.."/5)")
                                 for _=1,math.ceil(math.min(4,.5*2^(retries-1))/.1) do
                                     if not awaitResume() then return end
@@ -900,20 +954,25 @@ function AutoBuild.new(ctx)
                     end
                     self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
                     refreshProgress()
-                    if existing or confirmed then self.Failures[cell]=nil end
+                    if existing or confirmed then self.Failures[cell]=nil;meta.Failures[index]=nil end
                     if (existing or confirmed) and cell.Preview then cell.Preview:Destroy();cell.Preview=nil end
                     -- Server time and replication already consumed part of the target
                     -- interval. Existing cells only need a short cancellation yield.
                     local elapsed=math.max(0,now()-cycleAt)
                     scheduler.wait(existing and .01 or math.max(.01,gap-elapsed))
                 end
-                if active() then self.Progress.State="Finished";status(string.format("Finished: %d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
+                if active() then self.Progress.State="Finished";status(string.format((failed>0 and "Finished with failures: " or "Finished: ").."%d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
+            meta.Ended=now()
+            if not ok and meta.LastResult=="Request sent; result pending" then meta.LastResult="Transport error: "..reportText(err) end
             stopTravel()
             if self.WorkerToken==token then self.WorkerToken=nil;self.WaitingMaterial=nil;self.RequestPending=false end
             if self.Token==token then
                 self.Running=false;self.Paused=false;buttons.Start.Text=progress.State=="Finished" and "Start build" or "Resume build"
-                if not ok then self.Progress.State="Error";status("Build stopped: "..tostring(err)) end
+                if not ok then
+                    progress.State="Error";progress.Detail="Build stopped: "..reportText(err)
+                    status(progress.Detail)
+                end
             end
             if ctx.Alive() then self:RefreshFailureUI() end
             recordBuild(progress,meta)
@@ -1819,11 +1878,12 @@ function AutoBuild.new(ctx)
     button("RepeatUp","Repeat up",2/3,2372,1/3,function() self:RepeatLayout("Up") end)
     local repeatHint=label("Copies includes the original. Selected layer keeps all other layers; choose a Build layer first. Up can add floors. Overlapping positions are rejected. Max 300 blocks. Undo/Redo; Start builds.",2414,64)
     repeatHint.TextWrapped=true
-    button("History","View next build result",0,2528,.5,function() self:ShowHistory() end)
-    button("CopyHistory","Copy build result",.5,2528,.5,function()
+    button("History","Next result",0,2528,.34,function() self:ShowHistory() end)
+    button("CopyHistory","Copy result",.34,2528,.33,function()
         if not self.HistoryReport and not self:ShowHistory() then return end
         if ctx.CopyReport then ctx.CopyReport(self.HistoryReport) else status("Report copying is unavailable.") end
     end)
+    button("CopyAllHistory","Copy all",.67,2528,.33,function() self:CopyAllHistory() end)
     local historyView=Instance.new("ScrollingFrame")
     historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(2572))
     historyView.BackgroundTransparency=1;historyView.BorderSizePixel=0;historyView.ScrollBarThickness=5
