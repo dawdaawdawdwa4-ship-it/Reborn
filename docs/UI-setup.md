@@ -2691,3 +2691,31 @@ silently fall back to modifying the request envelope. Capture v33 replaces older
 recorders while retaining their learned bindings; repeated v33 startup reuses the
 same recorder. These paths and native/learned adapter behavior are mock-tested.
 Live Roblox acceptance and timing remain unverified.
+
+## Compact build progress and action states (v100)
+
+A thin progress strip fits between the existing build status and report, without
+increasing the compact tab height. Green shows confirmed placements, purple shows
+already occupied/skipped cells, and red shows counted failures. Unchecked cells
+leave the track empty. Counts come from the current run's fixed selection, including
+Retry failed subsets; the strip does not estimate success or time remaining.
+Existing status text retains the numeric counts.
+
+Pause and restock/reach waits retain progress. An outstanding request is not filled
+until its normal confirmation completes, and a late result after Stop never adds
+placements. Starting another run resets the strip. Clearing or editing the preview
+hides old progress; selecting another layer hides the previous layer's result.
+Stored result history is preserved independently.
+
+Start is disabled while building, paused or cleaning up. Pause/Resume and Stop are
+available only for a live run. After Stop, **Finishing…** / **Stopping…** show that
+the same worker is still exiting; Start unlocks only after cleanup. The existing
+request and single-worker guards remain active even if a callback is forced.
+Disabled controls use the UI's existing disabled styling and cannot be selected
+through keyboard/gamepad navigation. No extra timer or polling worker is added.
+
+Validation covers mixed placed/skipped/failed fractions, zero segments, pause,
+restock, Stop during a pending request, late completion, repeated runs, preview
+revision/layer changes, history retention, removed hubs, and actual UI control
+states/layout with inline dropdowns. Live Roblox rendering and behavior remain
+unverified.

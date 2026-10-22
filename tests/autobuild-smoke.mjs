@@ -1351,6 +1351,63 @@ end)()
  for _,key in ipairs(fields) do ctx[key]=old[key] end
  occupied,root.Position=oldWorld,oldRoot
 end)()
+-- The progress strip reflects checked outcomes and locks actions through cleanup.
+;(function()
+ local saved={Place=ctx.Place,Count=ctx.ItemCount,Alive=ctx.Alive,World=occupied,Root=root.Position}
+ root.Position=setmetatable({},{__sub=function() return {Magnitude=0} end})
+ ctx.ItemCount=nil;occupied={[1]=true}
+ local calls=0
+ ctx.Place=function(body)
+  calls+=1
+  if body.cframe.Position==3 then return false,{success=false,error='NO_SUPPORT'},'rejected' end
+  occupied[body.cframe.Position]=true;return true
+ end
+ local value=A.new(ctx);value.Cells=cells(3);value.BlockSize=3
+ local function near(a,b) return math.abs(a-b)<.000001 end
+ local function segment(key,width,offset)
+  local item=value.ProgressSegments[key]
+  assert(near(item.Size.X.Scale,width) and near(item.Position.X.Scale,offset),'progress segments must match the run counts and stay adjacent')
+  assert(item.Visible==(width>0),'zero-count segments must be hidden')
+ end
+ local function drain() for _=1,1000 do if coroutine.status(worker)=='dead' then return end;step() end;error('progress test did not settle') end
+ assert(value.Buttons.Start.Active and not value.Buttons.Stop.Active and not value.Buttons.Pause.Active,'idle actions must expose only Start')
+ segment('Placed',0,0);segment('Skipped',0,0);segment('Failed',0,0)
+ assert(value:Start() and not value.Buttons.Start.Active and value.Buttons.Stop.Active and value.Buttons.Pause.Active)
+ assert(calls==0 and value.Progress.Checked==1,'occupied cells must advance the strip without a placement request')
+ segment('Placed',0,0);segment('Skipped',1/3,0);segment('Failed',0,1/3)
+ assert(value:SetPaused(true) and value.Buttons.Stop.Active and not value.Buttons.Start.Active)
+ segment('Skipped',1/3,0);value:SetPaused(false);drain()
+ assert(calls==2 and value.Progress.Checked==3 and value.Progress.Placed==1 and value.Progress.Failed==1 and value.Progress.Skipped==1)
+ segment('Placed',1/3,0);segment('Skipped',1/3,1/3);segment('Failed',1/3,2/3)
+ assert(value.Buttons.Start.Active and not value.Buttons.Stop.Active and not value.Buttons.Pause.Active,'completed run must restore idle actions')
+ value.LayerIndex=99;value:RefreshFailureUI()
+ segment('Placed',0,0);segment('Skipped',0,0);segment('Failed',0,0)
+ value.LayerIndex=nil;value:RefreshFailureUI()
+ segment('Placed',1/3,0)
+ value.PlanRevision=(value.PlanRevision or 0)+1;value:RefreshFailureUI()
+ segment('Placed',0,0);segment('Skipped',0,0);segment('Failed',0,0)
+ assert(value.Buttons.Start.Text=='Start build' and value.Progress.Placed==1,'a changed preview cannot display progress from an earlier plan')
+ local previous=value.History[1]
+ value:ClearPreview()
+ segment('Placed',0,0);segment('Skipped',0,0);segment('Failed',0,0)
+ assert(value.History[1]==previous and previous.Placed==1,'clearing the progress display must retain saved run results')
+ occupied={};value.Cells=cells(2)
+ ctx.Place=function(body) calls+=1;ctx.Scheduler.wait(.1);occupied[body.cframe.Position]=true;return true end
+ assert(value:Start() and value.RequestPending);local pending=calls
+ value:Stop()
+ assert(value.WorkerToken and not value.Buttons.Start.Active and not value.Buttons.Stop.Active and not value.Buttons.Pause.Active and value.Buttons.Start.Text=='Finishing…' and value.Buttons.Stop.Text=='Stopping…','Stop must show locked cleanup before offering Resume')
+ assert(not value:Start() and calls==pending,'a forced click during cleanup cannot start a second worker')
+ segment('Placed',0,0);drain()
+ assert(calls==pending and value.Buttons.Start.Active and value.Buttons.Start.Text=='Resume build' and value.Buttons.Stop.Text=='Stop' and value.Progress.Placed==0,'late completion after Stop cannot fill the progress strip')
+ segment('Placed',0,0)
+ -- A new restock-only run starts empty rather than retaining the previous bar.
+ occupied={};value.Cells=cells(2);ctx.ItemCount=function() return 0 end
+ assert(value:Start() and value.Progress.Checked==0);segment('Placed',0,0);segment('Skipped',0,0);segment('Failed',0,0)
+ value:Stop();drain()
+ ctx.Alive=function() return false end;value:RefreshFailureUI()
+ assert(not value.Buttons.Start.Active and not value.Buttons.Stop.Active and not value.Buttons.Pause.Active,'removed hubs cannot present active build actions')
+ ctx.Place,ctx.ItemCount,ctx.Alive,occupied,root.Position=saved.Place,saved.Count,saved.Alive,saved.World,saved.Root
+end)()
 return 'Auto Build blueprints, paths, placement confirmation, result snapshots/export, pause/resume, restock waits, live progress, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(checks,'autobuild',true)());}finally{state.destroy();}

@@ -1000,7 +1000,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-recovery-99',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-progress-100',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1738,7 +1738,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-recovery-99 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-progress-100 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2287,6 +2287,8 @@ end)()
  local original=b.BuildSpeed
  showTab('Auto Build');flush()
  local initial=b.LayoutHeight
+ assert(b.ProgressTrack.Visible and b.ProgressTrack.Position.Y.Offset>=b.Status.Position.Y.Offset+b.Status.Size.Y.Offset and b.ProgressTrack.Position.Y.Offset+b.ProgressTrack.Size.Y.Offset<=b.MaterialView.Position.Y.Offset,'native progress strip must fit between status and report without overlap')
+ assert(b.Buttons.Start.Active and not b.Buttons.Stop.Active,'idle native actions must show Start as available and Stop as disabled')
  assert(b.BuildSpeed=='Standard' and b.Buttons.Start.Position.Y.Offset==b.Buttons.Stop.Position.Y.Offset and b.Buttons.Start.Position.Y.Offset==b.Buttons.Pause.Position.Y.Offset and not b.Buttons.Pause.Active and b.Buttons.Start.Position.Y.Offset<b.Buttons.Preview.Position.Y.Offset,'Start and Stop must share the first action row')
  local controls={b.Buttons.Start,b.Buttons.Pause,b.Buttons.Stop,b.Buttons.Preview,b.Buttons.LearnPlacement,b.Buttons.CheckSetup,b.Buttons.Layer,b.Buttons.Speed,b.Buttons.Rotate,b.Buttons.Center,b.Buttons.RetryFailed,b.Buttons.Clear}
  for _,width in ipairs({640-190-36,720-190-36,1080-190-36}) do
@@ -2307,6 +2309,7 @@ end)()
  for _=1,3 do
   b.Buttons.Speed.Activated:Fire()
   assert(b.SpeedMenu.Visible and b.Buttons.Rotate.Position.Y.Offset>b.SpeedMenu.Position.Y.Offset+b.SpeedMenu.Size.Y.Offset and b.LayoutHeight>initial,'speed choices must expand in flow and push the editing row and report down')
+  assert(b.ProgressTrack.Position.Y.Offset>=b.Status.Position.Y.Offset+b.Status.Size.Y.Offset and b.ProgressTrack.Position.Y.Offset+b.ProgressTrack.Size.Y.Offset<=b.MaterialView.Position.Y.Offset,'native dropdown expansion must keep the progress strip clear of adjacent content')
   b.SpeedOptions[2].Activated:Fire()
   assert(b.BuildSpeed=='Fast' and not b.SpeedMenu.Visible and b.LayoutHeight==initial and string.find(b.SpeedOptions[2].Text,'✓',1,true),'speed selection must mark Fast and restore the exact compact layout')
   b.Buttons.Speed.Activated:Fire();b.Buttons.Movement.Activated:Fire()
@@ -2340,6 +2343,7 @@ end)()
  showTab('Auto Build');flush();b.Buttons.Start.Activated:Fire()
  local owner=b.WorkerToken
  assert(b.Running and owner and requests==0 and b.Buttons.Start.Text=='Restock · 0/3' and b.WaitingMaterial=='grass','native Start must stay ON at empty stock and display restock in the primary button')
+ assert(not b.Buttons.Start.Active and b.Buttons.Stop.Active and b.Buttons.Pause.Active and not b.ProgressSegments.Placed.Visible,'native live buttons and empty progress must match the restock state')
  for _=1,3 do stepWorkers() end
  assert(requests==0 and b.Progress.Failed==0 and b.WorkerToken==owner,'waiting cannot generate failures or replacement workers')
  b.Buttons.Pause.Activated:Fire()
@@ -2350,11 +2354,15 @@ end)()
  assert(not b.Paused and b.Buttons.Pause.Text=='Pause' and b.WorkerToken==owner)
  stock=1;stepWorkers()
  assert(requests==1 and b.Progress.Checked==1 and b.Buttons.Start.Text=='Building · 1/3','confirmed progress must be visible in the top action row')
+ assert(math.abs(b.ProgressSegments.Placed.Size.X.Scale-1/3)<.000001 and b.ProgressSegments.Placed.Visible,'native progress must credit only the confirmed run fraction')
  stepWorkers();assert(b.Buttons.Start.Text=='Restock · 1/3' and requests==1)
  stock=2;for _=1,5 do stepWorkers() end
  assert(requests==3 and b.Progress.Checked==3 and b.Progress.Placed==3 and #b.History==1 and not b.WorkerToken and not b.WaitingMaterial,'restocking must complete the same native run')
+ assert(b.ProgressSegments.Placed.Size.X.Scale==1 and b.Buttons.Start.Active and not b.Buttons.Stop.Active,'native completion must fill the strip and unlock Start')
  b.Cells={{CFrame={Position=pos(13)},Material='grass'}};b.Buttons.Start.Activated:Fire()
- assert(b.Running and b.WaitingMaterial=='grass');b.Buttons.Pause.Activated:Fire();b.Buttons.Stop.Activated:Fire();stock=10;stepWorkers()
+ assert(b.Running and b.WaitingMaterial=='grass');b.Buttons.Pause.Activated:Fire();b.Buttons.Stop.Activated:Fire()
+ assert(not b.Buttons.Start.Active and not b.Buttons.Stop.Active and b.Buttons.Start.Text=='Finishing…' and b.Buttons.Stop.Text=='Stopping…','native Stop must show cleanup until the existing worker ends')
+ stock=10;stepWorkers()
  assert(requests==3 and not b.WorkerToken and not b.WaitingMaterial and not b.Paused and not b.Buttons.Pause.Active,'actual Stop must cancel a paused restock wait before late stock arrives')
  r.CarrotCount,r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Count,saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
  b:SetBuildSpeed(saved.Speed)

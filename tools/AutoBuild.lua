@@ -174,12 +174,23 @@ function AutoBuild.new(ctx)
     local now=ctx.Now or os.clock
     local function refreshProgress()
         local p=self.Progress
-        if not p then return end
-        local checked=math.min(p.Total or 0,(p.Placed or 0)+(p.Skipped or 0)+(p.Failed or 0))
-        p.Checked=checked
-        if self.Running and buttons.Start then
+        local total=p and math.max(0,p.Total or 0) or 0
+        local checked=p and math.min(total,(p.Placed or 0)+(p.Skipped or 0)+(p.Failed or 0)) or 0
+        if p then p.Checked=checked end
+        if self.ProgressSegments then
+            local offset=0
+            for _,key in ipairs({"Placed","Skipped","Failed"}) do
+                local fraction=p and self.Cells and p.PreviewRevision==self.PlanRevision and p.Layer==self.LayerIndex and total>0 and math.clamp((p[key] or 0)/total,0,1-offset) or 0
+                local segment=self.ProgressSegments[key]
+                segment.Position=UDim2.new(offset,0,0,0)
+                segment.Size=UDim2.new(fraction,0,1,0)
+                segment.Visible=fraction>0
+                offset+=fraction
+            end
+        end
+        if self.Running and buttons.Start and p then
             local label=self.Paused and "Paused" or p.State=="Waiting for materials" and "Restock" or p.State=="Waiting for reach" and "Move closer" or "Building"
-            buttons.Start.Text=label.." · "..checked.."/"..tostring(p.Total or 0)
+            buttons.Start.Text=label.." · "..checked.."/"..tostring(total)
         end
     end
     local function status(message)
@@ -196,7 +207,6 @@ function AutoBuild.new(ctx)
     function self:ClearPreview()
         self.PlanRevision=(self.PlanRevision or 0)+1
         self.Failures=setmetatable({}, {__mode="k"})
-        if self.RefreshFailureUI then self:RefreshFailureUI() end
         if self.PreviewFolder then self.PreviewFolder:Destroy();self.PreviewFolder=nil end
         self.Cells=nil;self.BuildReport=nil;self.SetupReport=nil;self.SetupResult=nil;self.LayerIndex=nil;self.BaseAnchor=nil
         self.WaitingMaterial=nil
@@ -209,6 +219,8 @@ function AutoBuild.new(ctx)
         self.ReachCounts=nil
         if buttons.Reach then buttons.Reach.Text=self.RangeMarkers and "Mark reach: ON" or "Mark reach: OFF" end
         if self.MaterialSummary then self.MaterialSummary.Text="Preview or load a blueprint to see its material counts." end
+        if self.RefreshFailureUI then self:RefreshFailureUI() end
+        refreshProgress()
     end
     local function stopTravel()
         if ctx.StopTravel then pcall(ctx.StopTravel) end
@@ -235,11 +247,10 @@ function AutoBuild.new(ctx)
     function self:Stop()
         self.Token+=1;self.Running=false;self.Paused=false
         stopTravel()
-        if self.RefreshFailureUI then self:RefreshFailureUI() end
-        buttons.Start.Text=self.Cells and "Resume build" or "Start build"
         if self.Progress then self.Progress.State="Stopped" end
+        if self.RefreshFailureUI then self:RefreshFailureUI() end
         local p=self.Progress
-        status("Stopped. Remaining blocks were not sent."..(p and string.format(" %d confirmed, %d skipped, %d failed; %d planned.",p.Placed,p.Skipped,p.Failed,p.Total) or ""))
+        status("Stopped. Remaining blocks were not sent."..(self.WorkerToken and " Finishing the current worker before Start unlocks." or "")..(p and string.format(" %d confirmed, %d skipped, %d failed; %d planned.",p.Placed,p.Skipped,p.Failed,p.Total) or ""))
     end
     local function characterRoot()
         local char=ctx.Player.Character
@@ -667,6 +678,17 @@ function AutoBuild.new(ctx)
     function self:RefreshFailureUI()
         if not buttons.RetryFailed then return end
         local editing=ctx.Alive() and not self.Running and not self.WorkerToken
+        if buttons.Start then
+            buttons.Start.Active=editing==true;buttons.Start.Selectable=editing==true
+            if not self.Running then
+                buttons.Start.Text=self.WorkerToken and "Finishing…" or self.Cells and self.Progress and self.Progress.PreviewRevision==self.PlanRevision and self.Progress.Layer==self.LayerIndex and self.Progress.State~="Finished" and "Resume build" or "Start build"
+            end
+        end
+        if buttons.Stop then
+            local canStop=ctx.Alive() and self.Running
+            buttons.Stop.Active=canStop==true;buttons.Stop.Selectable=canStop==true
+            buttons.Stop.Text=not self.Running and self.WorkerToken and "Stopping…" or "Stop"
+        end
         for _,key in ipairs({"RepeatCopies","RepeatGap","RepeatScope","RepeatRight","RepeatForward","RepeatUp"}) do
             if buttons[key] then
                 buttons[key].Active=editing==true;buttons[key].Selectable=editing==true;buttons[key].AutoButtonColor=editing==true
@@ -684,6 +706,7 @@ function AutoBuild.new(ctx)
         local available=ctx.Alive() and not self.Running and not self.WorkerToken and counts.Retryable>0
         buttons.RetryFailed.Active=available==true;buttons.RetryFailed.Selectable=available==true
         if self.SetupMarkers then self:RefreshPreviewColors() end
+        refreshProgress()
     end
     local function markFailure(cell,reason,retryable,run,index)
         self.Failures[cell]={CFrame=cell.CFrame,Material=cell.Material,Reason=tostring(reason),Retryable=retryable==true}
@@ -766,7 +789,7 @@ function AutoBuild.new(ctx)
         self.WorkerToken=token
         self.VisualSnapshot=nil
         self.SetupReport=nil;self.SetupResult=nil
-        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true}
+        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true,PreviewRevision=self.PlanRevision,Layer=self.LayerIndex}
         local progress=self.Progress
         local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now(),RetryOnly=retryFailed==true,
             Speed=self.BuildSpeed,Travel=travelMode,Attempts=0,Cooldowns=0,LastResult="No placement request sent",Failures={}}
@@ -1788,6 +1811,18 @@ function AutoBuild.new(ctx)
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
     self.Status.TextSize=14;self.Status.TextTruncate=Enum.TextTruncate.None
+    local progressTrack=Instance.new("Frame")
+    progressTrack.Name="BuildProgress";progressTrack.BackgroundColor3=Color3.fromRGB(48,59,70)
+    progressTrack.BorderSizePixel=0;progressTrack.ClipsDescendants=true
+    progressTrack.Size=UDim2.new(1,-12,0,4);progressTrack.Parent=ctx.Parent
+    self.ProgressTrack=register(progressTrack,layoutY(610),4)
+    self.ProgressSegments={}
+    for key,color in pairs({Placed=Color3.fromRGB(94,209,152),Skipped=self.MarkerColors.Occupied,Failed=self.MarkerColors.Rejected}) do
+        local segment=Instance.new("Frame")
+        segment.Name=key;segment.BackgroundColor3=color;segment.BorderSizePixel=0
+        segment.Position=UDim2.fromOffset(0,0);segment.Size=UDim2.new(0,0,1,0)
+        segment.Visible=false;segment.Parent=progressTrack;self.ProgressSegments[key]=segment
+    end
     local materialView=Instance.new("ScrollingFrame")
     materialView.Size=UDim2.new(1,-12,0,100);materialView.Position=UDim2.fromOffset(6,layoutY(616))
     self.MaterialView=materialView
