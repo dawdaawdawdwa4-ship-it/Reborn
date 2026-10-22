@@ -2363,3 +2363,41 @@ Validation covers current recipe/range/ownership checks, single-read inventory,
 unknown/short/partial/already-met plans, locks, copy refresh/fallback, expiry,
 context changes, actual UI/diagnostics/layout and callback cleanup, plus the full
 regression suite. Live Roblox behavior and rendering remain unverified.
+
+### Repeat floors upward or copy only one layer (v90)
+
+**Auto Build → Blueprint block editing** adds **Repeat up** beside Right/Forward,
+and a **Repeat: Entire layout / Selected layer** choice. Entire layout remains
+the default and retains v88 behavior. Up follows positive local Y and preserves
+cell materials and full rotations; its spacing uses rotated block-sized vertical
+bounds, rounded to grid steps, plus the selected gap.
+
+To add floors from one layer, first Preview, select a specific **Build: Layer**,
+choose **Repeat: Selected layer**, set Copies/Gap and press Repeat up. Copies
+includes the original selected layer. Only its extra copies are appended; all
+other original layers remain. For example, a single-block-height top floor with
+Gap 2 repeats every 9 studs on a 3-stud grid. Actual placement still requires
+normal materials, support, reach and island permissions.
+
+Selected layer also works with Right/Forward. It requires an explicit current
+preview layer; All layers or a data-only blueprint produces guidance without an
+edit. Exact-position overlaps with any retained blueprint cell are rejected
+before preview/history changes. Counts use the full original layout plus only
+added selected cells and retain the 300-cell and coordinate limits. Choose the
+top layer or adjust spacing when copying upward would overlap another floor.
+
+After a successful edit, Build returns to All layers and picking turns OFF, so
+choose the desired layer again before another selected-layer repeat. Undo/Redo,
+preview movement/rotation, saving, staged preview failure recovery and normal
+Start remain unchanged. Up works on whole data-only layouts as well. The selector
+and three direction buttons fit inside the collapsed editor; the default page
+height is unchanged and every repeat control locks during build/request cleanup.
+
+Island capture now rejects before scanning when a stopped build still owns an
+in-flight worker, and capture-range changes also wait for cleanup. The existing
+final saved-slot guard remains in place. Removed hubs cannot begin capture.
+
+Tests cover vertical/tilted bounds, layer grouping, retained layers/materials,
+overlap rejection, selected-cell limits, Undo/Redo at moved anchors, explicit
+selection, real buttons/layout, cleanup locks and early capture rejection, plus
+the full regression suite. Live Roblox rendering and placement remain unverified.

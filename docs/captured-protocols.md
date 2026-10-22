@@ -1091,3 +1091,23 @@ checker; it cannot overwrite a newer worker's status. Report paints/expiry query
 no inventory themselves. Tests cover core checks and actual UI/copy/diagnostic
 handlers, stale contexts, limits and cleanup, plus full regressions; live Roblox
 remains unverified.
+
+### Upward and selected-layer blueprint repetition (build-floors-90)
+
+v90 retains recorder v31, all 146 endpoints and placement request/confirmation
+behavior. RepeatPlan now supports positive local Y and an optional selected
+height using the same millistud grouping as the preview layer selector. The
+result retains every original cell and appends only the selected source's extra
+copies. Full-layout repetition remains the default. Materials and proper rotation
+matrices are copied without reflection or remote calls.
+
+The complete result passes the existing duplicate-position, 300-cell, coordinate
+and rotation validation before edit commit. Selected-layer additions therefore
+cannot silently replace a retained cell. Existing staged previews, geometry
+Undo/Redo, dirty/save semantics and runtime placement checks remain authoritative.
+
+CaptureIsland and its range control now check in-flight build ownership before
+scanning/changing preferences; capture also checks hub lifetime. This moves the
+cleanup rejection earlier while retaining StoreBlueprint's final saved-slot
+protection. Tests cover pure planning, controller and actual UI/cleanup behavior,
+plus all regressions. Live Roblox remains unverified.

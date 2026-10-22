@@ -93,25 +93,35 @@ function AutoBuild.Validate(data)
     end)
     return result
 end
--- Repeat complete layouts by translating copies on their local block grid.
-function AutoBuild.RepeatPlan(data,axis,copies,gap)
-    assert(axis=="Right" or axis=="Forward","Choose Right or Forward")
+-- Repeat layouts or append copies of one layer on their local block grid.
+function AutoBuild.RepeatPlan(data,axis,copies,gap,height)
+    assert(axis=="Right" or axis=="Forward" or axis=="Up","Choose Right, Forward or Up")
     assert(type(copies)=="number" and copies%1==0 and copies>=2 and copies<=4,"Use 2–4 total copies")
     assert(type(gap)=="number" and gap%1==0 and gap>=0 and gap<=8,"Use a gap of 0–8 blocks")
     local original=AutoBuild.Validate(data)
-    assert(#original.Cells*copies<=300,"Repeated layout exceeds 300 blocks; use fewer copies or a smaller blueprint")
-    local coordinate,row=axis=="Right" and 1 or 3,axis=="Right" and 4 or 10
+    local source=original.Cells
+    if height~=nil then
+        assert(type(height)=="number" and height==height and math.abs(height)<=3000,"Choose a valid preview layer")
+        source={}
+        for _,cell in ipairs(original.Cells) do
+            if math.round(cell.Components[2]*1000)==math.round(height*1000) then table.insert(source,cell) end
+        end
+        assert(#source>0,"Selected layer has no blueprint cells")
+    end
+    assert(#original.Cells+#source*(copies-1)<=300,"Repeated layout exceeds 300 blocks; use fewer copies or a smaller blueprint")
+    local coordinate=axis=="Right" and 1 or axis=="Up" and 2 or 3
+    local row=axis=="Right" and 4 or axis=="Up" and 7 or 10
     local low,high=math.huge,-math.huge
-    for _,cell in ipairs(original.Cells) do
+    for _,cell in ipairs(source) do
         local c=cell.Components
         -- Full block extents also account for rotated/tilted captured cells.
         local half=original.BlockSize*.5*(math.abs(c[row])+math.abs(c[row+1])+math.abs(c[row+2]))
         low=math.min(low,c[coordinate]-half);high=math.max(high,c[coordinate]+half)
     end
     local step=(math.ceil((high-low)/original.BlockSize-1e-6)+gap)*original.BlockSize
-    local result={Version=1,Name=original.Name,BlockSize=original.BlockSize,Cells={}}
-    for index=0,copies-1 do
-        for _,cell in ipairs(original.Cells) do
+    local result={Version=1,Name=original.Name,BlockSize=original.BlockSize,Cells=table.clone(original.Cells)}
+    for index=1,copies-1 do
+        for _,cell in ipairs(source) do
             local c=table.clone(cell.Components)
             c[coordinate]+=index*step*(axis=="Forward" and -1 or 1)
             table.insert(result.Cells,{Material=cell.Material,Components=c})
@@ -153,7 +163,7 @@ function AutoBuild.RayBox(cf,origin,direction,half,limit)
     return near
 end
 function AutoBuild.new(ctx)
-    local self={RepeatCopies=2,RepeatGap=0,TravelMode="Stay",Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
+    local self={RepeatScope="Entire layout",RepeatCopies=2,RepeatGap=0,TravelMode="Stay",Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons,commits={},{},{}
     self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
     self.Failures=setmetatable({}, {__mode="k"})
@@ -586,7 +596,7 @@ function AutoBuild.new(ctx)
     function self:RefreshFailureUI()
         if not buttons.RetryFailed then return end
         local editing=ctx.Alive() and not self.Running and not self.WorkerToken
-        for _,key in ipairs({"RepeatCopies","RepeatGap","RepeatRight","RepeatForward"}) do
+        for _,key in ipairs({"RepeatCopies","RepeatGap","RepeatScope","RepeatRight","RepeatForward","RepeatUp"}) do
             if buttons[key] then
                 buttons[key].Active=editing==true;buttons[key].Selectable=editing==true;buttons[key].AutoButtonColor=editing==true
             end
@@ -1197,8 +1207,11 @@ function AutoBuild.new(ctx)
             local choices={0,1,2,4}
             self.RepeatGap=choices[((table.find(choices,self.RepeatGap) or 0)%#choices)+1]
             buttons.RepeatGap.Text="Gap: "..self.RepeatGap.." blocks"
+        elseif option=="Scope" then
+            self.RepeatScope=self.RepeatScope=="Entire layout" and "Selected layer" or "Entire layout"
+            buttons.RepeatScope.Text="Repeat: "..self.RepeatScope
         else return false end
-        status("Repeat options staged: "..self.RepeatCopies.." total copies, gap "..self.RepeatGap.." blocks. Choose Repeat right or forward to edit the full layout.")
+        status("Repeat options staged: "..self.RepeatScope.." · "..self.RepeatCopies.." total copies · gap "..self.RepeatGap..". Choose Right, Forward or Up; other layers are kept.")
         return true
     end
     function self:RepeatLayout(axis,copies,gap)
@@ -1207,7 +1220,13 @@ function AutoBuild.new(ctx)
         copies=copies==nil and self.RepeatCopies or copies;gap=gap==nil and self.RepeatGap or gap
         local ok,original=pcall(workingPlan)
         if not ok then status(original);return false end
-        local valid,copy,step=pcall(AutoBuild.RepeatPlan,original,axis,copies,gap)
+        local height
+        if self.RepeatScope=="Selected layer" then
+            local heights=self:Layers()
+            height=self.LayerIndex and heights and heights[self.LayerIndex]
+            if not self.Cells or height==nil then status("Preview the layout and choose one Build layer before repeating Selected layer. Other layers will be kept.");return false end
+        elseif self.RepeatScope~="Entire layout" then status("Choose Entire layout or Selected layer first.");return false end
+        local valid,copy,step=pcall(AutoBuild.RepeatPlan,original,axis,copies,gap,height)
         if not valid then status("Repeat rejected: "..tostring(copy)..". Working layout kept.");return false end
         local staged,newCells
         if self.Cells then
@@ -1238,7 +1257,7 @@ function AutoBuild.new(ctx)
         self.LayerIndex=nil;buttons.Layer.Text="Build: All layers"
         self.SelectedCell=nil;self.Picking=false;buttons.Pick.Text="Pick block: OFF"
         markEdited();self:RefreshSelection();self:RefreshReach()
-        status(string.format("Repeated full layout %s: %d total copies · %d blocks · %g-stud spacing. Undo/Redo available; Save preview to keep it. No blocks placed.",axis:lower(),copies,#copy.Cells,step))
+        status(string.format("Repeated %s %s: %d total copies · %d blocks · %g-stud spacing. Other layers kept. Undo/Redo available; Save preview to keep it. No blocks placed.",self.RepeatScope:lower(),axis:lower(),copies,#copy.Cells,step))
         return true,#copy.Cells
     end
     function self:RemoveBlocks(material,selectedLayer,onlyCell)
@@ -1402,7 +1421,8 @@ function AutoBuild.new(ctx)
         return true
     end
     function self:CaptureIsland()
-        if self.Running then status("Stop the build before saving island blocks.");return false end
+        if not ctx.Alive() then return false end
+        if self.Running or self.WorkerToken then status("Stop the build and wait for request cleanup before saving island blocks.");return false end
         local _,root=characterRoot()
         local blocks=ctx.IslandBlocks and ctx.IslandBlocks()
         if not root or not blocks then status("Stand on your own island to save nearby blocks.");return false end
@@ -1577,7 +1597,7 @@ function AutoBuild.new(ctx)
     button("Capture","Save island area",.5,844,.5,function() self:CaptureIsland() end)
     button("Load","Load selected slot",0,884,1,function() self:LoadBlueprint() end)
     button("CaptureRange","Save radius: 30 studs",0,924,1,function()
-        if self.Running then return end
+        if self.Running or self.WorkerToken then status("Wait for build request cleanup before changing capture range.");return end
         self.CaptureRange=self.CaptureRange>=120 and 15 or self.CaptureRange*2
         buttons.CaptureRange.Text="Save radius: "..self.CaptureRange.." studs"
     end)
@@ -1645,28 +1665,30 @@ function AutoBuild.new(ctx)
     replaceHint.TextWrapped=true
     button("RepeatCopies","Copies: 2 total",0,2288,.5,function() self:CycleRepeatOption("Copies") end)
     button("RepeatGap","Gap: 0 blocks",.5,2288,.5,function() self:CycleRepeatOption("Gap") end)
-    button("RepeatRight","Repeat right →",0,2330,.5,function() self:RepeatLayout("Right") end)
-    button("RepeatForward","Repeat forward ↑",.5,2330,.5,function() self:RepeatLayout("Forward") end)
-    local repeatHint=label("Repeats the entire working layout, including other layers. Copies includes the original; gap adds empty grid steps. Maximum 300 blocks. Undo/Redo restores the edit; nothing builds until Start.",2372,48)
+    button("RepeatScope","Repeat: Entire layout",0,2330,1,function() self:CycleRepeatOption("Scope") end)
+    button("RepeatRight","Repeat right",0,2372,1/3,function() self:RepeatLayout("Right") end)
+    button("RepeatForward","Repeat forward",1/3,2372,1/3,function() self:RepeatLayout("Forward") end)
+    button("RepeatUp","Repeat up",2/3,2372,1/3,function() self:RepeatLayout("Up") end)
+    local repeatHint=label("Copies includes the original. Selected layer keeps all other layers; choose a Build layer first. Up can add floors. Overlapping positions are rejected. Max 300 blocks. Undo/Redo; Start builds.",2414,64)
     repeatHint.TextWrapped=true
-    button("History","View next build result",0,2472,.5,function() self:ShowHistory() end)
-    button("CopyHistory","Copy build result",.5,2472,.5,function()
+    button("History","View next build result",0,2528,.5,function() self:ShowHistory() end)
+    button("CopyHistory","Copy build result",.5,2528,.5,function()
         if not self.HistoryReport and not self:ShowHistory() then return end
         if ctx.CopyReport then ctx.CopyReport(self.HistoryReport) else status("Report copying is unavailable.") end
     end)
     local historyView=Instance.new("ScrollingFrame")
-    historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(2516))
+    historyView.Size=UDim2.new(1,-12,0,216);historyView.Position=UDim2.fromOffset(6,layoutY(2572))
     historyView.BackgroundTransparency=1;historyView.BorderSizePixel=0;historyView.ScrollBarThickness=5
     historyView.CanvasSize=UDim2.new();historyView.AutomaticCanvasSize=Enum.AutomaticSize.Y;historyView.Parent=ctx.Parent
-    register(historyView,layoutY(2516),216)
+    register(historyView,layoutY(2572),216)
     self.HistoryLabel=ctx.Label({Parent=historyView,Text="No builds recorded this session.",TextSize=12,
         Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
     self.HistoryLabel.TextWrapped=true;self.HistoryLabel.AutomaticSize=Enum.AutomaticSize.Y;self.HistoryLabel.TextTruncate=Enum.TextTruncate.None
     self.Sections={
         {Key="Settings",Title="Build settings",Header=90,Start=90,Finish=392,Expanded=40,Collapsed=-262,Open=false},
         {Key="Library",Title="Saved blueprints & checks",Header=768,Start=808,Finish=1936,Expanded=0,Collapsed=-1128,Open=false},
-        {Key="Materials",Title="Blueprint block editing",Header=1944,Start=1984,Finish=2472,Expanded=0,Collapsed=-488,Open=false},
-        {Key="History",Title="Recent build results",Header=2476,Start=2516,Finish=2788,Expanded=0,Collapsed=-272,Open=false},
+        {Key="Materials",Title="Blueprint block editing",Header=1944,Start=1984,Finish=2528,Expanded=0,Collapsed=-544,Open=false},
+        {Key="History",Title="Recent build results",Header=2532,Start=2572,Finish=2844,Expanded=0,Collapsed=-272,Open=false},
     }
     self.SectionButtons={}
     function self:CloseMenus()

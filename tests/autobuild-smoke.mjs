@@ -67,7 +67,37 @@ end
  assert(not pcall(A.RepeatPlan,plan({cell(2999,0,0)}),'Right',2,0),'repeats outside existing coordinate bounds must reject')
  for _,copies in ipairs({1,5,2.5,math.huge,0/0,'2',false}) do assert(not pcall(A.RepeatPlan,original,'Right',copies,0)) end
  for _,gap in ipairs({-1,9,.5,math.huge,0/0,'0',false}) do assert(not pcall(A.RepeatPlan,original,'Right',2,gap)) end
- assert(not pcall(A.RepeatPlan,original,'Up',2,0) and not pcall(A.RepeatPlan,plan({}),'Right',2,0))
+ assert(not pcall(A.RepeatPlan,original,'Sideways',2,0) and not pcall(A.RepeatPlan,plan({}),'Right',2,0))
+ end)()
+-- Floors can repeat upward; layer scope appends copies and retains all other cells.
+;(function()
+ local function cell(x,y,z,material,rotation)
+  local c={x,y,z};for _,n in ipairs(rotation or {1,0,0,0,1,0,0,0,1}) do table.insert(c,n) end
+  return {Material=material or 'grass',Components=c}
+ end
+ local source={Version=1,Name='Floors',BlockSize=3,Cells={cell(0,0,0),cell(0,3,0,'stone')}}
+ local all,step=A.RepeatPlan(source,'Up',2,1)
+ assert(step==9 and #all.Cells==4 and all.Cells[3].Components[2]==9 and all.Cells[4].Components[2]==12,'whole-layout Up must use full height plus the gap')
+ local selected,pitch=A.RepeatPlan(source,'Up',3,1,3)
+ assert(pitch==6 and #selected.Cells==4 and selected.Cells[1].Material=='grass' and selected.Cells[2].Material=='stone' and selected.Cells[3].Components[2]==9 and selected.Cells[4].Components[2]==15,'selected-layer Up must keep the lower floor and append only the chosen floor')
+ local right=A.RepeatPlan(source,'Right',2,0,0)
+ assert(#right.Cells==3 and right.Cells[1].Components[2]==0 and right.Cells[2].Components[1]==3 and right.Cells[3].Components[2]==3,'horizontal layer repeats must keep other layers without cloning them')
+ assert(not pcall(A.RepeatPlan,source,'Up',2,0,0),'copying a lower layer onto an existing upper layer must reject exact-position overlap')
+ assert(#source.Cells==2 and source.Cells[2].Components[2]==3,'success and overlap rejection must not mutate the source')
+ selected.Cells[3].Components[2]=99;assert(source.Cells[2].Components[2]==3 and selected.Cells[2].Components[2]==3,'original and added floor transforms must not alias')
+ for _,height in ipairs({-5,6,math.huge,0/0,'3',false}) do assert(not pcall(A.RepeatPlan,source,'Up',2,0,height),'invalid/empty layer selections must reject') end
+ local q=math.sqrt(.5);local tilt={1,0,0,0,q,-q,0,q,q}
+ local tilted={Version=1,Name='Tilted floor',BlockSize=3,Cells={cell(0,0,0,'stone',tilt)}}
+ selected,pitch=A.RepeatPlan(tilted,'Up',2,0)
+ assert(pitch==6 and selected.Cells[2].Components[2]==6,'Up spacing must account for vertical tilt')
+ for _,c in ipairs(selected.Cells) do for i=1,9 do assert(c.Components[i+3]==tilt[i]) end end
+ source.Cells[2].Components[2]=3.0004
+ selected=A.RepeatPlan(source,'Up',2,0,3);assert(math.abs(selected.Cells[3].Components[2]-6.0004)<.00001,'layer matching must use the same millistud grouping as the layer selector')
+ local large={Version=1,Name='Large floor',BlockSize=3,Cells={}}
+ for x=0,297 do table.insert(large.Cells,cell(x*3,0,0)) end
+ table.insert(large.Cells,cell(0,3,0,'stone'))
+ assert(#A.RepeatPlan(large,'Up',2,0,3).Cells==300,'selected-layer limits must count only added cells and preserve the 300-cell boundary')
+ assert(not pcall(A.RepeatPlan,large,'Up',3,0,3),'a selected-layer repeat exceeding 300 cells must reject')
  end)()
 local function signal()
  local callbacks={}
@@ -818,7 +848,7 @@ end
  for _,cell in ipairs(e.Cells) do assert(cell.Material=='stone') end
  assert(e:SavePreview() and written and #written.Cells==4 and #e.UndoStack==0,'only explicit Save preview must persist the repeated layout')
  written=nil;e=fresh();local cells=e.Cells
- assert(not e:RepeatLayout('Up') and not e:RepeatLayout('Right',false,0) and not e:RepeatLayout('Right',2,-1) and e.Cells==cells and #e.UndoStack==0,'bad repeat options must leave data and history intact')
+ assert(not e:RepeatLayout('Sideways') and not e:RepeatLayout('Right',false,0) and not e:RepeatLayout('Right',2,-1) and e.Cells==cells and #e.UndoStack==0,'bad repeat options must leave data and history intact')
  e.WorkerToken=99
  assert(not e:RepeatLayout('Right') and not e:CycleRepeatOption('Copies') and e.RepeatCopies==2 and e.Cells==cells,'in-flight cleanup must lock repeat options and edits')
  e.WorkerToken=nil;e.Running=true;assert(not e:RepeatLayout('Right'));e.Running=false
@@ -836,6 +866,38 @@ end
  assert(e.Buttons.RepeatRight.Active and e.Buttons.RepeatCopies.Active,'completed workers must restore repeat controls')
  assert(dispatches==4 and e.Progress.Placed==4,'only explicit Start must send and confirm every repeated cell through the existing worker')
  ctx.WriteBlueprint,ctx.Place,ctx.Alive=oldWrite,oldPlace,oldAlive;occupied={}
+ end)()
+-- Selected-layer floors use the same reversible edit path, and capture waits for cleanup.
+;(function()
+ local oldIsland,oldWrite,oldAlive=ctx.IslandBlocks,ctx.WriteBlueprint,ctx.Alive
+ local queries,writes=0,0
+ ctx.IslandBlocks=function() queries+=1;return nil end
+ ctx.WriteBlueprint=function() writes+=1;return true end
+ local e=A.new(ctx);e.Anchor=frame(12,6,30,math.pi/2);e.BaseAnchor=e.Anchor;e.BlockSize=3
+ e.Cells={{CFrame=e.Anchor*frame(0,0,-3),LayerY=0,Material='grass',Preview=control()},
+  {CFrame=e.Anchor*frame(0,3,-3),LayerY=3,Material='stone',Preview=control()}}
+ assert(e.RepeatScope=='Entire layout','v88 whole-layout behavior must remain the default')
+ e:CycleRepeatOption('Scope');local original=e.Cells
+ assert(e.RepeatScope=='Selected layer' and not e:RepeatLayout('Up') and e.Cells==original and #e.UndoStack==0,'selected scope must require an explicit preview layer')
+ e.LayerIndex=1
+ assert(not e:RepeatLayout('Up') and e.Cells==original and #e.UndoStack==0 and not original[1].Preview.Destroyed,'an overlapping floor must preserve geometry, preview and history')
+ e.LayerIndex=2;local before=requests
+ assert(e:RepeatLayout('Up') and #e.Cells==3 and not e.LayerIndex and e.RepeatScope=='Selected layer' and requests==before and writes==0,'selected Up must append one floor, clear layer selection and remain local/unsaved')
+ assert(e.Cells[1].Material=='grass' and e.Cells[2].Material=='stone' and e.Cells[3].Material=='stone' and e.Cells[3].LayerY==6 and e.Cells[3].CFrame.Position.Y==12,'the original lower layer and top-floor material/height must survive repetition')
+ assert(not e:RepeatLayout('Up') and #e.Cells==3,'a second selected-layer repeat must require choosing a layer again')
+ assert(e:Move(1,0,0) and e:RotatePreview());local anchor=e.Anchor
+ assert(e:UndoMaterial() and #e.Cells==2 and e.Anchor==anchor and e:RedoEdit() and #e.Cells==3 and e.Anchor==anchor,'new floor edits must Undo/Redo at the moved/rotated anchor')
+ e.WorkerToken=90;e:RefreshFailureUI();local scope=e.RepeatScope
+ for _,key in ipairs({'RepeatScope','RepeatUp'}) do assert(not e.Buttons[key].Active) end
+ assert(not e:RepeatLayout('Up') and not e:CycleRepeatOption('Scope') and e.RepeatScope==scope,'in-flight cleanup must lock new floor controls')
+ local range=e.CaptureRange
+ e.Buttons.CaptureRange.Activated:Fire();e.Buttons.Capture.Activated:Fire()
+ assert(not e:CaptureIsland() and e.CaptureRange==range and queries==0 and writes==0,'stopped builds with an owned worker must not scan/save an island or change capture range')
+ e.WorkerToken=nil;e.Running=true;assert(not e:CaptureIsland() and queries==0);e.Running=false
+ ctx.Alive=function() return false end;assert(not e:CaptureIsland() and queries==0);ctx.Alive=oldAlive
+ assert(not e:CaptureIsland() and queries==1,'after cleanup an ordinary capture may query the island again')
+ e:ClearPreview();e:CycleRepeatOption('Scope');assert(e.RepeatScope=='Entire layout' and e:RepeatLayout('Up') and not e.Cells,'whole-layout Up must also work on data-only layouts')
+ ctx.IslandBlocks,ctx.WriteBlueprint,ctx.Alive=oldIsland,oldWrite,oldAlive
  end)()
 -- Removing blueprint cells is local, reversible and reflected in saves/queues.
 do
