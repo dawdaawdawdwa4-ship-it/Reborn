@@ -1011,3 +1011,24 @@ existing confirmation/review semantics. Movement conflicts are checked at Start
 and while approaching. Read-only setup checks never move the character. Mock
 regressions include composed real navigation/build code and real application UI
 wiring; live Roblox behavior remains unverified.
+
+### Chest run telemetry and direct priority choices (chest-reports-86)
+
+v86 retains recorder v31, the 146 endpoint catalog and all withdrawal payloads,
+limits, pacing, confirmation and binding checks. The three explicit priority
+choices invoke the existing exact-instance priority setter; they do not withdraw.
+
+Each Auto Take worker owns a metrics snapshot. Request attempts are counted just
+before withdrawal dispatch; `TOO_FAST` replies are counted on the existing
+cooldown branch. Confirmed item totals continue to come only from the existing
+inventory confirmation path. Telemetry adds no waits or requests. Elapsed time
+runs until worker cleanup; explicit Pause/Resume intervals are tracked separately.
+Invalid/backward/throwing clocks disable timing/rates, preserving item totals and
+worker behavior. Zero elapsed time and overflowing calculations leave the rate unavailable.
+
+The existing five-entry session history retains a bounded last status/error,
+frozen settings and timing/count data. In-flight responses after Stop remain
+uncredited. Cooldown exhaustion and unreadable inventory receive distinct history
+outcomes; stop/retry behavior stays unchanged. Copy runs reads these text snapshots
+and uses clipboard or console output without replaying anything. Tests cover real
+workers and real UI handlers, with full regressions; live Roblox remains unverified.

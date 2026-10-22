@@ -2205,3 +2205,44 @@ real navigation composed with Auto Build, Stop/Resume, blocked/stuck paths,
 respawn, stale success, cooldown re-approach, occupied targets, conflicts and
 actual UI adapters. The full regression suite is required. Live Roblox walking,
 rendering and placement remain unverified.
+
+### Direct chest priority and richer run reports (v86)
+
+**Chests → Priority / protection** now shows **First**, **Normal** and **Last**
+as separate buttons in the existing row. A checkmark marks the selected chest's
+priority. Clicking the same choice twice keeps it selected. Choose an individual
+physical chest in Targets first; all three choices are disabled without one or
+while collection/manual work is running or cleaning up. Priorities still apply
+to the exact chest instance for this session and retain all existing protection,
+item, range and permission checks.
+
+The existing **Runs** button cycles through the newest five completed Auto Take
+runs. Reports now retain:
+
+- Confirmed totals per item, outcome and last observed status/error.
+- Elapsed seconds, explicit paused seconds and confirmed items per minute with
+  explicit pauses excluded. Walking, server waits/cooldown and cleanup remain
+  part of elapsed time; server waits and walking remain in the rate denominator.
+- Actual withdrawal attempts and `TOO_FAST` replies, including rejected attempts.
+- The run's original batch, pace, movement, ordering and Repeat settings.
+
+Exhausted cooldown retries are labelled **Rate limited**. A run ended by unreadable
+inventory is labelled **Inventory unreadable**. These describe the existing stop
+conditions without adding requests or retries. Attempted amounts and transfers
+that finish after Stop are not credited as confirmed gains. Invalid, backward or
+failed telemetry clocks leave timing/rate unavailable while preserving totals;
+zero elapsed active time has no rate.
+
+**Copy result**, **Runs** and the new **Copy runs** action share one row. Copy
+runs exports all five retained reports in one text, newest first, without changing
+the displayed result or history selection. Clipboard failure falls back to the
+console. History browsing/export waits for collection/request cleanup. Reports
+are session-only and retain their snapshots across later runs; they do not save
+remote IDs, request packets or world objects. Observed inventory gains retain
+the existing attribution limits and are not an exact server reward audit.
+
+Validation covers real Auto Take workers, pause/resume, Stop during an in-flight
+request, cooldown exhaustion, unreadable inventory, transport/worker errors,
+settings snapshot isolation, bad clocks, whole-history export, direct priority
+buttons, disabled states and row layout. The full regression suite is required.
+Live Roblox behavior and rendering remain unverified.

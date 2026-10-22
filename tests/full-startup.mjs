@@ -985,7 +985,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-walk-85',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn chest-reports-86',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1009,12 +1009,25 @@ end)()
  setclipboard=function(value) copied=value end
  RemoteCatalog.ChestCopyButton.Activated:Fire()
  assert(copied==RemoteCatalog.ChestLastDetail,'Copy result must copy the selected historical report')
+ local shown,index=RemoteCatalog.ChestResultLabel.Text,RemoteCatalog.ChestHistoryIndex
+ RemoteCatalog.ChestCopyRunsButton.Activated:Fire()
+ assert(copied and string.find(copied,'Chest run history',1,true) and string.find(copied,'stone: 5',1,true) and string.find(copied,'wood: 8',1,true),'Copy runs must export every retained run in one report')
+ assert(RemoteCatalog.ChestResultLabel.Text==shown and RemoteCatalog.ChestHistoryIndex==index,'copying all runs must preserve the selected result and history cursor')
+ setclipboard=function() error('clipboard unavailable') end
+ RemoteCatalog.ChestCopyRunsButton.Activated:Fire()
+ assert(string.find(status.Text,'printed to console',1,true),'whole-history copy must support the console fallback')
  setclipboard=originalCopy
+ assert(RemoteCatalog.ChestCopyRunsButton.Position.Y.Offset==RemoteCatalog.ChestCopyButton.Position.Y.Offset and RemoteCatalog.ChestHistoryButton.Position.Y.Offset==RemoteCatalog.ChestCopyButton.Position.Y.Offset,'all three result actions must share one row')
+ assert(RemoteCatalog.ChestCopyButton.Position.X.Scale+RemoteCatalog.ChestCopyButton.Size.X.Scale<=RemoteCatalog.ChestHistoryButton.Position.X.Scale and RemoteCatalog.ChestHistoryButton.Position.X.Scale+RemoteCatalog.ChestHistoryButton.Size.X.Scale<=RemoteCatalog.ChestCopyRunsButton.Position.X.Scale,'result actions must not overlap horizontally')
  RemoteCatalog.ChestHistoryButton.Activated:Fire()
  assert(string.find(RemoteCatalog.ChestResultLabel.Text,'wood: 8',1,true),'history must cycle to older runs')
  local previous=RemoteCatalog.ChestResultLabel.Text
  RemoteCatalog.ChestBusy=true
  RemoteCatalog.ChestHistoryButton.Activated:Fire()
+ setclipboard=function() error('busy history must not copy') end
+ RemoteCatalog.ChestCopyRunsButton.Activated:Fire()
+ assert(string.find(status.Text,'Finish or stop',1,true),'in-flight request cleanup must lock whole-history export')
+ setclipboard=originalCopy
  assert(RemoteCatalog.ChestResultLabel.Text==previous,'history must not overwrite an active request status')
  RemoteCatalog.ChestBusy=false
  RemoteCatalog.ChestHistory=originalHistory
@@ -1710,7 +1723,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-walk-85 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn chest-reports-86 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -1810,6 +1823,7 @@ end)()
  r.ChestGoal=30;r.ChestAutoBatch=30;r.ChestRepeat=false;r.ChestStockTarget=nil
  r.UpdateChestSelectionUI()
  assert(not r.ChestExclusionButton.Active,'all-target mode must require an individual chest before exclusion')
+ for _,control in pairs(r.ChestPriorityButtons) do assert(not control.Active,'all-target mode must disable every individual chest priority') end
  r.ChestSelectButton.Activated:Fire()
  local option
  for _,child in ipairs(r.ChestSelectMenu:GetChildren()[1]:GetChildren()) do if child:IsA('TextButton') and string.find(child.Text,'Chest #1',1,true) then option=child;break end end
@@ -1836,12 +1850,15 @@ end)()
  end
  r.ChestSelection={Chest=a,Slot=1};r.UpdateChestSelectionUI();r.ChestExclusionButton.Activated:Fire()
  assert(not r.ChestIsExcluded(ba) and #trace==1 and not r.ChestAutoEnabled,'Allow must restore eligibility without starting collection')
- r.ChestPriorityButton.Activated:Fire();assert(r.ChestPriorities[a]==1 and string.find(r.ChestPriorityButton.Text,'First',1,true) and #trace==1,'priority button must assign First without dispatch')
- r.ChestPriorityButton.Activated:Fire();assert(r.ChestPriorities[a]==-1 and string.find(r.ChestPriorityButton.Text,'Last',1,true))
- r.ChestAutoWorker=true;r.RefreshChestActions();r.ChestPriorityButton.Activated:Fire()
- assert(not r.ChestPriorityButton.Active and r.ChestPriorities[a]==-1,'in-flight cleanup must lock priority callbacks')
- r.ChestAutoWorker=nil;r.RefreshChestActions();r.ChestPriorityButton.Activated:Fire();assert(r.ChestPriorities[a]==nil)
- assert(r.ChestPriorityButton.Position.Y.Offset+r.ChestPriorityButton.Size.Y.Offset<=r.ChestExclusionPanel.Size.Y.Offset,'priority button must fit inside its panel')
+ r.ChestPriorityButtons[1].Activated:Fire();assert(r.ChestPriorities[a]==1 and string.find(r.ChestPriorityButtons[1].Text,'✓',1,true) and #trace==1,'priority button must assign First without dispatch')
+ r.ChestPriorityButtons[1].Activated:Fire();assert(r.ChestPriorities[a]==1,'choosing First twice must stay First instead of cycling')
+ r.ChestPriorityButtons[-1].Activated:Fire();assert(r.ChestPriorities[a]==-1 and string.find(r.ChestPriorityButtons[-1].Text,'✓',1,true))
+ assert(not string.find(r.ChestPriorityButtons[1].Text,'✓',1,true) and not string.find(r.ChestPriorityButtons[0].Text,'✓',1,true),'only the chosen priority must be marked')
+ for _,control in pairs(r.ChestPriorityButtons) do assert(control.Position.Y.Offset==122 and control.Position.Y.Offset+control.Size.Y.Offset<=r.ChestExclusionPanel.Size.Y.Offset,'direct priority choices must fit the existing panel row') end
+ r.ChestAutoWorker=true;r.RefreshChestActions();r.ChestPriorityButtons[1].Activated:Fire()
+ assert(not r.ChestPriorityButtons[1].Active and r.ChestPriorities[a]==-1,'in-flight cleanup must lock priority callbacks')
+ r.ChestAutoWorker=nil;r.RefreshChestActions();r.ChestPriorityButtons[0].Activated:Fire();assert(r.ChestPriorities[a]==nil)
+ assert(r.ChestPriorityButtons[0].Position.Y.Offset+r.ChestPriorityButtons[0].Size.Y.Offset<=r.ChestExclusionPanel.Size.Y.Offset,'priority button must fit inside its panel')
  assert(r.ChestExclusionPanel.Position.Y.Offset>=r.ChestSelectButton.Position.Y.Offset+r.ChestSelectButton.Size.Y.Offset and r.ChestScopeButton.Position.Y.Offset>=r.ChestExclusionPanel.Position.Y.Offset+r.ChestExclusionPanel.Size.Y.Offset,'protection must fit between chest selection and scope controls')
  local y=r.ChestExclusionPanel.Position.Y.Offset
  r.ChestSelectButton.Activated:Fire()

@@ -3352,7 +3352,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "build-walk-85",
+    Subtitle = "chest-reports-86",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3862,7 +3862,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-walk-85",
+    return table.concat({"Reborn chest-reports-86",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -4568,9 +4568,21 @@ RemoteCatalog.ChestResultLabel.AutomaticSize=Enum.AutomaticSize.Y
 RemoteCatalog.ChestResultLabel.TextTruncate=Enum.TextTruncate.None
 RemoteCatalog.ChestResultLabel.TextYAlignment=Enum.TextYAlignment.Top
 RemoteCatalog.ChestCopyButton=button({Parent=RemoteCatalog.ChestPage,Text="Copy result",TextSize=13,
-    Size=UDim2.new(.5,-9,0,32),Position=UDim2.fromOffset(6,674)})
-RemoteCatalog.ChestHistoryButton=button({Parent=RemoteCatalog.ChestPage,Text="Previous runs (0)",TextSize=13,
-    Size=UDim2.new(.5,-9,0,32),Position=UDim2.new(.5,3,0,674)})
+    Size=UDim2.new(1/3,-12,0,32),Position=UDim2.fromOffset(6,674)})
+RemoteCatalog.ChestHistoryButton=button({Parent=RemoteCatalog.ChestPage,Text="Runs (0)",TextSize=12,
+    Size=UDim2.new(1/3,-12,0,32),Position=UDim2.new(1/3,6,0,674)})
+RemoteCatalog.ChestCopyRunsButton=button({Parent=RemoteCatalog.ChestPage,Text="Copy runs",TextSize=12,
+    Size=UDim2.new(1/3,-12,0,32),Position=UDim2.new(2/3,6,0,674)})
+track(RemoteCatalog.ChestCopyRunsButton.Activated:Connect(function()
+    if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then
+        setStatus("Finish or stop collection before copying previous runs",COLORS.warn);return
+    end
+    local report=RemoteCatalog.ChestHistoryReport()
+    if not report then setStatus("No completed collection runs in this session yet",COLORS.muted);return end
+    local copy=setclipboard or toclipboard
+    if type(copy)=="function" and pcall(copy,report) then setStatus("Chest run history copied",COLORS.good)
+    else print(report);setStatus("Chest run history printed to console",COLORS.warn) end
+end))
 track(RemoteCatalog.ChestHistoryButton.Activated:Connect(function()
     if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then
         setStatus("Finish or stop collection before viewing previous runs",COLORS.warn);return
@@ -4806,14 +4818,18 @@ RemoteCatalog.ChestExclusionButton=button({Parent=RemoteCatalog.ChestExclusionPa
 RemoteCatalog.ChestExclusionButton.Active=false
 RemoteCatalog.ChestExclusionSummary=label({Parent=RemoteCatalog.ChestExclusionPanel,Text="0 excluded chests · this hub session only. Choose an individual chest in Targets.",TextSize=11,Color=COLORS.muted,Size=UDim2.new(1,-12,0,48),Position=UDim2.fromOffset(6,70)})
 RemoteCatalog.ChestExclusionSummary.TextWrapped=true
-RemoteCatalog.ChestPriorityButton=button({Parent=RemoteCatalog.ChestExclusionPanel,Text="Priority: Normal · click to change",TextSize=12,Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,122)})
-track(RemoteCatalog.ChestPriorityButton.Activated:Connect(function()
-    if not RemoteCatalog.SetChestPriority then return end
-    local chest=RemoteCatalog.ChestSelection and RemoteCatalog.ChestSelection.Chest
-    local current=chest and RemoteCatalog.ChestPriorities[chest] or 0
-    local ok,reason=RemoteCatalog.SetChestPriority(chest,current==0 and 1 or current==1 and -1 or 0)
-    setStatus(reason,ok and COLORS.good or COLORS.warn)
-end))
+RemoteCatalog.ChestPriorityButtons={}
+for index,choice in ipairs({{1,"First"},{0,"Normal"},{-1,"Last"}}) do
+    local control=button({Parent=RemoteCatalog.ChestExclusionPanel,Text=choice[2],TextSize=12,Size=UDim2.new(1/3,-6,0,34),Position=UDim2.new((index-1)/3,3,0,122)})
+    control.Active=false;control.Selectable=false
+    RemoteCatalog.ChestPriorityButtons[choice[1]]=control
+    track(control.Activated:Connect(function()
+        if not RemoteCatalog.SetChestPriority then return end
+        local chest=RemoteCatalog.ChestSelection and RemoteCatalog.ChestSelection.Chest
+        local ok,reason=RemoteCatalog.SetChestPriority(chest,choice[1])
+        setStatus(reason,ok and COLORS.good or COLORS.warn)
+    end))
+end
 track(RemoteCatalog.ChestExclusionButton.Activated:Connect(function()
     if not RemoteCatalog.SetChestExcluded then return end
     local selected=RemoteCatalog.ChestSelection
@@ -5742,7 +5758,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn build-walk-85 · Propeller loot history (UTC)",
+    return table.concat({"Reborn chest-reports-86 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -5846,7 +5862,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn build-walk-85 · Propeller tracker",
+    return table.concat({"Reborn chest-reports-86 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -5882,7 +5898,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-walk-85", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-reports-86", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -7383,11 +7399,12 @@ function RemoteCatalog.RefreshChestExclusions()
     local excluded=RemoteCatalog.ChestIsExcluded(selected)
     local locked=RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker~=nil or RemoteCatalog.ChestBusy or RemoteCatalog.ChestManualRunning
     local available=not locked and chest~=nil and chest.Parent~=nil
-    if RemoteCatalog.ChestPriorityButton then
-        local priority=chest and RemoteCatalog.ChestPriorities[chest] or 0
-        RemoteCatalog.ChestPriorityButton.Text="Priority: "..(priority==1 and "First" or priority==-1 and "Last" or "Normal").." · click to change"
-        RemoteCatalog.ChestPriorityButton.Active=available==true;RemoteCatalog.ChestPriorityButton.Selectable=available==true
-        RemoteCatalog.ChestPriorityButton.TextColor3=available and COLORS.text or COLORS.muted
+    for priority,control in pairs(RemoteCatalog.ChestPriorityButtons or {}) do
+        local chosen=chest~=nil and (RemoteCatalog.ChestPriorities[chest] or 0)==priority
+        control.Text=(chosen and "✓ " or "")..(priority==1 and "First" or priority==-1 and "Last" or "Normal")
+        control.Active=available==true;control.Selectable=available==true
+        control.BackgroundColor3=chosen and COLORS.on or COLORS.panel
+        control.TextColor3=available and COLORS.text or COLORS.muted
     end
     RemoteCatalog.ChestExclusionButton.Text=not chest and "Choose one chest above" or excluded and "Allow selected chest" or "Exclude selected chest"
     RemoteCatalog.ChestExclusionButton.Active=available==true
@@ -7961,24 +7978,72 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-walk-85\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-reports-86\n"..text
+    if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
     if RemoteCatalog.ChestResultView then RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero end
 end
-function RemoteCatalog.RecordChestRun(outcome,total,items,goal,stockTarget)
+-- Telemetry is read-only and must never fail or pace a withdrawal.
+function RemoteCatalog.ChestRunTime(run)
+    if run.ClockInvalid then return nil end
+    local ok,value=pcall(run.Clock)
+    if not ok or type(value)~="number" or not (value>=0 and value<math.huge) or run.LastTime and value<run.LastTime then
+        run.ClockInvalid=true;return nil
+    end
+    run.LastTime=value
+    return value
+end
+function RemoteCatalog.TrackChestPause(paused)
+    local run=RemoteCatalog.ChestRunMetrics
+    if not run then return end
+    local at=RemoteCatalog.ChestRunTime(run)
+    if not at then return end
+    if paused then run.PauseStarted=run.PauseStarted or at
+    elseif run.PauseStarted then run.PausedSeconds+=at-run.PauseStarted;run.PauseStarted=nil end
+end
+function RemoteCatalog.RecordChestRun(outcome,total,items,goal,stockTarget,run)
     local snapshot,names={},{}
     for item,count in pairs(items or {}) do snapshot[item]=count;table.insert(names,item) end
     table.sort(names)
+    local entry={Outcome=outcome,Total=total,Items=snapshot,Goal=goal,StockTarget=stockTarget}
     local text=outcome..": "..total.." confirmed items"..(goal and " · goal "..goal or " · unlimited")
     if stockTarget then text..=" · top-up "..stockTarget.."/item" end
+    if run then
+        entry.Requests=run.Requests;entry.RateLimits=run.RateLimits
+        entry.Detail=run.Detail
+        entry.Settings=table.clone(run.Settings)
+        local ended=RemoteCatalog.ChestRunTime(run)
+        if ended and run.Started then
+            entry.Duration=ended-run.Started
+            entry.PausedSeconds=math.min(entry.Duration,run.PausedSeconds+(run.PauseStarted and ended-run.PauseStarted or 0))
+            entry.ActiveSeconds=math.max(0,entry.Duration-entry.PausedSeconds)
+            local rate=entry.ActiveSeconds>0 and total*60/entry.ActiveSeconds or nil
+            entry.ItemsPerMinute=rate and rate<math.huge and rate or nil
+            entry.TimingText=string.format("Elapsed %.1fs · paused %.1fs · %s",entry.Duration,entry.PausedSeconds,
+                entry.ItemsPerMinute and string.format("%.1f confirmed items/min excluding pause",entry.ItemsPerMinute) or "rate unavailable")
+        else entry.TimingText="Timing unavailable; confirmed totals retained" end
+        text..="\n"..entry.TimingText.."\nRequests: "..entry.Requests.." · TOO_FAST replies: "..entry.RateLimits
+        text..="\nSettings: "..tostring(entry.Settings.Batch).." batch · "..tostring(entry.Settings.Speed).." · "..tostring(entry.Settings.Travel).." · "..tostring(entry.Settings.Order)..(entry.Settings.Repeat and " · Repeat" or " · One pass")
+        if entry.Detail then text..="\nLast observed: "..entry.Detail end
+    end
     for _,item in ipairs(names) do text..="\n"..item..": "..snapshot[item] end
+    entry.Text=text
     local history=RemoteCatalog.ChestHistory or {}
     RemoteCatalog.ChestHistory=history
-    table.insert(history,1,{Outcome=outcome,Total=total,Items=snapshot,Goal=goal,StockTarget=stockTarget,Text=text})
+    table.insert(history,1,entry)
     while #history>5 do table.remove(history) end
     RemoteCatalog.ChestHistoryIndex=0
-    if RemoteCatalog.ChestHistoryButton then RemoteCatalog.ChestHistoryButton.Text="Previous runs ("..#history..")" end
+    if RemoteCatalog.ChestHistoryButton then RemoteCatalog.ChestHistoryButton.Text="Runs ("..#history..")" end
+    return entry
+end
+function RemoteCatalog.ChestHistoryReport()
+    local history=RemoteCatalog.ChestHistory or {}
+    if #history==0 then return nil end
+    local lines={"Reborn chest-reports-86 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+        "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
+    for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
+    return table.concat(lines,"\n")
 end
 function RemoteCatalog.ChestTooFast(response)
     local seen={}
@@ -8095,7 +8160,7 @@ function RemoteCatalog.RefreshChestActions()
     local manual=RemoteCatalog.ChestManualRunning
     local paused=auto and RemoteCatalog.ChestAutoPaused
     local locked=auto or cleanup or RemoteCatalog.ChestBusy
-    for _,key in ipairs({"ChestAmountButton","ChestSpeedButton","ChestLearnedButton","ChestStockButton","ChestRepeatButton","ChestBatchButton","ChestQuickButton","ChestOrderButton","ChestConveyorButton"}) do
+    for _,key in ipairs({"ChestAmountButton","ChestSpeedButton","ChestLearnedButton","ChestStockButton","ChestRepeatButton","ChestBatchButton","ChestQuickButton","ChestOrderButton","ChestConveyorButton","ChestHistoryButton","ChestCopyRunsButton"}) do
         local control=RemoteCatalog[key]
         if control then
             control.Active=not locked;control.Selectable=not locked;control.AutoButtonColor=not locked
@@ -8133,6 +8198,7 @@ end
 function RemoteCatalog.SetChestPaused(state)
     if type(state)~="boolean" or not gui.Parent or not RemoteCatalog.ChestAutoEnabled or not RemoteCatalog.ChestAutoWorker then return false end
     if RemoteCatalog.ChestAutoPaused==state then return true end
+    RemoteCatalog.TrackChestPause(state)
     RemoteCatalog.ChestAutoPaused=state
     if state then RemoteCatalog.Navigation.Stop("Chest") end
     RemoteCatalog.RefreshChestActions()
@@ -8154,6 +8220,7 @@ function RemoteCatalog.SetChestAuto(state)
     if state and RemoteCatalog.CraftWorker then RemoteCatalog.ChestAutoMessage("Stop crafting and wait for its current request to finish first");return false end
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);RemoteCatalog.ChestAutoMessage("Wait for Auto Plow input cleanup");return false end
     if not state then
+        RemoteCatalog.TrackChestPause(false)
         RemoteCatalog.Navigation.Stop("Chest")
         RemoteCatalog.ChestAutoEnabled=false
         RemoteCatalog.ChestAutoPaused=false
@@ -8200,6 +8267,10 @@ function RemoteCatalog.SetChestAuto(state)
     local goal=RemoteCatalog.ChestGoal
     local fast=RemoteCatalog.ChestSpeed=="Fast"
     local successPause,retryPause,emptyPause=fast and .1 or .25,fast and .2 or .35,fast and .5 or 1
+    local run={Clock=RemoteCatalog.ChestClock or os.clock,PausedSeconds=0,Requests=0,RateLimits=0,
+        Settings={Batch=batch or "Learned",Speed=RemoteCatalog.ChestSpeed or "Standard",Travel=RemoteCatalog.ChestTravel or "Stay",Order=balanced and "Balance chests" or "Same stack",Repeat=repeating}}
+    run.Started=RemoteCatalog.ChestRunTime(run)
+    RemoteCatalog.ChestRunMetrics=run
     RemoteCatalog.ChestAutoProgress="starting"
     if RemoteCatalog.CloseMenus then RemoteCatalog.CloseMenus() end
     RemoteCatalog.RefreshChestActions()
@@ -8221,9 +8292,9 @@ function RemoteCatalog.SetChestAuto(state)
         end
         local function moving() return active() and not RemoteCatalog.ChestAutoPaused end
         local function inventoryUnavailable(state,reason)
-            if reason~="pending" then RemoteCatalog.ChestAutoMessage("Cannot read item inventory count. No new withdrawal sent.");return false end
+            if reason~="pending" then stoppedOutcome="Inventory unreadable";RemoteCatalog.ChestAutoMessage("Cannot read item inventory count. No new withdrawal sent.");return false end
             state.InventoryRetries=(state.InventoryRetries or 0)+1
-            if state.InventoryRetries>=3 then RemoteCatalog.ChestAutoMessage("Cannot read item inventory count after three checks. No new withdrawal sent; let inventory settle, then restart.");return false end
+            if state.InventoryRetries>=3 then stoppedOutcome="Inventory unreadable";RemoteCatalog.ChestAutoMessage("Cannot read item inventory count after three checks. No new withdrawal sent; let inventory settle, then restart.");return false end
             state.Waiting=true;state.InventoryWaiting=true
             RemoteCatalog.ChestInventoryWaiting=tostring(state.Binding.Item or "carrotHarvested");RemoteCatalog.RefreshChestActions()
             RemoteCatalog.ChestAutoMessage("Waiting for "..tostring(state.Binding.Item or "carrotHarvested").." quantity · check "..state.InventoryRetries.."/3. No withdrawal sent; other readable items can continue.")
@@ -8412,6 +8483,7 @@ function RemoteCatalog.SetChestAuto(state)
                 RemoteCatalog.ChestAutoMessage("Taking "..amount.." × "..tostring(binding.Item or "carrotHarvested").."\n"..target.."\nWaiting for inventory confirmation…")
                 local gap=RemoteCatalog.MarkChestRequest()
                 RemoteCatalog.ChestRequestPending=tostring(binding.Item or "carrotHarvested");RemoteCatalog.RefreshChestActions()
+                run.Requests+=1
                 local ran,sent,response,origin=pcall(RemoteCatalog.WithdrawCarrots,amount,recorder,binding)
                 RemoteCatalog.ChestRequestPending=nil
                 if not active() then break end
@@ -8426,9 +8498,10 @@ function RemoteCatalog.SetChestAuto(state)
                 RemoteCatalog.ChestBusy=false;ownsBusy=false
                 if not active() then break end
                 if not sent and RemoteCatalog.ChestTooFast(response) then
+                    run.RateLimits+=1
                     preferredSlot=index
                     state.RateRetries+=1
-                    if state.RateRetries>=5 then RemoteCatalog.ChestAutoMessage("Server keeps returning TOO_FAST. Stopped after five attempts; the batch was not reduced. Wait before restarting.");return end
+                    if state.RateRetries>=5 then stoppedOutcome="Rate limited";RemoteCatalog.ChestAutoMessage("Server keeps returning TOO_FAST. Stopped after five attempts; the batch was not reduced. Wait before restarting.");return end
                     local cooldown=RemoteCatalog.ChestBackoff(gap)
                     RemoteCatalog.ChestAutoMessage(target..": TOO_FAST; waiting "..cooldown.."s, then retrying the same "..amount.."-item batch.")
                     if not RemoteCatalog.WaitChestInterval(cooldown,active,ready) then return end
@@ -8502,9 +8575,12 @@ function RemoteCatalog.SetChestAuto(state)
         RemoteCatalog.ChestRequestPending=nil
         RemoteCatalog.ChestNextScan=nil
         RemoteCatalog.RefreshChestActions()
+        if RemoteCatalog.ChestRunMetrics==run then RemoteCatalog.ChestRunMetrics=nil end
+        local runRecord
         if gui.Parent then
+            if not ok then run.Detail="Worker error: "..tostring(failure):sub(1,1200) end
             local outcome=not ok and "Failed" or stoppedOutcome or goalReached and "Goal reached" or stockMet and "Inventory targets met" or completed and "Pass finished" or "Stopped"
-            RemoteCatalog.RecordChestRun(outcome,RemoteCatalog.ChestAutoTotal,RemoteCatalog.ChestAutoItems,goal,stockTarget)
+            runRecord=RemoteCatalog.RecordChestRun(outcome,RemoteCatalog.ChestAutoTotal,RemoteCatalog.ChestAutoItems,goal,stockTarget,run)
         end
         if RemoteCatalog.ChestAutoGeneration==generation then
             RemoteCatalog.SetChestAuto(false)
@@ -8518,6 +8594,7 @@ function RemoteCatalog.SetChestAuto(state)
             table.sort(names)
             for _,item in ipairs(names) do table.insert(totals,item..": "..RemoteCatalog.ChestAutoItems[item]) end
             if #totals>0 then RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestResultLabel.Text.."\nBy item: "..table.concat(totals,", "),RemoteCatalog.ChestResultLabel.TextColor3) end
+            if runRecord then RemoteCatalog.ChestAutoMessage(RemoteCatalog.ChestResultLabel.Text.."\n"..runRecord.TimingText,RemoteCatalog.ChestResultLabel.TextColor3) end
         end
     end)
     return true
@@ -8554,7 +8631,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-walk-85\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-reports-86\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -9453,7 +9530,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn build-walk-85 · Craft diagnostics",
+    return table.concat({"Reborn chest-reports-86 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -9530,7 +9607,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn build-walk-85 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn chest-reports-86 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
