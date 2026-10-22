@@ -3443,7 +3443,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "build-repeat-88",
+    Subtitle = "queue-check-89",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3953,7 +3953,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-repeat-88",
+    return table.concat({"Reborn queue-check-89",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5849,7 +5849,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn build-repeat-88 · Propeller loot history (UTC)",
+    return table.concat({"Reborn queue-check-89 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -5953,7 +5953,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn build-repeat-88 · Propeller tracker",
+    return table.concat({"Reborn queue-check-89 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -5989,7 +5989,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-repeat-88", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn queue-check-89", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -6022,6 +6022,12 @@ end
 local function updateBoard()
     if RemoteCatalog.RefreshPropellers then RemoteCatalog.RefreshPropellers() end
     if RemoteCatalog.RefreshCraftMaterials then RemoteCatalog.RefreshCraftMaterials() end
+    if RemoteCatalog.CraftQueueCheckResult and not RemoteCatalog.CraftQueueCheckCurrent(RemoteCatalog.CraftQueueCheckResult) then
+        RemoteCatalog.CraftQueueCheckResult=nil;RemoteCatalog.RefreshCraftQueue()
+        if not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftEnabled and RemoteCatalog.CraftInfo and tostring(RemoteCatalog.CraftInfo.Text):match("^Queue check") then
+            RemoteCatalog.CraftInfo.Text="Queue check expired or context changed. Refresh Check queue before running."
+        end
+    end
     if buildController.RangeMarkers then buildController:RefreshReach()
     elseif buildController.SetupMarkers then buildController:RefreshPreviewColors() end
     RemoteCatalog.UpdateDashboard()
@@ -8069,7 +8075,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-repeat-88\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn queue-check-89\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8131,7 +8137,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn build-repeat-88 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn queue-check-89 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -8722,7 +8728,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-repeat-88\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn queue-check-89\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -8919,7 +8925,8 @@ function RemoteCatalog.CraftMaterialReport()
     return table.concat(lines,"\n")
 end
 -- CRAFT QUEUE MATERIALS BEGIN
-function RemoteCatalog.CraftQueueMaterialPlan()
+function RemoteCatalog.CraftQueueMaterialPlan(countOf)
+    countOf=countOf or RemoteCatalog.CraftMaterialCount
     local plan={Jobs={},Rows={},Complete=false,MissingTypes=0,UnknownTypes=0}
     if RemoteCatalog.CraftWorker or RemoteCatalog.CraftEnabled then plan.Reason="Crafting active or finishing. Stop and wait for cleanup to estimate the next full run.";return plan end
     if RemoteCatalog.CraftCatalogLoading or RemoteCatalog.CraftPresetBusy then plan.Reason="Wait for recipe or preset loading to finish.";return plan end
@@ -8930,7 +8937,7 @@ function RemoteCatalog.CraftQueueMaterialPlan()
     local ledger={}
     local function entry(item)
         if not ledger[item] then
-            local have=RemoteCatalog.CraftMaterialCount(item)
+            local have=countOf(item)
             ledger[item]={Item=item,Have=have,Stock=have,Need=0,Produced=0,Missing=have~=nil and 0 or nil}
         end
         return ledger[item]
@@ -9209,7 +9216,140 @@ function RemoteCatalog.CraftQueueEditable()
     return gui.Parent~=nil and not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftEnabled and not RemoteCatalog.CraftPresetBusy and not RemoteCatalog.CraftTransferBusy
         and not RemoteCatalog.CraftCatalogLoading and not RemoteCatalog.CraftLearning and not (recorder and recorder.LearnCraftOnly)
 end
+-- CRAFT QUEUE CHECK BEGIN
+function RemoteCatalog.CraftQueueCheckMessage(text)
+    if gui.Parent and RemoteCatalog.CraftInfo then RemoteCatalog.CraftInfo.Text=text end
+    RemoteCatalog.RefreshCraftQueue()
+end
+function RemoteCatalog.CraftQueueCheckCurrent(result)
+    if not result or not RemoteCatalog.CraftQueueEditable() then return false end
+    local char=player.Character
+    local ok,root=pcall(function() return char and char:FindFirstChild("HumanoidRootPart") end)
+    local age=os.clock()-result._At
+    if not ok or age<0 or age>30 or result._Queue~=RemoteCatalog.CraftQueue or result._Revision~=RemoteCatalog.CraftQueueRevision
+        or result._Generation~=RemoteCatalog.CraftGeneration or result._Character~=char or result._Root~=root or result._Owner~=player.UserId
+        or result._JobId~=(game and game.JobId) or result._PlaceId~=(game and game.PlaceId) or result._Materials~=RemoteCatalog.CraftMaterials then return false end
+    if result._Jobs then
+        if #result._Jobs~=#RemoteCatalog.CraftQueue then return false end
+        local count=0;for _ in pairs(RemoteCatalog.CraftQueue) do count+=1 end
+        if count~=#result._Jobs then return false end
+        for index,job in ipairs(result._Jobs) do
+            local current=RemoteCatalog.CraftQueue[index]
+            if type(current)~="table" or current.Item~=job.Item or current.Mode~=job.Mode or current.Batch~=job.Batch or current.Target~=job.Target then return false end
+        end
+    end
+    return true
+end
+function RemoteCatalog.CheckCraftQueue(copy)
+    if not gui.Parent then return false end
+    if not RemoteCatalog.CraftQueueEditable() or RemoteCatalog.CraftQueueCheckBusy then
+        RemoteCatalog.CraftQueueCheckMessage("Stop crafting and wait for learning, loading, transfers and cleanup before checking the queue.");return false
+    end
+    RemoteCatalog.CloseMenus()
+    local char=player.Character
+    local actorOK,root=pcall(function() return char and char:FindFirstChild("HumanoidRootPart") end)
+    local result={Checks={},Jobs={},Actions=0,Unknown=0,NextSteps={},_At=os.clock(),_Queue=RemoteCatalog.CraftQueue,
+        _Revision=RemoteCatalog.CraftQueueRevision,_Generation=RemoteCatalog.CraftGeneration,_Character=char,_Root=root,_Owner=player.UserId,
+        _JobId=game and game.JobId,_PlaceId=game and game.PlaceId,_Materials=RemoteCatalog.CraftMaterials}
+    RemoteCatalog.CraftQueueCheckResult=nil;RemoteCatalog.CraftQueueCheckBusy=true
+    RemoteCatalog.RefreshCraftQueue()
+    local function add(name,state,detail)
+        table.insert(result.Checks,{Name=name,State=state,Detail=detail})
+        if state=="ACTION" then result.Actions+=1 elseif state=="UNKNOWN" then result.Unknown+=1 end
+    end
+    local ok,failure=pcall(function()
+        add("Character",actorOK and root and "OK" or "ACTION",actorOK and root and "Character root available" or "Wait for your character to spawn")
+        if not actorOK or not root then table.insert(result.NextSteps,"Wait for your character, then refresh Check queue.") end
+        if RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then
+            add("Automation","ACTION","Crafting waits while chest collection or its request cleanup is active")
+            table.insert(result.NextSteps,"Finish chest collection and wait for request cleanup.")
+        end
+        local valid,preset=pcall(RemoteCatalog.ValidateCraftPreset,{Version=1,Name="Queue check",Jobs=RemoteCatalog.CraftQueue})
+        if not valid then
+            add("Queue","ACTION","Add or import 1–8 valid finite jobs before running")
+            table.insert(result.NextSteps,"Add finite jobs or import a valid queue, then check again.")
+            return
+        end
+        result._Jobs=preset.Jobs
+        add("Queue","OK",#preset.Jobs.." valid finite jobs; requests remain capped at 100")
+        local counts={}
+        local function stock(item)
+            if not counts[item] then counts[item]={Value=RemoteCatalog.CraftMaterialCount(item)} end
+            return counts[item].Value
+        end
+        local unlearned,reachProblems={},0
+        for index,job in ipairs(preset.Jobs) do
+            local row={Index=index,Item=job.Item};table.insert(result.Jobs,row)
+            local inspected,recorder,binding=pcall(RemoteCatalog.CraftRecorder,job.Item)
+            row.Learned=inspected and recorder~=nil and binding~=nil
+            if not inspected then add("Job "..index.." · "..job.Item,"UNKNOWN","Could not inspect the current learned request")
+            elseif not row.Learned then
+                add("Job "..index.." · "..job.Item,"ACTION","Learn this recipe on the current character/server")
+                unlearned[job.Item]=true
+            else
+                add("Job "..index.." · "..job.Item,"OK","Current learned recipe available")
+                local checked,reachable,reason=pcall(RemoteCatalog.CraftReachable,binding.Workbench)
+                row.Reachable=checked and reachable==true
+                add("Workbench "..index,not checked and "UNKNOWN" or reachable and "OK" or "ACTION",
+                    not checked and "Could not inspect workbench reach/ownership" or reachable and "Own learned workbench within 20 studs"
+                    or tostring(reason or "Use a reachable learned workbench on your own island"):gsub(" Crafting stays ON%.",""))
+                if checked and not reachable then reachProblems+=1 end
+            end
+            row.Inventory=stock(job.Item)
+            add("Output inventory "..index,row.Inventory~=nil and "OK" or "UNKNOWN",row.Inventory~=nil and tostring(row.Inventory).." currently owned" or "Output quantity unreadable; wait and refresh before running")
+        end
+        local names={};for name in pairs(unlearned) do table.insert(names,name) end;table.sort(names)
+        if #names>0 then table.insert(result.NextSteps,"Learn recipes: "..table.concat(names,", ")..". Imported queues do not include learned requests.") end
+        if reachProblems>0 then table.insert(result.NextSteps,"Use the learned workbenches on your own island and stand within 20 studs; Check queue does not walk.") end
+        local planned,plan=pcall(RemoteCatalog.CraftQueueMaterialPlan,stock)
+        if not planned or type(plan)~="table" then add("Materials","UNKNOWN","Material estimate unavailable")
+        else
+            result.Materials=plan
+            add("Materials",plan.Complete and "OK" or "UNKNOWN",plan.Complete and "Full queue estimated in order; client metadata only" or tostring(plan.Reason or "Partial estimate; later jobs unknown"))
+            if (plan.UnknownTypes or 0)>0 then add("Material inventory","UNKNOWN",plan.UnknownTypes.." quantities unreadable") end
+            if (plan.MissingTypes or 0)>0 then
+                local missing={}
+                for _,row in ipairs(plan.Rows) do if row.Missing and row.Missing>0 then table.insert(missing,row.Item.." ×"..string.format("%.0f",row.Missing)) end end
+                add("Shortages","ACTION",table.concat(missing,", ")..(plan.Complete and "" or " (estimated prefix only)"))
+                table.insert(result.NextSteps,"Collect estimated missing materials: "..table.concat(missing,", ")..". Refresh after restocking; Top up jobs can change.")
+            end
+        end
+    end)
+    RemoteCatalog.CraftQueueCheckBusy=false
+    if not RemoteCatalog.CraftQueueCheckCurrent(result) then
+        if gui.Parent then
+            if RemoteCatalog.CraftWorker or RemoteCatalog.CraftEnabled then RemoteCatalog.RefreshCraftQueue()
+            else RemoteCatalog.CraftQueueCheckMessage("Queue or character changed during the check. Refresh Check queue; old results discarded.") end
+        end
+        return false
+    end
+    if not ok then add("Inspection","UNKNOWN","Could not complete the check: "..tostring(failure)) end
+    result.Summary=result.Actions>0 and "ACTION NEEDED" or result.Unknown>0 and "CHECKS INCOMPLETE" or "LOCAL CHECKS PASS"
+    if result.Unknown>0 then table.insert(result.NextSteps,"Load all recipes for material metadata, let inventory settle, then refresh the check.") end
+    if #result.NextSteps==0 then table.insert(result.NextSteps,"Review the queue, then Run Queue. Server ingredient and permission checks still apply.") end
+    local lines={"CRAFT QUEUE CHECK · snapshot",result.Summary.." · "..result.Actions.." action checks · "..result.Unknown.." unknown checks","Next: "..result.NextSteps[1]}
+    for _,check in ipairs(result.Checks) do table.insert(lines,"["..check.State.."] "..check.Name..": "..check.Detail) end
+    for _,step in ipairs(result.NextSteps) do table.insert(lines,"→ "..step) end
+    if result.Materials then
+        for _,row in ipairs(result.Materials.Rows) do table.insert(lines,row.Item.." · estimated use "..row.Need.." · have "..tostring(row.Have or "unknown").." · queue output "..row.Produced.." · missing in order "..tostring(row.Missing or "unknown")) end
+    end
+    table.insert(lines,"Read-only snapshot; expires after 30s. Refresh after moving, learning or inventory/world changes. No crafting started, materials reserved or files written. Costs assume earlier jobs succeed and shortages are supplied as needed.")
+    result.Text=table.concat(lines,"\n")
+    RemoteCatalog.CraftQueueCheckResult=result
+    if RemoteCatalog.CraftQueueView then RemoteCatalog.CraftQueueView.CanvasPosition=Vector2.zero end
+    RemoteCatalog.CraftQueueCheckMessage("Queue check: "..result.Summary..". Read the scrollable queue report below; no crafting started.")
+    if copy then
+        local copier=setclipboard or toclipboard
+        local ran,copied=false,false
+        if type(copier)=="function" then ran,copied=pcall(copier,result.Text) end
+        if ran and copied~=false then RemoteCatalog.CraftQueueCheckMessage("Queue check copied. Snapshot also shown in the queue report.")
+        else print(result.Text);RemoteCatalog.CraftQueueCheckMessage("Queue check printed to console; clipboard unavailable or failed.") end
+    end
+    return result
+end
+-- CRAFT QUEUE CHECK END
 function RemoteCatalog.CraftQueueChanged()
+    RemoteCatalog.CraftQueueRevision=(RemoteCatalog.CraftQueueRevision or 0)+1;RemoteCatalog.CraftQueueCheckResult=nil
     RemoteCatalog.CraftQueueDone=0;RemoteCatalog.CraftQueueTotal=0;RemoteCatalog.CraftQueueIndex=nil
     RemoteCatalog.CraftQueueRunSize=nil;RemoteCatalog.CraftQueueActiveItem=nil;RemoteCatalog.CraftMaterialRun=nil
 end
@@ -9256,7 +9396,11 @@ function RemoteCatalog.ApplyCraftQueueJob()
     return true
 end
 function RemoteCatalog.CraftQueueText()
+    local check=RemoteCatalog.CraftQueueCheckResult
+    if check and not RemoteCatalog.CraftQueueCheckCurrent(check) then RemoteCatalog.CraftQueueCheckResult=nil;check=nil end
     local lines={"QUEUE · "..#RemoteCatalog.CraftQueue.." / 8 jobs"}
+    if RemoteCatalog.CraftQueueCheckBusy then table.insert(lines,"Checking queue · no crafting started")
+    elseif check then table.insert(lines,check.Summary.." · snapshot\nNext: "..check.NextSteps[1]) end
     if #RemoteCatalog.CraftQueue==0 then table.insert(lines,"Choose a recipe, Make amount or Top up stock, then Add to queue. Each request remains capped at 100.") end
     for index,job in ipairs(RemoteCatalog.CraftQueue) do
         local marker=RemoteCatalog.CraftQueueRunning and index==RemoteCatalog.CraftQueueIndex and "▶ " or index<=(RemoteCatalog.CraftQueueDone or 0) and "✓ " or ""
@@ -9265,6 +9409,7 @@ function RemoteCatalog.CraftQueueText()
             table.insert(lines,marker..index..". "..tostring(job.Item).." · "..tostring(job.Mode).." "..tostring(job.Target).." · batch "..tostring(job.Batch))
         else table.insert(lines,index..". Invalid job; clear the queue.") end
     end
+    if check then table.insert(lines,"\n"..check.Text) end
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.RefreshCraftQueue()
@@ -9276,7 +9421,7 @@ function RemoteCatalog.RefreshCraftQueue()
     local selected=type(index)=="number" and index%1==0 and RemoteCatalog.CraftQueue[index]~=nil
     if RemoteCatalog.CraftQueueJobMenu then RemoteCatalog.CraftQueueJobMenu:Refresh() end
     if RemoteCatalog.CraftQueueRemoveButton then RemoteCatalog.CraftQueueRemoveButton.Text=selected and "Remove selected job" or "Remove last job" end
-    for _,name in ipairs({"CraftQueueAddButton","CraftQueueRemoveButton","CraftQueueClearButton","CraftQueueJobButton","CraftQueueUpButton","CraftQueueDownButton","CraftQueueApplyButton"}) do
+    for _,name in ipairs({"CraftQueueAddButton","CraftQueueRemoveButton","CraftQueueClearButton","CraftQueueJobButton","CraftQueueUpButton","CraftQueueDownButton","CraftQueueApplyButton","CraftQueueCheckButton","CraftQueueCopyCheckButton"}) do
         local control=RemoteCatalog[name]
         if control then
             local available=not busy
@@ -9284,7 +9429,8 @@ function RemoteCatalog.RefreshCraftQueue()
             elseif name=="CraftQueueJobButton" or name=="CraftQueueRemoveButton" or name=="CraftQueueClearButton" then available=available and #RemoteCatalog.CraftQueue>0
             elseif name=="CraftQueueApplyButton" then available=available and selected and RemoteCatalog.CraftMode~="Continuous"
             elseif name=="CraftQueueUpButton" then available=available and selected and index>1
-            elseif name=="CraftQueueDownButton" then available=available and selected and index<#RemoteCatalog.CraftQueue end
+            elseif name=="CraftQueueDownButton" then available=available and selected and index<#RemoteCatalog.CraftQueue
+            elseif name=="CraftQueueCheckButton" or name=="CraftQueueCopyCheckButton" then available=available and not RemoteCatalog.CraftQueueCheckBusy end
             control.Active=available;control.Selectable=available;control.TextColor3=available and COLORS.text or COLORS.muted
         end
     end
@@ -9693,7 +9839,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn build-repeat-88 · Craft diagnostics",
+    return table.concat({"Reborn queue-check-89 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -9711,7 +9857,9 @@ function RemoteCatalog.CraftDiagnosticReport()
         "Queue: "..#RemoteCatalog.CraftQueue.." jobs; "..tostring(RemoteCatalog.CraftQueueDone or 0).." finished; "..tostring(RemoteCatalog.CraftQueueTotal or 0).." confirmed items",
         "Active queue recipe: "..tostring(RemoteCatalog.CraftQueueActiveItem or "none"),
         "Last craft status: "..tostring(RemoteCatalog.CraftInfo and RemoteCatalog.CraftInfo.Text or "not started"),
-        "Next step: "..action, "", "Materials:", RemoteCatalog.CraftMaterialReport(), "", RemoteCatalog.CraftQueueMaterialReport()},"\n")
+        "Next step: "..action, "", "Queue check snapshot:",
+        RemoteCatalog.CraftQueueCheckCurrent(RemoteCatalog.CraftQueueCheckResult) and RemoteCatalog.CraftQueueCheckResult.Text or "Not checked, expired or context changed. Use Check queue for a fresh read-only report.",
+        "", "Materials:", RemoteCatalog.CraftMaterialReport(), "", RemoteCatalog.CraftQueueMaterialReport()},"\n")
 end
 -- CRAFT BAIT END
 -- CRAFT BAIT UI BEGIN
@@ -9770,7 +9918,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn build-repeat-88 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn queue-check-89 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -9849,6 +9997,16 @@ track(RemoteCatalog.CraftExportButton.Activated:Connect(function() RemoteCatalog
 track(RemoteCatalog.CraftCopyQueueButton.Activated:Connect(function() RemoteCatalog.ExportCraftQueue(true) end))
 track(RemoteCatalog.CraftImportButton.Activated:Connect(function() RemoteCatalog.ImportCraftQueue(RemoteCatalog.CraftTransferText.Text) end))
 table.insert(RemoteCatalog.MenuClosers,function() pcall(function() RemoteCatalog.CraftTransferText:ReleaseFocus() end) end)
+-- Add a compact check row before queue removal/editor controls.
+for _,control in ipairs(RemoteCatalog.CraftPage:GetChildren()) do
+    if control:IsA("GuiObject") and control.Position.Y.Offset>=914 then
+        local pos=control.Position;control.Position=UDim2.new(pos.X.Scale,pos.X.Offset,pos.Y.Scale,pos.Y.Offset+44)
+    end
+end
+RemoteCatalog.CraftQueueCheckButton=button({Parent=RemoteCatalog.CraftPage,Text="Check queue",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,914)})
+RemoteCatalog.CraftQueueCopyCheckButton=button({Parent=RemoteCatalog.CraftPage,Text="Copy queue check",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,914)})
+track(RemoteCatalog.CraftQueueCheckButton.Activated:Connect(function() RemoteCatalog.CheckCraftQueue(false) end))
+track(RemoteCatalog.CraftQueueCopyCheckButton.Activated:Connect(function() RemoteCatalog.CheckCraftQueue(true) end))
 RemoteCatalog.ReadCraftPresets()
 RemoteCatalog.CraftMessage(RemoteCatalog.CraftPlanText())
 RemoteCatalog.RefreshCraftUI()

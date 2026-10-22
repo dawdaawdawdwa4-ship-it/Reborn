@@ -985,7 +985,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-repeat-88',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn queue-check-89',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1723,7 +1723,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-repeat-88 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn queue-check-89 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2043,7 +2043,48 @@ end)()
  for _,section in ipairs(b.Sections) do if open[section.Key] then b:ToggleSection(section.Key) end end
  end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight}
+;(function()
+ local r=RemoteCatalog
+ local fields={'CraftQueue','CraftQueueRevision','CraftQueueCheckResult','CraftQueueCheckBusy','CraftMaterials','CraftQueueDone','CraftQueueTotal','CraftQueueSelected'}
+ local old={};for _,field in ipairs(fields) do old[field]=r[field] end
+ local recorder,reachable,count,copy,character=r.CraftRecorder,r.CraftReachable,r.CarrotCount,setclipboard,player.Character
+ local learned,inRange,stock,copied=true,true,300,nil
+ local root={};player.Character={FindFirstChild=function() return root end}
+ r.CraftRecorder=function() return learned and {} or nil,learned and {Workbench={}} or nil end
+ r.CraftReachable=function() return inRange,'Stand within 20 studs of your learned workbench' end
+ r.CarrotCount=function(item) return item=='worm' and stock or 0 end
+ r.CraftMaterials={bait=r.ReadCraftMaterials({outputAmount=1},{worm=2})}
+ r.CraftQueue={{Item='bait',Mode='Make amount',Batch=100,Target=100}}
+ r.RefreshCraftUI()
+ assert(r.CraftQueueCheckButton.Position.Y.Offset>=r.CraftQueueRunButton.Position.Y.Offset+r.CraftQueueRunButton.Size.Y.Offset and r.CraftQueueRemoveButton.Position.Y.Offset>=r.CraftQueueCheckButton.Position.Y.Offset+r.CraftQueueCheckButton.Size.Y.Offset,'queue check actions must fit in their own row between Run and Remove')
+ assert(r.CraftQueueCheckButton.Position.Y.Offset==r.CraftQueueCopyCheckButton.Position.Y.Offset and r.CraftQueueView.Position.Y.Offset>=r.CraftQueueRemoveButton.Position.Y.Offset+r.CraftQueueRemoveButton.Size.Y.Offset,'the new row must push the scroll report down without overlap')
+ r.CraftQueueCheckButton.Activated:Fire()
+ assert(r.CraftQueueCheckResult and r.CraftQueueCheckResult.Summary=='LOCAL CHECKS PASS' and string.find(r.CraftQueueLabel.Text,'CRAFT QUEUE CHECK',1,true) and not r.CraftWorker,'real Check must show an advisory report in the scrolling queue view without crafting')
+ assert(r.CraftQueueView.AutomaticCanvasSize==Enum.AutomaticSize.Y and r.CraftQueueLabel.AutomaticSize==Enum.AutomaticSize.Y,'long checks must remain scrollable')
+ setclipboard=function(value) copied=value end;stock=0;r.CraftQueueCopyCheckButton.Activated:Fire()
+ assert(copied and string.find(copied,'worm ×200',1,true) and r.CraftQueueCheckResult.Summary=='ACTION NEEDED','real Copy must refresh current quantities instead of copying an earlier pass')
+ assert(string.find(r.CraftDiagnosticReport(),'CRAFT QUEUE CHECK',1,true),'craft diagnostics must include the valid queue check snapshot')
+ setclipboard=function() return false end;r.CraftQueueCopyCheckButton.Activated:Fire()
+ assert(string.find(r.CraftInfo.Text,'printed to console',1,true),'real Copy check must support clipboard failure')
+ stock=300;learned=false;inRange=false;r.CraftQueueCheckButton.Activated:Fire()
+ assert(string.find(r.CraftQueueCheckResult.Text,'Learn recipes: bait',1,true),'unlearned imported recipes must be named in the real queue report')
+ learned=true;r.CraftQueueCheckButton.Activated:Fire();assert(r.CraftQueueCheckResult.Summary=='ACTION NEEDED')
+ inRange=true;r.CraftQueueCheckButton.Activated:Fire()
+ r.CraftQueueCheckResult._At=os.clock()-31;updateBoard()
+ assert(not r.CraftQueueCheckResult and not string.find(r.CraftQueueLabel.Text,'CRAFT QUEUE CHECK',1,true) and string.find(r.CraftInfo.Text,'expired',1,true),'periodic refresh must expire old checks without running a new one')
+ r.CraftWorker=89;r.RefreshCraftUI()
+ assert(not r.CraftQueueCheckButton.Active and not r.CraftQueueCopyCheckButton.Active,'cleanup must visibly lock both queue-check controls')
+ r.CraftQueueCheckButton.Activated:Fire();assert(not r.CraftQueueCheckResult and not r.CraftQueueCheckBusy,'locked callbacks cannot create a report')
+ r.CraftWorker=nil;r.RefreshCraftUI();r.CraftQueueCheckButton.Activated:Fire()
+ r.CraftQueueSelected=1;r.CraftQueueRemoveButton.Activated:Fire();assert(not r.CraftQueueCheckResult,'editing must clear the previous check snapshot')
+ local y=r.CraftQueueCheckButton.Position.Y.Offset
+ r.CraftModeButton.Activated:Fire();assert(r.CraftQueueCheckButton.Position.Y.Offset>y,'inline menus must push the new check row below options')
+ r.CloseMenus();assert(r.CraftQueueCheckButton.Position.Y.Offset==y,'closing dropdowns must restore the new row without drift')
+ r.CraftRecorder,r.CraftReachable,r.CarrotCount,setclipboard,player.Character=recorder,reachable,count,copy,character
+ for _,field in ipairs(fields) do r[field]=old[field] end;r.RefreshCraftUI()
+ end)()
+
+local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton}
 RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
 RemoteCatalog.CraftItem="cleanup-sentinel";cleanupOptions.Recipe.Activated:Fire()
@@ -2054,6 +2095,7 @@ RemoteCatalog.ImportCraftQueue=function() error('import callback survived GUI re
 RemoteCatalog.ExportCraftQueue=function() error('export callback survived GUI removal') end
 cleanupOptions.Import.Activated:Fire();cleanupOptions.Export.Activated:Fire()
 buildController.RepeatLayout=function() error('repeat callback survived GUI removal') end;cleanupOptions.Repeat.Activated:Fire()
+RemoteCatalog.CheckCraftQueue=function() error('queue-check callback survived GUI removal') end;cleanupOptions.QueueCheck.Activated:Fire()
 assert(not RemoteCatalog.StopTimerDeadline,'destroying the hub must clear its timer')
 assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'

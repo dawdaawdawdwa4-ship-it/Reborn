@@ -2320,3 +2320,46 @@ Tests cover spacing, rotated bounds, source isolation, limits, local axes,
 preview staging failure, Undo/Redo/material composition, save isolation,
 explicit placement, real controls/layout and callback cleanup, plus the full
 regression suite. Live Roblox rendering and placement remain unverified.
+
+### Read-only crafting queue check (v89)
+
+**Crafting → Check queue** combines the whole configured queue's local readiness
+checks in one report. It checks the finite-job schema, current learned requests,
+own-workbench reach (20 studs), readable output quantities, chest contention and
+the existing ordered material estimate. Unlearned imported recipes are named;
+missing requests are never synthesized. Completed Top up stock jobs still need
+a valid learned binding, matching normal Run Queue preflight.
+
+Results appear in the existing scrollable queue view, with a summary and first
+Next step above the configured jobs. **LOCAL CHECKS PASS** means the readable
+local observations pass; **ACTION NEEDED** names learning, reach or shortage work;
+**CHECKS INCOMPLETE** retains unreadable counts, missing recipe metadata and partial
+estimates as unknown. Zero is a readable quantity. Shared output/ingredient reads
+are cached once per item within the check, and no extra inventory scan is needed
+to repaint its report. The checker never walks, loads recipe modules, learns,
+crafts, reserves materials, changes the queue or writes files.
+
+Material rows use the existing full-queue simulation: earlier output can feed
+later jobs, shared stock is spent once, and missing quantities assume earlier
+jobs succeed and shortages are supplied in order. Partial metadata never claims
+a full-queue total. Refresh after restocking because Top up jobs can change.
+Server costs, output timing and permission checks still govern actual crafting.
+
+**Copy queue check** refreshes the report before copying; a missing, failing or
+false-returning clipboard falls back to the console. Craft diagnostics include
+the current valid snapshot. Snapshots expire after 30 seconds and clear after
+queue edits, imports/loads, a new craft/Stop cycle, character/root or account/server
+changes, or replacement of recipe material metadata. Moving, learning or changing
+inventory/world state still requires a fresh Check queue. No passing report is
+used to authorize a later request; Run Queue retains its independent checks.
+
+Checks/copies wait for crafting, Pause/in-flight cleanup, recipe learning,
+catalog/preset loading and queue transfers. Starting work or editing while a
+check lookup yields discards its stale result; a newer worker's status is kept.
+The two actions share one new row above Remove/Clear and follow inline dropdown
+layout. Long reports grow inside the existing fixed scroll viewport.
+
+Validation covers current recipe/range/ownership checks, single-read inventory,
+unknown/short/partial/already-met plans, locks, copy refresh/fallback, expiry,
+context changes, actual UI/diagnostics/layout and callback cleanup, plus the full
+regression suite. Live Roblox behavior and rendering remain unverified.

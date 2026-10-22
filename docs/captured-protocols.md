@@ -1068,3 +1068,26 @@ Saving and Start remain explicit actions. Building/in-flight cleanup locks the
 edit; setup/failure snapshots reset after successful geometry changes. Regression
 fixtures cover pure planning, controller/worker behavior and actual UI handlers;
 all existing suites remain required. Live Roblox remains unverified.
+
+### Craft queue readiness snapshots (queue-check-89)
+
+v89 retains recorder v31, the 146 endpoint catalog and all crafting request
+payloads, caps, timing, cancellation and confirmation rules. The queue checker
+only reads validated descriptors, current learned-binding availability, existing
+own-workbench reach, inventory quantities and cached material metadata. It neither
+learns nor dispatches. Runtime Run Queue preflight remains independent.
+
+The existing queue material planner accepts an optional read function so a check
+can share one cached quantity per output/ingredient item without changing global
+inventory readers. Unknown quantities and partial cost metadata remain unknown;
+known ordered shortages are actionable without claiming an exact shopping list.
+No materials are reserved. Copy check takes a fresh snapshot and exports only its
+human-readable text; it includes no remote packets or learned session IDs.
+
+Snapshots bind to queue identity/revision/descriptors, craft generation,
+character/root, account/server and the material table. They expire after 30
+seconds. Changed context during a lookup discards the result and releases the
+checker; it cannot overwrite a newer worker's status. Report paints/expiry query
+no inventory themselves. Tests cover core checks and actual UI/copy/diagnostic
+handlers, stale contexts, limits and cleanup, plus full regressions; live Roblox
+remains unverified.
