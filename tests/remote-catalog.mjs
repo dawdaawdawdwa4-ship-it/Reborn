@@ -284,6 +284,15 @@ assert(table.find(RemoteCatalog.SeedNames('blueFlowers'),'blueFlowerSeeds'),'met
  RemoteCatalog.PlacementClient=function() return {Get=function() return {CallServer=function() return {success=false,error='TOO_FAST'} end} end} end
  sent,reason,origin=RemoteCatalog.CallPlacement({})
  assert(not sent and reason.error=='TOO_FAST' and origin=='rejected' and fallbacks==before,'explicit rejection must preserve the server error without duplicate dispatch')
+ -- Preserve the recorder's result and origin through the real catalog adapter.
+ RemoteCatalog.PlacementClient=function() return nil end
+ for _,origin in ipairs({'transport','unavailable','rejected'}) do
+  local result={success=false,error='TOO_FAST'}
+  local calls=0
+  RemoteCatalog.Recorder.Place=function() calls+=1;return false,result,origin end
+  local sent,reason,actual=RemoteCatalog.CallPlacement({})
+  assert(not sent and reason==result and actual==origin and calls==1,'learned failure origins must survive the adapter without another route or dispatch')
+ end
  RemoteCatalog.PlacementClient,RemoteCatalog.Recorder=lookup,recorder
  end)()
 

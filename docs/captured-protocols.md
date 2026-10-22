@@ -1137,3 +1137,21 @@ transport priority, normal build confirmation and server permissions. Older
 recorder versions are replaced with v32 while their learned bindings are kept.
 The new endpoint/envelope and rejection cases are mock-tested; live server
 acceptance remains unverified.
+
+
+### Learned placement failure origins (v99 / capture v33)
+
+`capture:Place(body)` now returns `(false, result, origin)` with `unavailable`
+for pre-dispatch validation/preparation failures, `transport` for a thrown
+InvokeServer call and `rejected` for an explicit false or `success=false`
+response. The original response/error value is retained. A thrown table containing
+TOO_FAST remains a transport error. Successful returns preserve `(true, result)`
+including nil; normal build confirmation still applies.
+
+The catalog forwards these origins without falling back after selecting a learned
+route. Auto Build stops on transport/unavailable origins before the next cell;
+only actual cooldown responses may enter its existing bounded retry loop. The
+replay prepares and mutates a cloned template separately from dispatch, preserving
+context, extra fields, argument count and nil positions. Invalid/missing nested
+bodies fail before sending. v32 bindings migrate into the v33 implementation;
+same-version restarts retain the existing hook and keyboard listener.

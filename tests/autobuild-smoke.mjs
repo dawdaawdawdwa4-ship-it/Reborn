@@ -220,6 +220,11 @@ b:Stop();step()
  value:Start();drain()
  assert(attempts==1 and value.Progress.State=='Placement needs review' and value.Progress.Failed==1 and not ghost.Destroyed,'uncertain transport must retain the ghost and stop before the next cell')
  assert(string.find(value:DiagnosticReport(),'connection lost',1,true),'diagnostics must retain the actual placement failure')
+ assert(string.find(value.History[1].LastResult,'Transport error:',1,true),'history must distinguish transport errors from server rejections')
+ attempts=0;ctx.Place=function() attempts+=1;return false,'Learn placement first','unavailable' end
+ value=fresh();value:Start();drain()
+ assert(attempts==1 and value.Progress.State=='Placement needs review' and string.find(value.Status.Text,'Learn placement again',1,true),'unavailable learned requests must stop with a concrete recovery action')
+ assert(string.find(value.History[1].LastResult,'Unavailable:',1,true) and value:FailureCounts().Retryable==0,'unavailable requests cannot be reported as explicit server rejections')
  attempts=0;ctx.Place=function(body)
   attempts+=1;if attempts==1 then root.Position=setmetatable({},{__sub=function() return {Magnitude=100} end});return false,{error='TOO_FAST'} end
   occupied[body.cframe.Position]=true;return true

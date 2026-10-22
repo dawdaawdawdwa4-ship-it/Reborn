@@ -2668,3 +2668,26 @@ independent failure lists, incomplete completion, review guidance, zero-request
 waits, late transport errors, all-five export ordering, active-run exclusion,
 unchanged browsing state, native buttons and listener cleanup, alongside the full
 regression suite. The new reports/UI have not been verified in live Roblox.
+
+## Learned placement recovery (v99)
+
+Auto Build now stops after the first transport error on a learned placement
+route, just as it already did for the native API. A request that throws is
+uncertain even when the thrown value resembles `{success=false,error="TOO_FAST"}`;
+it cannot enter cooldown retries or trigger another transport. Inspect the island
+before resuming. Explicit server rejections retain their actual result and remain
+eligible for the existing rejected-only retry rules. Accepted responses, including
+nil, still require island replication before a block is counted.
+
+The current diagnostics and saved run results distinguish **Transport error**,
+**Unavailable**, **Rejected** and **Accepted**. An unavailable template gives the
+concrete instruction to learn placement again, then resume. It stops the worker
+and keeps the preview; it does not automatically retry or switch routes.
+
+Replay validates its body and prepares a copy of the learned template before
+dispatch. Invalid bodies, missing remotes, unsupported methods or malformed
+saved templates return unavailable without sending. A missing nested body cannot
+silently fall back to modifying the request envelope. Capture v33 replaces older
+recorders while retaining their learned bindings; repeated v33 startup reuses the
+same recorder. These paths and native/learned adapter behavior are mock-tested.
+Live Roblox acceptance and timing remain unverified.

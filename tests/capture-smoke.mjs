@@ -286,6 +286,44 @@ assert(not capture:Place({cframe=newCf,blockType='stone'}),'placement rejection 
   rotated.InvokeServer=function() requests+=1;return response end
   assert(not capture:Place({cframe=newCf,blockType='stone'}),'new endpoint rejection must remain a failure')
  end
+ -- Every failed outcome must preserve its dispatch boundary for Auto Build.
+ local function outcome(expected, response)
+  local count=requests
+  rotated.InvokeServer=function() requests+=1;return response end
+  local sent,result,origin=capture:Place({cframe=newCf,blockType='stone'})
+  assert(not sent and result==response and origin==expected and requests==count+1,'explicit rejection must retain its exact result and origin after one dispatch')
+ end
+ outcome('rejected',false)
+ outcome('rejected',{success=false,error='TOO_FAST'})
+ outcome('rejected',{success=false,error='INVALID_SUPPORT'})
+ local transportError={success=false,error='TOO_FAST'}
+ rotated.InvokeServer=function() requests+=1;error(transportError) end
+ local count=requests
+ local sent,result,origin=capture:Place({cframe=newCf,blockType='stone'})
+ assert(not sent and result==transportError and origin=='transport' and requests==count+1,'a thrown cooldown-shaped result is a transport error, never a retryable rejection')
+ rotated.InvokeServer=function() requests+=1;return nil end
+ sent,result,origin=capture:Place({cframe=newCf,blockType='stone'})
+ assert(sent and result==nil and origin==nil,'nil server responses still require normal island confirmation')
+ count=requests
+ for _,body in ipairs({false,{}, {cframe=newCf,blockType=''}, {cframe=newCf,blockType=string.rep('x',129)}, {cframe='bad',blockType='stone'}}) do
+  sent,result,origin=capture:Place(body)
+  assert(not sent and origin=='unavailable' and requests==count,'invalid placement bodies must not dispatch or throw')
+ end
+ sent,result,origin=capture:Place(nil)
+ assert(not sent and origin=='unavailable' and requests==count)
+ local valid=capture.PlacementBinding
+ for _,bad in ipairs({{}, {Remote=rotated,Method='FireServer'}, {Remote=rotated,Method='InvokeServer'},
+  {Remote=rotated,Method='InvokeServer',Args={n=1}},
+  {Remote=rotated,Method='InvokeServer',Args={n=1,{}},BodyKey='missing'},
+  {Remote=rotated,Method='InvokeServer',Args={n=0/0,{}}}}) do
+  capture.PlacementBinding=bad
+  sent,result,origin=capture:Place({cframe=newCf,blockType='stone'})
+  assert(not sent and origin=='unavailable' and requests==count,'stale or malformed binding must fail before dispatch')
+ end
+ capture.PlacementBinding=valid;rotated.Parent=nil
+ sent,result,origin=capture:Place({cframe=newCf,blockType='stone'})
+ assert(not sent and origin=='unavailable' and requests==count,'removed remotes must fail before dispatch')
+ rotated.Parent=group
  capture.PlacementBinding=previous
 end)()
 local baitTool={_type='Instance',Name='bait',IsA=function(_,cls) return cls=='Tool' end}
@@ -651,18 +689,29 @@ end)()
  old.CraftBinding.Remote.InvokeServer=function() return true end
  runRecorder()
  local upgraded=environment.RebornCapture
- assert(upgraded~=old and upgraded.Version==32 and upgraded.CraftBindings.bait==upgraded.CraftBinding and upgraded.CraftBinding.Item=='bait','v29 upgrade must retain the exact bait binding in the new recipe catalog')
+ assert(upgraded~=old and upgraded.Version==33 and upgraded.CraftBindings.bait==upgraded.CraftBinding and upgraded.CraftBinding.Item=='bait','v29 upgrade must retain the exact bait binding in the new recipe catalog')
  assert(upgraded:CraftBait(100),'migrated bait request must remain usable for this same character/server')
  local bindings=upgraded.ChestBindings
  upgraded.Version=30
  runRecorder()
  local latest=environment.RebornCapture
- assert(latest~=upgraded and latest.Version==32 and latest.ChestBindings==bindings and latest.CraftBindings.bait==latest.CraftBinding,'v30 upgrade must preserve learned chest and crafting bindings while installing failure origins')
+ assert(latest~=upgraded and latest.Version==33 and latest.ChestBindings==bindings and latest.CraftBindings.bait==latest.CraftBinding,'v30 upgrade must preserve learned chest and crafting bindings while installing failure origins')
  local placement=latest.PlacementBinding
  latest.Version=31
  runRecorder()
  local placementUpgrade=environment.RebornCapture
- assert(placementUpgrade~=latest and placementUpgrade.Version==32 and placementUpgrade.PlacementBinding==placement and placementUpgrade.ChestBindings==bindings,'v31 upgrades must install rotated placement learning while preserving existing bindings')
+ assert(placementUpgrade~=latest and placementUpgrade.Version==33 and placementUpgrade.PlacementBinding==placement and placementUpgrade.ChestBindings==bindings,'v31 upgrades must install rotated placement learning while preserving existing bindings')
+ local beforeHooks,beforeConnections=hookCount,connectionCount
+ placementUpgrade.Version=32
+ runRecorder()
+ local recovery=environment.RebornCapture
+ assert(recovery~=placementUpgrade and recovery.Version==33 and recovery.PlacementBinding==placement and recovery.ChestBindings==bindings,'v32 upgrade must preserve live bindings while installing placement failure origins')
+ local sent,result,origin=recovery:Place({cframe=newCf,blockType='stone'})
+ assert(not sent and result==false and origin=='rejected','the preserved v32 placement binding must use the corrected replay method after upgrade')
+ assert(hookCount==beforeHooks+1 and connectionCount==beforeConnections+1,'upgrade installs only one replacement recorder')
+ runRecorder()
+ assert(environment.RebornCapture==recovery and hookCount==beforeHooks+1 and connectionCount==beforeConnections+1,'v33 reuse must not stack hooks or key listeners')
+ recovery:Stop()
  placementUpgrade:Stop()
  latest:Stop()
  upgraded:Stop()

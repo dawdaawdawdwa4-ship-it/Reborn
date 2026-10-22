@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 32 and previous.Resume then
+if previous and previous.Version == 33 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 32, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 33, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -414,17 +414,38 @@ local function learnPlacement(remote, method, args)
 end
 function capture:Place(body)
     local binding = self.PlacementBinding
-    if not binding or not binding.Remote.Parent then return false, "Place one block manually with capture active" end
-    if typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string" then return false, "Invalid placement body" end
-    local ok, result = pcall(function()
-        local args = cloneArguments(binding.Args)
-        local packet = binding.BodyKey and args[1][binding.BodyKey] or args[1]
+    local remote = binding and binding.Remote
+    if not remote or not remote.Parent or binding.Method ~= "InvokeServer" then
+        return false, "Place one block manually with capture active", "unavailable"
+    end
+    if type(body) ~= "table" or typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string"
+        or #body.blockType < 1 or #body.blockType > 128 then
+        return false, "Invalid placement body", "unavailable"
+    end
+    -- Prepare separately: a bad saved template has not sent anything to the server.
+    local prepared, args = pcall(function()
+        local copy = cloneArguments(binding.Args)
+        assert(type(copy) == "table" and type(copy.n) == "number" and copy.n >= 1
+            and copy.n < math.huge and copy.n % 1 == 0, "Placement template needs learning again")
+        assert(type(copy[1]) == "table", "Placement template needs learning again")
+        local packet = copy[1]
+        if binding.BodyKey ~= nil then packet = packet[binding.BodyKey] end
+        assert(type(packet) == "table", "Placement template needs learning again")
         packet.cframe, packet.blockType = body.cframe, body.blockType
-        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+        return copy
     end)
-    if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
+    if not prepared then return false, args, "unavailable" end
+    -- After dispatch, an exception is uncertain and must never trigger a fallback.
+    local ok, result = pcall(function()
+        return remote:InvokeServer(table.unpack(args, 1, args.n))
+    end)
+    if not ok then return false, result, "transport" end
+    if result == false or type(result) == "table" and result.success == false then
+        return false, result, "rejected"
+    end
     return true, result
 end
+
 local function craftBody(packet)
     if type(packet)~="table" then return nil end
     if packet.workbenchBlock~=nil then return packet end

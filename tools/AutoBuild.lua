@@ -892,7 +892,8 @@ function AutoBuild.new(ctx)
                                 meta.Attempts+=1;meta.LastResult="Request sent; result pending"
                                 sent,reason,origin=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
                                 self.RequestPending=false
-                                self.LastPlacementResult=(sent and "Accepted: " or "Rejected: ")..resultText(reason)
+                                local resultLabel=sent and "Accepted: " or origin=="transport" and "Transport error: " or origin=="unavailable" and "Unavailable: " or "Rejected: "
+                                self.LastPlacementResult=resultLabel..resultText(reason)
                                 meta.LastResult=reportText(self.LastPlacementResult)
                                 if not active() then return end
                                 local cooldown=not sent and origin~="transport" and origin~="unavailable" and type(reason)=="table" and (reason.error=="TOO_FAST" or reason.code=="TOO_FAST")
@@ -925,7 +926,11 @@ function AutoBuild.new(ctx)
                             if not active() then return end
                             if origin=="transport" or origin=="unavailable" then
                                 progress.Failed+=1;progress.State="Placement needs review"
-                                status("Placement stopped: "..resultText(reason)..". Check the island before resuming; no further blocks sent.")
+                                if origin=="unavailable" then
+                                    status("Placement unavailable: "..resultText(reason)..". Learn placement again, then Resume build.")
+                                else
+                                    status("Placement stopped: "..resultText(reason)..". Check the island before resuming; no further blocks sent.")
+                                end
                                 return
                             end
                             if sent then

@@ -523,13 +523,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 32 and previous.Resume then
+if previous and previous.Version == 33 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 32, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 33, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -929,17 +929,38 @@ local function learnPlacement(remote, method, args)
 end
 function capture:Place(body)
     local binding = self.PlacementBinding
-    if not binding or not binding.Remote.Parent then return false, "Place one block manually with capture active" end
-    if typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string" then return false, "Invalid placement body" end
-    local ok, result = pcall(function()
-        local args = cloneArguments(binding.Args)
-        local packet = binding.BodyKey and args[1][binding.BodyKey] or args[1]
+    local remote = binding and binding.Remote
+    if not remote or not remote.Parent or binding.Method ~= "InvokeServer" then
+        return false, "Place one block manually with capture active", "unavailable"
+    end
+    if type(body) ~= "table" or typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string"
+        or #body.blockType < 1 or #body.blockType > 128 then
+        return false, "Invalid placement body", "unavailable"
+    end
+    -- Prepare separately: a bad saved template has not sent anything to the server.
+    local prepared, args = pcall(function()
+        local copy = cloneArguments(binding.Args)
+        assert(type(copy) == "table" and type(copy.n) == "number" and copy.n >= 1
+            and copy.n < math.huge and copy.n % 1 == 0, "Placement template needs learning again")
+        assert(type(copy[1]) == "table", "Placement template needs learning again")
+        local packet = copy[1]
+        if binding.BodyKey ~= nil then packet = packet[binding.BodyKey] end
+        assert(type(packet) == "table", "Placement template needs learning again")
         packet.cframe, packet.blockType = body.cframe, body.blockType
-        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+        return copy
     end)
-    if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
+    if not prepared then return false, args, "unavailable" end
+    -- After dispatch, an exception is uncertain and must never trigger a fallback.
+    local ok, result = pcall(function()
+        return remote:InvokeServer(table.unpack(args, 1, args.n))
+    end)
+    if not ok then return false, result, "transport" end
+    if result == false or type(result) == "table" and result.success == false then
+        return false, result, "rejected"
+    end
     return true, result
 end
+
 local function craftBody(packet)
     if type(packet)~="table" then return nil end
     if packet.workbenchBlock~=nil then return packet end
@@ -2257,7 +2278,8 @@ function AutoBuild.new(ctx)
                                 meta.Attempts+=1;meta.LastResult="Request sent; result pending"
                                 sent,reason,origin=ctx.Place({cframe=cell.CFrame,blockType=cell.Material})
                                 self.RequestPending=false
-                                self.LastPlacementResult=(sent and "Accepted: " or "Rejected: ")..resultText(reason)
+                                local resultLabel=sent and "Accepted: " or origin=="transport" and "Transport error: " or origin=="unavailable" and "Unavailable: " or "Rejected: "
+                                self.LastPlacementResult=resultLabel..resultText(reason)
                                 meta.LastResult=reportText(self.LastPlacementResult)
                                 if not active() then return end
                                 local cooldown=not sent and origin~="transport" and origin~="unavailable" and type(reason)=="table" and (reason.error=="TOO_FAST" or reason.code=="TOO_FAST")
@@ -2290,7 +2312,11 @@ function AutoBuild.new(ctx)
                             if not active() then return end
                             if origin=="transport" or origin=="unavailable" then
                                 progress.Failed+=1;progress.State="Placement needs review"
-                                status("Placement stopped: "..resultText(reason)..". Check the island before resuming; no further blocks sent.")
+                                if origin=="unavailable" then
+                                    status("Placement unavailable: "..resultText(reason)..". Learn placement again, then Resume build.")
+                                else
+                                    status("Placement stopped: "..resultText(reason)..". Check the island before resuming; no further blocks sent.")
+                                end
                                 return
                             end
                             if sent then
@@ -3691,7 +3717,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "build-results-98",
+    Subtitle = "build-recovery-99",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -4201,7 +4227,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-results-98",
+    return table.concat({"Reborn build-recovery-99",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6132,7 +6158,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn build-results-98 · Propeller loot history (UTC)",
+    return table.concat({"Reborn build-recovery-99 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6236,7 +6262,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn build-results-98 · Propeller tracker",
+    return table.concat({"Reborn build-recovery-99 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6272,7 +6298,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-results-98", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn build-recovery-99", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -8452,7 +8478,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-results-98\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn build-recovery-99\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8514,7 +8540,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn build-results-98 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn build-recovery-99 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9106,7 +9132,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-results-98\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn build-recovery-99\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -10217,7 +10243,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn build-results-98 · Craft diagnostics",
+    return table.concat({"Reborn build-recovery-99 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -10296,7 +10322,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn build-results-98 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn build-recovery-99 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
