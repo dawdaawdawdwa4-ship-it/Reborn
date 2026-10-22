@@ -244,6 +244,50 @@ assert(placementArgs[1].wGquKmyB3mV2Cf.blockType=='stone' and placementArgs[1].w
 assert(placementPacket.wGquKmyB3mV2Cf.blockType=='grass','placement source template mutated')
 placementRemote.InvokeServer=function() return false end
 assert(not capture:Place({cframe=newCf,blockType='stone'}),'placement rejection must remain failure')
+;(function()
+ local previous=capture.PlacementBinding
+ local endpoint=remote('mF2HsnhouMrwrl')
+ local requests,sent=0,nil
+ endpoint.InvokeServer=function(_,...) requests+=1;sent=table.pack(...);return true end
+ local packet={E8oAZq8kjXlqjy='current-placement-session',Ug98kBjdJ0rpg1={cframe=cf,blockType='grass',extra='keep'}}
+ local before=#calls
+ installedHook(endpoint,packet,nil,'tail')
+ assert(#calls==before+1 and requests==0,'learning the supplied capture must forward its original action exactly once and send no extra placement')
+ assert(capture.PlacementBinding.Remote==endpoint and capture.PlacementBinding.BodyKey=='Ug98kBjdJ0rpg1','the supplied rotated endpoint and body field must be learned')
+ packet.E8oAZq8kjXlqjy='mutated after capture';packet.Ug98kBjdJ0rpg1.extra='changed'
+ assert(capture:Place({cframe=newCf,blockType='stone'}))
+ assert(requests==1 and sent.n==3 and sent[2]==nil and sent[3]=='tail','replay must keep positional arguments and trailing nils')
+ assert(sent[1].E8oAZq8kjXlqjy=='current-placement-session' and sent[1].Ug98kBjdJ0rpg1.cframe==newCf and sent[1].Ug98kBjdJ0rpg1.blockType=='stone' and sent[1].Ug98kBjdJ0rpg1.extra=='keep','replay must preserve captured context while replacing only placement coordinates and material')
+ assert(packet.Ug98kBjdJ0rpg1.cframe==cf and packet.Ug98kBjdJ0rpg1.blockType=='grass','placement cannot mutate the observed game packet')
+ local out={Name='out',Parent=game};local group={Name='renamed-group',Parent=out}
+ local rotated=remote('next-placement-name');rotated.Parent=group
+ rotated.InvokeServer=endpoint.InvokeServer
+ installedHook(rotated,{Session='next-session',NextBody={cframe=cf,blockType='grass'}})
+ assert(capture.PlacementBinding.Remote==rotated and capture.PlacementBinding.BodyKey=='NextBody' and capture:Place({cframe=newCf,blockType='stone'}),'future out remotes must learn unambiguous placement bodies despite rotated keys')
+ assert(sent[1].Session=='next-session' and sent[1].NextBody.cframe==newCf,'rotating the endpoint must refresh the session template')
+ local saved=capture.PlacementBinding
+ for _,bad in ipairs({
+  {a={cframe=cf,blockType='grass'},b={cframe=cf,blockType='stone'}},
+  {cframe=cf,blockType='grass',nested={cframe=cf,blockType='stone'}},
+  {Body={cframe='not a CFrame',blockType='grass'}}, {Body={cframe=cf,blockType=''}},
+  {Body={cframe=cf,blockType=string.rep('x',129)}}
+ }) do installedHook(rotated,bad);assert(capture.PlacementBinding==saved,'ambiguous or malformed placement packets cannot replace a working binding') end
+ local outside=remote('unrelated-outside-endpoint')
+ installedHook(outside,{Body={cframe=cf,blockType='grass'}})
+ assert(capture.PlacementBinding==saved,'an unknown endpoint outside the net out group cannot be learned as placement')
+ currentMethod='FireServer';installedHook(endpoint,{Body={cframe=cf,blockType='grass'}});currentMethod='InvokeServer'
+ assert(capture.PlacementBinding==saved,'placement requires an observed InvokeServer call')
+ installedHook(rotated,{cframe=cf,blockType='grass',Session='direct-context'})
+ assert(capture.PlacementBinding.BodyKey==nil and capture:Place({cframe=newCf,blockType='stone'}) and sent[1].Session=='direct-context','direct placement bodies remain supported')
+ local count=requests;rotated.Parent=nil
+ assert(not capture:Place({cframe=newCf,blockType='stone'}) and requests==count,'removed placement remotes cannot send requests')
+ rotated.Parent=group
+ for _,response in ipairs({false,{success=false,error='INVALID_SUPPORT'}}) do
+  rotated.InvokeServer=function() requests+=1;return response end
+  assert(not capture:Place({cframe=newCf,blockType='stone'}),'new endpoint rejection must remain a failure')
+ end
+ capture.PlacementBinding=previous
+end)()
 local baitTool={_type='Instance',Name='bait',IsA=function(_,cls) return cls=='Tool' end}
 local nextBait={_type='Instance',Name='bait',IsA=function(_,cls) return cls=='Tool' end}
 local baitRemote=remote('XPQExfDjDSUkYv')
@@ -607,13 +651,19 @@ end)()
  old.CraftBinding.Remote.InvokeServer=function() return true end
  runRecorder()
  local upgraded=environment.RebornCapture
- assert(upgraded~=old and upgraded.Version==31 and upgraded.CraftBindings.bait==upgraded.CraftBinding and upgraded.CraftBinding.Item=='bait','v29 upgrade must retain the exact bait binding in the new recipe catalog')
+ assert(upgraded~=old and upgraded.Version==32 and upgraded.CraftBindings.bait==upgraded.CraftBinding and upgraded.CraftBinding.Item=='bait','v29 upgrade must retain the exact bait binding in the new recipe catalog')
  assert(upgraded:CraftBait(100),'migrated bait request must remain usable for this same character/server')
  local bindings=upgraded.ChestBindings
  upgraded.Version=30
  runRecorder()
  local latest=environment.RebornCapture
- assert(latest~=upgraded and latest.Version==31 and latest.ChestBindings==bindings and latest.CraftBindings.bait==latest.CraftBinding,'v30 upgrade must preserve learned chest and crafting bindings while installing failure origins')
+ assert(latest~=upgraded and latest.Version==32 and latest.ChestBindings==bindings and latest.CraftBindings.bait==latest.CraftBinding,'v30 upgrade must preserve learned chest and crafting bindings while installing failure origins')
+ local placement=latest.PlacementBinding
+ latest.Version=31
+ runRecorder()
+ local placementUpgrade=environment.RebornCapture
+ assert(placementUpgrade~=latest and placementUpgrade.Version==32 and placementUpgrade.PlacementBinding==placement and placementUpgrade.ChestBindings==bindings,'v31 upgrades must install rotated placement learning while preserving existing bindings')
+ placementUpgrade:Stop()
  latest:Stop()
  upgraded:Stop()
  end)()

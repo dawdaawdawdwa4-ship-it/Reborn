@@ -162,6 +162,7 @@ local RemoteCatalog = (function()
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.EJWEYYJBHKFykg.GDbJa5Ix6UZ8mg", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.skLtAq4BgI4AnK.yrIxXd1d5bBQji", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.u71Y03otNIwj9g", Class = "RemoteFunction" },
+        { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.n5ocWF6SyREytP.mF2HsnhouMrwrl", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.qn1PInnZJmfDd1", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.xC1fgcQXCzOPJ7.nrGQVrxpfb3dKr", Class = "RemoteFunction" },
         { Path = "ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.Cq9pvIyZubkCrb.Y6oBjV1u9qIAAS", Class = "RemoteFunction" },
@@ -522,13 +523,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 31 and previous.Resume then
+if previous and previous.Version == 32 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 31, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 32, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -564,6 +565,7 @@ local exactNames = {
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
     qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
+    mF2HsnhouMrwrl = true, -- Supplied placement endpoint with a rotated body/session envelope.
     yrIxXd1d5bBQji = true,
     GDbJa5Ix6UZ8mg = true,
     wKCeyGAO4SqdMY = true,
@@ -902,16 +904,27 @@ function capture:Hit(block, category)
     if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     return true,result
 end
+local function placementBody(body)
+    return type(body)=="table" and typeof(body.cframe)=="CFrame"
+        and type(body.blockType)=="string" and #body.blockType>0 and #body.blockType<=128
+end
 local function learnPlacement(remote, method, args)
-    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
-    if remote.Name ~= "u71Y03otNIwj9g" and remote.Name ~= "ohy6O10QKzyGZE"
-        and not string.find(string.lower(remote.Name), "block_place_request", 1, true) then return false end
-    local packet = args[1]
-    local key = type(packet.wGquKmyB3mV2Cf) == "table" and "wGquKmyB3mV2Cf"
-        or (type(packet.TlSR8Mzd9FLwaZ) == "table" and "TlSR8Mzd9FLwaZ" or nil)
-    local body = key and packet[key] or packet
-    if typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string" then return false end
-    capture.PlacementBinding = {Remote=remote,Method=method,Args=cloneArguments(args),BodyKey=key}
+    if method~="InvokeServer" or not remote:IsA("RemoteFunction") or type(args[1])~="table" then return false end
+    local group=remote.Parent
+    local known=remote.Name=="u71Y03otNIwj9g" or remote.Name=="ohy6O10QKzyGZE" or remote.Name=="mF2HsnhouMrwrl"
+        or string.find(string.lower(remote.Name),"block_place_request",1,true)
+    if not known and (not group or not group.Parent or group.Parent.Name~="out") then return false end
+    local packet=args[1]
+    local key,body=nil,placementBody(packet) and packet or nil
+    for candidate,value in pairs(packet) do
+        if placementBody(value) then
+            -- A packet with multiple placement bodies cannot be replayed unambiguously.
+            if body then return false end
+            key,body=candidate,value
+        end
+    end
+    if not body then return false end
+    capture.PlacementBinding={Remote=remote,Method=method,Args=cloneArguments(args),BodyKey=key}
     return true
 end
 function capture:Place(body)
@@ -2439,8 +2452,21 @@ function AutoBuild.new(ctx)
         if result.Failures.Review>0 then nextStep("Inspect "..result.Failures.Review.." uncertain cells on the island. Retry failed excludes them; normal Resume remains available after review.") end
         if result.Failures.Retryable>0 then nextStep("After fixing the cause, Retry failed targets "..result.Failures.Retryable.." explicitly rejected cells in this layer only.") end
         if #result.NextSteps==0 then nextStep(result.Summary=="NOTHING TO PLACE" and "All selected cells are occupied. Move the preview or choose another layer to build elsewhere." or "Check the preview position, then Start build. The server still checks support and island permissions.") end
-        local lines={"AUTO BUILD SETUP · snapshot",result.Summary.." · "..result.Actions.." action checks · "..result.Unknown.." unknown checks", "Next: "..result.NextSteps[1]}
-        for _,check in ipairs(result.Checks) do table.insert(lines,"["..check.State.."] "..check.Name..": "..check.Detail) end
+        local lines={"AUTO BUILD SETUP · snapshot",result.Summary.." · "..result.Actions.." action checks · "..result.Unknown.." unknown checks"}
+        -- Put the blockers visible first in the short on-screen report.
+        for _,state in ipairs({"ACTION","UNKNOWN"}) do
+            for _,check in ipairs(result.Checks) do
+                if check.State==state then table.insert(lines,"["..check.State.."] "..check.Name..": "..check.Detail) end
+            end
+        end
+        table.insert(lines,"")
+        table.insert(lines,"NEXT: "..result.NextSteps[1])
+        table.insert(lines,"")
+        for _,state in ipairs({"OK","INFO"}) do
+            for _,check in ipairs(result.Checks) do
+                if check.State==state then table.insert(lines,"["..check.State.."] "..check.Name..": "..check.Detail) end
+            end
+        end
         if result.Materials then
             local names={};for name in pairs(result.Materials.Quantities) do table.insert(names,name) end;table.sort(names)
             for _,name in ipairs(names) do
@@ -2457,7 +2483,8 @@ function AutoBuild.new(ctx)
         self:RefreshPreviewColors()
         self.SetupReport=result.Text;self.SetupResult=result
         self.MaterialSummary.Text=result.Text
-        status("Setup check: "..result.Summary..". See the scrollable report below; no blocks placed.")
+        if self.MaterialView then self.MaterialView.CanvasPosition=Vector2.zero end
+        status(result.Summary.." · Next: "..result.NextSteps[1])
         return result
     end
     function self:RenameSlot(name)
@@ -2929,12 +2956,14 @@ function AutoBuild.new(ctx)
     button("Clear","Clear",.78,486,.22,function() if not self.Running and not self.WorkerToken then self:ClearPreview();status("Preview cleared.") else status("Wait for build request cleanup before clearing the preview.") end end)
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
+    self.Status.TextSize=14;self.Status.TextTruncate=Enum.TextTruncate.None
     local materialView=Instance.new("ScrollingFrame")
     materialView.Size=UDim2.new(1,-12,0,100);materialView.Position=UDim2.fromOffset(6,layoutY(616))
+    self.MaterialView=materialView
     materialView.BackgroundTransparency=1;materialView.BorderSizePixel=0;materialView.ScrollBarThickness=5
     materialView.CanvasSize=UDim2.new();materialView.AutomaticCanvasSize=Enum.AutomaticSize.Y;materialView.Parent=ctx.Parent
     register(materialView,layoutY(616),100)
-    self.MaterialSummary=ctx.Label({Parent=materialView,Text="Preview or load a blueprint to see its material counts.",TextSize=12,
+    self.MaterialSummary=ctx.Label({Parent=materialView,Text="Preview or load a blueprint to see its material counts.",TextSize=14,
         Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
     self.MaterialSummary.TextWrapped=true;self.MaterialSummary.AutomaticSize=Enum.AutomaticSize.Y;self.MaterialSummary.TextTruncate=Enum.TextTruncate.None
     local name=Instance.new("TextBox");name.Name="BlueprintName";name.Text="My island build";name.PlaceholderText="Blueprint name (1–48 bytes)"
@@ -3465,7 +3494,7 @@ local hub = Airflow:Window({
     Parent = playerGui,
     MinSize = Vector2.new(640, 420),
     Title = "Islands",
-    Subtitle = "settings-layout-93",
+    Subtitle = "build-placement-94",
     Icon = "rbxassetid://6031090998",
     Keybind = Enum.KeyCode.RightControl,
     Loading = { Enabled = false },
@@ -3975,7 +4004,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn settings-layout-93",
+    return table.concat({"Reborn build-placement-94",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5906,7 +5935,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn settings-layout-93 · Propeller loot history (UTC)",
+    return table.concat({"Reborn build-placement-94 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6010,7 +6039,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn settings-layout-93 · Propeller tracker",
+    return table.concat({"Reborn build-placement-94 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6046,7 +6075,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn settings-layout-93", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn build-placement-94", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
@@ -8226,7 +8255,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn settings-layout-93\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn build-placement-94\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8288,7 +8317,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn settings-layout-93 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn build-placement-94 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -8880,7 +8909,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn settings-layout-93\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn build-placement-94\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -9991,7 +10020,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn settings-layout-93 · Craft diagnostics",
+    return table.concat({"Reborn build-placement-94 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -10070,7 +10099,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn settings-layout-93 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn build-placement-94 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end

@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 31 and previous.Resume then
+if previous and previous.Version == 32 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 31, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 32, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -50,6 +50,7 @@ local exactNames = {
     nrGQVrxpfb3dKr = true, -- AutoReplant setting endpoint.
     qn1PInnZJmfDd1 = true, -- Supplied axe/block-hit capture.
     u71Y03otNIwj9g = true, -- Supplied updated placement endpoint.
+    mF2HsnhouMrwrl = true, -- Supplied placement endpoint with a rotated body/session envelope.
     yrIxXd1d5bBQji = true,
     GDbJa5Ix6UZ8mg = true,
     wKCeyGAO4SqdMY = true,
@@ -388,16 +389,27 @@ function capture:Hit(block, category)
     if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
     return true,result
 end
+local function placementBody(body)
+    return type(body)=="table" and typeof(body.cframe)=="CFrame"
+        and type(body.blockType)=="string" and #body.blockType>0 and #body.blockType<=128
+end
 local function learnPlacement(remote, method, args)
-    if method ~= "InvokeServer" or type(args[1]) ~= "table" then return false end
-    if remote.Name ~= "u71Y03otNIwj9g" and remote.Name ~= "ohy6O10QKzyGZE"
-        and not string.find(string.lower(remote.Name), "block_place_request", 1, true) then return false end
-    local packet = args[1]
-    local key = type(packet.wGquKmyB3mV2Cf) == "table" and "wGquKmyB3mV2Cf"
-        or (type(packet.TlSR8Mzd9FLwaZ) == "table" and "TlSR8Mzd9FLwaZ" or nil)
-    local body = key and packet[key] or packet
-    if typeof(body.cframe) ~= "CFrame" or type(body.blockType) ~= "string" then return false end
-    capture.PlacementBinding = {Remote=remote,Method=method,Args=cloneArguments(args),BodyKey=key}
+    if method~="InvokeServer" or not remote:IsA("RemoteFunction") or type(args[1])~="table" then return false end
+    local group=remote.Parent
+    local known=remote.Name=="u71Y03otNIwj9g" or remote.Name=="ohy6O10QKzyGZE" or remote.Name=="mF2HsnhouMrwrl"
+        or string.find(string.lower(remote.Name),"block_place_request",1,true)
+    if not known and (not group or not group.Parent or group.Parent.Name~="out") then return false end
+    local packet=args[1]
+    local key,body=nil,placementBody(packet) and packet or nil
+    for candidate,value in pairs(packet) do
+        if placementBody(value) then
+            -- A packet with multiple placement bodies cannot be replayed unambiguously.
+            if body then return false end
+            key,body=candidate,value
+        end
+    end
+    if not body then return false end
+    capture.PlacementBinding={Remote=remote,Method=method,Args=cloneArguments(args),BodyKey=key}
     return true
 end
 function capture:Place(body)

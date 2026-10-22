@@ -2499,3 +2499,30 @@ Full-application tests check visible control bounds and overlaps at window width
 640, 720 and 1080, section/dropdown transitions, layout restoration, grouping,
 listener cleanup and unchanged Auto Drop input behavior. The full test suite is
 required; live Roblox rendering and input routing remain unverified.
+
+## Rotated placement learning and clearer build checks (v94)
+
+The latest supplied placement endpoint, `mF2HsnhouMrwrl`, uses new context/body
+field names. Recorder v32 now learns those fields from a manual placement,
+including future unambiguous rotated placement envelopes under a net `out`
+group. The existing old placement formats and native game API remain supported.
+The supplied session string and coordinates are not saved into the script.
+See `captured-protocols.md` for the observed packet and validation rules.
+
+Use **Auto Build > Learn placement**, hide the hub, and place one block manually
+on your island. Reopen the hub and use **Check setup**. A working capture host
+or the native game placement API is still required. Preview a blueprint and
+address any remaining action checks before **Start build**. **Auto Walk OFF**
+is informational: moving manually within normal reach remains supported.
+
+Setup reports now place ACTION and UNKNOWN rows before OK/INFO rows, so the short
+on-screen viewport shows blockers before routine information. The main status
+shows the first concrete next step. Status/report text uses size 14, the full
+report remains scrollable/copyable, and a new setup check returns the report to
+the top. Layout dimensions and placement behavior remain unchanged.
+
+Tests cover the supplied endpoint and field names, refreshed session templates,
+rotated/direct packets, extra/nil arguments, original-packet preservation,
+ambiguity rejection, removed endpoints, server rejection, recorder migration,
+report ordering and native UI scroll reset, plus the full regression suite.
+Live Roblox placement and rendering remain unverified.

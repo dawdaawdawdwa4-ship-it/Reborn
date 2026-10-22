@@ -106,6 +106,7 @@ local function signal()
 end
 local function control() return {Activated=signal(),FocusLost=signal(),Destroy=function(self) self.Destroyed=true end} end
 local Instance={new=function() return control() end}
+local Vector2={zero={X=0,Y=0}}
 local UDim2={new=function() return {} end,fromOffset=function() return {} end}
 local Color3={fromRGB=function() return {} end}
 local fm={}
@@ -466,6 +467,8 @@ check:ClearPreview();assert(not check.BuildReport and not check:CheckMaterials()
  assert(report.NextSteps and string.find(report.Text,'Collect missing blocks: grass ×2',1,true),'setup must name concrete missing materials in its next steps')
  assert(report.Summary=='ACTION NEEDED' and report.Materials.Occupied==1 and report.Materials.Remaining==2 and report.Materials.Quantities.grass.Missing==2)
  assert(find(report,'Placement').State=='ACTION' and find(report,'Automation').State=='ACTION' and find(report,'Reach').State=='ACTION' and find(report,'Materials').State=='ACTION')
+ assert(string.find(report.Text,'[ACTION] Placement',1,true)<string.find(report.Text,'[INFO] Movement',1,true),'setup must show blockers before informational Auto Walk status')
+ assert(string.find(value.Status.Text,report.NextSteps[1],1,true),'the main status must show the next concrete action')
  assert(requests==before and not value.WorkerToken and not value.Running and value.Token==token and value.Cells[1].Material=='grass','setup cannot send, launch or mutate the blueprint')
  ctx.PlacementReady=function() return true,'Native endpoint ready' end;ctx.BuildBlocked=function() end;ctx.ItemCount=function() return 2 end
  root.Position=setmetatable({},{__sub=function() return {Magnitude=5} end})

@@ -1111,3 +1111,29 @@ scanning/changing preferences; capture also checks hub lifetime. This moves the
 cleanup rejection earlier while retaining StoreBlueprint's final saved-slot
 protection. Tests cover pure planning, controller and actual UI/cleanup behavior,
 plus all regressions. Live Roblox remains unverified.
+## Rotated block placement capture (v94)
+
+The supplied Cobalt recording observes a RemoteFunction at
+`ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.n5ocWF6SyREytP.mF2HsnhouMrwrl`.
+Its first argument contains a live context string under `E8oAZq8kjXlqjy` and
+the placement body under `Ug98kBjdJ0rpg1`, with `cframe: CFrame` and
+`blockType: string` (the example places `grass`). The accompanying tool path is
+`LocalPlayer.Character.grass["block-place"]`. The recorded context string and
+world coordinates are session/example data and are not embedded as defaults.
+
+The endpoint is now in the catalog. Recorder v32 learns a direct placement body
+or exactly one nested body, preserving its actual field key. Known placement
+endpoints remain supported, while rotated names are accepted only beneath an
+`out` grouping folder. An observed `InvokeServer` on a RemoteFunction with a
+CFrame and a nonempty block type of at most 128 bytes is required. Ambiguous
+multiple bodies, malformed fields and unknown endpoints elsewhere do not
+replace an existing binding.
+
+The learned request is a cloned live template. Auto Build changes only its
+placement CFrame and block type; the context, extra body fields, argument count
+and nil positions are retained. Learning forwards the manual game call once
+and sends no additional placement. Replay uses the existing native/learned
+transport priority, normal build confirmation and server permissions. Older
+recorder versions are replaced with v32 while their learned bindings are kept.
+The new endpoint/envelope and rejection cases are mock-tested; live server
+acceptance remains unverified.

@@ -1087,8 +1087,21 @@ function AutoBuild.new(ctx)
         if result.Failures.Review>0 then nextStep("Inspect "..result.Failures.Review.." uncertain cells on the island. Retry failed excludes them; normal Resume remains available after review.") end
         if result.Failures.Retryable>0 then nextStep("After fixing the cause, Retry failed targets "..result.Failures.Retryable.." explicitly rejected cells in this layer only.") end
         if #result.NextSteps==0 then nextStep(result.Summary=="NOTHING TO PLACE" and "All selected cells are occupied. Move the preview or choose another layer to build elsewhere." or "Check the preview position, then Start build. The server still checks support and island permissions.") end
-        local lines={"AUTO BUILD SETUP · snapshot",result.Summary.." · "..result.Actions.." action checks · "..result.Unknown.." unknown checks", "Next: "..result.NextSteps[1]}
-        for _,check in ipairs(result.Checks) do table.insert(lines,"["..check.State.."] "..check.Name..": "..check.Detail) end
+        local lines={"AUTO BUILD SETUP · snapshot",result.Summary.." · "..result.Actions.." action checks · "..result.Unknown.." unknown checks"}
+        -- Put the blockers visible first in the short on-screen report.
+        for _,state in ipairs({"ACTION","UNKNOWN"}) do
+            for _,check in ipairs(result.Checks) do
+                if check.State==state then table.insert(lines,"["..check.State.."] "..check.Name..": "..check.Detail) end
+            end
+        end
+        table.insert(lines,"")
+        table.insert(lines,"NEXT: "..result.NextSteps[1])
+        table.insert(lines,"")
+        for _,state in ipairs({"OK","INFO"}) do
+            for _,check in ipairs(result.Checks) do
+                if check.State==state then table.insert(lines,"["..check.State.."] "..check.Name..": "..check.Detail) end
+            end
+        end
         if result.Materials then
             local names={};for name in pairs(result.Materials.Quantities) do table.insert(names,name) end;table.sort(names)
             for _,name in ipairs(names) do
@@ -1105,7 +1118,8 @@ function AutoBuild.new(ctx)
         self:RefreshPreviewColors()
         self.SetupReport=result.Text;self.SetupResult=result
         self.MaterialSummary.Text=result.Text
-        status("Setup check: "..result.Summary..". See the scrollable report below; no blocks placed.")
+        if self.MaterialView then self.MaterialView.CanvasPosition=Vector2.zero end
+        status(result.Summary.." · Next: "..result.NextSteps[1])
         return result
     end
     function self:RenameSlot(name)
@@ -1577,12 +1591,14 @@ function AutoBuild.new(ctx)
     button("Clear","Clear",.78,486,.22,function() if not self.Running and not self.WorkerToken then self:ClearPreview();status("Preview cleared.") else status("Wait for build request cleanup before clearing the preview.") end end)
     self.Status=label("Choose materials you own, then Preview. Farm plots are raised beds with path columns; plant seeds after building.",534,74)
     self.Status.TextWrapped=true
+    self.Status.TextSize=14;self.Status.TextTruncate=Enum.TextTruncate.None
     local materialView=Instance.new("ScrollingFrame")
     materialView.Size=UDim2.new(1,-12,0,100);materialView.Position=UDim2.fromOffset(6,layoutY(616))
+    self.MaterialView=materialView
     materialView.BackgroundTransparency=1;materialView.BorderSizePixel=0;materialView.ScrollBarThickness=5
     materialView.CanvasSize=UDim2.new();materialView.AutomaticCanvasSize=Enum.AutomaticSize.Y;materialView.Parent=ctx.Parent
     register(materialView,layoutY(616),100)
-    self.MaterialSummary=ctx.Label({Parent=materialView,Text="Preview or load a blueprint to see its material counts.",TextSize=12,
+    self.MaterialSummary=ctx.Label({Parent=materialView,Text="Preview or load a blueprint to see its material counts.",TextSize=14,
         Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(2,0)})
     self.MaterialSummary.TextWrapped=true;self.MaterialSummary.AutomaticSize=Enum.AutomaticSize.Y;self.MaterialSummary.TextTruncate=Enum.TextTruncate.None
     local name=Instance.new("TextBox");name.Name="BlueprintName";name.Text="My island build";name.PlaceholderText="Blueprint name (1–48 bytes)"

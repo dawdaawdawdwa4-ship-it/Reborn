@@ -54,6 +54,9 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   b.LayerIndex=nil;b.Cells={{CFrame={Position=pos(1)},Material='grass'},{CFrame={Position=pos(4)},Material='grass'},{CFrame={Position=pos(45)},Material='grass'}}
   b.Buttons.CheckSetup.Activated:Fire()
   assert(b.SetupResult and b.SetupResult.Summary=='ACTION NEEDED' and b.SetupResult.Materials.Occupied==1 and b.SetupResult.Materials.Quantities.grass.Missing==2,'actual Check setup must combine placement, occupied, reach and inventory state')
+  assert(b.MaterialSummary.TextSize>=14 and b.Status.TextSize>=14 and string.find(b.MaterialSummary.Text,'[ACTION]',1,true)<string.find(b.MaterialSummary.Text,'[INFO] Movement',1,true),'native setup must use readable text and put actions before Auto Walk information')
+  b.MaterialView.CanvasPosition=Vector2.new(0,200);b.Buttons.CheckSetup.Activated:Fire()
+  assert(b.MaterialView.CanvasPosition==Vector2.zero and string.find(b.Status.Text,b.SetupResult.NextSteps[1],1,true),'rechecking must return to the first blocker and show its next step')
   assert(string.find(b.MaterialSummary.Text,'1 in / 1 out of reach',1,true) and dispatches==0 and not b.WorkerToken,'setup must report distant cells without moving or placing')
   local copy=setclipboard;setclipboard=function(text) copied=text end
   stock=5;b.Buttons.CopySetup.Activated:Fire()
@@ -985,7 +988,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn settings-layout-93',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-placement-94',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1723,7 +1726,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn settings-layout-93 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-placement-94 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

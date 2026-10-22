@@ -31,7 +31,7 @@ local roots={}
 local game={FindFirstChild=function(_,name) return roots[name] end}
 `;
 const checks=`
-assert(#RemoteCatalog.Entries==146)
+assert(#RemoteCatalog.Entries==147)
 assert(RemoteCatalog.Refresh()==0,'absent roots must be safe')
 local out=node('out','ModuleScript')
 local parent=out
@@ -345,7 +345,7 @@ do
  assert(RemoteCatalog.LiveRecorder('PlowBinding')==globalPlow,'valid standalone plow binding must remain available when the local sample is stale')
  RemoteCatalog.Recorder,context.RebornCapture=oldLocal,oldGlobal
 end
-return '146 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
+return '147 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(mock+block+checks,'remote-catalog-tests',true)());}
