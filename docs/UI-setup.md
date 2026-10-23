@@ -4084,3 +4084,14 @@ Requested as "keep improving".
   by 5 points, up to 60 %, and saves it (`MobRetreatBelow`).
 
 Report headers now read `Reborn mob-risk-162`.
+
+## Water is not ground · v163
+
+"It also hops off the island": a terrain raycast hits the water surface by
+default, so the ground check accepted water and a hop could land in it.
+
+- The ground ray now ignores terrain water (`IgnoreWater`), and a hit whose
+  material is Water or whose part is named like water is not ground either.
+  Hops and walks toward such points are refused, as over the void.
+
+Report headers now read `Reborn mob-water-163`.
