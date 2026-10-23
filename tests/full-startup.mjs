@@ -1435,7 +1435,8 @@ end)()
  r.SelectedChestTargets=function() return {{Binding=binding}} end
  r.ChestRequestReady=function() return true end
  r.WithdrawCarrots=function(_,_,selected) assert(selected==binding);calls+=1;if calls==1 then return false,{success=false,error='TOO_FAST'} end;return true end
- r.ChestRateDelay=nil
+ -- Earlier steps leave real-time pace observations behind; start this retry from a clean pace.
+ r.ChestRateDelay=nil;r.ChestRateCeiling=nil;r.ChestRateFloor=nil;r.ChestRequestAt=nil
  local generation=r.ChestManualGeneration
  local co=coroutine.create(function() return r.WithdrawSelectedCarrots(generation) end)
  assert(coroutine.resume(co) and calls==1 and r.ChestCooldown,'manual TOO_FAST must enter a cooldown before retrying the same slot')
