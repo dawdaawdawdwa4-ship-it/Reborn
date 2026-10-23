@@ -115,8 +115,8 @@ step(.6);assert(sent==2 and farm.Drops==2)
 farm:Stop();local before=sent;step(1)
 assert(sent==before and not farm.Worker and not farm.Enabled,'Stop must end worker and future attacks')
 local function reset()
- farm:Stop();step();farm=Module.new(ctx);farm.SeekRange=0;farm.HitAndRun=false
- ah.Health=100;bh.Health=100;ar.Position=v(4);br.Position=v(20);root.Position=v(0)
+ farm:Stop();step();farm=Module.new(ctx);farm.SeekRange=0;farm.HitAndRun=false;farm.Smart=false
+ ah.Health=100;bh.Health=100;ah.MaxHealth=100;bh.MaxHealth=100;ar.Position=v(4);br.Position=v(20);root.Position=v(0)
  human.Health=100;human.MaxHealth=100;player.Character=char;bindingChar=char
  busy=nil;pause=nil;damage=true;blocked=false;transport=false;learned=true;alive=true
  equipHook=nil;walkHook=nil;attackHook=nil;sent=0;walks=0;tool.Parent=char
@@ -143,11 +143,13 @@ do
  assert(hops==1 and sent==0 and root.Position.X<=-8 and farm.Message:find('Retreating from buffalkor',1,true),'low HP must TP-hop away from any mob kind, not only slimes')
  step();step();assert(hops==3 and root.Position.X<=-21,'the retreat keeps hopping until the mob is 20 studs away')
  local before=hops;step();assert(hops==before and farm.Message:find('Paused · low health',1,true),'once every mob is 20 studs away the character waits for HP')
- step(5);assert(farm.Message:find('HP not rising · stops in',1,true) and farm.Message:find('now 40%',1,true),'a flat HP line warns about the coming stop')
+ step(5);assert(farm.Message:find('HP not rising · moves further out in',1,true) and farm.Message:find('now 40%',1,true),'a flat HP line announces the wider retreat')
  human.Health=45;step(5);assert(farm.Message:find('+0.5 HP/s',1,true) and farm.Message:find('s to go',1,true),'rising HP shows the rate and the time left to the resume point')
- step(46);assert(not farm.Enabled and farm.Message:find('not regenerating',1,true),'HP that never rises for 45 s must stop the run with a clear message')
+ local h=hops;step(46);step();step()
+ assert(farm.Enabled and farm.FarRetreats==1 and hops>h and farm.Message:find('Retreating',1,true),'HP that never rises for 45 s doubles the distance kept from every mob instead of stopping')
+ for i=1,6 do step() end;assert(farm.Enabled and root.Position.X<=-40 and farm.Message:find('keeping 40 studs',1,true),'the retreat continues until every mob is 40 studs away')
  reset();farm.Travel='Teleport';human.Health=40;ar.Position=v(30);br.Position=v(60);farm:Start();step(20);human.Health=50;step(30)
- assert(farm.Enabled,'rising HP resets the regeneration watchdog')
+ assert(farm.Enabled and (farm.FarRetreats or 0)==0,'rising HP resets the regeneration watchdog')
  human.Health=70;before=hops;step();step();assert(farm.Enabled and hops>before and farm.Message:find('Teleporting',1,true),'recovered HP resumes the hop loop toward the slime')
 end
 reset();pause='typing';farm:Start();step(2);assert(sent==0 and walks==0 and farm.Enabled);pause=nil;step();assert(sent==1)
@@ -309,6 +311,46 @@ do
  ctx.LearnedHit=function(model) table.insert(learned,model);ah.Health-=10;return true end
  step(.7);step(.7);assert(farm.PacketKeep==8 and farm.PacketAcceptedAt==8 and math.abs(ar.Position.X-root.Position.X-8)<1e-6,'an accepted packet holds the new distance')
  ctx.LearnedHitReady=nil;ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
+end
+-- Smart mode: isolated targets, the free side of the crowd, the mob's jump rhythm and a self-tuned distance.
+do
+ -- Target scoring: a slime with a mob beside it costs 5 studs per neighbour; a lone one 9 studs away wins over a crowded one 4 studs away.
+ reset();farm.Smart=true;ar.Position=v(7);br.Position=v(-8);farm:Start()
+ assert(farm.Target==b,'the isolated slime is chosen over the one crowded by the buffalkor')
+ reset();farm.Smart=true;ar.Position=v(7);br.Position=v(-20);farm:Start();assert(farm.Target==a,'isolation never pulls the farm more than 12 studs past the nearest')
+ -- Free side: candidates come from ctx.Around; the point farthest from other mobs is the hop-in target.
+ reset();farm.Smart=true;farm.Travel='Teleport';farm.HitAndRun=false;ar.Position=v(30);br.Position=v(33);bh.Health=0
+ ctx.Around=function(center,radius,count) return {v(center.X-radius),v(center.X+radius)} end
+ farm:Start();step();step();step()
+ assert(farm.Target==a and root.Position.X<30 and farm.SideApproaches>=1,'the approach lands on the side away from the other mob')
+ bh.Health=100;ctx.Around=nil
+ -- Jump rhythm: after two measured intervals the hop in waits when the next jump is due.
+ reset();farm.Smart=true;farm.Travel='Teleport';farm.HitAndRun=true;ar.Position=v(30);br.Position=v(60);ah.Health=1000;ah.MaxHealth=1000
+ farm:Start();step();step();step()
+ local function jump() ar.Position=v(ar.Position.X+2);step();ar.Position=v(ar.Position.X-2);step();step() end
+ jump();step(1.5);jump();step(1.5);jump()
+ assert(#farm.JumpIntervals>=2 and farm.JumpPeriod and farm.JumpPeriod>1.5,'jump intervals are learned from the mob movement')
+ step(farm.JumpPeriod-.6);local before=hops;step(.7)
+ assert(farm.Message:find('about to jump',1,true) and hops==before,'no hop in while the next jump is due')
+ -- Self-tuned distance: four hits taken right after swings within ten swings push the kept distance out by a stud.
+ reset();farm.Smart=true;farm.TargetBudget=100;farm.RunBudget=100;ar.Position=v(4);br.Position=v(60);human.Health=100;ah.Health=1000;ah.MaxHealth=1000
+ farm:Start();for i=1,9 do step(.7);if i<=4 then human.Health-=5 end end
+ assert(farm.Swings>=10 and farm.KeepBias==1 and farm.Tuned==1,'hits after swings raise the keep bias')
+ damage=false;for i=1,10 do step(.7) end
+ assert(farm.KeepBias==0,'a poor hit rate lowers it again');damage=true
+end
+-- A stalled walk jumps once and chases on before the slime is given up.
+do
+ reset();stuck=true;ar.Position=v(15);br.Position=v(40);local jumps=0
+ ctx.Jump=function(h) assert(h==human);jumps+=1 end
+ farm:Start();local jumped=false
+ for i=1,20 do step();if farm.Message:find('jumping',1,true) then jumped=true;break end end
+ assert(jumped and jumps==1 and farm.Target==a and farm.Stalls==1 and farm.LastCommand=='chase',"the first stall jumps and keeps the target")
+ local gaveUp=false
+ for i=1,30 do step();if farm.Message:find('trying another slime',1,true) then gaveUp=true;break end end
+ assert(gaveUp and jumps==1 and farm.Stalls==2,'a second stall within six seconds gives the slime up without another jump')
+ assert(farm.IdleFor>=2,'idle time is tracked for the Movement report line')
+ ctx.Jump=nil
 end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do

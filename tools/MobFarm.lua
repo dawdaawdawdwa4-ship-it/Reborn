@@ -42,7 +42,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=6,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,PacketReach=9,DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,PacketReach=9,Smart=true,KeepBias=0,JumpIntervals={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -67,6 +67,7 @@ function MobFarm.new(ctx)
         end
     end
     local function halt()
+        self.LastCommand="halt";self.LastCommandAt=now()
         ctx.Navigation.Stop("Mobs")
         -- Direct chasing bypasses the pathfinder, so clear its MoveTo destination here too.
         local chase=self.Chase
@@ -87,6 +88,7 @@ function MobFarm.new(ctx)
     local function chase(human,root,target,keep)
         local offset=target.Position-root.Position
         if offset.Magnitude<.1 then return false end
+        self.LastCommand="chase";self.LastCommandAt=now()
         boost(human,true)
         local ok=pcall(function() human:MoveTo(target.Position-offset.Unit*(keep or 3)) end)
         if ok then self.Chase={Humanoid=human,Root=root} end
@@ -98,6 +100,7 @@ function MobFarm.new(ctx)
         away=away or root.Position-threat.Position
         if ctx.Flatten then away=ctx.Flatten(away) end
         if away.Magnitude<.1 then return false end
+        self.LastCommand="retreat";self.LastCommandAt=now()
         boost(human,true)
         local ok=pcall(function() human:MoveTo(root.Position+away.Unit*(distance or 12)) end)
         if ok then self.Chase={Humanoid=human,Root=root} end
@@ -185,6 +188,42 @@ function MobFarm.new(ctx)
     -- A live clip showed a stopped run leaving the character inside a slime until it died.
     -- Nearest mob of any kind within `radius`; a low-health character flees buffalkor and
     -- lizards too, not only the kind it farms.
+    function self:Threats(radius)
+        local kind=self.Kind
+        self.Kind="All mobs"
+        local ok,found=pcall(function() return self:Scan(nil,radius) end)
+        self.Kind=kind
+        return ok and found or {}
+    end
+    -- Target scoring: near, isolated and damaged beat near alone. A slime with other mobs around it
+    -- costs 5 studs per neighbour within 7 studs; one already damaged is 4 studs "closer".
+    function self:Score(entry,threats)
+        local crowd=0
+        for _,other in ipairs(threats) do
+            if other.Model~=entry.Model and (other.Root.Position-entry.Root.Position).Magnitude<=7 then crowd+=1 end
+        end
+        local damaged=entry.Humanoid.MaxHealth>0 and entry.Humanoid.Health<entry.Humanoid.MaxHealth
+        entry.Crowd=crowd
+        return entry.Distance+5*crowd-(damaged and 4 or 0)
+    end
+    -- The point `keep` studs from the mob that is farthest from every other mob, so the hop in
+    -- comes from the free side of the crowd. Candidates come from ctx.Around; nil → straight line.
+    function self:Approach(entry,keep,threats,from)
+        if not ctx.Around or not self.Smart then return nil end
+        local others={}
+        for _,other in ipairs(threats) do if other.Model~=entry.Model then table.insert(others,other) end end
+        if #others==0 then return nil end
+        local ok,points=pcall(ctx.Around,entry.Root.Position,keep,8)
+        if not ok or type(points)~="table" or #points==0 then return nil end
+        local best,bestScore
+        for _,point in ipairs(points) do
+            local clearance=math.huge
+            for _,other in ipairs(others) do clearance=math.min(clearance,(other.Root.Position-point).Magnitude) end
+            local score=math.min(clearance,12)-.15*(point-from).Magnitude
+            if not bestScore or score>bestScore then best,bestScore=point,score end
+        end
+        return best
+    end
     function self:Threat(radius)
         local kind=self.Kind
         self.Kind="All mobs"
@@ -263,7 +302,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.SideApproaches=0;self.Tuned=0;self.Deaths=0;self.Stalls=0;self.LastCommand=nil;self.LastCommandAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
@@ -288,6 +327,13 @@ function MobFarm.new(ctx)
             local recovering=false
             local regenAt,regenBest,regenFrom,regenStart
             local lastHealth,healthChar
+            local settledSeen=setmetatable({},{__mode="k"})
+            local jumpStart=setmetatable({},{__mode="k"})
+            local tuneHits,tuneLanded=0,0
+            local deadSeen=setmetatable({},{__mode="k"})
+            local farRetreat=false
+            local jumpedFor=setmetatable({},{__mode="k"})
+            local idleAt,idlePos=now(),nil
             local function active()
                 return ctx.Alive() and self.Enabled and self.Generation==token and not ctx.Busy()
             end
@@ -360,10 +406,14 @@ function MobFarm.new(ctx)
                     local human=char and char:FindFirstChildOfClass("Humanoid")
                     local root=char and char:FindFirstChild("HumanoidRootPart")
                     if not human or not root or human.Health<=0 then
+                        if human and human.Health<=0 and char and not deadSeen[char] then deadSeen[char]=true;self.Deaths=(self.Deaths or 0)+1 end
                         halt();self.Target=nil;publish("Paused · waiting for your character")
                     elseif not usable(recorder) then
                         self:Stop("Character/session changed · learn one manual attack again");return
                     else
+                        -- Idle tracking for the Movement report line: how long the character has stood still.
+                        if not idlePos or (root.Position-idlePos).Magnitude>.5 then idleAt=now();idlePos=root.Position end
+                        self.IdleFor=now()-idleAt
                         -- Damage the character takes, and whether it came right after a swing (the hop in).
                         if healthChar==char and lastHealth and human.Health<lastHealth-.5 then
                             self.HitsTaken+=1;self.DamageTaken+=lastHealth-human.Health
@@ -391,9 +441,13 @@ function MobFarm.new(ctx)
                                 if not regenAt then regenFrom=fraction;regenStart=now() end
                                 if not regenAt or fraction>regenBest+.02 then regenAt=now();regenBest=fraction
                                 elseif now()-regenAt>self.RegenTimeout then
-                                    self:Stop("HP is not regenerating ("..math.floor(fraction*100).."%) · eat or heal, then start again");return
+                                    -- HP that does not rise means mobs still reach the character: double the
+                                    -- distance kept from every mob and keep waiting; never give up the run here.
+                                    farRetreat=true;regenAt=now();regenBest=fraction;self.FarRetreats=(self.FarRetreats or 0)+1
                                 end
-                            else regenAt=nil end
+                            else regenAt=nil;farRetreat=false end
+                            local safe=farRetreat and math.max(40,self.SafeDistance*2) or self.SafeDistance
+                            if recovering and fraction<=.2 then safe=math.max(safe,60) end
                             -- "+0.5 HP/s · ~60 s to 70%" tells the user the wait is working; "not rising" warns of the stop.
                             local resume=math.floor(self.ResumeAbove*100).."% HP"
                             if recovering then
@@ -403,11 +457,12 @@ function MobFarm.new(ctx)
                                     local left=(self.ResumeAbove-fraction)*human.MaxHealth/rate
                                     resume=resume..string.format(" · +%.1f HP/s · ~%d s to go",rate,math.ceil(left))
                                 elseif elapsed>=3 then
-                                    resume=resume..string.format(" · HP not rising · stops in %d s unless it does",math.ceil(self.RegenTimeout-(now()-regenAt)))
+                                    resume=resume..string.format(" · HP not rising · moves further out in %d s",math.ceil(self.RegenTimeout-(now()-regenAt)))
                                 end
+                                if farRetreat then resume=resume.." · keeping "..safe.." studs from every mob" end
                                 resume=resume.." · now "..math.floor(fraction*100).."%"
                             end
-                            local threat=recovering and not paused and self.Walk and self:Threat(self.SafeDistance)
+                            local threat=recovering and not paused and self.Walk and self:Threat(safe)
                             if threat then
                                 -- Keep moving away until every mob is SafeDistance studs off, hopping in TP mode
                                 -- (ground checked by ctx.Hop) and walking otherwise; stays attached while HP rises.
@@ -416,10 +471,10 @@ function MobFarm.new(ctx)
                                 local moved=false
                                 if self.Travel=="Teleport" and ctx.Hop and away.Magnitude>.1 then
                                     if self.Chase then halt() end
-                                    local step=math.min(self.HopDistance,self.SafeDistance-threat.Distance+2)
+                                    local step=math.min(self.HopDistance,safe-threat.Distance+2)
                                     moved=pcall(ctx.Hop,root,root.Position+away.Unit*step,threat.Root)
                                 end
-                                if not moved then moved=retreat(human,root,threat.Root,math.max(12,self.SafeDistance-threat.Distance+4),threat.Away) end
+                                if not moved then moved=retreat(human,root,threat.Root,math.max(12,safe-threat.Distance+4),threat.Away) end
                                 if moved then
                                     publish("Retreating from "..threat.Model.Name.." · "..math.floor(threat.Distance).." studs; low health, resumes at "..resume)
                                 else
@@ -451,9 +506,19 @@ function MobFarm.new(ctx)
                             if not chosen and targets[1] then
                                 -- Among slimes about as close as the nearest, finish the most damaged one first.
                                 chosen=targets[1]
-                                for _,entry in ipairs(targets) do
-                                    if entry.Distance>targets[1].Distance+6 then break end
-                                    if entry.Humanoid.Health<chosen.Humanoid.Health then chosen=entry end
+                                if self.Smart then
+                                    local threats=self:Threats(targets[1].Distance+20)
+                                    local bestScore=self:Score(chosen,threats)
+                                    for _,entry in ipairs(targets) do
+                                        if entry.Distance>targets[1].Distance+12 then break end
+                                        local score=self:Score(entry,threats)
+                                        if score<bestScore then chosen,bestScore=entry,score end
+                                    end
+                                else
+                                    for _,entry in ipairs(targets) do
+                                        if entry.Distance>targets[1].Distance+6 then break end
+                                        if entry.Humanoid.Health<chosen.Humanoid.Health then chosen=entry end
+                                    end
                                 end
                                 -- A slime beside the character that is only cooling down beats a trip across the
                                 -- island: wait the few seconds instead of teleporting away from it.
@@ -493,6 +558,8 @@ function MobFarm.new(ctx)
                                 local standoff=standoffFor(chosen)
                                 -- Tether: the distance kept from the mob, every tick, in both directions.
                                 local keep=(self.KeepDistance=="Auto" or type(self.KeepDistance)~="number") and standoff or math.min(self.Reach-.5,self.KeepDistance)
+                                -- Self-tuned bias: more distance while hits are taken right after swings.
+                                if self.Smart and (self.KeepBias or 0)>0 then keep=math.min(self.Reach-.5,keep+self.KeepBias) end
                                 -- With the hit packet accepted the swing need not touch: stand further out.
                                 local reach=self.Reach
                                 if self.UseLearnedHit and self.PacketKeep and self.PacketKeep>keep then keep=self.PacketKeep;reach=math.max(reach,keep+.5) end
@@ -502,6 +569,27 @@ function MobFarm.new(ctx)
                                 local closing=previous~=nil and (previous-root.Position).Magnitude-chosen.Distance>=1.5 and chosen.Distance<=self.Reach*2
                                 -- A slime that moved more than a stud since the last tick is mid-jump or mid-chase.
                                 local settled=previous==nil or (chosen.Root.Position-previous).Magnitude<1
+                                -- Jump rhythm: the interval between the starts of a mob's jumps, averaged over the
+                                -- last ten, tells when the next one is due; the hop in waits out that moment.
+                                local wasSettled=settledSeen[chosen.Model]
+                                settledSeen[chosen.Model]=settled
+                                if wasSettled and not settled then
+                                    local last=jumpStart[chosen.Model]
+                                    if last and now()-last>.3 and now()-last<8 then
+                                        table.insert(self.JumpIntervals,now()-last)
+                                        if #self.JumpIntervals>10 then table.remove(self.JumpIntervals,1) end
+                                    end
+                                    jumpStart[chosen.Model]=now()
+                                end
+                                local jumpDue=false
+                                if self.Smart and #self.JumpIntervals>=2 and jumpStart[chosen.Model] then
+                                    local sum=0
+                                    for _,v in ipairs(self.JumpIntervals) do sum+=v end
+                                    local period=sum/#self.JumpIntervals
+                                    local since=now()-jumpStart[chosen.Model]
+                                    jumpDue=since>period-.5 and since<period+1
+                                    self.JumpPeriod=period
+                                end
                                 local function dy() return math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0)) end
                                 local airborne=dy()>self.Reach*.75
                                 -- A slime jump peaks well below head height; any lift while closing is a jump at us.
@@ -523,10 +611,10 @@ function MobFarm.new(ctx)
                                     if hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and now()-lastAttack<.5 then
                                         if self.Chase then halt() end
                                         publish("Resting · "..chosen.Model.Name.." · "..math.floor(gap).." studs away · next swing shortly")
-                                    elseif hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and (airborne or not settled) then
+                                    elseif hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and (airborne or not settled or jumpDue) then
                                         -- Hopping in while the slime jumps lands the character under it; wait for the landing.
                                         if self.Chase then halt() end
-                                        publish("Waiting · "..chosen.Model.Name.." is "..(airborne and "in the air" or "moving").." · hopping in once it settles")
+                                        publish("Waiting · "..chosen.Model.Name.." is "..(airborne and "in the air" or not settled and "moving" or "about to jump").." · hopping in "..(jumpDue and not airborne and settled and "after its jump" or "once it settles"))
                                     -- Attached to the mob: too far → close in, too close → back out, both to `keep` studs.
                                     elseif math.abs(gap-keep)>.75 then
                                         chasing=gap>keep
@@ -535,8 +623,17 @@ function MobFarm.new(ctx)
                                         end
                                         local offset=chosen.Root.Position-root.Position
                                         local desired=offset.Magnitude>.1 and chosen.Root.Position-offset.Unit*keep or nil
-                                        if chasing and now()-progress.At>2 then
-                                            halt();cooldowns[chosen.Model]=now()+3;self.Target=nil
+                                        if chasing and desired then
+                                            local side=self:Approach(chosen,keep,self:Threats(15),root.Position)
+                                            if side then desired=side;self.SideApproaches=(self.SideApproaches or 0)+1 end
+                                        end
+                                        if chasing and now()-progress.At>2 and not teleport and ctx.Jump and (jumpedFor[chosen.Model] or -math.huge)<now()-6 then
+                                            -- A ledge or a block in the way: one jump and a fresh chase before giving the slime up.
+                                            jumpedFor[chosen.Model]=now();progress={Best=gap,At=now()};self.Stalls=(self.Stalls or 0)+1
+                                            pcall(ctx.Jump,human);chase(human,root,chosen.Root,keep)
+                                            publish("Chase stalled · jumping and walking on toward "..chosen.Model.Name)
+                                        elseif chasing and now()-progress.At>2 then
+                                            halt();cooldowns[chosen.Model]=now()+3;self.Target=nil;self.Stalls=(self.Stalls or 0)+1
                                             publish((teleport and "Teleport" or "Chase").." stalled · trying another slime shortly")
                                         elseif not desired then
                                             -- Standing exactly inside the mob: any direction out.
@@ -603,6 +700,16 @@ function MobFarm.new(ctx)
                                                 self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                                 if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
                                                 self.Swings+=1;attempts+=1;unconfirmed+=1
+                                                -- Every ten swings: hits taken right after swings push the distance out
+                                                -- (up to 3 studs); a poor hit rate pulls it back in.
+                                                if self.Smart and self.Swings%10==0 then
+                                                    local taken=(self.HitsAfterSwing or 0)-(tuneHits or 0)
+                                                    local landed=(self.DamageNumbers or 0)+(self.Drops or 0)-(tuneLanded or 0)
+                                                    tuneHits=self.HitsAfterSwing or 0;tuneLanded=(self.DamageNumbers or 0)+(self.Drops or 0)
+                                                    if taken>=4 and (self.KeepBias or 0)<3 then self.KeepBias=(self.KeepBias or 0)+1;self.Tuned=(self.Tuned or 0)+1
+                                                    elseif landed<3 and (self.KeepBias or 0)>0 then self.KeepBias=self.KeepBias-1;self.Tuned=(self.Tuned or 0)+1 end
+                                                    if ctx.Remember then pcall(ctx.Remember,"KeepBias",self.KeepBias) end
+                                                end
                                                 attackedAt[chosen.Model]=now();lastAttackAt=now()
                                                 attackedNear[chosen.Model]=(chosen.Root.Position-root.Position).Magnitude
                                                 if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end

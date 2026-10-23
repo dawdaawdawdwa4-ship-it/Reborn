@@ -3927,3 +3927,45 @@ already landed, and the server drops the duplicate.
   missing definition can be seen from a report.
 
 Report headers now read `Reborn mob-probe-154`.
+
+## Smart mode and scoreboard · v155
+
+Requested as "make it smarter" and "make a score board for it", with a
+5-minute v154 report (9 kills, 12 loot, 219 HP taken, 34 of 46 hits right
+after a swing, run ended by the regeneration watchdog; the hit packet is
+`{hitUnit}` plus a session token and the server rejects it beyond 5.5 studs;
+the game exposes no request definitions on that server).
+
+- **Smart targeting.** Among slimes within 12 studs of the nearest, the one
+  with the best score wins: distance, plus 5 studs per other mob within 7
+  studs of it, minus 4 for one already damaged. Isolated slimes come first.
+- **Free-side approach.** The hop in aims at the point on the kept-distance
+  circle around the target that is farthest from every other mob within 15
+  studs, so the character enters the crowd from its open side.
+- **Jump rhythm.** The interval between the starts of a mob's jumps is
+  averaged over the last ten; when the next jump is due the hop in waits
+  ("Waiting · slime is about to jump · hopping in after its jump").
+- **Self-tuned distance.** Every ten swings: four or more hits taken right
+  after swings add a stud to the kept distance (up to 3, saved as
+  `MobKeepBias`); fewer than three confirmed hits take one away.
+- **No more regeneration stop.** HP that does not rise for 45 s doubles the
+  distance kept from every mob (40 studs, 60 below 20 % HP) and keeps waiting;
+  the run never ends on its own for this reason.
+- **Scoreboard** (Mobs tab, below Setup; saved as `MobScore`): runs, total
+  time, kills with the best kills/min, loot, swings and hit rate, packets,
+  damage and hits taken, deaths, top mobs, top loot and the last run. Every
+  run is added when it stops. Copy scoreboard and Reset scoreboard buttons;
+  Copy result ends with the same totals and a "Smart" line (keep bias, tuning
+  count, free-side approaches, learned jump period).
+
+Report headers now read `Reborn mob-smart-155`.
+
+Follow-up in the same version, after "walking also just stops sometimes":
+
+- **Jump on a stalled chase.** In Walk mode a chase that makes no progress for
+  2 s now jumps once and walks on toward the same slime; only a second stall
+  within 6 s gives the slime up ("Chase stalled · trying another slime").
+- **Movement line** in Copy result: the last movement command (chase, retreat,
+  halt) and how long ago, how long the character has stood still, the number
+  of stalls and whether the pathfinder is busy, so a stopped walk can be read
+  from the report.
