@@ -4054,3 +4054,18 @@ slime, and one shared jump period for both kinds.
   target.
 
 Report headers now read `Reborn mob-kinds-160`.
+
+## Adaptive cadence · v161
+
+Requested as "keep improving".
+
+- **Cadence follows the server.** The swing interval starts at 0.65 s and is
+  tuned every ten swings: eight or more confirmed (damage numbers, HP drops or
+  accepted packets) make it 0.05 s quicker, down to 0.45 s; fewer than five
+  make it 0.1 s slower, up to 0.9 s. The hit-and-run rest ends 0.15 s before
+  the next swing is due. The value is saved (`MobCadence`) and shown in the
+  Smart line.
+- **Efficiency line** in Copy result: kills per minute, HP taken per kill,
+  hits per kill and swings per kill, once a run has 30 s and one kill.
+
+Report headers now read `Reborn mob-cadence-161`.

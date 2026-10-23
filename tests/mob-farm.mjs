@@ -396,6 +396,17 @@ do
  assert(farm.JumpByName.slimeBlue and #farm.JumpByName.slimeBlue>=2 and farm.JumpPeriods.slimeBlue,'intervals are stored under the mob name')
  assert(farm.JumpByName.greenSlime==nil or #farm.JumpByName.greenSlime==0,'other kinds are untouched')
 end
+-- Cadence follows what the server accepts: confirmed swings speed it up, unconfirmed ones slow it down.
+do
+ reset();farm.Smart=true;farm.TargetBudget=100;farm.RunBudget=100;ar.Position=v(4);br.Position=v(60);ah.Health=1000;ah.MaxHealth=1000
+ local remembered={}
+ ctx.Remember=function(key,value) remembered[key]=value end
+ farm:Start();for i=1,9 do step(.7) end
+ assert(farm.Swings>=10 and math.abs(farm.Cadence-.6)<1e-6 and farm.CadenceTuned==1 and math.abs(remembered.Cadence-.6)<1e-6,'ten confirmed swings quicken the cadence by 0.05 s and save it')
+ damage=false;for i=1,10 do step(.7) end
+ assert(math.abs(farm.Cadence-.7)<1e-6 and farm.CadenceTuned==2,'ten unconfirmed swings slow it by 0.1 s')
+ damage=true;ctx.Remember=nil
+end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do
  reset();damage=false;br.Position=v(300);farm:Start();for i=1,5 do step(.7) end
