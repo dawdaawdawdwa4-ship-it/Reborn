@@ -7229,6 +7229,15 @@ function RemoteCatalog.SelfTest()
     line("Remembered","mob weapon "..tostring(CONFIG.MobWeapon or "none").." · "..#(CONFIG.RememberedChests or {}).." chest slots")
     local remembered=RemoteCatalog.RememberedChestRecorder and RemoteCatalog.RememberedChestRecorder()
     line("Remembered chests found here",remembered and #remembered:GetChestBindings() or 0)
+    line("Chest request (CLIENT_CHEST_TRANSACTION)",RemoteCatalog.ChestTransactionRemote and RemoteCatalog.ChestTransactionRemote() and "found" or "missing")
+    local contents=RemoteCatalog.ContentsChestRecorder and RemoteCatalog.ContentsChestRecorder()
+    local stacks=contents and contents:GetChestBindings() or {}
+    local chestsWithStacks={}
+    for _,binding in ipairs(stacks) do chestsWithStacks[binding.Chest]=true end
+    local chestTotal=0;for _ in pairs(chestsWithStacks) do chestTotal+=1 end
+    line("Chest stacks without learning",#stacks.." stacks in "..chestTotal.." chests")
+    local depositable=RemoteCatalog.DepositItems and RemoteCatalog.DepositItems() or {}
+    line("Deposit",tostring(CONFIG.DepositCategory).." · auto "..(RemoteCatalog.DepositEnabled and "ON" or "OFF").." · "..#depositable.." stacks to deposit now")
     line("Preferences file",type(isfile)=="function" and (pcall(isfile,SETTINGS_FILE) and isfile(SETTINGS_FILE) and "saved" or "not saved yet") or "file API unavailable")
     local fps="?"
     pcall(function() fps=math.floor(workspace:GetRealPhysicsFPS()) end)
