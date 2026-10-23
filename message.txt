@@ -3948,8 +3948,8 @@ local function loadPreferences()
     end)
     if not ok or type(data) ~= "table" then return false end
     if type(data.HarvestCrop) == "string" then CONFIG.HarvestCrop = data.HarvestCrop end
-    if data.WoodTravelMode=="Normal" or data.WoodTravelMode=="Walk" or data.WoodTravelMode=="Tween" or data.WoodTravelMode=="Teleport" then CONFIG.WoodTravelMode=data.WoodTravelMode end
-    if data.FarmTravelMode=="Walk" or data.FarmTravelMode=="Tween" or data.FarmTravelMode=="Teleport" then CONFIG.FarmTravelMode=data.FarmTravelMode end
+    if data.WoodTravelMode=="Normal" or data.WoodTravelMode=="Walk" or data.WoodTravelMode=="Hop" or data.WoodTravelMode=="Tween" or data.WoodTravelMode=="Teleport" then CONFIG.WoodTravelMode=data.WoodTravelMode end
+    if data.FarmTravelMode=="Walk" or data.FarmTravelMode=="Hop" or data.FarmTravelMode=="Tween" or data.FarmTravelMode=="Teleport" then CONFIG.FarmTravelMode=data.FarmTravelMode end
     if type(data.HarvestWalk)=="boolean" then CONFIG.HarvestWalk=data.HarvestWalk end
     if type(data.HarvestCrops) == "table" then CONFIG.HarvestCrops = data.HarvestCrops end
     if type(data.PlantType) == "string" then CONFIG.PlantType = data.PlantType end
@@ -4859,7 +4859,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-hops-116",
+    return table.concat({"Reborn farm-hops-117",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5956,17 +5956,20 @@ track(RemoteCatalog.HarvestWalkButton.Activated:Connect(function()
 end))
 
 RemoteCatalog.TravelSelectors={}
+function RemoteCatalog.TravelLabel(mode) return mode=="Hop" and "TP hops" or tostring(mode) end
 RemoteCatalog.TravelKeys={}
 function RemoteCatalog.TravelSelector(page,y)
     local key=page==woodPage and "WoodTravelMode" or "FarmTravelMode"
     local title=page==woodPage and "Mode: " or "Travel: "
-    local modes=page==woodPage and {"Normal","Walk","Tween","Teleport"} or {"Walk","Tween","Teleport"}
-    local selector=button({Parent=page,Text=title..CONFIG[key].."  ▾",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,y)})
+    -- "Hop" (shown as TP hops) teleports in short steps along the walking path.
+    local modes=page==woodPage and {"Normal","Walk","Hop","Tween","Teleport"} or {"Walk","Hop","Tween","Teleport"}
+    local show=RemoteCatalog.TravelLabel
+    local selector=button({Parent=page,Text=title..show(CONFIG[key]).."  ▾",TextSize=12,Size=UDim2.new(1,-12,0,32),Position=UDim2.fromOffset(6,y)})
     table.insert(RemoteCatalog.TravelSelectors,selector)
     RemoteCatalog.TravelKeys[selector]=key
     local options={}
     for i,mode in ipairs(modes) do
-        local option=button({Parent=page,Text=mode,TextSize=12,Size=UDim2.new(1,-12,0,30),Position=UDim2.fromOffset(6,y+34+(i-1)*31)})
+        local option=button({Parent=page,Text=show(mode),TextSize=12,Size=UDim2.new(1,-12,0,30),Position=UDim2.fromOffset(6,y+34+(i-1)*31)})
         option.Visible=false;option.ZIndex=20
         RemoteCatalog.RegisterMenuRegion(selector,option)
         table.insert(options,option)
@@ -5974,7 +5977,7 @@ function RemoteCatalog.TravelSelector(page,y)
             CONFIG[key]=mode
             RemoteCatalog.Navigation.Stop()
             for _,item in ipairs(RemoteCatalog.TravelSelectors) do
-                if RemoteCatalog.TravelKeys[item]==key then item.Text=title..mode.."  ▾" end
+                if RemoteCatalog.TravelKeys[item]==key then item.Text=title..show(mode).."  ▾" end
             end
             for _,item in ipairs(options) do item.Visible=false end
             savePreferences()
@@ -5982,14 +5985,14 @@ function RemoteCatalog.TravelSelector(page,y)
     end
     local function close()
         for _,item in ipairs(options) do item.Visible=false end
-        selector.Text=title..CONFIG[key].."  ▾"
+        selector.Text=title..show(CONFIG[key]).."  ▾"
     end
     table.insert(RemoteCatalog.MenuClosers,close)
     track(selector.Activated:Connect(function()
         local show=not options[1].Visible
         RemoteCatalog.CloseMenus()
         for _,item in ipairs(options) do item.Visible=show end
-        selector.Text=title..CONFIG[key]..(show and "  ▴" or "  ▾")
+        selector.Text=title..RemoteCatalog.TravelLabel(CONFIG[key])..(show and "  ▴" or "  ▾")
     end))
 end
 RemoteCatalog.TravelSelector(harvestPage,286)
@@ -5997,7 +6000,7 @@ RemoteCatalog.TravelSelector(woodPage,280)
 
 local woodToggle = button({ Parent = woodPage, Switch = true, Text = "WOOD FARM OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
-local woodInfo = label({ Parent = woodPage, Text = "Normal cuts nearby trees without moving. Walk, Tween and Teleport are optional movement modes.",
+local woodInfo = label({ Parent = woodPage, Text = "Normal cuts nearby trees without moving. Walk, TP hops, Tween and Teleport are optional movement modes.",
     Color = COLORS.muted, TextSize = 11, Size = UDim2.new(1, -16, 0, 44), Position = UDim2.fromOffset(8, 50) })
 woodInfo.TextWrapped = true
 pageHeading(woodPage, "WOOD FARM CONTROLS", 100)
@@ -6818,7 +6821,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn chest-hops-116 · Propeller loot history (UTC)",
+    return table.concat({"Reborn farm-hops-117 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6922,7 +6925,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn chest-hops-116 · Propeller tracker",
+    return table.concat({"Reborn farm-hops-117 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6958,7 +6961,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn chest-hops-116", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn farm-hops-117", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -8049,7 +8052,7 @@ local function harvestLoop(myCycle)
                 if (position-hrp.Position).Magnitude>reach then
                     local reached,reason=false,"Move closer to "..target.name.." (scan range is not interaction range)"
                     if CONFIG.HarvestWalk then
-                        setStatus((CONFIG.FarmTravelMode or "Walk").." to "..target.name,COLORS.muted)
+                        setStatus((CONFIG.FarmTravelMode=="Hop" and "TP hops" or CONFIG.FarmTravelMode or "Walk").." to "..target.name,COLORS.muted)
                         reached,reason=RemoteCatalog.Navigation.Approach(player,obj,reach,function() return active() and CONFIG.HarvestWalk and harvestEnabled and not enabled end,getPartPosition,CONFIG.FarmTravelMode)
                     end
                     if not active() then break end
@@ -8073,7 +8076,7 @@ local function harvestLoop(myCycle)
             if target.category=="wood" then
                 local reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position)
                 if not reachable and CONFIG.WoodTravelMode~="Normal" then
-                    setStatus((CONFIG.WoodTravelMode or "Normal").." to "..target.name,COLORS.muted)
+                    setStatus((CONFIG.WoodTravelMode=="Hop" and "TP hops" or CONFIG.WoodTravelMode or "Normal").." to "..target.name,COLORS.muted)
                     reachable,reason=RemoteCatalog.Navigation.Approach(player,obj,8,function() return active() and woodEnabled and not enabled end,RemoteCatalog.ResourcePosition,CONFIG.WoodTravelMode)
                     if not active() then break end
                     if reachable then reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position) end
@@ -9315,7 +9318,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-hops-116\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn farm-hops-117\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9377,7 +9380,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn chest-hops-116 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn farm-hops-117 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9976,7 +9979,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-hops-116\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn farm-hops-117\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11094,7 +11097,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn chest-hops-116 · Craft diagnostics",
+    return table.concat({"Reborn farm-hops-117 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11173,7 +11176,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn chest-hops-116 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn farm-hops-117 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11750,7 +11753,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn chest-hops-116 · Mobs",
+    return table.concat({"Reborn farm-hops-117 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

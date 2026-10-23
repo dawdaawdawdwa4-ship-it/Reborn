@@ -3183,3 +3183,15 @@ Report headers now read `Reborn mob-keys-115`.
 - Navigation exposes the mode as `"Hop"` (`tools/FarmNavigation.lua`).
 
 Report headers now read `Reborn chest-hops-116`.
+
+
+## TP hops for Harvest and Wood Farm · v117
+
+Harvest **Travel** and Wood Farm **Mode** now include **TP hops** (stored as the
+`Hop` navigation mode) beside Walk, Tween and Teleport. It uses the path-following
+short teleports added for chests in v116: at most 8 studs per hop, never straight
+across without a path, velocity cleared per hop, and a time limit if the server
+resets the position. Reach checks, Stop, nearest-next routing and the saved
+preference work as for the other modes.
+
+Report headers now read `Reborn farm-hops-117`.
