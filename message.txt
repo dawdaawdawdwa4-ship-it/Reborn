@@ -1588,7 +1588,7 @@ end
 function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
-        ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8}
+        ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -1661,7 +1661,7 @@ function MobFarm.new(ctx)
         local released=self:ReleaseSwing()
         publish(not released and "Weapon release failed · press STOP to retry" or reason or "Stopped · movement and attacks cancelled")
     end
-    function self:Scan(cooldowns)
+    function self:Scan(cooldowns,radius)
         local char=ctx.Player.Character
         local root=char and char:FindFirstChild("HumanoidRootPart")
         if not root then return {} end
@@ -1672,7 +1672,7 @@ function MobFarm.new(ctx)
                 local health,part=MobFarm.Details(model,roots,ctx.Players,self.Kind)
                 if health and health.Health>0 and (not cooldowns or not cooldowns[model] or cooldowns[model]<=now()) then
                     local distance=(part.Position-root.Position).Magnitude
-                    if distance<=self.Radius then table.insert(result,{Model=model,Humanoid=health,Root=part,Distance=distance}) end
+                    if distance<=(radius or self.Radius) then table.insert(result,{Model=model,Humanoid=health,Root=part,Distance=distance}) end
                 end
             end
         end
@@ -1760,6 +1760,12 @@ function MobFarm.new(ctx)
                             end
                         else
                             local targets=self:Scan(cooldowns)
+                            local limit=self.Radius
+                            -- Nothing in the search radius: with Auto Move on, travel to the nearest loaded
+                            -- target within SeekRange instead of idling just outside the radius.
+                            if #targets==0 and self.Walk and self.SeekRange>self.Radius then
+                                targets=self:Scan(cooldowns,self.SeekRange);limit=self.SeekRange
+                            end
                             local chosen
                             -- Keep the current living target instead of bouncing between close mobs.
                             for _,entry in ipairs(targets) do if entry.Model==self.Target then chosen=entry;break end end
@@ -1772,7 +1778,7 @@ function MobFarm.new(ctx)
                                 end
                             end
                             if not chosen then
-                                halt();self.Target=nil;publish("Waiting · no living "..(self.Kind=="Slimes" and "slimes" or self.Kind=="All mobs" and "mobs" or self.Kind).." within "..self.Radius.." studs; scanning continues")
+                                halt();self.Target=nil;publish("Waiting · no living "..(self.Kind=="Slimes" and "slimes" or self.Kind=="All mobs" and "mobs" or self.Kind).." within "..(self.Walk and math.max(self.Radius,self.SeekRange) or self.Radius).." studs; scanning continues")
                             else
                                 if self.Target~=chosen.Model then attempts=0;progress={} end
                                 self.Target=chosen.Model;observe(self.Target)
@@ -1781,7 +1787,7 @@ function MobFarm.new(ctx)
                                     if char:FindFirstChild("HumanoidRootPart")~=root or char:FindFirstChildOfClass("Humanoid")~=human then return false end
                                     local h,p=MobFarm.Details(chosen.Model,MobFarm.Roots(ctx.World),ctx.Players,self.Kind)
                                     return h==chosen.Humanoid and p==chosen.Root and h.Health>0
-                                        and (p.Position-root.Position).Magnitude<=self.Radius
+                                        and (p.Position-root.Position).Magnitude<=limit
                                 end
                                 local chasing=false
                                 if chosen.Distance>self.Reach then
@@ -4985,7 +4991,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-diag-134",
+    return table.concat({"Reborn mob-seek-135",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7015,7 +7021,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-diag-134 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-seek-135 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7119,7 +7125,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-diag-134 · Propeller tracker",
+    return table.concat({"Reborn mob-seek-135 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7155,7 +7161,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-diag-134", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-seek-135", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -9876,7 +9882,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-diag-134\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-seek-135\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9938,7 +9944,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-diag-134 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-seek-135 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10555,7 +10561,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-diag-134\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-seek-135\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11673,7 +11679,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-diag-134 · Craft diagnostics",
+    return table.concat({"Reborn mob-seek-135 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11752,7 +11758,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-diag-134 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-seek-135 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12399,7 +12405,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-diag-134 · Mobs",
+    return table.concat({"Reborn mob-seek-135 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

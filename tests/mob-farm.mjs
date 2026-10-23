@@ -115,7 +115,7 @@ step(.6);assert(sent==2 and farm.Drops==2)
 farm:Stop();local before=sent;step(1)
 assert(sent==before and not farm.Worker and not farm.Enabled,'Stop must end worker and future attacks')
 local function reset()
- farm:Stop();step();farm=Module.new(ctx)
+ farm:Stop();step();farm=Module.new(ctx);farm.SeekRange=0
  ah.Health=100;bh.Health=100;ar.Position=v(4);br.Position=v(20);root.Position=v(0)
  human.Health=100;human.MaxHealth=100;player.Character=char;bindingChar=char
  busy=nil;pause=nil;damage=true;blocked=false;transport=false;learned=true;alive=true
@@ -218,6 +218,14 @@ assert(farm.KillsByName.slimeBlue==1,'likely defeats count in the per-mob report
 assert(farm.Defeats==0 and farm.LikelyDefeats==1,'a slime that despawns right after a finishing-size hit is a likely defeat, never an observed one')
 reset();farm:Start();assert(farm.Drops==1 and ah.Health==90);a.Parent=nil;step();a.Parent=nested
 assert(farm.LikelyDefeats==0,'a healthy slime streaming out is not a likely defeat')
+-- Nothing inside the radius: Auto Move seeks the nearest loaded target within SeekRange.
+reset();farm.SeekRange=300;ar.Position=v(70);br.Position=v(90);farm:Start()
+for i=1,6 do if sent>0 then break end;step() end
+assert(sent==1 and farm.Target==a,'a target just outside the radius must be reached and attacked')
+reset();farm.SeekRange=300;farm.Walk=false;ar.Position=v(70);br.Position=v(90);farm:Start();step(2)
+assert(sent==0 and walks==0 and moves==0 and farm.Message:find('within 60 studs',1,true),'Auto Move OFF must never seek beyond the radius')
+reset();farm.SeekRange=250;ar.Position=v(400);br.Position=v(400);farm:Start();step(2)
+assert(sent==0 and farm.Message:find('within 250 studs',1,true),'targets beyond SeekRange are not chased')
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
 `;

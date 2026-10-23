@@ -29,7 +29,7 @@ end
 function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
-        ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8}
+        ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -102,7 +102,7 @@ function MobFarm.new(ctx)
         local released=self:ReleaseSwing()
         publish(not released and "Weapon release failed · press STOP to retry" or reason or "Stopped · movement and attacks cancelled")
     end
-    function self:Scan(cooldowns)
+    function self:Scan(cooldowns,radius)
         local char=ctx.Player.Character
         local root=char and char:FindFirstChild("HumanoidRootPart")
         if not root then return {} end
@@ -113,7 +113,7 @@ function MobFarm.new(ctx)
                 local health,part=MobFarm.Details(model,roots,ctx.Players,self.Kind)
                 if health and health.Health>0 and (not cooldowns or not cooldowns[model] or cooldowns[model]<=now()) then
                     local distance=(part.Position-root.Position).Magnitude
-                    if distance<=self.Radius then table.insert(result,{Model=model,Humanoid=health,Root=part,Distance=distance}) end
+                    if distance<=(radius or self.Radius) then table.insert(result,{Model=model,Humanoid=health,Root=part,Distance=distance}) end
                 end
             end
         end
@@ -201,6 +201,12 @@ function MobFarm.new(ctx)
                             end
                         else
                             local targets=self:Scan(cooldowns)
+                            local limit=self.Radius
+                            -- Nothing in the search radius: with Auto Move on, travel to the nearest loaded
+                            -- target within SeekRange instead of idling just outside the radius.
+                            if #targets==0 and self.Walk and self.SeekRange>self.Radius then
+                                targets=self:Scan(cooldowns,self.SeekRange);limit=self.SeekRange
+                            end
                             local chosen
                             -- Keep the current living target instead of bouncing between close mobs.
                             for _,entry in ipairs(targets) do if entry.Model==self.Target then chosen=entry;break end end
@@ -213,7 +219,7 @@ function MobFarm.new(ctx)
                                 end
                             end
                             if not chosen then
-                                halt();self.Target=nil;publish("Waiting · no living "..(self.Kind=="Slimes" and "slimes" or self.Kind=="All mobs" and "mobs" or self.Kind).." within "..self.Radius.." studs; scanning continues")
+                                halt();self.Target=nil;publish("Waiting · no living "..(self.Kind=="Slimes" and "slimes" or self.Kind=="All mobs" and "mobs" or self.Kind).." within "..(self.Walk and math.max(self.Radius,self.SeekRange) or self.Radius).." studs; scanning continues")
                             else
                                 if self.Target~=chosen.Model then attempts=0;progress={} end
                                 self.Target=chosen.Model;observe(self.Target)
@@ -222,7 +228,7 @@ function MobFarm.new(ctx)
                                     if char:FindFirstChild("HumanoidRootPart")~=root or char:FindFirstChildOfClass("Humanoid")~=human then return false end
                                     local h,p=MobFarm.Details(chosen.Model,MobFarm.Roots(ctx.World),ctx.Players,self.Kind)
                                     return h==chosen.Humanoid and p==chosen.Root and h.Health>0
-                                        and (p.Position-root.Position).Magnitude<=self.Radius
+                                        and (p.Position-root.Position).Magnitude<=limit
                                 end
                                 local chasing=false
                                 if chosen.Distance>self.Reach then

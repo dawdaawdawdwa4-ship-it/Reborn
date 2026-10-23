@@ -3538,3 +3538,16 @@ outside the search radius. Mobs beyond Roblox streaming range are not loaded on
 the client and cannot be listed.
 
 Report headers now read `Reborn mob-diag-134`.
+
+
+## Mobs seek just outside the radius · v135
+
+The v134 diagnostic showed four slimes loaded with the nearest at 67 studs while
+the search radius was 60, so the farm idled. With Auto Move on (Walk or TP hops),
+an empty search radius now falls back to the nearest loaded matching target
+within 300 studs (`SeekRange`), which is then approached and attacked like any
+other target; while it stays beyond the radius it is still validated against the
+seek range. Auto Move OFF never leaves the radius. The waiting message names the
+distance actually searched.
+
+Report headers now read `Reborn mob-seek-135`.
