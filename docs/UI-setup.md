@@ -3987,3 +3987,16 @@ numbers in 30 swings, and "it also runs off the map".
 - The Search line no longer claims hit and run is TP-only.
 
 Report headers now read `Reborn mob-edge-156`.
+
+## Startup fix · v157
+
+A pasted stack trace: `loadPreferences` crashed at startup. The scoreboard
+validator it called is defined far later in the file, so the saved `MobScore`
+from v155 broke the hub on the next launch.
+
+- The preferences load now stores the saved scoreboard as is and validates it
+  on first use.
+- New test `tests/startup-order.mjs` fails whenever the preferences load calls
+  a RemoteCatalog function that is defined later in the file.
+
+Report headers now read `Reborn mob-boot-157`.
