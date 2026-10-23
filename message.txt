@@ -4953,7 +4953,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn profiles-124",
+    return table.concat({"Reborn chest-find-125",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6260,6 +6260,9 @@ track(RemoteCatalog.SessionReportButton.Activated:Connect(function() RemoteCatal
 RemoteCatalog.SelfTestButton=button({Parent=statsPage,Text="Run self-test",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,526)})
 track(RemoteCatalog.SelfTestButton.Activated:Connect(function() RemoteCatalog.CopySelfTest() end))
+RemoteCatalog.ChestContentsButton=button({Parent=statsPage,Text="Copy chest contents (find items)",TextSize=13,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,566)})
+track(RemoteCatalog.ChestContentsButton.Activated:Connect(function() RemoteCatalog.CopyChestContents() end))
 function RemoteCatalog.CycleModeGoal(mode)
     local goal=RemoteCatalog.ModeGoals[mode]
     RemoteCatalog.StopGoalMode(mode)
@@ -6959,7 +6962,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn profiles-124 · Propeller loot history (UTC)",
+    return table.concat({"Reborn chest-find-125 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7063,7 +7066,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn profiles-124 · Propeller tracker",
+    return table.concat({"Reborn chest-find-125 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7099,7 +7102,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn profiles-124", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-find-125", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -7195,6 +7198,71 @@ function RemoteCatalog.CopySelfTest()
     return report
 end
 -- SELF TEST END
+-- CHEST CONTENTS BEGIN
+-- Read-only: lists what the owned island's chests hold, by item, using their content folders. Sends nothing.
+RemoteCatalog.ChestContentFolders={"Contents","Items","Storage","Content","SellingContents"}
+function RemoteCatalog.ChestContents()
+    local blocks=RemoteCatalog.BuildIslandBlocks and RemoteCatalog.BuildIslandBlocks()
+    local items,chests,unreadable={},{},0
+    for _,chest in ipairs(blocks and blocks:GetChildren() or {}) do
+        if string.find(string.lower(chest.Name),"chest",1,true) then
+            table.insert(chests,chest)
+            local folder
+            for _,name in ipairs(RemoteCatalog.ChestContentFolders) do folder=chest:FindFirstChild(name);if folder then break end end
+            if not folder then unreadable+=1 else
+                for _,stack in ipairs(folder:GetChildren()) do
+                    local amount=1
+                    local value=stack:FindFirstChild("Amount")
+                    if value and type(value.Value)=="number" then amount=value.Value
+                    else
+                        local ok,attribute=pcall(function() return stack:GetAttribute("Amount") end)
+                        if ok and type(attribute)=="number" then amount=attribute end
+                    end
+                    local entry=items[stack.Name] or {Total=0,Chests={}}
+                    entry.Total+=amount;entry.Chests[chest]=(entry.Chests[chest] or 0)+amount
+                    items[stack.Name]=entry
+                end
+            end
+        end
+    end
+    return items,chests,unreadable
+end
+function RemoteCatalog.ChestContentsReport(filter)
+    local items,chests,unreadable=RemoteCatalog.ChestContents()
+    local char=player.Character
+    local root=char and char:FindFirstChild("HumanoidRootPart")
+    local numbers={}
+    for index,chest in ipairs(chests) do numbers[chest]=index end
+    local names={}
+    filter=type(filter)=="string" and string.lower(filter) or ""
+    for name in pairs(items) do if filter=="" or string.find(string.lower(name),filter,1,true) then table.insert(names,name) end end
+    table.sort(names,function(a,b) return items[a].Total>items[b].Total or items[a].Total==items[b].Total and a<b end)
+    local lines={"Reborn chest contents · "..#chests.." chests on your island"..(unreadable>0 and (" · "..unreadable.." without a readable content folder") or "")}
+    for _,name in ipairs(names) do
+        local places={}
+        for chest,amount in pairs(items[name].Chests) do
+            -- getPartPosition is declared later in the file; the catalog adapter is resolved at call time.
+            local position=RemoteCatalog.ResourcePosition and RemoteCatalog.ResourcePosition(chest)
+            local distance=root and position and math.floor((position-root.Position).Magnitude) or nil
+            table.insert(places,{Number=numbers[chest] or 0,Text="chest #"..(numbers[chest] or "?").." ("..chest.Name..(distance and ", "..distance.." studs" or "")..") ×"..amount})
+        end
+        table.sort(places,function(a,b) return a.Number<b.Number end)
+        local texts={}
+        for _,place in ipairs(places) do table.insert(texts,place.Text) end
+        table.insert(lines,name.." ×"..items[name].Total..": "..table.concat(texts,"; "))
+    end
+    if #names==0 then table.insert(lines,#chests==0 and "No chests found on your island." or "No readable items found.") end
+    return table.concat(lines,"\n")
+end
+function RemoteCatalog.CopyChestContents(filter)
+    local ok,report=pcall(RemoteCatalog.ChestContentsReport,filter)
+    if not ok then report="Chest contents unavailable: "..tostring(report) end
+    local copy=setclipboard or toclipboard
+    if type(copy)=="function" and pcall(copy,report) then setStatus("Chest contents copied",COLORS.good)
+    else print(report);setStatus("Chest contents printed to console",COLORS.warn) end
+    return report
+end
+-- CHEST CONTENTS END
 function RemoteCatalog.CopySessionReport()
     local report=RemoteCatalog.SessionReport()
     local copy=setclipboard or toclipboard
@@ -9640,7 +9708,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn profiles-124\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-find-125\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9702,7 +9770,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn profiles-124 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn chest-find-125 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10301,7 +10369,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn profiles-124\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-find-125\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11419,7 +11487,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn profiles-124 · Craft diagnostics",
+    return table.concat({"Reborn chest-find-125 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11498,7 +11566,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn profiles-124 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn chest-find-125 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12109,7 +12177,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn profiles-124 · Mobs",
+    return table.concat({"Reborn chest-find-125 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

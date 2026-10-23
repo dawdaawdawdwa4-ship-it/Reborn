@@ -3343,3 +3343,18 @@ Profiles live in `IslandsFarmingHub_<UserId>_profiles.json`, or for the session
 only without file access.
 
 Report headers now read `Reborn profiles-124`.
+
+
+## Find items in chests · v125
+
+**Stats → Copy chest contents (find items)** lists what the chests on your own
+island hold, item by item, largest totals first: for each item the chests it is
+in (numbered, with block name, distance from you and amount). It reads each
+chest's content folder (`Contents`, `Items`, `Storage`, `Content` or
+`SellingContents`, as in the earlier Insane hub) and each stack's `Amount` value
+or attribute, and reports chests without a readable folder. It is read-only and
+sends nothing. `RemoteCatalog.CopyChestContents("name")` filters by item name.
+Whether the current game still uses those folder names is confirmed by the first
+live report.
+
+Report headers now read `Reborn chest-find-125`.
