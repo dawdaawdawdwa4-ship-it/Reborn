@@ -2964,3 +2964,45 @@ non-overlapping status/counters, dropdown refresh, read-only result copying and
 clipboard fallback/cleanup. The worker test covers a structured TOO_FAST response
 without treating it as success or sending a fallback attack. Live mob farming
 still needs the visible status/result from the user's Roblox client.
+
+
+## Native mob weapon activation · v108
+
+The next live clip identifies the actual failure: **NO_ANIMATION** after three
+submitted swings and no observed HP drop. It also demonstrates that the worker
+can find a nearby slime; the earlier OFF-mode snapshot with zero candidates did
+not establish a discovery failure. The existing slime discovery scope is retained.
+
+The worker now uses the equipped weapon's `Activate()` / `Deactivate()` workflow.
+It does not replay `MobHit` alongside activation. The native weapon client owns
+animation startup and its hit request, keeping those parts of the normal attack
+together. The learned binding continues to identify the chosen owned weapon and
+validate the character/session. No animation asset IDs or old session tokens are
+introduced. A normal activation is held for 0.08 seconds, released even after an
+activation/hold error, and separated from the next attempt by at least 0.65 seconds.
+A disabled tool yields through its cooldown instead of stopping the farm.
+
+Stop immediately deactivates the held weapon and invalidates the worker. A failed
+release retains its owner so Stop can retry; Start and other tool automations wait
+until that release succeeds. Cleanup from an old hold cannot release a newer one.
+A slime dying during the activation is a completed attempt, while user Stop or a
+changed character discards late completion. Observed HP drops and defeats remain
+separate from activation attempts. Eight unconfirmed attempts still stop with a
+weapon/range/facing hint; there is no second transport or cursor/camera fallback.
+
+The primary control now reads **START FARMING**, with an accent background while
+off. With a usable binding, the learning button reads **Relearn attack**. Clicking
+it without an equipped tool points to Start and retains the ready binding instead
+of suggesting the already-learned attack is missing. Same-session reloads also
+show the ready message. The report names the native method and any pending
+weapon release; the visible counter says swings attempted rather than claiming
+that a server hit was accepted.
+
+`mob-input.mjs` exercises actual paired Tool activation, immediate Stop during a
+hold, refused/throwing activation, failed hold/release, release retry, old/new
+ownership and death during activation. Worker tests use native tool methods and
+fail if the legacy replay is called; they cover cooldown waiting, observations
+and cancellation. Full-startup checks cover the clearer Start/Relearn controls,
+ready binding without an equipped tool, and blocked handover after failed release.
+Run the full suite. Native weapon compatibility, hit detection and damage still
+require confirmation in the user's live Roblox client.

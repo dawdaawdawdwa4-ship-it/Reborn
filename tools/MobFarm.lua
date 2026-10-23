@@ -30,10 +30,39 @@ function MobFarm.new(ctx)
         if ctx.Update then ctx.Update(self) end
     end
     local function halt() ctx.Navigation.Stop("Mobs") end
+    function self:ReleaseSwing(press)
+        press=press or self.Press
+        if not press or press.Released then return true end
+        local ok,result=pcall(function() return press.Tool:Deactivate() end)
+        if not ok or result==false then return false end
+        press.Released=true
+        if self.Press==press then self.Press=nil end
+        return true
+    end
+    function self:Swing(tool,canStart,active)
+        active=active or canStart
+        if not canStart() then return false,"Swing cancelled" end
+        if self.Press then return false,"Previous weapon activation is still releasing" end
+        if tool.Enabled==false then return false,"Weapon is cooling down" end
+        local press={Tool=tool}
+        self.Press=press
+        -- The weapon's own client must start its animation and send the hit. Replaying
+        -- only the learned hitUnit packet fails server validation with NO_ANIMATION.
+        local ok,result=pcall(function()
+            local activated=tool:Activate()
+            if activated==false then error("Weapon activation was refused",0) end
+            if active() then scheduler.wait(.08) end
+        end)
+        if not self:ReleaseSwing(press) then return false,"Weapon release failed · press STOP to retry" end
+        if not ok then return false,result end
+        if not active() then return false,"Swing cancelled" end
+        return true,"Weapon activated · checking for HP changes"
+    end
     function self:Stop(reason)
         self.Enabled=false;self.Generation+=1;self.Target=nil
         halt()
-        publish(reason or "Stopped · movement and attacks cancelled")
+        local released=self:ReleaseSwing()
+        publish(not released and "Weapon release failed · press STOP to retry" or reason or "Stopped · movement and attacks cancelled")
     end
     function self:Scan(cooldowns)
         local char=ctx.Player.Character
@@ -57,6 +86,7 @@ function MobFarm.new(ctx)
         if not ctx.Alive() then return false end
         if self.Enabled then return true end
         if self.Worker then publish("Finishing the previous walk · start again in a moment");return false end
+        if not self:ReleaseSwing() then publish("Weapon release failed · press STOP to retry");return false end
         local busy=ctx.Busy()
         if busy then publish(busy);return false end
         local recorder=ctx.Recorder()
@@ -139,11 +169,16 @@ function MobFarm.new(ctx)
                                         self:Stop("Learned weapon unavailable · equip it and learn attack again");return
                                     end
                                     -- Equipping may yield or change the character/target. Recheck before sending.
-                                    if valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
+                                    if tool.Enabled==false then publish("Waiting · weapon cooldown")
+                                    elseif valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
                                         if ctx.ClearLine(root,chosen.Root,char,chosen.Model) then
                                             lastAttack=now()
                                             self.LastTarget=chosen.Model.Name
-                                            local sent,detail=recorder:MobHit(chosen.Model)
+                                            local sent,detail=self:Swing(tool,valid,function()
+                                                return active() and ctx.Player.Character==char and tool.Parent==char
+                                                    and char:FindFirstChild("HumanoidRootPart")==root
+                                                    and char:FindFirstChildOfClass("Humanoid")==human
+                                            end)
                                             if not active() then return end
                                             self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                             if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
@@ -151,7 +186,7 @@ function MobFarm.new(ctx)
                                             observe(chosen.Model)
                                             publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
                                             if attempts>=8 then
-                                                self:Stop("No HP drop observed after 8 swings · check the weapon and learn attack again");return
+                                                self:Stop("No HP drop observed after 8 swings · check weapon activation, range and facing");return
                                             end
                                         else
                                             cooldowns[chosen.Model]=now()+3;publish("Target obstructed · trying another slime")

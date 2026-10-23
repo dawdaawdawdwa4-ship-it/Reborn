@@ -46,7 +46,7 @@ local workers={}
 local scheduler={spawn=function(fn)
  local co=coroutine.create(fn);table.insert(workers,co)
  local ok,err=coroutine.resume(co);assert(ok,err);return co
-end,wait=function(dt) return coroutine.yield(dt) end}
+end,wait=function(dt) if dt==.08 then time+=dt;return end;return coroutine.yield(dt) end}
 local function step(dt)
  time+=dt or .15
  for _,co in ipairs(table.clone(workers)) do
@@ -58,15 +58,18 @@ local bindingChar=char
 local sent,walks,halts=0,0,0
 local tool={Name='swordWood',Parent=char}
 local equipHook,walkHook,attackHook
+local farm
 local recorder={MobBinding={WeaponName='swordWood'}}
 function recorder:CanUseMobBinding() return bindingChar==player.Character and learned end
-function recorder:MobHit(target)
+function recorder:MobHit() error("legacy replay must not be called by the mob worker") end
+function tool:Activate()
+ local target=farm.Target
  sent+=1
  if attackHook then attackHook() end
- if transport then return false,type(transport)=='table' and transport or 'transport failed' end
+ if transport then error(type(transport)=='table' and transport or 'activation failed',0) end
  if damage then target:FindFirstChildOfClass('Humanoid').Health-=10 end
- return true
 end
+function tool:Deactivate() end
 local ctx={Player=player,Players=players,World=world,Now=function() return time end,Scheduler=scheduler,
  Alive=function() return alive end,Busy=function() return busy end,PauseReason=function() return pause end,
  Recorder=function() return learned and recorder or nil end,Weapon=function() return tool end,
@@ -78,7 +81,7 @@ local ctx={Player=player,Players=players,World=world,Now=function() return time 
   if walkHook then return walkHook(active) end
   assert(active());root.Position=v(positionOf(target).X-3);return true
  end}}
-local farm=Module.new(ctx)
+farm=Module.new(ctx)
 local targets=farm:Scan()
 assert(#targets==2 and targets[1].Model==a and targets[2].Model==b,'only living non-player regular slimes in either Entities root, nearest first')
 farm.Radius=10;assert(#farm:Scan()==1);farm.Radius=60
@@ -116,9 +119,10 @@ reset();walkHook=function(active) farm:Stop();assert(not active());scheduler.wai
 ar.Position=v(30);farm:Start();step();assert(sent==0 and not farm.Worker,'Stop mid-walk must invalidate follow-up attacks')
 reset();walkHook=function(active) busy='other mode';assert(not active());return false end
 ar.Position=v(30);farm:Start();step();assert(sent==0 and not farm.Worker and not farm.Enabled,'new automation must take control without a combat dispatch')
-reset();transport=true;farm:Start();assert(sent==1 and farm.Swings==0 and not farm.Enabled and not farm.Worker,'transport failure must stop without fallback or false counters')
+reset();transport=true;farm:Start();assert(sent==1 and farm.Swings==0 and not farm.Enabled and not farm.Worker,'activation failure must stop without legacy replay or false counters')
 reset();transport={success=false,error='TOO_FAST'};farm:Start()
-assert(sent==1 and farm.Swings==0 and farm.Message:find('TOO_FAST',1,true) and not farm.Message:find('table:',1,true) and farm.LastTarget=='slimeBlue' and farm.LastResult:find('success=false',1,true),'structured server rejection must remain readable in the status and copied result')
+assert(sent==1 and farm.Swings==0 and farm.Message:find('TOO_FAST',1,true) and not farm.Message:find('table:',1,true) and farm.LastTarget=='slimeBlue' and farm.LastResult:find('success=false',1,true),'structured activation errors must remain readable in the status and copied result')
+reset();tool.Enabled=false;farm:Start();step(1);assert(sent==0 and farm.Enabled,'weapon cooldown must wait without stopping or dispatching');tool.Enabled=true;step();assert(sent==1)
 reset();damage=false;farm:Start();for i=1,8 do step(.7) end
 assert(sent==8 and farm.Swings==8 and farm.Drops==0 and not farm.Enabled and not farm.Worker,'unconfirmed attacks must stop at a bounded budget')
 reset();blocked=true;farm:Start();step();assert(sent==0,'obstructed targets cannot be attacked')
@@ -132,7 +136,7 @@ reset();attackHook=function() farm:Stop() end;farm:Start();assert(farm.Swings==0
 reset();attackHook=function() scheduler.wait(.1) end;farm:Start()
 assert(sent==1 and farm.Worker and farm.Enabled)
 farm:Stop();step()
-assert(not farm.Worker and farm.Swings==0 and farm.Drops==0,'Stop while an InvokeServer call is pending must discard its late completion')
+assert(not farm.Worker and farm.Swings==0 and farm.Drops==0,'Stop while native activation is pending must discard its late completion')
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, walking, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
 `;

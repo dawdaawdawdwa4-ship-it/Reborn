@@ -1520,10 +1520,39 @@ function MobFarm.new(ctx)
         if ctx.Update then ctx.Update(self) end
     end
     local function halt() ctx.Navigation.Stop("Mobs") end
+    function self:ReleaseSwing(press)
+        press=press or self.Press
+        if not press or press.Released then return true end
+        local ok,result=pcall(function() return press.Tool:Deactivate() end)
+        if not ok or result==false then return false end
+        press.Released=true
+        if self.Press==press then self.Press=nil end
+        return true
+    end
+    function self:Swing(tool,canStart,active)
+        active=active or canStart
+        if not canStart() then return false,"Swing cancelled" end
+        if self.Press then return false,"Previous weapon activation is still releasing" end
+        if tool.Enabled==false then return false,"Weapon is cooling down" end
+        local press={Tool=tool}
+        self.Press=press
+        -- The weapon's own client must start its animation and send the hit. Replaying
+        -- only the learned hitUnit packet fails server validation with NO_ANIMATION.
+        local ok,result=pcall(function()
+            local activated=tool:Activate()
+            if activated==false then error("Weapon activation was refused",0) end
+            if active() then scheduler.wait(.08) end
+        end)
+        if not self:ReleaseSwing(press) then return false,"Weapon release failed · press STOP to retry" end
+        if not ok then return false,result end
+        if not active() then return false,"Swing cancelled" end
+        return true,"Weapon activated · checking for HP changes"
+    end
     function self:Stop(reason)
         self.Enabled=false;self.Generation+=1;self.Target=nil
         halt()
-        publish(reason or "Stopped · movement and attacks cancelled")
+        local released=self:ReleaseSwing()
+        publish(not released and "Weapon release failed · press STOP to retry" or reason or "Stopped · movement and attacks cancelled")
     end
     function self:Scan(cooldowns)
         local char=ctx.Player.Character
@@ -1547,6 +1576,7 @@ function MobFarm.new(ctx)
         if not ctx.Alive() then return false end
         if self.Enabled then return true end
         if self.Worker then publish("Finishing the previous walk · start again in a moment");return false end
+        if not self:ReleaseSwing() then publish("Weapon release failed · press STOP to retry");return false end
         local busy=ctx.Busy()
         if busy then publish(busy);return false end
         local recorder=ctx.Recorder()
@@ -1629,11 +1659,16 @@ function MobFarm.new(ctx)
                                         self:Stop("Learned weapon unavailable · equip it and learn attack again");return
                                     end
                                     -- Equipping may yield or change the character/target. Recheck before sending.
-                                    if valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
+                                    if tool.Enabled==false then publish("Waiting · weapon cooldown")
+                                    elseif valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
                                         if ctx.ClearLine(root,chosen.Root,char,chosen.Model) then
                                             lastAttack=now()
                                             self.LastTarget=chosen.Model.Name
-                                            local sent,detail=recorder:MobHit(chosen.Model)
+                                            local sent,detail=self:Swing(tool,valid,function()
+                                                return active() and ctx.Player.Character==char and tool.Parent==char
+                                                    and char:FindFirstChild("HumanoidRootPart")==root
+                                                    and char:FindFirstChildOfClass("Humanoid")==human
+                                            end)
                                             if not active() then return end
                                             self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                             if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
@@ -1641,7 +1676,7 @@ function MobFarm.new(ctx)
                                             observe(chosen.Model)
                                             publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
                                             if attempts>=8 then
-                                                self:Stop("No HP drop observed after 8 swings · check the weapon and learn attack again");return
+                                                self:Stop("No HP drop observed after 8 swings · check weapon activation, range and facing");return
                                             end
                                         else
                                             cooldowns[chosen.Model]=now()+3;publish("Target obstructed · trying another slime")
@@ -4675,7 +4710,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-status-107",
+    return table.concat({"Reborn mob-weapon-108",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5033,7 +5068,10 @@ local function applyBait()
 end
 
 local function setBaitEnabled(state)
-    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker) then RemoteCatalog.Mobs:Stop("Stopped · another mode started") end
+    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
+        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
+        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return end
+    end
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);setStatus("Wait for Auto Plow input cleanup, then start this mode",COLORS.warn);return end
     if baitEnabled == state then
         if not state and RemoteCatalog.StopBaitLearning then RemoteCatalog.StopBaitLearning() end
@@ -6618,7 +6656,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-status-107 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-weapon-108 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6722,7 +6760,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-status-107 · Propeller tracker",
+    return table.concat({"Reborn mob-weapon-108 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6758,7 +6796,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-status-107", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-weapon-108", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -8083,7 +8121,10 @@ end
 -- Controls
 --------------------------------------------------------------------
 setEnabled = function(state)
-    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker) then RemoteCatalog.Mobs:Stop("Stopped · another mode started") end
+    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
+        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
+        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return end
+    end
     if not state then RemoteCatalog.PropellerWindow=nil;RemoteCatalog.PropellerPendingWindow=nil end
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);setStatus("Wait for Auto Plow input cleanup, then start this mode",COLORS.warn);return end
     RemoteCatalog.StartFishingOnBait=false
@@ -8141,7 +8182,10 @@ local function refreshFarmButtons()
 end
 
 local function setFarmMode(mode, state)
-    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker) then RemoteCatalog.Mobs:Stop("Stopped · another mode started") end
+    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
+        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
+        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return end
+    end
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);setStatus("Wait for Auto Plow input cleanup, then start this mode",COLORS.warn);return end
     -- Resolve the requested mode explicitly. The old chained `and/or`
     -- expression could read another mode's state when this mode was off.
@@ -9043,7 +9087,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-status-107\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-weapon-108\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9105,7 +9149,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-status-107 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-weapon-108 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9282,7 +9326,10 @@ function RemoteCatalog.ChestAutoStates(targets,batch,probe)
     return states
 end
 function RemoteCatalog.SetChestAuto(state)
-    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker) then RemoteCatalog.Mobs:Stop("Stopped · another mode started") end
+    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
+        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
+        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return end
+    end
     if state and RemoteCatalog.ChestTransferBusy then RemoteCatalog.ChestAutoMessage("Wait for chest setup import/export to finish");return false end
     if state and RemoteCatalog.CraftWorker then RemoteCatalog.ChestAutoMessage("Stop crafting and wait for its current request to finish first");return false end
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);RemoteCatalog.ChestAutoMessage("Wait for Auto Plow input cleanup");return false end
@@ -9698,7 +9745,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-status-107\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-weapon-108\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -10656,7 +10703,10 @@ function RemoteCatalog.SetCraftPaused(state)
     return true
 end
 function RemoteCatalog.SetCraftEnabled(state,queued)
-    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker) then RemoteCatalog.Mobs:Stop("Stopped · another mode started") end
+    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
+        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
+        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return end
+    end
     if state and RemoteCatalog.CraftTransferBusy then RemoteCatalog.CraftMessage("Wait for queue import/export to finish before starting crafting.");return false end
     if state and RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish before starting crafting.");return false end
     if state and RemoteCatalog.CraftCatalogLoading then RemoteCatalog.CraftMessage("Wait for recipe loading to finish first.");return false end
@@ -10810,7 +10860,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-status-107 · Craft diagnostics",
+    return table.concat({"Reborn mob-weapon-108 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -10889,7 +10939,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-status-107 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-weapon-108 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11276,7 +11326,10 @@ function RemoteCatalog.PlowAction(block,blocks,tool,active,recorder)
     return sent==true,result
 end
 function RemoteCatalog.SetPlowEnabled(state)
-    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker) then RemoteCatalog.Mobs:Stop("Stopped · another mode started") end
+    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
+        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
+        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return end
+    end
     if not state then
         RemoteCatalog.PlowEnabled=false;RemoteCatalog.PlowPendingStart=false;RemoteCatalog.PlowGeneration+=1
         RemoteCatalog.UpdatePlowControls()
@@ -11421,19 +11474,20 @@ function RemoteCatalog.RefreshMobUI()
     if not farm or not RemoteCatalog.MobToggle or not gui.Parent then return end
     local recorder=RemoteCatalog.MobRecorder()
     local learning=RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnMobOnly
-    RemoteCatalog.MobToggle.Text=farm.Enabled and "AUTO MOBS: ON" or "AUTO MOBS: OFF"
-    RemoteCatalog.MobToggle.BackgroundColor3=farm.Enabled and COLORS.on or COLORS.off
+    RemoteCatalog.MobToggle.Text=farm.Enabled and "FARMING ON" or farm.Worker and "FINISHING…" or "START FARMING"
+    RemoteCatalog.MobToggle.BackgroundColor3=farm.Enabled and COLORS.on or COLORS.accent
+    RemoteCatalog.MobToggle.TextColor3=farm.Enabled and COLORS.text or COLORS.accentDark
     RemoteCatalog.MobToggle.Active=not farm.Worker or farm.Enabled
     RemoteCatalog.MobStop.Text=farm.Worker and not farm.Enabled and "STOPPING…" or "STOP"
-    RemoteCatalog.MobLearn.Text=learning and "Cancel attack learning" or "Learn attack"
+    RemoteCatalog.MobLearn.Text=learning and "Cancel attack learning" or recorder and "Relearn attack" or "Learn attack"
     RemoteCatalog.MobLearn.Active=not farm.Worker
     if RemoteCatalog.MobRadiusMenu then RemoteCatalog.MobRadiusMenu:Refresh()
     else RemoteCatalog.MobRadius.Text="Search radius: "..farm.Radius.." studs  ▼" end
     RemoteCatalog.MobWalk.Text=farm.Walk and "AUTO WALK: ON" or "AUTO WALK: OFF"
-    RemoteCatalog.MobInfo.Text=learning and "Learning · hide the hub and hit one slime manually with your melee weapon. Then press Auto Mobs."
+    RemoteCatalog.MobInfo.Text=learning and "Learning · hide the hub and hit one slime manually with your melee weapon. Then press START FARMING."
         or (#farm.Message>180 and farm.Message:sub(1,150).."… Copy result for details" or farm.Message)
     RemoteCatalog.MobWeapon.Text="Target: Slimes · "..(recorder and "Weapon: "..recorder.MobBinding.WeaponName or "Weapon: learn one manual hit")
-    RemoteCatalog.MobCounters.Text=string.format("%d swings sent   ·   %d HP drops   ·   %d defeats observed",farm.Swings,farm.Drops,farm.Defeats)
+    RemoteCatalog.MobCounters.Text=string.format("%d swings attempted   ·   %d HP drops   ·   %d defeats observed",farm.Swings,farm.Drops,farm.Defeats)
 end
 function RemoteCatalog.MobResultReport()
     local farm=RemoteCatalog.Mobs
@@ -11441,11 +11495,13 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-status-107 · Mobs",
+    return table.concat({"Reborn mob-weapon-108 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
         "Attack ready: "..tostring(recorder~=nil),
+        "Attack method: native weapon activation (animation + game client hit)",
+        "Weapon release pending: "..tostring(farm.Press~=nil),
         "Learning: "..tostring(RemoteCatalog.Recorder~=nil and RemoteCatalog.Recorder.LearnMobOnly==true),
         "Weapon: "..(recorder and recorder.MobBinding.WeaponName or "not learned for this character/server"),
         "Health: "..(health and tostring(health.Health).."/"..tostring(health.MaxHealth) or "character unavailable"),
@@ -11475,7 +11531,10 @@ function RemoteCatalog.LearnMobAttack()
     if busy then RemoteCatalog.Mobs.Message=busy;RemoteCatalog.RefreshMobUI();return false end
     local char=player.Character
     if not char or not char:FindFirstChildOfClass("Tool") then
-        RemoteCatalog.Mobs.Message="Equip a melee weapon before learning";RemoteCatalog.RefreshMobUI();return false
+        local ready=RemoteCatalog.MobRecorder()
+        RemoteCatalog.Mobs.Message=ready and ("Attack already ready · press START FARMING. Equip "..ready.MobBinding.WeaponName.." only to relearn.")
+            or "Equip a melee weapon before learning"
+        RemoteCatalog.RefreshMobUI();return false
     end
     local ok,recorder=pcall(RemoteCatalog.StartCapture)
     if not ok or not recorder then
@@ -11530,7 +11589,7 @@ do
     RemoteCatalog.MobWeapon=label({Parent=main,Text="",TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-20,0,26),Position=UDim2.fromOffset(10,34)})
     RemoteCatalog.MobInfo=label({Parent=main,Text="",TextSize=13,Size=UDim2.new(1,-20,0,58),Position=UDim2.fromOffset(10,62)})
     RemoteCatalog.MobInfo.TextTruncate=Enum.TextTruncate.None
-    RemoteCatalog.MobToggle=button({Parent=main,Switch=true,Text="AUTO MOBS: OFF",TextSize=13,Primary=true,
+    RemoteCatalog.MobToggle=button({Parent=main,Text="START FARMING",TextSize=13,Primary=true,
         Size=UDim2.new(.65,-16,0,38),Position=UDim2.fromOffset(10,128)})
     RemoteCatalog.MobStop=button({Parent=main,Text="STOP",TextSize=13,Bg=Color3.fromRGB(87,39,47),
         Size=UDim2.new(.35,-16,0,38),Position=UDim2.new(.65,6,0,128)})
@@ -11541,7 +11600,7 @@ do
     RemoteCatalog.MobRadius=button({Parent=setup,Text="Search radius: 60 studs  ▾",TextSize=13,Size=UDim2.new(1,-20,0,34),Position=UDim2.fromOffset(10,78)})
     RemoteCatalog.MobWalk=button({Parent=setup,Switch=true,Text="AUTO WALK: ON",TextSize=13,Size=UDim2.new(.6,-16,0,36),Position=UDim2.fromOffset(10,120)})
     RemoteCatalog.MobCopy=button({Parent=setup,Text="Copy result",TextSize=13,Size=UDim2.new(.4,-16,0,36),Position=UDim2.new(.6,6,0,120)})
-    local hint=label({Parent=setup,Text="Equip your weapon → Learn attack → hit one slime → Auto Mobs ON.",TextSize=12,Color=COLORS.muted,
+    local hint=label({Parent=setup,Text="Learn once → Start farming. Auto Walk moves toward nearby slimes.",TextSize=12,Color=COLORS.muted,
         Size=UDim2.new(1,-20,0,28),Position=UDim2.fromOffset(10,162)})
     local function layout()
         local menu=RemoteCatalog.MobRadiusMenu and RemoteCatalog.MobRadiusMenu.Menu
@@ -11579,6 +11638,7 @@ do
         if RemoteCatalog.Mobs.Worker then return end
         RemoteCatalog.Mobs.Walk=not RemoteCatalog.Mobs.Walk;RemoteCatalog.RefreshMobUI()
     end))
+    if RemoteCatalog.MobRecorder() then RemoteCatalog.Mobs.Message="Attack ready · press START FARMING" end
     RemoteCatalog.RefreshMobUI()
 end
 -- MOB FARM UI END

@@ -1007,7 +1007,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn mob-status-107',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn mob-weapon-108',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1747,7 +1747,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn mob-status-107 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn mob-weapon-108 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2474,13 +2474,21 @@ end)()
   assert(status.Text:find('Mob result printed to console',1,true),'failed clipboard functions must fall back accurately to console')
   setclipboard,toclipboard=clip,alternate;enabled=false
  end)()
- local sends=0
+ local sends,learnCalls=0,0
  local learned={Records={},MaxCalls=100,RequestIds={},MobBinding={WeaponName='ironWarAxe',Remote={Parent=true}},CanUseMobBinding=function() return true end,
   MobHit=function() sends+=1;return true end,Stop=function(self) self.Stopped=true;self.LearnMobOnly=false end}
- r.StartCapture=function() learned.Stopped=false;return learned end
+ r.StartCapture=function() learnCalls+=1;learned.Stopped=false;return learned end
  r.MobLearn.Activated:Fire()
  assert(learned.LearnMobOnly and learned.Active==false and sends==0,'Learn attack must wait for one manual hit without sending a request')
  r.MobStop.Activated:Fire();assert(not learned.LearnMobOnly and learned.Stopped,'Stop must cancel learning too')
+ assert(r.MobToggle.Text=='START FARMING' and r.MobLearn.Text=='Relearn attack','ready attack must expose a clear Start action and label learning as optional relearning')
+ ;(function()
+  local find=character.FindFirstChildOfClass
+  character.FindFirstChildOfClass=function(self,kind) if kind~='Tool' then return find(self,kind) end end
+  r.MobLearn.Activated:Fire()
+  assert(learnCalls==1 and r.MobInfo.Text:find('Attack already ready',1,true) and r.MobInfo.Text:find('START FARMING',1,true),'relearning without an equipped tool must not imply an existing valid binding is missing')
+  character.FindFirstChildOfClass=find
+ end)()
  r.MobToggle.Activated:Fire()
  assert(r.Mobs.Enabled and r.Mobs.Worker and sends==0 and r.MobInfo.Text:find('scanning continues',1,true),'empty native scan must stay ON without attacking: '..tostring(r.Mobs.Enabled)..' / '..tostring(r.MobInfo.Text))
  assert(not r.MobLearn.Active and r.BuildTravelBlocked():find('Auto Mobs',1,true),'combat must lock learning and compete explicitly with build walking')
@@ -2493,6 +2501,14 @@ end)()
  r.MobToggle.Activated:Fire();assert(r.Mobs.Enabled)
  r.StopAllAutomation();stepWorkers()
  assert(not r.Mobs.Enabled and not r.Mobs.Worker and not learned.LearnMobOnly,'Stop All must cancel combat and its navigation worker')
+ ;(function()
+  local denied,releases=true,0
+  r.Mobs.Press={Tool={Deactivate=function() releases+=1;return not denied end}}
+  setEnabled(true)
+  assert(not enabled and r.Mobs.Press and releases==1 and status.Text:find('Weapon release pending',1,true),'another mode must not start while a previous native weapon activation cannot be released')
+  denied=false;r.MobStop.Activated:Fire();assert(not r.Mobs.Press and releases==2)
+ end)()
+
  assert(r.SessionReport():find('Mobs: OFF',1,true),'session report must include combat status and observed counters')
  player.Character=saved.Character;workspace.FindFirstChild=saved.Find;r.Recorder=saved.Recorder;r.StartCapture=saved.Start;UserInputService.GetFocusedTextBox=saved.Focus
  r.Mobs.Radius=60;r.RefreshMobUI()

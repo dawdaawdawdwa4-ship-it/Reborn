@@ -1188,3 +1188,16 @@ transport is used. The mob controller separately enforces slime filtering,
 proximity, visibility and cancellation and confirms observations through health.
 Recorder v34 retains v33 bindings while upgrading methods; same-version restarts
 reuse its existing hook and hotkey listener. Stop also cancels mob learning.
+
+
+### v108: NO_ANIMATION response and native attacks
+
+The user's follow-up clip shows `{error=NO_ANIMATION, success=false}` from the
+previous replay-based mob worker. The packet shape alone is insufficient to run
+the full melee action. Auto Mobs now activates and releases the equipped weapon
+normally, allowing its own client behavior to start animations and issue the hit.
+The learned hit packet is not replayed after activation. The recorder's existing
+learning/replay APIs remain compatible; the worker uses learning for weapon and
+session setup only. No animation IDs, secondary remote formats or fallback hits
+are guessed. Activation attempts require observed HP changes for progress; live
+confirmation of the native weapon route is still needed.
