@@ -521,7 +521,8 @@ function capture:Place(body)
     if not prepared then return false, args, "unavailable" end
     -- After dispatch, an exception is uncertain and must never trigger a fallback.
     local ok, result = pcall(function()
-        return remote:InvokeServer(table.unpack(args, 1, args.n))
+        -- Plain index call, like the other replays: a namecall would loop back into the hook and be recorded.
+        return remote.InvokeServer(remote, table.unpack(args, 1, args.n))
     end)
     if not ok then return false, result, "transport" end
     if result == false or type(result) == "table" and result.success == false then

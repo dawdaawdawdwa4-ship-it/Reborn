@@ -3052,3 +3052,43 @@ so late HP replication still counts and refills the no-damage budget. The run
 card shows run time and, after 30 seconds, observed defeats per minute; the time
 freezes on Stop. Copy result includes the move mode, hop size and run time.
 Report headers now read `Reborn mob-respawn-110`.
+
+
+## Whole-hub review fixes · v111
+
+A full review of every module produced these verified fixes:
+
+- **Learning ownership.** Mob, craft, hoe, chest and placement learning share one
+  recorder whose learn-only branches swallow other calls. A new learner now refuses
+  to start while another manual learner is active and names it. Stopping craft,
+  hoe, chest, bait or wood learning no longer tears down a pending mob learner,
+  and the mob timeout clears only its own flag.
+- **Hub requests are not learned.** The game food request sent by Auto Bait no
+  longer becomes the "manual" bait binding, and placement/legacy replays use a
+  plain index call so the capture hook does not record or print them.
+- **Owned tools during respawn.** The Backpack is scanned even while the
+  character is missing (`ipairs` stopped at the nil character).
+- **Panels and menus.** Clicks inside Settings Quick actions/Advanced settings and
+  Chest profiles/backup panels no longer collapse them before their buttons fire.
+  While Auto Build picking is on, a world click is the pick and the Pick toggle can
+  turn itself off again; Escape still closes menus and picking.
+- **Status lines.** The Settings mode line follows F6, goals and bait auto-start.
+  A copy-all notice on the Remotes page now expires after six seconds.
+- **Farming.** Wood Farm alone no longer chops fruit trees while fruit picking is
+  enabled. Wood/Mine skip axe/pickaxe targets while Fishing is ON instead of
+  swapping the rod out of a cast. Walk travel allows time for the distance
+  (1.5 × distance ÷ WalkSpeed + 2 s, minimum 10 s); waypoint stall checks remain.
+- **Auto Build.** Copy build diagnostics moved into the Library section beside
+  Refresh saved slots (it sat under the next header). Leaving a field unchanged no
+  longer clears the preview, retries and resume point. Stop after a finished run
+  keeps its result. A pause during the last request no longer hides the final or
+  failure message, and Stop at the end of the confirmation window is not counted
+  as a failure.
+- **Studio UI module.** A quick reopen no longer lets the cancelled hide tween
+  hide the panel.
+
+Reviewed but not changed without live confirmation: screen-coordinate GUI-inset
+handling for resource/bait clicks and menu hit tests, bait retries when the bait
+count is unreadable, bait applied between cast release and bobber spawn, the stats
+overlay absorbing tool clicks, and `src/init.client.lua`'s sibling `require` under
+Rojo. Run the full suite after editing any `tools/` source and its embed script.

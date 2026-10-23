@@ -647,8 +647,11 @@ function AutoFarmUI:_build()
 			BackgroundTransparency = 1,
 		})
 		tween:Play()
-		tween.Completed:Connect(function()
-			mainFrame.Visible = false
+		tween.Completed:Connect(function(playbackState)
+			-- A quick reopen cancels this tween; only a finished hide may hide the panel.
+			if playbackState == Enum.PlaybackState.Completed then
+				mainFrame.Visible = false
+			end
 		end)
 	end
 

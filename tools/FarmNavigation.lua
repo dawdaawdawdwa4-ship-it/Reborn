@@ -63,7 +63,9 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode,owner)
         local path=game:GetService("PathfindingService"):CreatePath({AgentRadius=2,AgentHeight=5,AgentCanJump=true,WaypointSpacing=4})
         path:ComputeAsync(root.Position,destination)
         if not valid() or path.Status~=Enum.PathStatus.Success then return false end
-        local deadline=os.clock()+10
+        -- Far chests/trees need more than a fixed budget; per-waypoint stall checks still catch blocking.
+        local speed=math.max(tonumber(humanoid.WalkSpeed) or 16,4)
+        local deadline=os.clock()+math.max(10,(destination-root.Position).Magnitude/speed*1.5+2)
         for _,waypoint in ipairs(path:GetWaypoints()) do
             if not valid() then return false end
             if near() then return true end

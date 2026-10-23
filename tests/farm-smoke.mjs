@@ -114,6 +114,9 @@ for _,item in ipairs(getMineTargets()) do
  assert(item.instance~=orangeTree,'fruit-picking tree must not become an axe target')
 end
 assert(fruitCount==1,'skip foreign and unripe fruit')
+harvestEnabled=false
+for _,item in ipairs(getMineTargets()) do assert(item.instance~=orangeTree,'Wood Farm alone must not chop a fruit tree while fruit picking is enabled') end
+harvestEnabled=true
 orangeTree.children={}
 for _,item in ipairs(getMineTargets()) do assert(item.instance~=orangeTree,'fruit tree must remain protected after fruit removal') end
 return 'Farm rules passed: owned island, mode/crop filtering, maturity, independent ranges, backoff, sorting, prompt selection and confirmation'

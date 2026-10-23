@@ -245,8 +245,11 @@ function AutoBuild.new(ctx)
         return true
     end
     function self:Stop()
+        local live=self.Running or self.WorkerToken
         self.Token+=1;self.Running=false;self.Paused=false
         stopTravel()
+        -- Teleports and Stop All also call this; a finished run must keep its result.
+        if not live then return end
         if self.Progress then self.Progress.State="Stopped" end
         if self.RefreshFailureUI then self:RefreshFailureUI() end
         local p=self.Progress
@@ -969,6 +972,7 @@ function AutoBuild.new(ctx)
                                     if confirmed then break end
                                     scheduler.wait(.05)
                                 until now()>=deadline
+                                if not active() then return end
                             end
                             if existing then skipped+=1;streak=0
                             elseif confirmed then
@@ -1002,6 +1006,9 @@ function AutoBuild.new(ctx)
                 self.Running=false;self.Paused=false;buttons.Start.Text=progress.State=="Finished" and "Start build" or "Resume build"
                 if not ok then
                     progress.State="Error";progress.Detail="Build stopped: "..reportText(err)
+                    status(progress.Detail)
+                elseif progress.Detail then
+                    -- A pause during the last request showed the pause hint over the final result.
                     status(progress.Detail)
                 end
             end
@@ -1776,6 +1783,8 @@ function AutoBuild.new(ctx)
                 local limit=key=="Height" and 8 or 12
                 self[key]=math.clamp(math.floor(tonumber(field.Text) or self[key]),1,limit);field.Text=tostring(self[key])
             end
+            -- Leaving a field unchanged must not discard the preview, retries or resume point.
+            if field.Text==committed then return end
             committed=field.Text
             invalidate();self:RefreshFavorites()
         end
@@ -1892,7 +1901,12 @@ function AutoBuild.new(ctx)
         if not result then return end
         if ctx.CopyReport then ctx.CopyReport(result.Text) else status(result.Text) end
     end)
-    button("Inspect","Refresh saved slots",0,1168,1,function() self:RefreshLibrary(true) end)
+    button("Inspect","Refresh saved slots",0,1168,.5,function() self:RefreshLibrary(true) end)
+    -- Inside the Library section; the old y=1896 row fell below it, under the next header.
+    button("CopyDiagnostics","Copy build diagnostics",.5,1168,.5,function()
+        local report=self:DiagnosticReport()
+        if ctx.CopyReport then ctx.CopyReport(report) else status(report) end
+    end)
     self.LibrarySummary=label("Saved slots have not been inspected. Press Refresh saved slots to read them.",1208,156)
     self.LibrarySummary.TextWrapped=true
     button("Rename","Rename selected slot",0,1376,.5,function() self:RenameSlot(inputs.Name.Text) end)
@@ -1902,10 +1916,6 @@ function AutoBuild.new(ctx)
         self.CopyTarget=self.CopyTarget%5+1;buttons.CopyTarget.Text="Copy target: "..self.CopyTarget.." / 5"
     end)
     button("CopySlot","Copy selected slot → target (overwrites target)",0,1416,1,function() self:CopySlot(self.CopyTarget) end)
-    button("CopyDiagnostics","Copy build diagnostics",0,1896,1,function()
-        local report=self:DiagnosticReport()
-        if ctx.CopyReport then ctx.CopyReport(report) else status(report) end
-    end)
     local copyHint=label("Rename uses the blueprint name field. Copy changes only the target slot; the current preview stays where it is. Choose the destination before copying.",1456,72)
     copyHint.TextWrapped=true
     self.BackupSummary=label("Backup not inspected. Refresh saved slots to check the selected slot.",1540,52)
