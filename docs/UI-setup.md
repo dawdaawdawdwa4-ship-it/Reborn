@@ -3165,3 +3165,21 @@ Report headers now read `Reborn route-114`.
   result lists them separately.
 
 Report headers now read `Reborn mob-keys-115`.
+
+
+## Chest TP hops and nearest-next chests · v116
+
+- **Movement: TP hops.** Chests → Movement now cycles **Stay → Walk → TP hops**.
+  TP hops computes the same path as Walk and then moves the character along it in
+  short teleports (at most 8 studs, one every 0.1 seconds), clearing falling
+  velocity on each hop. It never jumps straight across when no path exists, and
+  a server position reset ends the trip after a distance-based time limit. The
+  approach range, 20-stud withdrawal reach, Stop/Stay cancellation and farm
+  movement conflicts are the same as Walk. Chest profiles save and load the mode.
+- **Nearest-next chest.** With Walk or TP hops, after the current chest's slots
+  are finished the run continues with the remaining chest nearest to where the
+  character now stands (FIRST/LAST priorities still win), instead of the order
+  sorted from the starting position. Balance-chests order is unchanged.
+- Navigation exposes the mode as `"Hop"` (`tools/FarmNavigation.lua`).
+
+Report headers now read `Reborn chest-hops-116`.

@@ -678,7 +678,7 @@ end)()
  local approached,cancel=0,nil
  RemoteCatalog.Navigation={Stop=function() end,Approach=function(_,target,reach,active,position,mode)
   approached+=1;cancel=active
-  assert(target==chest and reach==12 and mode=='Walk','chest must walk into normal interaction reach')
+  assert(target==chest and reach==12 and mode==(RemoteCatalog.ChestTravel=='Hop' and 'Hop' or 'Walk'),'chest must walk or hop into normal interaction reach')
   return true
  end}
  chest.Position=position(60)
@@ -686,8 +686,11 @@ end)()
  RemoteCatalog.ChestTravelButton.Activated:Fire()
  assert(RemoteCatalog.ApproachChest(recorder,function() return true end) and approached==1,'chest within approach range must navigate closer')
  RemoteCatalog.ChestTravelButton.Activated:Fire()
+ assert(RemoteCatalog.ChestTravel=='Hop' and RemoteCatalog.ChestTravelButton.Text=='Movement: TP hops','third movement mode must be TP hops')
+ assert(RemoteCatalog.ApproachChest(recorder,function() return true end) and approached==2,'TP hops must approach through the hop navigator')
+ RemoteCatalog.ChestTravelButton.Activated:Fire()
  assert(RemoteCatalog.ChestTravel=='Stay' and not cancel(),'Stay must cancel the active chest walk')
- assert(not RemoteCatalog.ApproachChest(recorder,function() return true end) and approached==1,'Stay must not navigate')
+ assert(not RemoteCatalog.ApproachChest(recorder,function() return true end) and approached==2,'Stay must not navigate')
  RemoteCatalog.ChestTravelButton.Activated:Fire()
  chest.Position=position(150)
  assert(not RemoteCatalog.ApproachChest(recorder,function() return true end),'outside approach range must wait')
@@ -1007,7 +1010,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn mob-keys-115',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn chest-hops-116',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1747,7 +1750,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn mob-keys-115 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn chest-hops-116 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

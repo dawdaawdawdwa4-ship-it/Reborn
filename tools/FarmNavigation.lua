@@ -63,6 +63,27 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode,owner)
         local path=game:GetService("PathfindingService"):CreatePath({AgentRadius=2,AgentHeight=5,AgentCanJump=true,WaypointSpacing=4})
         path:ComputeAsync(root.Position,destination)
         if not valid() or path.Status~=Enum.PathStatus.Success then return false end
+        if mode=="Hop" then
+            -- Teleport in short steps along the path: no long jumps and no cutting through walls.
+            local waypoints=path:GetWaypoints()
+            local lift=waypoints[1] and root.Position.Y-waypoints[1].Position.Y or 3
+            local hopDeadline=os.clock()+math.max(5,(destination-root.Position).Magnitude/30+3)
+            for _,waypoint in ipairs(waypoints) do
+                local goal=waypoint.Position+Vector3.new(0,lift,0)
+                while valid() and not near() do
+                    local offset=goal-root.Position
+                    if offset.Magnitude<.5 then break end
+                    -- A server position reset would otherwise hop forever.
+                    if os.clock()>hopDeadline then return false end
+                    root.AssemblyLinearVelocity=Vector3.zero
+                    root.CFrame=root.CFrame+offset.Unit*math.min(8,offset.Magnitude)
+                    task.wait(.1)
+                end
+                if not valid() then return false end
+                if near() then return true end
+            end
+            return near()
+        end
         -- Far chests/trees need more than a fixed budget; per-waypoint stall checks still catch blocking.
         local speed=math.max(tonumber(humanoid.WalkSpeed) or 16,4)
         local deadline=os.clock()+math.max(10,(destination-root.Position).Magnitude/speed*1.5+2)

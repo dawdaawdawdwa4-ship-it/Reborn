@@ -104,6 +104,17 @@ RemoteCatalog.ChestIncludeConveyor=false
 assert(RemoteCatalog.ChestConveyorProtected({Chest={Name='CHESTMEDIUMINDUSTRIALIO'}}) and not RemoteCatalog.ChestConveyorProtected(ordinary),'known I/O type matching must be case insensitive and preserve ordinary chests')
 valid=false
 assert(#RemoteCatalog.ChestTargets()==0 and #RemoteCatalog.SelectedChestTargets()==0,'invalid session must prevent discovery and replay target generation')
+do
+ local states={{Binding={Chest=a}},{Binding={Chest=b}},{Binding={Chest=far}}}
+ local savedX,savedPriorities=rootX,RemoteCatalog.ChestPriorities
+ RemoteCatalog.ChestPriorities={}
+ rootX=10;assert(RemoteCatalog.NearestChestState(states)==2,'after a chest, walking must continue to the chest nearest the character')
+ rootX=0;assert(RemoteCatalog.NearestChestState(states)==1)
+ states[1].Done=true;states[2].Waiting=true;assert(RemoteCatalog.NearestChestState(states)==3,'finished or waiting chests are skipped')
+ states[1].Done=false;states[2].Waiting=false;RemoteCatalog.ChestPriorities[far]=1
+ assert(RemoteCatalog.NearestChestState(states)==3,'a FIRST chest still wins over a nearer one')
+ rootX,RemoteCatalog.ChestPriorities=savedX,savedPriorities
+end
 return 'Chest targets: conveyor Skip/Include, matching owned discovery, range/type filtering, complete slot coverage, deduplication, individual/scope controls and expired-session guards passed'
 `;
 const state=await LuauState.createAsync();

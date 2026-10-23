@@ -4859,7 +4859,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-keys-115",
+    return table.concat({"Reborn chest-hops-116",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5554,11 +5554,13 @@ end))
 pageHeading(RemoteCatalog.ChestPage,"MOVEMENT",430)
 RemoteCatalog.ChestScanRange=120
 RemoteCatalog.ChestTravel="Stay"
+function RemoteCatalog.ChestTravelLabel(mode) return mode=="Hop" and "TP hops" or tostring(mode) end
 RemoteCatalog.ChestTravelButton=button({Parent=RemoteCatalog.ChestPage,Text="Movement: Stay",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,458)})
 track(RemoteCatalog.ChestTravelButton.Activated:Connect(function()
-    RemoteCatalog.ChestTravel=RemoteCatalog.ChestTravel=="Walk" and "Stay" or "Walk"
-    RemoteCatalog.ChestTravelButton.Text="Movement: "..RemoteCatalog.ChestTravel
+    -- Stay → Walk → TP hops (short teleports along the walking path) → Stay.
+    RemoteCatalog.ChestTravel=RemoteCatalog.ChestTravel=="Stay" and "Walk" or RemoteCatalog.ChestTravel=="Walk" and "Hop" or "Stay"
+    RemoteCatalog.ChestTravelButton.Text="Movement: "..RemoteCatalog.ChestTravelLabel(RemoteCatalog.ChestTravel)
     if RemoteCatalog.ChestTravel=="Stay" then RemoteCatalog.Navigation.Stop("Chest") end
 end))
 RemoteCatalog.ChestRangeButton=button({Parent=RemoteCatalog.ChestPage,Text="Walk range: 120 studs",TextSize=13,
@@ -6816,7 +6818,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-keys-115 · Propeller loot history (UTC)",
+    return table.concat({"Reborn chest-hops-116 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6920,7 +6922,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-keys-115 · Propeller tracker",
+    return table.concat({"Reborn chest-hops-116 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6956,7 +6958,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-keys-115", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-hops-116", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -7834,6 +7836,27 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode,owner)
         local path=game:GetService("PathfindingService"):CreatePath({AgentRadius=2,AgentHeight=5,AgentCanJump=true,WaypointSpacing=4})
         path:ComputeAsync(root.Position,destination)
         if not valid() or path.Status~=Enum.PathStatus.Success then return false end
+        if mode=="Hop" then
+            -- Teleport in short steps along the path: no long jumps and no cutting through walls.
+            local waypoints=path:GetWaypoints()
+            local lift=waypoints[1] and root.Position.Y-waypoints[1].Position.Y or 3
+            local hopDeadline=os.clock()+math.max(5,(destination-root.Position).Magnitude/30+3)
+            for _,waypoint in ipairs(waypoints) do
+                local goal=waypoint.Position+Vector3.new(0,lift,0)
+                while valid() and not near() do
+                    local offset=goal-root.Position
+                    if offset.Magnitude<.5 then break end
+                    -- A server position reset would otherwise hop forever.
+                    if os.clock()>hopDeadline then return false end
+                    root.AssemblyLinearVelocity=Vector3.zero
+                    root.CFrame=root.CFrame+offset.Unit*math.min(8,offset.Magnitude)
+                    task.wait(.1)
+                end
+                if not valid() then return false end
+                if near() then return true end
+            end
+            return near()
+        end
         -- Far chests/trees need more than a fixed budget; per-waypoint stall checks still catch blocking.
         local speed=math.max(tonumber(humanoid.WalkSpeed) or 16,4)
         local deadline=os.clock()+math.max(10,(destination-root.Position).Magnitude/speed*1.5+2)
@@ -7878,7 +7901,7 @@ function RemoteCatalog.BuildTravelBlocked()
     if harvestEnabled and CONFIG.HarvestWalk or woodEnabled and CONFIG.WoodTravelMode~="Normal" or mineEnabled then
         return "Stop farming movement before Auto Walk."
     end
-    if RemoteCatalog.ChestAutoWorker and RemoteCatalog.ChestTravel=="Walk" then return "Stop chest walking before Auto Walk." end
+    if RemoteCatalog.ChestAutoWorker and RemoteCatalog.ChestTravel~="Stay" then return "Stop chest walking before Auto Walk." end
     if RemoteCatalog.PlowWorker then return "Stop Auto Plow before Auto Walk." end
     local navigation=RemoteCatalog.Navigation
     if navigation and navigation.Humanoid and navigation.Owner~="Build" then return "Other movement is active; stop it before Auto Walk." end
@@ -8580,7 +8603,7 @@ function RemoteCatalog.SelectedChestTargets(includeProtected)
     local order,distances={},{}
     for index,entry in ipairs(targets) do
         order[entry]=index
-        local position=RemoteCatalog.ChestTravel=="Walk" and root and getPartPosition(entry.Binding.Chest)
+        local position=RemoteCatalog.ChestTravel~="Stay" and root and getPartPosition(entry.Binding.Chest)
         distances[entry]=position and (position-root.Position).Magnitude or math.huge
     end
     table.sort(targets,function(a,b)
@@ -8590,6 +8613,24 @@ function RemoteCatalog.SelectedChestTargets(includeProtected)
         return ad<bd or ad==bd and order[a]<order[b]
     end)
     return targets
+end
+-- Highest priority first, then nearest to where the character stands now.
+function RemoteCatalog.NearestChestState(states)
+    local char=player.Character
+    local root=char and char:FindFirstChild("HumanoidRootPart")
+    local best,bestPriority,bestDistance
+    for index,state in ipairs(states) do
+        if not state.Done and not state.Waiting then
+            local chest=state.Binding.Chest
+            local priority=(RemoteCatalog.ChestPriorities or {})[chest] or 0
+            local position=root and chest and getPartPosition(chest)
+            local distance=position and (position-root.Position).Magnitude or math.huge
+            if not best or priority>bestPriority or priority==bestPriority and distance<bestDistance then
+                best,bestPriority,bestDistance=index,priority,distance
+            end
+        end
+    end
+    return best
 end
 -- CHEST TARGETS END
 -- CHEST EXCLUSION UI LOGIC BEGIN
@@ -8858,13 +8899,14 @@ function RemoteCatalog.ApproachChest(recorder,active,binding)
     local distance=(position-root.Position).Magnitude
     if distance<=20 then return true end
     if distance>RemoteCatalog.ChestScanRange then return false,"Chest is outside approach range; move closer or increase the range" end
-    if RemoteCatalog.ChestTravel~="Walk" then return false,"Stay mode: stand within 20 studs. Approach range controls walking only." end
+    if RemoteCatalog.ChestTravel=="Stay" then return false,"Stay mode: stand within 20 studs. Approach range controls walking only." end
     if harvestEnabled and CONFIG.HarvestWalk or woodEnabled and CONFIG.WoodTravelMode~="Normal" or mineEnabled then
         return false,"Pause other farming movement before walking to the chest"
     end
+    local mode=RemoteCatalog.ChestTravel
     return RemoteCatalog.Navigation.Approach(player,chest,12,function()
-        return active() and RemoteCatalog.ChestTravel=="Walk" and recorder:CanUseChestBinding(binding)
-    end,getPartPosition,"Walk","Chest")
+        return active() and RemoteCatalog.ChestTravel==mode and recorder:CanUseChestBinding(binding)
+    end,getPartPosition,mode=="Hop" and "Hop" or "Walk","Chest")
 end
 function RemoteCatalog.ChestTargetLabel(binding,all)
     local seen,count={},0
@@ -9027,7 +9069,7 @@ function RemoteCatalog.ValidateChestProfile(data)
     table.sort(items)
     assert(type(data.Discover)=="boolean" and type(data.Whole)=="boolean","Invalid profile scope")
     assert(data.Speed=="Standard" or data.Speed=="Fast","Invalid profile pace")
-    assert(data.Travel=="Stay" or data.Travel=="Walk","Invalid profile movement")
+    assert(data.Travel=="Stay" or data.Travel=="Walk" or data.Travel=="Hop","Invalid profile movement")
     assert(data.Range==30 or data.Range==60 or data.Range==120 or data.Range==240,"Invalid profile range")
     assert(data.Goal==0 or data.Goal==25 or data.Goal==50 or data.Goal==100 or data.Goal==250 or data.Goal==500,"Invalid profile goal")
     local stock=data.StockTarget==nil and 0 or data.StockTarget
@@ -9055,7 +9097,7 @@ function RemoteCatalog.RefreshChestProfiles()
     RemoteCatalog.ChestProfileSlotButton.Text="Profile: "..slot.." / 3"
     if profile then
         local items=profile.ItemMode=="All" and "All learned items" or #profile.Items==0 and "No items selected" or #profile.Items.." selected items"
-        RemoteCatalog.ChestProfileSummary.Text=profile.Name.." · "..(RemoteCatalog.ChestProfilePersistence[slot] or "Session only").."\n"..items.." · "..profile.Speed.." · "..profile.Travel.."\n"..(profile.Discover and "All matching" or "Learned only").." · "..(profile.Whole and "Whole chest" or "Learned slots").." · Goal "..(profile.Goal==0 and "Unlimited" or profile.Goal).." · Top-up/item "..((profile.StockTarget or 0)==0 and "OFF" or profile.StockTarget)..(profile.Repeat and " · Repeat 2s" or " · One pass")
+        RemoteCatalog.ChestProfileSummary.Text=profile.Name.." · "..(RemoteCatalog.ChestProfilePersistence[slot] or "Session only").."\n"..items.." · "..profile.Speed.." · "..(profile.Travel=="Hop" and "TP hops" or profile.Travel).."\n"..(profile.Discover and "All matching" or "Learned only").." · "..(profile.Whole and "Whole chest" or "Learned slots").." · Goal "..(profile.Goal==0 and "Unlimited" or profile.Goal).." · Top-up/item "..((profile.StockTarget or 0)==0 and "OFF" or profile.StockTarget)..(profile.Repeat and " · Repeat 2s" or " · One pass")
     else
         RemoteCatalog.ChestProfileSummary.Text="Empty profile "..slot..". "..(RemoteCatalog.ChestProfilesFileState or "Session only").."\nSave current settings here (overwrites this slot). Load never starts collecting."
     end
@@ -9144,7 +9186,7 @@ function RemoteCatalog.ApplyChestProfile(data)
     if RemoteCatalog.ChestRepeatMenu then RemoteCatalog.ChestRepeatMenu:Refresh() end
     RemoteCatalog.ChestProfileName.Text=profile.Name
     RemoteCatalog.ChestSpeedButton.Text="Pace: "..profile.Speed
-    RemoteCatalog.ChestTravelButton.Text="Movement: "..profile.Travel
+    RemoteCatalog.ChestTravelButton.Text="Movement: "..(profile.Travel=="Hop" and "TP hops" or profile.Travel)
     RemoteCatalog.ChestRangeButton.Text="Walk range: "..profile.Range.." studs"
     RemoteCatalog.ChestGoalButton.Text="Auto goal: "..(profile.Goal>0 and profile.Goal.." items" or "Unlimited")
     RemoteCatalog.ChestScopeButton.Text=profile.Discover and "Scope: All matching" or "Scope: Learned only"
@@ -9273,7 +9315,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-keys-115\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-hops-116\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9335,7 +9377,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-keys-115 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn chest-hops-116 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9482,7 +9524,7 @@ function RemoteCatalog.RefreshChestActions()
             or auto and RemoteCatalog.ChestInventoryWaiting and ("Waiting for "..RemoteCatalog.ChestInventoryWaiting.." quantity · no new request sent")
             or auto and RemoteCatalog.ChestRequestPending and ("Waiting for server · "..RemoteCatalog.ChestRequestPending.." · request still in flight")
             or auto and RemoteCatalog.ChestConfirming and ("Confirming "..RemoteCatalog.ChestConfirming.." · no next request until inventory settles")
-            or auto and RemoteCatalog.ChestReachWaiting and (RemoteCatalog.ChestTravel=="Walk" and "Waiting · no reachable selected chest; see result" or "Waiting · stand within 20 studs or choose Walk")
+            or auto and RemoteCatalog.ChestReachWaiting and (RemoteCatalog.ChestTravel~="Stay" and "Waiting · no reachable selected chest; see result" or "Waiting · stand within 20 studs or choose Walk")
             or RemoteCatalog.ChestCooldown and ((RemoteCatalog.ChestCooldownKind=="pace" and "Request pace" or "Server cooldown").." · "..RemoteCatalog.ChestCooldown..(auto and " · "..tostring(RemoteCatalog.ChestAutoTotal or 0).." collected" or ""))
             or manual and ("Withdrawing · "..(RemoteCatalog.ChestManualProgress or "starting"))
             or auto and (RemoteCatalog.ChestRepeatWaiting and ("Waiting · next scan in "..tostring(RemoteCatalog.ChestNextScan or 2).."s") or ("Collecting · "..(RemoteCatalog.ChestAutoProgress or "starting")))
@@ -9675,7 +9717,7 @@ function RemoteCatalog.SetChestAuto(state)
                     RemoteCatalog.ChestInventoryWaiting=inventoryWaits>0 and "selected items" or nil
                     RemoteCatalog.RefreshChestActions()
                     if inventoryWaits>0 then RemoteCatalog.ChestAutoMessage("Waiting for inventory metadata · "..inventoryWaits.." selected checks need a readable quantity. Rescanning in 1s; no withdrawal sent for these checks.")
-                    else RemoteCatalog.ChestAutoMessage((RemoteCatalog.ChestTravel=="Walk" and "No selected chest can currently be reached. Check your character, path and Walk range." or "No selected chest is within reach. Stay sends only within 20 studs; move closer or choose Movement: Walk. Walk range controls walking only.").."\nRescanning in 1s. "..RemoteCatalog.ChestAutoTotal.." confirmed items; no withdrawal sent while waiting.") end
+                    else RemoteCatalog.ChestAutoMessage((RemoteCatalog.ChestTravel~="Stay" and "No selected chest can currently be reached. Check your character, path and Walk range." or "No selected chest is within reach. Stay sends only within 20 studs; move closer or choose Movement: Walk. Walk range controls walking only.").."\nRescanning in 1s. "..RemoteCatalog.ChestAutoTotal.." confirmed items; no withdrawal sent while waiting.") end
                     task.wait(1)
                     for _,state in ipairs(states) do state.Waiting=false;state.InventoryWaiting=false end
                     RemoteCatalog.ChestReachWaiting=false
@@ -9689,10 +9731,13 @@ function RemoteCatalog.SetChestAuto(state)
                         local candidate=(index-1+step)%#states+1
                         if not states[candidate].Done and not states[candidate].Waiting and states[candidate].Binding.Chest~=lastVisitedChest then index=candidate;break end
                     end
-                elseif RemoteCatalog.ChestTravel=="Walk" and currentChest then
+                elseif RemoteCatalog.ChestTravel~="Stay" and currentChest then
+                    local stayed=false
                     for candidate,state in ipairs(states) do
-                        if not state.Done and not state.Waiting and state.Binding.Chest==currentChest then index=candidate;break end
+                        if not state.Done and not state.Waiting and state.Binding.Chest==currentChest then index=candidate;stayed=true;break end
                     end
+                    -- Chest finished: continue with the nearest remaining chest from here, not the start order.
+                    if not stayed and RemoteCatalog.NearestChestState then index=RemoteCatalog.NearestChestState(states) or index end
                 end
                 if balanced and not preferredSlot then
                     local chest=states[index].Binding.Chest
@@ -9931,7 +9976,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-keys-115\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-hops-116\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11049,7 +11094,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-keys-115 · Craft diagnostics",
+    return table.concat({"Reborn chest-hops-116 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11128,7 +11173,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-keys-115 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn chest-hops-116 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11705,7 +11750,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-keys-115 · Mobs",
+    return table.concat({"Reborn chest-hops-116 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

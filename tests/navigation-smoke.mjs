@@ -16,8 +16,9 @@ mt.__index=function(a,key) if key=="Unit" then return v(a.X/a.Magnitude,a.Y/a.Ma
 local Vector3={zero=v(0),new=v}
 local Enum={PathStatus={Success=1},PathWaypointAction={Jump=2},EasingStyle={Linear=1}}
 local TweenInfo={new=function(duration) return duration end}
+local pinned=false
 local root={Position=v(0,3)}
-setmetatable(root,{__index=function(t,key) if key=="CFrame" then return t.Position end end,__newindex=function(t,key,value) if key=="CFrame" then rawset(t,"Position",value) else rawset(t,key,value) end end})
+setmetatable(root,{__index=function(t,key) if key=="CFrame" then return t.Position end end,__newindex=function(t,key,value) if key=="CFrame" then if not pinned then rawset(t,"Position",value) end else rawset(t,key,value) end end})
 local tweenCancelled=0
 local moves,stops,halts=0,0,0
 local humanoid={Health=100,MoveTo=function(_,p) if p==root.Position then halts+=1 else moves+=1 end end,Move=function() stops+=1 end}
@@ -52,6 +53,11 @@ local function reset() root.Position=v(0,3);humanoid.Jump=false;moving=true;fail
 reset();assert(not Navigation.Approach(player,target,8,active,positionOf,'Normal') and moves==0,'Normal must not move toward distant targets')
 reset();root.Position=v(15);assert(Navigation.Approach(player,target,8,active,positionOf,'Normal') and moves==0,'Normal must allow in-range actions without movement')
 reset();failPath=true;assert(not Navigation.Approach(player,target,8,active,positionOf) and moves==0,'failed path must not walk directly across void')
+reset();stuck=true;assert(Navigation.Approach(player,target,8,active,positionOf,'Hop') and moves==0 and (target.Position-root.Position).Magnitude<=8,'TP hops must reach the target along the path without walking')
+assert(root.AssemblyLinearVelocity==Vector3.zero,'each hop must clear falling velocity')
+reset();stuck=true;failPath=true;assert(not Navigation.Approach(player,target,8,active,positionOf,'Hop') and root.Position.X==0,'TP hops must never jump straight across when no path exists')
+reset();stuck=true;pinned=true;local hopStart=time
+assert(not Navigation.Approach(player,target,8,active,positionOf,'Hop') and time-hopStart<10,'a server position reset must end the hop loop');pinned=false
 reset();jump=true;assert(Navigation.Approach(player,target,8,active,positionOf) and humanoid.Jump,'path jump must use ordinary Humanoid jump controls')
 reset();stuck=true;local before=time;assert(not Navigation.Approach(player,target,8,active,positionOf) and time-before<2,'stuck walking must time out')
 reset();cancel=true;assert(not Navigation.Approach(player,target,8,active,positionOf) and not Navigation.Humanoid,'Stop must cancel and release movement')
