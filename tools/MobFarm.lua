@@ -215,6 +215,14 @@ function MobFarm.new(ctx)
     -- A live clip showed a stopped run leaving the character inside a slime until it died.
     -- Nearest mob of any kind within `radius`; a low-health character flees buffalkor and
     -- lizards too, not only the kind it farms.
+    -- Where fighting resumes after a low-health break: ResumeAbove at most, earlier (down to 55 %)
+    -- when the run's fights have been cheap in HP per kill.
+    function self:ResumeTarget(maxHealth)
+        local kills=(self.Defeats or 0)+(self.LikelyDefeats or 0)
+        local cost=kills>0 and maxHealth and maxHealth>0 and (self.DamageTaken or 0)/kills/maxHealth or self.HPPerKill
+        if not self.Smart or not cost then return self.ResumeAbove end
+        return math.max(.55,math.min(self.ResumeAbove,self.RetreatBelow+1.5*cost))
+    end
     function self:Threats(radius)
         local kind=self.Kind
         self.Kind="All mobs"
@@ -456,7 +464,14 @@ function MobFarm.new(ctx)
                     local human=char and char:FindFirstChildOfClass("Humanoid")
                     local root=char and char:FindFirstChild("HumanoidRootPart")
                     if not human or not root or human.Health<=0 then
-                        if human and human.Health<=0 and char and not deadSeen[char] then deadSeen[char]=true;self.Deaths=(self.Deaths or 0)+1 end
+                        if human and human.Health<=0 and char and not deadSeen[char] then
+                            deadSeen[char]=true;self.Deaths=(self.Deaths or 0)+1
+                            -- Every death moves the low-health break 5 points earlier (up to 60 %), for good.
+                            if self.Smart and self.RetreatBelow<.6 then
+                                self.RetreatBelow=math.min(.6,self.RetreatBelow+.05)
+                                if ctx.Remember then pcall(ctx.Remember,"RetreatBelow",self.RetreatBelow) end
+                            end
+                        end
                         halt();self.Target=nil;publish("Paused · waiting for your character")
                     elseif not usable(recorder) then
                         self:Stop("Character/session changed · learn one manual attack again");return
@@ -481,7 +496,8 @@ function MobFarm.new(ctx)
                             if ate then self.Meals=(self.Meals or 0)+1 end
                             fraction=human.MaxHealth>0 and human.Health/human.MaxHealth or 0
                         end
-                        recovering=fraction<=self.RetreatBelow or recovering and fraction<self.ResumeAbove
+                        local resumeAt=self:ResumeTarget(human.MaxHealth)
+                        recovering=fraction<=self.RetreatBelow or recovering and fraction<resumeAt
                         local paused=ctx.PauseReason()
                         if recovering or paused then
                             self.Target=nil
@@ -499,12 +515,12 @@ function MobFarm.new(ctx)
                             local safe=farRetreat and math.max(40,self.SafeDistance*2) or self.SafeDistance
                             if recovering and fraction<=.2 then safe=math.max(safe,60) end
                             -- "+0.5 HP/s · ~60 s to 70%" tells the user the wait is working; "not rising" warns of the stop.
-                            local resume=math.floor(self.ResumeAbove*100).."% HP"
+                            local resume=math.floor(resumeAt*100).."% HP"
                             if recovering then
                                 local elapsed=now()-regenStart
                                 local rate=elapsed>=3 and (fraction-regenFrom)*human.MaxHealth/elapsed or nil
                                 if rate and rate>.01 then
-                                    local left=(self.ResumeAbove-fraction)*human.MaxHealth/rate
+                                    local left=(resumeAt-fraction)*human.MaxHealth/rate
                                     resume=resume..string.format(" · +%.1f HP/s · ~%d s to go",rate,math.ceil(left))
                                 elseif elapsed>=3 then
                                     resume=resume..string.format(" · HP not rising · moves further out in %d s",math.ceil(self.RegenTimeout-(now()-regenAt)))

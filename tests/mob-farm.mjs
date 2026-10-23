@@ -407,6 +407,21 @@ do
  assert(math.abs(farm.Cadence-.7)<1e-6 and farm.CadenceTuned==2,'ten unconfirmed swings slow it by 0.1 s')
  damage=true;ctx.Remember=nil
 end
+-- Risk tuning: cheap fights resume earlier; every death moves the break 5 points earlier.
+do
+ reset();farm.Smart=true
+ assert(math.abs(farm:ResumeTarget(100)-.7)<1e-6,'without any kill the resume point is the limit')
+ farm.HPPerKill=.05;assert(math.abs(farm:ResumeTarget(100)-.55)<1e-6,'5 HP per kill from earlier runs resumes at the 55% floor')
+ farm.HPPerKill=.1;assert(math.abs(farm:ResumeTarget(100)-.6)<1e-6,'10 HP per kill resumes at 60%')
+ farm.LikelyDefeats=2;farm.DamageTaken=60;assert(math.abs(farm:ResumeTarget(100)-.7)<1e-6,'30 HP per kill this run keeps the 70% limit')
+ farm.LikelyDefeats=0;farm.DamageTaken=0;farm.HPPerKill=nil
+ local remembered={}
+ ctx.Remember=function(key,value) remembered[key]=value end
+ reset();farm.Smart=true;ctx.Remember=function(key,value) remembered[key]=value end
+ farm:Start();human.Health=0;step();step()
+ assert(farm.Deaths==1 and math.abs(farm.RetreatBelow-.5)<1e-6 and math.abs(remembered.RetreatBelow-.5)<1e-6,'a death raises the retreat threshold to 50% and saves it')
+ human.Health=100;ctx.Remember=nil
+end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do
  reset();damage=false;br.Position=v(300);farm:Start();for i=1,5 do step(.7) end

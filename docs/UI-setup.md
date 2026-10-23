@@ -4069,3 +4069,18 @@ Requested as "keep improving".
   hits per kill and swings per kill, once a run has 30 s and one kill.
 
 Report headers now read `Reborn mob-cadence-161`.
+
+## Risk tuning · v162
+
+Requested as "keep improving".
+
+- **Resume point follows the cost of fighting.** The low-health break still
+  starts at 45 % HP, but fighting resumes earlier than the 70 % limit when the
+  run's fights have been cheap: resume = retreat + 1.5 × HP per kill (as a
+  share of max HP), never below 55 % and never above the limit. Before the
+  first kill of a run the scoreboard's lifetime HP per kill seeds the value.
+  The status and the new "Low-health break" line show the current point.
+- **Deaths move the break earlier.** Every death raises the retreat threshold
+  by 5 points, up to 60 %, and saves it (`MobRetreatBelow`).
+
+Report headers now read `Reborn mob-risk-162`.
