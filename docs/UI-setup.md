@@ -3644,3 +3644,22 @@ nothing, so the farm now keeps the character outside the mob:
   prepared food is carried, and the low-health retreat covers the rest.
 
 Report headers now read `Reborn mob-standoff-139`.
+
+
+## Mob tracking · v140
+
+A clip showed the farm TP-hopping at a slime (39 → 7 studs) while the slime
+hopped at the character, ending with the two overlapping. Three tracking rules:
+
+- **Let it come.** A target that moves 1.5 studs or more toward the character
+  between two ticks (measured from the character's current position, so the hub's
+  own hops do not count) within twice the reach is waited for ("Holding · slime
+  is coming") instead of hopped or chased into.
+- **No swing at an airborne mob.** While the target's root is more than 4.5 studs
+  above or below the character, the farm waits ("… is in the air") without
+  spending the attack cadence; the standoff step-back and the aimed click follow
+  once it lands.
+- **Continuous facing.** Within twice the reach the character turns toward the
+  target every tick, not only before a swing.
+
+Report headers now read `Reborn mob-track-140`.

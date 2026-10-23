@@ -209,6 +209,7 @@ function MobFarm.new(ctx)
             local attempts=0
             local unconfirmed=0
             local lastEat=-math.huge
+            local lastDistance=setmetatable({},{__mode="k"})
             local progress={}
             local recovering=false
             local function active()
@@ -322,7 +323,17 @@ function MobFarm.new(ctx)
                                 end
                                 local chasing=false
                                 local standoff=standoffFor(chosen)
-                                if chosen.Distance>self.Reach then
+                                -- Slimes hop at the character. Measured per tick: a target closing fast is left
+                                -- to arrive rather than hopped into (which ends with the character inside it).
+                                -- Compared from the character's current spot, so the hub's own hops do not count.
+                                local previous=lastDistance[chosen.Model]
+                                lastDistance[chosen.Model]=chosen.Root.Position
+                                local closing=previous~=nil and (previous-root.Position).Magnitude-chosen.Distance>=1.5 and chosen.Distance<=self.Reach*2
+                                local airborne=math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0))>self.Reach*.75
+                                if chosen.Distance<=self.Reach*2 and ctx.Face then pcall(ctx.Face,root,chosen.Root) end
+                                if closing and chosen.Distance>self.Reach then
+                                    halt();publish("Holding · "..chosen.Model.Name.." is coming · "..math.floor(chosen.Distance).." studs")
+                                elseif chosen.Distance>self.Reach then
                                     local clear=self.Walk and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
                                     -- Teleport mode loops short hops, one per tick; walls still route through the pathfinder.
                                     local teleport=clear and self.Travel=="Teleport" and ctx.Hop~=nil
@@ -367,6 +378,10 @@ function MobFarm.new(ctx)
                                             publish("Path blocked · trying another slime shortly")
                                         end
                                     else publish("Waiting · move within 6 studs or enable Auto Move") end
+                                elseif airborne then
+                                    -- A swing at a slime above head height misses; it lands within a moment.
+                                    if self.Chase then halt() end
+                                    publish("Waiting · "..chosen.Model.Name.." is in the air")
                                 elseif now()-lastAttack>=.65 and valid() then
                                     if self.Chase then halt() end
                                     local tool=ctx.Weapon(recorder.MobBinding.WeaponName)

@@ -289,6 +289,18 @@ do
  farm:Stop();assert(speeds[#speeds]=='restore','Stop must restore the original speed')
  ctx.Boost=nil
 end
+-- A slime hopping at the character is awaited, a slime in the air is not swung at, and facing is continuous.
+do
+ reset();stuck=true;ar.Position=v(11);farm:Start()
+ local chasedMoves=moves
+ ar.Position=v(9);step()
+ assert(moves<=chasedMoves+1 and root.Position.X==0 and farm.Message:find('is coming',1,true) and sent==0,'a target closing fast must be waited for (only the halt MoveTo), not hopped into')
+ ar.Position=v(4);step();assert(sent==1,'once it arrives in reach it is attacked')
+ reset();ar.Position=v(4);ar.Position.Y=8;farm:Start()
+ assert(sent==0 and farm.Message:find('in the air',1,true),'no swing while the slime is above head height')
+ ar.Position.Y=0;step(.7);assert(sent==1,'the landed slime is attacked')
+ reset();ar.Position=v(9);farm:Start();assert(faced==ar,'the character faces a nearby target before it is in reach')
+end
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
 `;
