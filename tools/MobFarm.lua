@@ -144,13 +144,21 @@ function MobFarm.new(ctx)
         if not self:ReleaseSwing(press) then return false,"Weapon release failed · press STOP to retry" end
         if not ok then return false,result end
         if not active() then return false,"Swing cancelled" end
-        -- Escalation: with the animation now playing, a learned hit packet is accepted where a bare
-        -- replay got NO_ANIMATION. Used only after clicks/activation produced no HP change.
+        -- The game's own hit packet names the target, so it lands whenever the server accepts it,
+        -- while a click only lands when the swing animation happens to overlap the mob. With the
+        -- animation now playing, the packet is accepted where a bare replay got NO_ANIMATION.
+        -- A packet known to be ready (learned on this server, auto-learned from our own swing or
+        -- remembered by its stable definition) follows every click; otherwise it is the escalation
+        -- after clicks produced no confirmed hit.
+        if not self.UseLearnedHit and not self.LearnedHitRejected and target and ctx.LearnedHit and ctx.LearnedHitReady and ctx.LearnedHitReady() then
+            self.UseLearnedHit=true
+        end
         if self.UseLearnedHit and target and ctx.LearnedHit then
             local sent,detail=ctx.LearnedHit(target.Model)
             method=method..(sent and " + learned hit" or " + learned hit rejected ("..(ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail))..") · escalation off")
+            if sent then self.LearnedHits=(self.LearnedHits or 0)+1
             -- A rejected packet will be rejected again; clicks alone are quieter and just as good.
-            if not sent then self.UseLearnedHit=false end
+            else self.UseLearnedHit=false;self.LearnedHitRejected=true end
         end
         self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
         return true,self.LastMethod.." · checking for HP changes"
@@ -240,7 +248,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
@@ -599,7 +607,7 @@ function MobFarm.new(ctx)
                                                 if unconfirmed>=self.RunBudget then
                                                     self:Stop("No HP drop, damage number, loot or defeat observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
                                                 elseif attempts>=self.TargetBudget then
-                                                    if ctx.LearnedHit and not self.UseLearnedHit and (not ctx.LearnedHitReady or ctx.LearnedHitReady()) then
+                                                    if ctx.LearnedHit and not self.UseLearnedHit and not self.LearnedHitRejected and (not ctx.LearnedHitReady or ctx.LearnedHitReady()) then
                                                         -- Try the stronger method on this same target before giving up on it.
                                                         self.UseLearnedHit=true;attempts=0
                                                         publish("No HP drop from clicks · adding the learned hit packet")

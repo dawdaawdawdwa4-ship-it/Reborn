@@ -1713,13 +1713,21 @@ function MobFarm.new(ctx)
         if not self:ReleaseSwing(press) then return false,"Weapon release failed · press STOP to retry" end
         if not ok then return false,result end
         if not active() then return false,"Swing cancelled" end
-        -- Escalation: with the animation now playing, a learned hit packet is accepted where a bare
-        -- replay got NO_ANIMATION. Used only after clicks/activation produced no HP change.
+        -- The game's own hit packet names the target, so it lands whenever the server accepts it,
+        -- while a click only lands when the swing animation happens to overlap the mob. With the
+        -- animation now playing, the packet is accepted where a bare replay got NO_ANIMATION.
+        -- A packet known to be ready (learned on this server, auto-learned from our own swing or
+        -- remembered by its stable definition) follows every click; otherwise it is the escalation
+        -- after clicks produced no confirmed hit.
+        if not self.UseLearnedHit and not self.LearnedHitRejected and target and ctx.LearnedHit and ctx.LearnedHitReady and ctx.LearnedHitReady() then
+            self.UseLearnedHit=true
+        end
         if self.UseLearnedHit and target and ctx.LearnedHit then
             local sent,detail=ctx.LearnedHit(target.Model)
             method=method..(sent and " + learned hit" or " + learned hit rejected ("..(ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail))..") · escalation off")
+            if sent then self.LearnedHits=(self.LearnedHits or 0)+1
             -- A rejected packet will be rejected again; clicks alone are quieter and just as good.
-            if not sent then self.UseLearnedHit=false end
+            else self.UseLearnedHit=false;self.LearnedHitRejected=true end
         end
         self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
         return true,self.LastMethod.." · checking for HP changes"
@@ -1809,7 +1817,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
@@ -2168,7 +2176,7 @@ function MobFarm.new(ctx)
                                                 if unconfirmed>=self.RunBudget then
                                                     self:Stop("No HP drop, damage number, loot or defeat observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
                                                 elseif attempts>=self.TargetBudget then
-                                                    if ctx.LearnedHit and not self.UseLearnedHit and (not ctx.LearnedHitReady or ctx.LearnedHitReady()) then
+                                                    if ctx.LearnedHit and not self.UseLearnedHit and not self.LearnedHitRejected and (not ctx.LearnedHitReady or ctx.LearnedHitReady()) then
                                                         -- Try the stronger method on this same target before giving up on it.
                                                         self.UseLearnedHit=true;attempts=0
                                                         publish("No HP drop from clicks · adding the learned hit packet")
@@ -4327,7 +4335,7 @@ local function savePreferences(snapshotOnly)
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
         MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, MobKind = CONFIG.MobKind, MobAutoEat = CONFIG.MobAutoEat, MobWalkSpeed = CONFIG.MobWalkSpeed, MobKeep = CONFIG.MobKeep, MobHitRun = CONFIG.MobHitRun, HopSize = CONFIG.HopSize,
         DepositCategory = CONFIG.DepositCategory, DepositInterval = CONFIG.DepositInterval,
-        MobWeapon = CONFIG.MobWeapon, LearnedDefinitions = CONFIG.LearnedDefinitions, RememberedChests = CONFIG.RememberedChests,
+        MobWeapon = CONFIG.MobWeapon, LearnedDefinitions = CONFIG.LearnedDefinitions, MobHitBody = CONFIG.MobHitBody, RememberedChests = CONFIG.RememberedChests,
         AutoRejoin = CONFIG.AutoRejoin,
         Keybinds = { StopAllKey = CONFIG.StopAllKey.Name, ToggleKey = CONFIG.ToggleKey.Name, HarvestKey = CONFIG.HarvestKey.Name, MobKey = CONFIG.MobKey.Name },
     }
@@ -4400,6 +4408,15 @@ local function loadPreferences(supplied)
         for kind,name in pairs(data.LearnedDefinitions) do
             if type(kind)=="string" and #kind<=40 and type(name)=="string" and name:match("^[A-Z][A-Z0-9_]+$") then CONFIG.LearnedDefinitions[kind]=name end
         end
+    end
+    if type(data.MobHitBody)=="table" then
+        local body,count={},0
+        for key,value in pairs(data.MobHitBody) do
+            count+=1
+            if count>32 or type(key)~="string" or (type(value)~="string" and type(value)~="number" and type(value)~="boolean") then body=nil;break end
+            body[key]=value
+        end
+        CONFIG.MobHitBody=body
     end
     if data.MobTravel=="Walk" or data.MobTravel=="Teleport" then CONFIG.MobTravel=data.MobTravel end
     if type(data.WoodToolPreference) == "string" then woodToolPreference = data.WoodToolPreference == "Wood axe" and "Wooden axe" or data.WoodToolPreference end
@@ -5308,7 +5325,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-crowd-151",
+    return table.concat({"Reborn mob-packet-152",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7022,6 +7039,21 @@ RemoteCatalog.CaptureStop = button({ Parent = remotesPage, Text = "Stop capture"
     TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 266) })
 -- Kept on RemoteCatalog: the main chunk is at Luau's 200-local limit.
 RemoteCatalog.LearnedBindingKinds={"ChestBinding","CraftBinding","PlowBinding","BaitBinding","WoodHitBinding","MineHitBinding","HotbarBinding","PlacementBinding","HarvestBinding","FruitBinding","MobBinding"}
+-- Scalar fields of a learned melee hit body, without the target; nil when the body is unusable.
+function RemoteCatalog.MobHitBodyOf(binding)
+    local args=type(binding)=="table" and binding.Args
+    local body=type(args)=="table" and type(args[1])=="table" and binding.BodyKey and args[1][binding.BodyKey]
+    if type(body)~="table" then return nil end
+    local copy,count={},0
+    for key,value in pairs(body) do
+        if key~="hitUnit" then
+            count+=1
+            if count>32 or type(key)~="string" or (type(value)~="string" and type(value)~="number" and type(value)~="boolean") then return nil end
+            copy[key]=value
+        end
+    end
+    return copy
+end
 function RemoteCatalog.RememberDefinitions()
     local recorder=RemoteCatalog.Recorder
     if not recorder then return end
@@ -7033,6 +7065,14 @@ function RemoteCatalog.RememberDefinitions()
         if remote and remote.Parent then
             local name=RemoteCatalog.RequestDefinitionFor(remote)
             if name and CONFIG.LearnedDefinitions[kind]~=name then CONFIG.LearnedDefinitions[kind]=name;changed=true end
+            -- The melee body (minus the target) is what the stable definition needs on another server.
+            if kind=="MobBinding" and name then
+                local body=RemoteCatalog.MobHitBodyOf(binding)
+                local ok,encoded=pcall(function() return HttpService:JSONEncode(body) end)
+                if body and ok and encoded~=RemoteCatalog.MobHitBodyEncoded then
+                    RemoteCatalog.MobHitBodyEncoded=encoded;CONFIG.MobHitBody=body;changed=true
+                end
+            end
         end
     end
     local live=recorder.GetChestBindings and recorder:GetChestBindings() or {}
@@ -7347,7 +7387,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-crowd-151 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-packet-152 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7451,7 +7491,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-crowd-151 · Propeller tracker",
+    return table.concat({"Reborn mob-packet-152 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7487,7 +7527,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-crowd-151", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-packet-152", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10222,7 +10262,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-crowd-151\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-packet-152\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10284,7 +10324,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-crowd-151 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-packet-152 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10917,7 +10957,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-crowd-151\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-packet-152\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12035,7 +12075,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-crowd-151 · Craft diagnostics",
+    return table.concat({"Reborn mob-packet-152 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12114,7 +12154,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-crowd-151 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-packet-152 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12724,6 +12764,50 @@ function RemoteCatalog.MobRunText(farm)
     if seconds>=30 then text..=string.format("   ·   %.1f kills/min",(farm.Defeats+(farm.LikelyDefeats or 0))*60/seconds) end
     return text
 end
+-- "live" when this server's packet was learned, "remembered" when the stable definition from an
+-- earlier server resolves here, nil otherwise.
+function RemoteCatalog.MobHitSource()
+    local recorder=RemoteCatalog.LiveRecorder("MobBinding")
+    if recorder and recorder.MobHit and recorder.CanUseMobBinding and recorder:CanUseMobBinding() then return "live" end
+    if RemoteCatalog.RememberedMobHitReady() then return "remembered" end
+    return nil
+end
+function RemoteCatalog.RememberedMobHitReady()
+    local name=type(CONFIG.LearnedDefinitions)=="table" and CONFIG.LearnedDefinitions.MobBinding
+    if type(name)~="string" or type(CONFIG.MobHitBody)~="table" then return false end
+    local endpoint=RemoteCatalog.GameEndpoint(name)
+    return endpoint~=nil and type(endpoint.CallServer)=="function"
+end
+function RemoteCatalog.RememberedMobHit(model)
+    local name=type(CONFIG.LearnedDefinitions)=="table" and CONFIG.LearnedDefinitions.MobBinding
+    local endpoint=type(name)=="string" and RemoteCatalog.GameEndpoint(name)
+    if not endpoint or type(CONFIG.MobHitBody)~="table" then return false,"no remembered hit" end
+    local tool=player.Character and player.Character:FindFirstChildOfClass("Tool")
+    if not tool or (CONFIG.MobWeapon and tool.Name~=CONFIG.MobWeapon) then return false,"Equip the learned weapon" end
+    local body={}
+    for key,value in pairs(CONFIG.MobHitBody) do body[key]=value end
+    body.hitUnit=model
+    return RemoteCatalog.SendEndpoint(endpoint,body)
+end
+-- Auto-learn: while the farm clicks, a swing that really lands makes the game send its hit packet;
+-- the recorder captures it, and every later swing adds the packet. Nothing extra is sent.
+function RemoteCatalog.ArmMobLearning()
+    if RemoteCatalog.MobHitSource()=="live" then return false end
+    local recorder=RemoteCatalog.Recorder
+    if recorder and recorder.LearnMobOnly then return true end
+    if recorder and (recorder.LearnPlowOnly or recorder.LearnCraftOnly or recorder.LearnChestOnly or recorder.LearnWoodOnly or recorder.LearnBaitOnly) then return false end
+    local ok,started=pcall(RemoteCatalog.StartCapture)
+    if not ok or not started then return false end
+    local token={};RemoteCatalog.MobAutoLearnToken=token
+    RemoteCatalog.Recorder=started;started.MobLearnToken=token;started.LearnMobOnly=true;started.Active=false
+    return true
+end
+function RemoteCatalog.DisarmMobLearning()
+    if not RemoteCatalog.MobAutoLearnToken then return end
+    RemoteCatalog.MobAutoLearnToken=nil
+    if RemoteCatalog.MobLearningToken then return end
+    RemoteCatalog.StopMobLearning()
+end
 function RemoteCatalog.StopMobLearning()
     RemoteCatalog.MobLearningToken=nil
     local recorder=RemoteCatalog.Recorder
@@ -12736,7 +12820,7 @@ function RemoteCatalog.RefreshMobUI()
     local farm=RemoteCatalog.Mobs
     if not farm or not RemoteCatalog.MobToggle or not gui.Parent then return end
     local recorder=RemoteCatalog.MobRecorder()
-    local learning=RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnMobOnly
+    local learning=RemoteCatalog.Recorder and RemoteCatalog.Recorder.LearnMobOnly and RemoteCatalog.MobLearningToken~=nil
     RemoteCatalog.MobToggle.Text=farm.Enabled and "FARMING ON" or farm.Worker and "FINISHING…" or "START FARMING"
     RemoteCatalog.MobToggle.BackgroundColor3=farm.Enabled and COLORS.on or COLORS.accent
     RemoteCatalog.MobToggle.TextColor3=farm.Enabled and COLORS.text or COLORS.accentDark
@@ -12801,13 +12885,21 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-crowd-151 · Mobs",
+    return table.concat({"Reborn mob-packet-152 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
         "Attack ready: "..tostring(recorder~=nil),
         "Attack method: "..tostring(farm.LastMethod or "mouse click aimed at the target (fallback: weapon activation)")..(farm.UseLearnedHit and " · learned hit escalation ON" or ""),
-        "Learned hit on this server: "..tostring(RemoteCatalog.LiveRecorder("MobBinding")~=nil and RemoteCatalog.LiveRecorder("MobBinding"):CanUseMobBinding()),
+        "Learned hit: "..(function()
+            local source=RemoteCatalog.MobHitSource()
+            local name=type(CONFIG.LearnedDefinitions)=="table" and CONFIG.LearnedDefinitions.MobBinding
+            return (source=="live" and "learned on this server" or source=="remembered" and ("remembered via "..tostring(name)) or "none")
+                ..(name and source~="remembered" and (" · definition "..tostring(name)) or "")
+                ..(CONFIG.MobHitBody and " · body remembered" or " · body not remembered")
+                ..(RemoteCatalog.MobAutoLearnToken and " · auto-learn armed" or "")
+                .." · packets sent this run: "..tostring(farm.LearnedHits or 0)
+        end)(),
         "Weapon release pending: "..tostring(farm.Press~=nil),
         "Learning: "..tostring(RemoteCatalog.Recorder~=nil and RemoteCatalog.Recorder.LearnMobOnly==true),
         "Weapon: "..(recorder and recorder.MobBinding.WeaponName or "not learned for this server"),
@@ -12941,18 +13033,15 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
         RemoteCatalog.MobMouseInput=false
         return released
     end,
-    -- The learned packet for this server, when one exists; used only as the escalation after clicks fail.
-    LearnedHitReady=function()
+    -- The game's hit packet: learned on this server (manually or from our own landed swing), or
+    -- remembered by its stable request definition from an earlier server.
+    LearnedHitReady=function() return RemoteCatalog.MobHitSource()~=nil end,
+    LearnedHit=function(model)
         local recorder=RemoteCatalog.LiveRecorder("MobBinding")
-        return recorder~=nil and recorder.MobHit~=nil and recorder.CanUseMobBinding~=nil and recorder:CanUseMobBinding()==true
+        if recorder and recorder.MobHit and recorder.CanUseMobBinding and recorder:CanUseMobBinding() then return recorder:MobHit(model) end
+        if RemoteCatalog.RememberedMobHitReady() then return RemoteCatalog.RememberedMobHit(model) end
+        return false,"no learned hit on this server"
     end,
-    LearnedHit=(function()
-        return function(model)
-            local recorder=RemoteCatalog.LiveRecorder("MobBinding")
-            if not recorder or not recorder.MobHit or not recorder.CanUseMobBinding or not recorder:CanUseMobBinding() then return false,"no learned hit on this server" end
-            return recorder:MobHit(model)
-        end
-    end)(),
     -- Eats one prepared food from the inventory with the game's food request (the one Auto Bait
     -- uses), confirmed by HP rising or the stack shrinking, then re-equips the weapon.
     -- Faster walking only while the farm moves; nil restores. The Movement tab's custom walk wins.
@@ -13040,6 +13129,21 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
     end,
     Update=function() RemoteCatalog.RefreshMobUI() end,
 })
+-- Auto-learn rides along with every run: armed at start, disarmed at stop. Manual Learn attack
+-- keeps its own token, so the two never cancel each other.
+do
+    local farm=RemoteCatalog.Mobs
+    local start,stop=farm.Start,farm.Stop
+    function farm:Start(...)
+        local ok=start(self,...)
+        if ok then pcall(RemoteCatalog.ArmMobLearning) end
+        return ok
+    end
+    function farm:Stop(...)
+        pcall(RemoteCatalog.DisarmMobLearning)
+        return stop(self,...)
+    end
+end
 -- Saved mob choices (Settings → Save preferences or any mob setting change).
 RemoteCatalog.Mobs.Radius=CONFIG.MobRadius or RemoteCatalog.Mobs.Radius
 if CONFIG.MobWalk~=nil then RemoteCatalog.Mobs.Walk=CONFIG.MobWalk end

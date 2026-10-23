@@ -3853,3 +3853,32 @@ character hopping in to "→ 3 studs", inside the slime's body.
   so a slime crowd no longer turns TP hops into "Path blocked" pathfinding.
 
 Report headers now read `Reborn mob-crowd-151`.
+
+## Hit packet first · v152
+
+Requested as "make the hitting better" after runs with 3 damage numbers in
+20 swings. The game's melee works client side: when the swing animation
+overlaps a mob, the client sends a hit request naming that mob. A hub click
+therefore lands only when the animation happens to overlap; the hit request
+itself lands whenever the server accepts it.
+
+- **Packet with every swing.** When a hit packet is ready, every click is
+  followed by the packet for the target (the click supplies the animation the
+  server expects). A rejected packet switches it off for the run; clicks
+  continue.
+- **Auto-learn from your own swings.** Starting the farm arms the recorder on
+  servers without a learned hit. The first hub click that really lands makes
+  the game send its hit request; the recorder captures it, and from the next
+  swing on the packet follows every click. Nothing extra is sent while
+  learning. Manual Learn attack is unchanged.
+- **Remembered across servers.** When a hit is learned, its stable request
+  definition name (already saved as `LearnedDefinitions.MobBinding`) and the
+  scalar fields of its body are saved (`MobHitBody`). On a new server the
+  definition is resolved through the game's own Requests client and the hit is
+  sent with the new target, with no learning at all. The learned weapon must be
+  equipped.
+- Copy result's "Learned hit" line shows the source (learned on this server,
+  remembered via the definition, or none), whether the body is remembered,
+  whether auto-learn is armed, and how many packets were sent this run.
+
+Report headers now read `Reborn mob-packet-152`.

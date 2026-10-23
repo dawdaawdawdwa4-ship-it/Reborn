@@ -457,6 +457,25 @@ do
  CONFIG.MobWeapon=nil;assert(not RemoteCatalog.MobBindingUsable(remembered),'forgetting the weapon must invalidate the remembered binding')
  RemoteCatalog.Recorder=savedRecorder;player.Character=savedCharacter
 end
+-- The melee hit packet is remembered by its stable definition name and body, and sent on a new server.
+do
+ local body=RemoteCatalog.MobHitBodyOf({Args={{abc={hitUnit='mob',attack='swing',combo=2}},n=1},BodyKey='abc'})
+ assert(body and body.attack=='swing' and body.combo==2 and body.hitUnit==nil,'the remembered body drops the target and keeps scalars')
+ assert(RemoteCatalog.MobHitBodyOf({Args={{abc={hitUnit='mob',nested={}}},n=1},BodyKey='abc'})==nil,'a body with tables is not remembered')
+ local savedDefs,savedBody,savedCache,savedCharacter=CONFIG.LearnedDefinitions,CONFIG.MobHitBody,RemoteCatalog.ModuleCache,player.Character
+ CONFIG.LearnedDefinitions={MobBinding='CLIENT_MELEE_HIT'};CONFIG.MobHitBody=body
+ local sent
+ RemoteCatalog.ModuleCache={['ReplicatedStorage.TS.network.requests']={Requests={Client={Get=function(_,name) assert(name=='CLIENT_MELEE_HIT');return {CallServer=function(_,b) sent=b;return true end} end}}}}
+ local weapon={Name='ironWarAxe',IsA=function(_,c) return c=='Tool' end}
+ player.Character={FindFirstChildOfClass=function(_,c) return c=='Tool' and weapon or nil end,FindFirstChild=function() return nil end}
+ CONFIG.MobWeapon='ironWarAxe'
+ assert(RemoteCatalog.RememberedMobHitReady() and RemoteCatalog.MobHitSource()=='remembered','a remembered definition with a body is ready on a new server')
+ local ok=RemoteCatalog.RememberedMobHit('slimeModel')
+ assert(ok and sent and sent.hitUnit=='slimeModel' and sent.attack=='swing' and sent.combo==2,'the remembered hit names the new target with the learned scalars')
+ weapon.Name='swordWood';assert(not RemoteCatalog.RememberedMobHit('slimeModel'),'the learned weapon must be equipped')
+ CONFIG.MobHitBody=nil;assert(not RemoteCatalog.RememberedMobHitReady(),'without a remembered body nothing is sent')
+ CONFIG.LearnedDefinitions,CONFIG.MobHitBody,RemoteCatalog.ModuleCache,player.Character,CONFIG.MobWeapon=savedDefs,savedBody,savedCache,savedCharacter,nil
+end
 for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Normal' then option.Activated:Fire() end end
 assert(CONFIG.WoodTravelMode=='Normal' and CONFIG.FarmTravelMode=='Walk','Normal must be selectable for wood without changing crop travel')
 
@@ -1038,7 +1057,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn mob-crowd-151',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn mob-packet-152',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1780,7 +1799,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn mob-crowd-151 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn mob-packet-152 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

@@ -282,6 +282,18 @@ do
  step(.7);assert(#learned==1 and learned[1]==a and farm.Drops==1 and farm.LastMethod:find('+ learned hit',1,true),'the next swing adds the learned packet on the same target')
  ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
 end
+-- A ready hit packet (learned, auto-learned or remembered) follows every click from the first swing.
+do
+ reset();damage=false;local learned={};local accept=true
+ ctx.Aim=function() return 50,50 end;ctx.Click=function() return true end
+ ctx.LearnedHitReady=function() return true end
+ ctx.LearnedHit=function(model) table.insert(learned,model);if accept then ah.Health-=10;return true end;return false,'NO_ANIMATION' end
+ farm:Start();assert(#learned==1 and farm.LearnedHits==1 and farm.UseLearnedHit and farm.LastMethod:find('+ learned hit',1,true),'a ready packet is used from the first swing')
+ step(.7);assert(#learned==2 and farm.Drops==2,'and on every later swing')
+ accept=false;step(.7);assert(#learned==3 and not farm.UseLearnedHit and farm.LearnedHitRejected and farm.LastMethod:find('rejected',1,true),'a rejected packet switches the packet off')
+ step(.7);assert(#learned==3 and farm.Swings==4,'a rejected packet is not retried in the same run')
+ ctx.LearnedHitReady=nil;ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
+end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do
  reset();damage=false;br.Position=v(300);farm:Start();for i=1,5 do step(.7) end
