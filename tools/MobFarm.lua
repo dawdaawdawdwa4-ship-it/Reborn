@@ -42,7 +42,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=6,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,PacketReach=9,DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -155,10 +155,36 @@ function MobFarm.new(ctx)
         end
         if self.UseLearnedHit and target and ctx.LearnedHit then
             local sent,detail=ctx.LearnedHit(target.Model)
-            method=method..(sent and " + learned hit" or " + learned hit rejected ("..(ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail))..") · escalation off")
-            if sent then self.LearnedHits=(self.LearnedHits or 0)+1
-            -- A rejected packet will be rejected again; clicks alone are quieter and just as good.
-            else self.UseLearnedHit=false;self.LearnedHitRejected=true end
+            local text=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
+            if sent then
+                self.LearnedHits=(self.LearnedHits or 0)+1;self.PacketStreak=(self.PacketStreak or 0)+1
+                self.PacketAccepted=(self.PacketAccepted or 0)+1
+                -- Every third accepted packet from the current distance earns one more stud of range,
+                -- so the character ends up swinging from outside the mob's contact range.
+                local current=self.PacketKeep or self.Reach-.5
+                if self.PacketAccepted>=3 and current<(self.PacketLimit or self.PacketReach) then
+                    self.PacketKeep=math.min(self.PacketLimit or self.PacketReach,current+1);self.PacketAccepted=0
+                end
+                method=method.." + learned hit"
+            else
+                self.LearnedHitRejections=(self.LearnedHitRejections or 0)+1;self.LastRejection=text
+                self.PacketAccepted=0
+                local upper=string.upper(text)
+                -- "Too fast" means the game's own client already sent this hit (our click landed) or the
+                -- melee cooldown is running: harmless, keep the packet. Anything else at an extended
+                -- distance means the range probe went too far: step back one stud and cap it there.
+                local rate=upper:find("FAST",1,true) or upper:find("COOLDOWN",1,true) or upper:find("RATE",1,true)
+                if not rate and self.PacketKeep and self.PacketKeep>self.Reach-.5 then
+                    self.PacketLimit=self.PacketKeep-1;self.PacketKeep=math.max(self.Reach-.5,self.PacketKeep-1)
+                    self.PacketStreak=0
+                elseif rate then self.PacketStreak=0
+                else
+                    self.PacketStreak=math.min(0,(self.PacketStreak or 0))-1
+                    -- Six rejections in a row at the normal distance: the packet is wrong for this server.
+                    if self.PacketStreak<=-6 then self.UseLearnedHit=false;self.LearnedHitRejected=true end
+                end
+                method=method.." + learned hit rejected ("..text..")"..(self.LearnedHitRejected and " · packet off" or "")
+            end
         end
         self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
         return true,self.LastMethod.." · checking for HP changes"
@@ -248,7 +274,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketAccepted=0;self.PacketLimit=self.PacketReach;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
@@ -331,7 +357,7 @@ function MobFarm.new(ctx)
                             local last=healthSeen[model]
                             -- With replicated HP a mob seen well above the biggest hit streamed out; without
                             -- any replicated drop this run, a vanish within reach is the only kill signal.
-                            local near=(attackedNear[model] or math.huge)<=self.Reach+2
+                            local near=(attackedNear[model] or math.huge)<=math.max(self.Reach,self.AttackRange or 0)+2
                             if near and now()-at<=3 and maxHit==0 or last and last>0 and maxHit>0 and last<=maxHit then
                                 self.LikelyDefeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
                                 unconfirmed=0;if model==self.Target then attempts=0 end
@@ -478,6 +504,10 @@ function MobFarm.new(ctx)
                                 local standoff=standoffFor(chosen)
                                 -- Tether: the distance kept from the mob, every tick, in both directions.
                                 local keep=(self.KeepDistance=="Auto" or type(self.KeepDistance)~="number") and standoff or math.min(self.Reach-.5,self.KeepDistance)
+                                -- With the hit packet accepted the swing need not touch: stand further out.
+                                local reach=self.Reach
+                                if self.UseLearnedHit and self.PacketKeep and self.PacketKeep>keep then keep=self.PacketKeep;reach=math.max(reach,keep+.5) end
+                                self.AttackRange=reach
                                 local previous=lastDistance[chosen.Model]
                                 lastDistance[chosen.Model]=chosen.Root.Position
                                 local closing=previous~=nil and (previous-root.Position).Magnitude-chosen.Distance>=1.5 and chosen.Distance<=self.Reach*2
@@ -557,7 +587,7 @@ function MobFarm.new(ctx)
                                         end
                                     else publish("Waiting · move within "..self.Reach.." studs or enable Auto Move") end
                                 end
-                                if self.Target==chosen.Model and gap<=self.Reach and valid() then
+                                if self.Target==chosen.Model and gap<=reach and valid() then
                                     if airborne then
                                         -- A swing at a slime above head height misses; it lands within a moment.
                                         publish("Waiting · "..chosen.Model.Name.." is in the air")
@@ -568,7 +598,7 @@ function MobFarm.new(ctx)
                                         end
                                         -- Equipping may yield or change the character/target. Recheck before sending.
                                         if tool.Enabled==false then publish("Waiting · weapon cooldown")
-                                        elseif valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
+                                        elseif valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=reach then
                                             if ctx.ClearLine(root,chosen.Root,char,chosen.Model) then
                                                 boost(nil,false)
                                                 -- Native melee hits what the character faces, not what the hub selected.

@@ -290,8 +290,23 @@ do
  ctx.LearnedHit=function(model) table.insert(learned,model);if accept then ah.Health-=10;return true end;return false,'NO_ANIMATION' end
  farm:Start();assert(#learned==1 and farm.LearnedHits==1 and farm.UseLearnedHit and farm.LastMethod:find('+ learned hit',1,true),'a ready packet is used from the first swing')
  step(.7);assert(#learned==2 and farm.Drops==2,'and on every later swing')
- accept=false;step(.7);assert(#learned==3 and not farm.UseLearnedHit and farm.LearnedHitRejected and farm.LastMethod:find('rejected',1,true),'a rejected packet switches the packet off')
- step(.7);assert(#learned==3 and farm.Swings==4,'a rejected packet is not retried in the same run')
+ accept=false;step(.7);assert(#learned==3 and farm.UseLearnedHit and farm.LearnedHitRejections==1 and farm.LastRejection=='NO_ANIMATION' and farm.LastMethod:find('rejected',1,true),'one rejection is recorded and the packet stays on')
+ for i=1,5 do step(.7) end
+ assert(#learned==8 and not farm.UseLearnedHit and farm.LearnedHitRejected and farm.LastMethod:find('packet off',1,true),'six rejections in a row switch the packet off')
+ step(.7);assert(#learned==8,'a packet switched off is not retried in the same run')
+ -- "Too fast" means the game's own client already sent this hit; the packet stays on.
+ reset();damage=false;learned={};accept=false
+ ctx.LearnedHit=function(model) table.insert(learned,model);return false,'TOO_FAST' end
+ farm:Start();for i=1,7 do step(.7) end
+ assert(#learned==8 and farm.UseLearnedHit and not farm.LearnedHitRejected,'rate-limit rejections never switch the packet off')
+ -- Accepted packets earn range: every third one adds a stud, up to 9, so the swing starts outside contact range.
+ reset();damage=false;learned={};farm.Travel='Teleport';farm.HitAndRun=false;ar.Position=v(30);br.Position=v(60);ah.Health=1000;ah.MaxHealth=1000
+ ctx.LearnedHit=function(model) table.insert(learned,model);ah.Health-=10;return true end
+ farm:Start();for i=1,12 do step(.7) end
+ assert(farm.PacketKeep and farm.PacketKeep>=7 and math.abs(ar.Position.X-root.Position.X-farm.PacketKeep)<1e-6,'the kept distance follows the packet range')
+ local range=farm.PacketKeep
+ ctx.LearnedHit=function(model) table.insert(learned,model);return false,'OUT_OF_RANGE' end
+ step(.7);assert(farm.PacketKeep==range-1 and farm.PacketLimit==range-1 and farm.UseLearnedHit,'a range rejection steps back one stud and caps the probe there')
  ctx.LearnedHitReady=nil;ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
 end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.

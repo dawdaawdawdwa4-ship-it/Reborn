@@ -3882,3 +3882,27 @@ itself lands whenever the server accepts it.
   whether auto-learn is armed, and how many packets were sent this run.
 
 Report headers now read `Reborn mob-packet-152`.
+
+## Packet range · v153
+
+A v152 report: auto-learn captured the hit on the server and sent one
+packet, the second was rejected, the packet was switched off for the run and
+the reason was lost; "body not remembered" because definitions were only
+matched from the Capture tab; 13 of 15 hits taken within 1 s of a swing.
+
+- **Rejections are kept, not fatal.** The last rejection reason and count are
+  in Copy result's "Learned hit" line. "Too fast" rejections (the game's own
+  client already sent the hit because the click landed, or the melee cooldown)
+  never switch the packet off; six other rejections in a row at the normal
+  distance do.
+- **Packet range probe.** While packets are accepted, every third one adds a
+  stud to the kept distance, up to 9 studs, so the character swings from
+  outside the slime's contact range. A non-rate rejection at an extended
+  distance steps back one stud and caps the probe there. Copy result shows
+  "packet range N studs".
+- **Remembered during the run.** A packet learned while farming is matched to
+  its stable definition and its body saved within 5 s, not only from the
+  Capture tab. The definition lookup also checks one level inside each
+  endpoint and by remote name, and no longer caches a miss.
+
+Report headers now read `Reborn mob-range-153`.
