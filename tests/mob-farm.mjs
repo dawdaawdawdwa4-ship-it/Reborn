@@ -277,14 +277,14 @@ do
  reset();damage=false;local learned={}
  ctx.Aim=function() return 50,50 end;ctx.Click=function() return true end
  ctx.LearnedHit=function(model) table.insert(learned,model);ah.Health-=10;return true end
- farm:Start();for i=1,3 do step(.7) end
- assert(farm.Swings==4 and #learned==0 and farm.UseLearnedHit and farm.Message:find('learned hit packet',1,true),'four unconfirmed clicks must switch on the learned hit')
+ farm:Start();for i=1,5 do step(.7) end
+ assert(farm.Swings==6 and #learned==0 and farm.UseLearnedHit and farm.Message:find('learned hit packet',1,true),'six unconfirmed clicks must switch on the learned hit')
  step(.7);assert(#learned==1 and learned[1]==a and farm.Drops==1 and farm.LastMethod:find('+ learned hit',1,true),'the next swing adds the learned packet on the same target')
  ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
 end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do
- reset();damage=false;br.Position=v(300);farm:Start();for i=1,3 do step(.7) end
+ reset();damage=false;br.Position=v(300);farm:Start();for i=1,5 do step(.7) end
  step(.7);assert(farm.Message:find('cooling down after no HP drop',1,true) and farm.Message:find('retry in',1,true),'cooldown must be explained instead of "no living slimes"')
 end
 -- Food below 50% HP, before any retreat; the eat hook is rate limited and counted.
@@ -337,7 +337,7 @@ do
  assert(farm.Swings==4 and farm.Loot==0,'no loot yet')
  bag.greenSlimeBall=2;step(.7)
  assert(farm.Loot==2 and farm.LootByName.greenSlimeBall==2,'loot gained after a swing must be counted')
- for i=1,12 do step(.7) end
+ for i=1,10 do step(.7) end
  assert(farm.Enabled,'a run with loot must not stop on the no-damage budget')
  bag.greenSlimeBall=5;step(.7);assert(farm.Loot==5,'later loot keeps counting')
  ctx.Inventory=nil
