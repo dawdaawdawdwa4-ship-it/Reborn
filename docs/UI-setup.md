@@ -3525,3 +3525,16 @@ matching a conveyor-fed chest loop; 2 s stays the default. Chest profiles save
 the speed (`RepeatFast`) and older profiles load as 2 s.
 
 Report headers now read `Reborn chest-fast-133`.
+
+
+## Mob world diagnostic · v134
+
+A live Mobs report showed an empty scan ("no living slimes within 60 studs").
+Copy result now adds a read-only world view so the cause is visible: the
+Entities folders found and their child counts, the living mobs loaded at any
+distance (name, count, nearest distance; bosses and critters excluded), the
+current Target, and the nearest matching target with a note when it lies
+outside the search radius. Mobs beyond Roblox streaming range are not loaded on
+the client and cannot be listed.
+
+Report headers now read `Reborn mob-diag-134`.

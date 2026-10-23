@@ -4985,7 +4985,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-fast-133",
+    return table.concat({"Reborn mob-diag-134",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7015,7 +7015,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn chest-fast-133 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-diag-134 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7119,7 +7119,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn chest-fast-133 · Propeller tracker",
+    return table.concat({"Reborn mob-diag-134 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7155,7 +7155,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn chest-fast-133", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-diag-134", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -9876,7 +9876,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-fast-133\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-diag-134\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9938,7 +9938,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn chest-fast-133 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-diag-134 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10555,7 +10555,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-fast-133\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-diag-134\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11673,7 +11673,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn chest-fast-133 · Craft diagnostics",
+    return table.concat({"Reborn mob-diag-134 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11752,7 +11752,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn chest-fast-133 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-diag-134 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12359,13 +12359,47 @@ function RemoteCatalog.RefreshMobUI()
     RemoteCatalog.MobCounters.Text=string.format("%d swings   ·   %d HP drops   ·   %d defeats observed (+%d likely)",farm.Swings,farm.Drops,farm.Defeats,farm.LikelyDefeats or 0)
         ..(farm.StartedAt and "\n"..RemoteCatalog.MobRunText(farm) or "")
 end
+-- Read-only view of what the Entities folders hold, ignoring the radius, so an empty scan can be told
+-- apart from slimes that are just far away, not streamed in, or named differently.
+function RemoteCatalog.MobWorldReport()
+    local module=RemoteCatalog.MobFarmModule
+    local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not module or not root then return "World: character unavailable" end
+    local roots=module.Roots(workspace)
+    local lines,folders={},{}
+    for _,folder in ipairs(roots) do table.insert(folders,folder:GetFullName().." ("..#folder:GetChildren().." children)") end
+    table.insert(lines,"Entities folders: "..(#folders>0 and table.concat(folders,", ") or "none found (WildernessIsland.Entities / workspace.Entities)"))
+    local nearest,named={},{}
+    local matchingDistance
+    for _,folder in ipairs(roots) do
+        for _,model in ipairs(folder:GetChildren()) do
+            local health,part=module.Details(model,roots,Players,"All mobs")
+            if health and part and health.Health>0 then
+                local distance=math.floor((part.Position-root.Position).Magnitude)
+                local entry=named[model.Name]
+                if not entry then entry={Name=model.Name,Count=0,Distance=distance};named[model.Name]=entry;table.insert(nearest,entry) end
+                entry.Count+=1;entry.Distance=math.min(entry.Distance,distance)
+                if module.Matches(model.Name,RemoteCatalog.Mobs.Kind) then matchingDistance=math.min(matchingDistance or math.huge,distance) end
+            end
+        end
+    end
+    table.sort(nearest,function(a,b) return a.Distance<b.Distance end)
+    local parts={}
+    for index,entry in ipairs(nearest) do
+        if index>8 then break end
+        table.insert(parts,entry.Name.." ×"..entry.Count.." (nearest "..entry.Distance.." studs)")
+    end
+    table.insert(lines,"Living mobs loaded (any distance): "..(#parts>0 and table.concat(parts,", ") or "none loaded near you"))
+    table.insert(lines,"Nearest matching target: "..(matchingDistance and (matchingDistance.." studs"..(matchingDistance>RemoteCatalog.Mobs.Radius and " · outside the search radius" or "")) or "none loaded"))
+    return table.concat(lines,"\n")
+end
 function RemoteCatalog.MobResultReport()
     local farm=RemoteCatalog.Mobs
     local recorder=RemoteCatalog.MobRecorder()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn chest-fast-133 · Mobs",
+    return table.concat({"Reborn mob-diag-134 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12376,7 +12410,9 @@ function RemoteCatalog.MobResultReport()
         "Weapon: "..(recorder and recorder.MobBinding.WeaponName or "not learned for this server"),
         "Health: "..(health and tostring(health.Health).."/"..tostring(health.MaxHealth) or "character unavailable"),
         "Search: "..farm.Radius.." studs · Auto Move "..(not farm.Walk and "OFF" or farm.Travel=="Teleport" and "TP hops ("..farm.HopDistance.." studs)" or "Walk"),
-        "Living slimes in radius: "..(ok and tostring(#targets) or "scan unavailable"),
+        "Living "..(farm.Kind=="Slimes" and "slimes" or farm.Kind=="All mobs" and "mobs" or tostring(farm.Kind)).." in radius: "..(ok and tostring(#targets) or "scan unavailable"),
+        "Target: "..tostring(farm.Kind),
+        RemoteCatalog.MobWorldReport(),
         "Last target: "..tostring(farm.LastTarget or "none"),
         "Last result: "..tostring(farm.LastResult or "none recorded"),
         "Observed run: "..farm.Swings.." swings · "..farm.Drops.." HP drops · "..farm.Defeats.." defeats · "..(farm.LikelyDefeats or 0).." likely defeats (despawned right after a finishing-size hit)",

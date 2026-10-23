@@ -1038,7 +1038,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn chest-fast-133',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn mob-diag-134',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1780,7 +1780,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn chest-fast-133 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn mob-diag-134 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2578,6 +2578,7 @@ end)()
   setclipboard=function() return false end;toclipboard=function(value) copied=value end
   r.MobCopy.Activated:Fire()
   assert(copied and copied:find('Fishing is ON',1,true) and copied:find('TOO_FAST',1,true) and copied:find('slimeBlue',1,true) and not r.Mobs.Worker,'Copy result must include current blockers and the full error without starting a worker')
+  assert(copied:find('Entities folders:',1,true) and copied:find('Living mobs loaded',1,true) and copied:find('Nearest matching target',1,true),'Copy result must explain what the Entities folders hold')
   toclipboard=function() error('clipboard unavailable') end;r.MobCopy.Activated:Fire()
   assert(status.Text:find('Mob result printed to console',1,true),'failed clipboard functions must fall back accurately to console')
   setclipboard,toclipboard=clip,alternate;enabled=false
