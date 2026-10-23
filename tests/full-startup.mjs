@@ -1038,7 +1038,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn chest-find-125',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn review-126',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1779,7 +1779,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn chest-find-125 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn review-126 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2522,6 +2522,9 @@ end)()
   UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Keyboard,KeyCode=Enum.KeyCode.F6},false)
   assert(CONFIG.MobKey==Enum.KeyCode.F6 and CONFIG.ToggleKey==saved and not r.BindingKey,'taking a used key must swap it with the other action')
   assert(not enabled,'the key press that binds must not also trigger its action')
+  r.KeybindButtons.MobKey.Activated:Fire();UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Keyboard,KeyCode=Enum.KeyCode.Q},false)
+  assert(CONFIG.MobKey==Enum.KeyCode.F6,'Q (pressed by Auto Drop) must never be bound')
+  r.KeybindButtons.MobKey.Activated:Fire();r.CloseMenus();assert(not r.BindingKey,'closing menus must disarm a waiting keybind row')
   r.KeybindButtons.MobKey.Activated:Fire();UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Keyboard,KeyCode=Enum.KeyCode.Escape},false)
   assert(CONFIG.MobKey==Enum.KeyCode.F6,'Escape must cancel without unbinding')
   r.KeybindButtons.MobKey.Activated:Fire();UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Keyboard,KeyCode=Enum.KeyCode.F4},false)

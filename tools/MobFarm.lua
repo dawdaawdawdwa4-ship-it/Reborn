@@ -146,7 +146,9 @@ function MobFarm.new(ctx)
                 local health=MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players)
                 -- Streaming out is not proof of death; all counters describe observations.
                 if health and previous and health.Health<previous then
-                    self.Drops+=1;attempts=0;unconfirmed=0
+                    -- A late drop on an earlier target must not reset the current target's budget.
+                    self.Drops+=1;unconfirmed=0
+                    if model==self.Target then attempts=0 end
                     maxHit=math.max(maxHit,previous-health.Health)
                     if previous>0 and health.Health<=0 then
                         self.Defeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1

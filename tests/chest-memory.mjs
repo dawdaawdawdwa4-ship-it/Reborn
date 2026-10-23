@@ -45,6 +45,16 @@ endpoint.CallServer=function() return false end
 assert(not recorder:WithdrawItems(5,bindings[1]),'a rejected request must report failure')
 RemoteCatalog.GameEndpoint=function() return nil end;RemoteCatalog.RememberedChestCache=nil
 assert(RemoteCatalog.RememberedChestRecorder()==nil,'without the game chest request the remembered set stays inactive (learning still works)')
+do
+ local a={Name='chestA',X=1,Y=0,Z=0,Slot=1,Item='x',Amount=1}
+ local b={Name='chestB',X=9,Y=0,Z=0,Slot=2,Item='y',Amount=5}
+ local bNew={Name='chestB',X=9,Y=0,Z=0,Slot=2,Item='y',Amount=30}
+ local merged=RemoteCatalog.MergeChestMemory({a,b},{bNew})
+ assert(#merged==2 and merged[1]==bNew and merged[2]==a,'learning one chest must keep earlier remembered chests and prefer the newest entry')
+ local many={}
+ for i=1,70 do table.insert(many,{Name='c',X=i,Y=0,Z=0,Slot=1,Item='x',Amount=1}) end
+ assert(#RemoteCatalog.MergeChestMemory(many,{})==64,'remembered chests stay capped')
+end
 return 'Chest memory: offset snapshot, new-server rediscovery, stable request body, invalid/rejected sends and missing endpoint passed'
 `;
 const state=await LuauState.createAsync();

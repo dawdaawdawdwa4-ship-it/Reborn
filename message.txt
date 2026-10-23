@@ -1698,7 +1698,9 @@ function MobFarm.new(ctx)
                 local health=MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players)
                 -- Streaming out is not proof of death; all counters describe observations.
                 if health and previous and health.Health<previous then
-                    self.Drops+=1;attempts=0;unconfirmed=0
+                    -- A late drop on an earlier target must not reset the current target's budget.
+                    self.Drops+=1;unconfirmed=0
+                    if model==self.Target then attempts=0 end
                     maxHit=math.max(maxHit,previous-health.Health)
                     if previous>0 and health.Health<=0 then
                         self.Defeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
@@ -3975,6 +3977,14 @@ local SETTINGS_FILE = "IslandsFarmingHub_" .. tostring(player.UserId) .. "_setti
 -- Declare these before persistence helpers so the helpers capture the intended locals.
 local woodToolPreference = "Auto best axe"
 local mineToolPreference = "Auto best pickaxe"
+-- Keys that can never be bound: Unknown (mouse clicks), Escape, the hub toggle, the capture
+-- hotkeys F8-F10 and Q, which Auto Drop presses itself.
+function RemoteCatalog.KeyReserved(code)
+    for _,name in ipairs({"Unknown","Escape","RightControl","F8","F9","F10","Q"}) do
+        if code==Enum.KeyCode[name] then return true end
+    end
+    return false
+end
 -- snapshotOnly returns the preference table without writing (hub profiles reuse it).
 local function savePreferences(snapshotOnly)
     if not snapshotOnly and type(writefile) ~= "function" then return false end
@@ -4024,10 +4034,13 @@ local function loadPreferences(supplied)
     if type(data.MobWeapon)=="string" and #data.MobWeapon>0 and #data.MobWeapon<=60 then CONFIG.MobWeapon=data.MobWeapon end
     if type(data.AutoRejoin)=="boolean" then CONFIG.AutoRejoin=data.AutoRejoin end
     if type(data.Keybinds)=="table" then
+        local used={}
         for _,key in ipairs({"StopAllKey","ToggleKey","HarvestKey","MobKey"}) do
             local name=data.Keybinds[key]
             local ok,code=pcall(function() return type(name)=="string" and Enum.KeyCode[name] end)
-            if ok and code and code~=Enum.KeyCode.Escape and code~=Enum.KeyCode.RightControl then CONFIG[key]=code end
+            -- A colliding or reserved key keeps this action's current key.
+            if ok and code and not RemoteCatalog.KeyReserved(code) and not used[code] then CONFIG[key]=code end
+            used[CONFIG[key]]=true
         end
     end
     if type(data.RememberedChests)=="table" then
@@ -4953,7 +4966,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-find-125",
+    return table.concat({"Reborn review-126",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6202,7 +6215,7 @@ end))
 for _,child in ipairs(statsPage:GetChildren()) do
     if child:IsA("GuiObject") then
         local p=child.Position
-        child.Position=UDim2.new(p.X.Scale,p.X.Offset,p.Y.Scale,p.Y.Offset+574)
+        child.Position=UDim2.new(p.X.Scale,p.X.Offset,p.Y.Scale,p.Y.Offset+614)
     end
 end
 pageHeading(statsPage,"SESSION DASHBOARD",6)
@@ -6663,9 +6676,11 @@ function RemoteCatalog.RememberDefinitions()
     local live=recorder.GetChestBindings and recorder:GetChestBindings() or {}
     if #live>0 and RemoteCatalog.SnapshotChestMemory then
         local snapshot=RemoteCatalog.SnapshotChestMemory(live)
-        local ok,encoded=pcall(function() return HttpService:JSONEncode(snapshot) end)
+        -- Live bindings only cover this character/server; merge so earlier chests are kept.
+        local merged=RemoteCatalog.MergeChestMemory(CONFIG.RememberedChests,snapshot)
+        local ok,encoded=pcall(function() return HttpService:JSONEncode(merged) end)
         if #snapshot>0 and ok and encoded~=RemoteCatalog.ChestMemoryEncoded then
-            RemoteCatalog.ChestMemoryEncoded=encoded;CONFIG.RememberedChests=snapshot;changed=true
+            RemoteCatalog.ChestMemoryEncoded=encoded;CONFIG.RememberedChests=merged;changed=true
         end
     end
     if changed then savePreferences() end
@@ -6811,6 +6826,12 @@ function RemoteCatalog.ReflectPreferences()
         selector.Text=(key=="WoodTravelMode" and "Mode: " or "Travel: ")..RemoteCatalog.TravelLabel(CONFIG[key]).."  ▾"
     end
     pcall(refreshCropSelectionUI)
+    fruitToggle.Text=CONFIG.FruitEnabled and "FRUIT PICKING: ON" or "FRUIT PICKING: OFF"
+    fruitToggle.BackgroundColor3=CONFIG.FruitEnabled and COLORS.on or COLORS.off
+    RemoteCatalog.RefreshSettingsText()
+end
+function RemoteCatalog.RefreshSettingsText()
+    settingsText.Text = string.format("Fish toggle: %s\nHarvest toggle: %s\nMine range: %d studs\nPlant type: %s\nHarvest crop: %s\nPlant radius: %d studs", CONFIG.ToggleKey.Name, CONFIG.HarvestKey.Name, CONFIG.MineRange, CONFIG.PlantType, CONFIG.HarvestCrop, CONFIG.PlantRadius)
 end
 RemoteCatalog.ReflectPreferences()
 saveButton.Text = preferencesLoaded and "Preferences loaded" or "Save preferences"
@@ -6962,7 +6983,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn chest-find-125 · Propeller loot history (UTC)",
+    return table.concat({"Reborn review-126 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7066,7 +7087,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn chest-find-125 · Propeller tracker",
+    return table.concat({"Reborn review-126 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7102,7 +7123,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn chest-find-125", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn review-126", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -8826,6 +8847,17 @@ function RemoteCatalog.SnapshotChestMemory(bindings)
     end
     return list
 end
+-- Newest entries first; one entry per chest position, slot and item; at most 64.
+function RemoteCatalog.MergeChestMemory(old,new)
+    local merged,seen={},{}
+    local function add(entry)
+        local key=table.concat({entry.Name,entry.X,entry.Y,entry.Z,entry.Slot,entry.Item},"|")
+        if not seen[key] and #merged<64 then seen[key]=true;table.insert(merged,entry) end
+    end
+    for _,entry in ipairs(new or {}) do add(entry) end
+    for _,entry in ipairs(type(old)=="table" and old or {}) do add(entry) end
+    return merged
+end
 function RemoteCatalog.ChestEndpoint()
     local endpoint=RemoteCatalog.GameEndpoint("CLIENT_CHEST_TRANSACTION")
     if endpoint and type(endpoint.CallServer)=="function" then return endpoint end
@@ -9708,7 +9740,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-find-125\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn review-126\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9770,7 +9802,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn chest-find-125 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn review-126 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10369,7 +10401,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-find-125\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn review-126\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11487,7 +11519,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn chest-find-125 · Craft diagnostics",
+    return table.concat({"Reborn review-126 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11566,7 +11598,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn chest-find-125 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn review-126 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12177,7 +12209,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn chest-find-125 · Mobs",
+    return table.concat({"Reborn review-126 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12254,6 +12286,10 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
         -- Never finish a hop below the slime's centre, which would sink the character into terrain.
         local point=Vector3.new(destination.X,math.max(destination.Y,target.Position.Y+1),destination.Z)
         local flat=Vector3.new(target.Position.X,point.Y,target.Position.Z)
+        -- Raycasts see empty air as clear; a hop over the gap between islands could drop into the void.
+        local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances={root.Parent}
+        if not workspace:Raycast(point,Vector3.new(0,-12,0),params) then error("No ground under the next hop",0) end
         root.AssemblyLinearVelocity=Vector3.zero
         root.CFrame=(flat-point).Magnitude>.1 and CFrame.lookAt(point,flat) or root.CFrame+(point-root.Position)
     end,
@@ -12654,14 +12690,15 @@ function RemoteCatalog.RefreshKeybinds()
         if control then control.Text=name..": "..(RemoteCatalog.BindingKey==key and "press a key…" or CONFIG[key].Name) end
     end
     toggle.Text=(enabled and "FISH ON  [" or "FISH OFF  [")..CONFIG.ToggleKey.Name.."]"
+    if RemoteCatalog.RefreshSettingsText then RemoteCatalog.RefreshSettingsText() end
 end
 function RemoteCatalog.CaptureKeybind(input)
     local key=RemoteCatalog.BindingKey
     if not key or input.UserInputType~=Enum.UserInputType.Keyboard then return false end
     RemoteCatalog.BindingKey=nil
     local code=input.KeyCode
-    -- Escape cancels; the hub toggle key and Unknown cannot be bound.
-    if code~=Enum.KeyCode.Escape and code~=Enum.KeyCode.Unknown and code~=Enum.KeyCode.RightControl then
+    -- Escape cancels; reserved keys cannot be bound.
+    if not RemoteCatalog.KeyReserved(code) then
         for _,entry in ipairs(RemoteCatalog.KeybindActions) do
             if entry[1]~=key and CONFIG[entry[1]]==code then CONFIG[entry[1]]=CONFIG[key] end
         end
@@ -12680,21 +12717,32 @@ for index,entry in ipairs(RemoteCatalog.KeybindActions) do
     track(control.Activated:Connect(function()
         RemoteCatalog.BindingKey=RemoteCatalog.BindingKey~=key and key or nil
         RemoteCatalog.RefreshKeybinds()
+        -- An armed row must not capture an ordinary key (W, A, S, D) much later.
+        local armed={}
+        RemoteCatalog.BindingToken=armed
+        task.delay(8,function()
+            if RemoteCatalog.BindingToken==armed and RemoteCatalog.BindingKey then RemoteCatalog.BindingKey=nil;RemoteCatalog.RefreshKeybinds() end
+        end)
     end))
 end
 RemoteCatalog.RefreshKeybinds()
+table.insert(RemoteCatalog.MenuClosers,function()
+    if RemoteCatalog.BindingKey then RemoteCatalog.BindingKey=nil;RemoteCatalog.RefreshKeybinds() end
+end)
 -- KEYBINDS END
 -- AUTO REJOIN BEGIN
 -- Rejoins only after connection-type errors, never after a deliberate kick or ban, at most 3 times an hour.
 -- Farms that were running resume when the hub loads again (autoexec) within 15 minutes.
 RemoteCatalog.RejoinFile="IslandsFarmingHub_"..tostring(player.UserId).."_rejoin.json"
-RemoteCatalog.RejoinReasons={"disconnect","connection","timed out","timeout","idle","shut down","shutdown","restart","no response","error code: 2"}
-RemoteCatalog.RejoinRefusals={"ban","exploit","cheat","hack","suspicious","moderat"}
+RemoteCatalog.RejoinReasons={"disconnect","connection","timed out","timeout","idle","shut down","shutdown","restart","no response","error code: 277","error code: 279"}
+-- 267 kicked by the game, 268 unexpected client behaviour, 273 same account joined elsewhere.
+RemoteCatalog.RejoinRefusals={"ban","exploit","cheat","hack","suspicious","moderat","267","268","273"}
 function RemoteCatalog.RejoinAllowed(message,history,now)
     local text=string.lower(tostring(message or ""))
     for _,word in ipairs(RemoteCatalog.RejoinRefusals) do
         if string.find(text,word,1,true) then return false,"Not rejoining: the message mentions "..word end
     end
+    if string.find(text,"kick",1,true) and not string.find(text,"idle",1,true) then return false,"Not rejoining: you were kicked" end
     local connection=false
     for _,word in ipairs(RemoteCatalog.RejoinReasons) do if string.find(text,word,1,true) then connection=true;break end end
     if not connection then return false,"Not rejoining: this was not a connection error" end
@@ -12756,14 +12804,17 @@ function RemoteCatalog.ResumeAfterRejoin()
     state.Resume=nil;RemoteCatalog.WriteRejoinState(state)
     local started={}
     for _,mode in ipairs(type(resume.Modes)=="table" and resume.Modes or {}) do
-        local ok=pcall(function()
-            if mode=="fishing" then setEnabled(true)
-            elseif mode=="bait" then setBaitEnabled(true)
-            elseif mode=="crop" or mode=="wood" or mode=="mine" then setFarmMode(mode,true)
-            elseif mode=="mobs" and RemoteCatalog.Mobs then RemoteCatalog.Mobs:Start()
-            else error("unknown mode") end
+        local ok,running=pcall(function()
+            -- Starts refuse by returning, not by raising; read the mode's own state afterwards.
+            if mode=="fishing" then setEnabled(true);return enabled
+            elseif mode=="bait" then setBaitEnabled(true);return baitEnabled
+            elseif mode=="crop" then setFarmMode(mode,true);return harvestEnabled
+            elseif mode=="wood" then setFarmMode(mode,true);return woodEnabled
+            elseif mode=="mine" then setFarmMode(mode,true);return mineEnabled
+            elseif mode=="mobs" and RemoteCatalog.Mobs then RemoteCatalog.Mobs:Start();return RemoteCatalog.Mobs.Enabled end
+            return false
         end)
-        if ok then table.insert(started,mode) end
+        if ok and running then table.insert(started,mode) end
     end
     if #started>0 then setStatus("Resumed after rejoin: "..table.concat(started,", "),COLORS.good) end
     return started
@@ -12903,7 +12954,7 @@ for i, option in ipairs(cropButtons) do
         cropIndex=table.find(cropOptions,selected[1]) or 1
         savePreferences()
         refreshCropSelectionUI()
-        settingsText.Text = string.format("Fish toggle: %s\nHarvest toggle: %s\nMine range: %d studs\nPlant type: %s\nHarvest crop: %s\nPlant radius: %d studs", CONFIG.ToggleKey.Name, CONFIG.HarvestKey.Name, CONFIG.MineRange, CONFIG.PlantType, CONFIG.HarvestCrop, CONFIG.PlantRadius)
+        RemoteCatalog.RefreshSettingsText()
     end))
 end
 do

@@ -3358,3 +3358,33 @@ Whether the current game still uses those folder names is confirmed by the first
 live report.
 
 Report headers now read `Reborn chest-find-125`.
+
+
+## Review fixes for v109–v125 · v126
+
+An independent review of the recent features found and fixed:
+
+- **Remembered chests were overwritten.** Learning one new withdrawal replaced
+  the whole remembered list with the current server's bindings. Now new entries
+  are merged in front of the existing ones (one per chest position, slot and
+  item, at most 64).
+- **Auto rejoin after deliberate kicks.** The `error code: 2` prefix also matched
+  267 (kicked), 268 (unexpected client behaviour) and 273 (account joined
+  elsewhere). Only 277/279 count now; 267, 268, 273 and any message with "kick"
+  (except idle kicks) are refused.
+- **Mob TP hops over the void.** Each hop now needs ground within 12 studs below
+  the next point; otherwise the hop fails, the slime cools down and the farm
+  picks another, so Stop or a pause cannot leave the character above a gap.
+- **Stats layout.** The chest contents button no longer covers the session
+  statistics heading.
+- **Keybinds.** Unknown (mouse clicks), Escape, RightControl, F8–F10 (capture
+  hotkeys) and Q (Auto Drop) can never be bound, also from files or profiles,
+  and two actions can no longer load the same key. A waiting keybind row is
+  disarmed by closing menus or after 8 seconds.
+- **Profile loads** now refresh Fruit picking and the settings summary; rebinding
+  refreshes the summary too.
+- **Resume after rejoin** reports only farms that actually started.
+- **Mob target budget.** A late HP drop on an earlier slime no longer resets the
+  current slime's no-damage budget.
+
+Report headers now read `Reborn review-126`.
