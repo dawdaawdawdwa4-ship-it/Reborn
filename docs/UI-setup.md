@@ -2824,3 +2824,35 @@ during cooldown or listener registration, missed notifications, Stop, bobber
 replacement/removal and the dispatched-input recovery budget. The full suite is
 required. Live Roblox reeling remains unverified; these fixes address reproduced
 client-side failures, not a confirmed live server diagnosis.
+
+## Blocked fishing mouse input (v104)
+
+The supplied 23 October recording shows **Reel paused: mouse movement was blocked**
+while a bite is already counted. The virtual mouse move fails before the press;
+retaining the bite in v103 cannot by itself supply a usable input backend.
+
+Fishing keeps its existing virtual mouse path first. If moving that mouse fails,
+it can use the host's complete `mousemoveabs` / `mouse1press` / `mouse1release`
+backend. The same cast aim and press duration are retained. When no mouse backend
+can move, reeling can use the equipped rod's normal `Activate` / `Deactivate`
+methods. Both methods are required, and a disabled rod waits. This rod-only route
+is limited to reeling; casting still requires a successful aim move.
+
+A backend is selected before the press, and its paired release is captured for
+the entire attempt. Press/hold/release failures never replay the action through
+another backend. Release is attempted independently after errors, Stop or a
+changed tool/character. The existing GUI/text-focus and bait guards remain, and a
+new attempt cannot overlap input that is still finishing. No remote endpoint or
+session packet is guessed or copied.
+
+**Stats → Copy session report** now includes the last fishing action, chosen
+backend and input result. Input success is separate from catch confirmation.
+Observed bobber disappearance and the existing three-attempt recovery limit still
+apply, including when normal rod activation returns successfully without reeling.
+
+Validation reproduces blocked virtual movement with host input and with normal
+rod activation, paired-release snapshots, Stop, disabled rods, incomplete APIs,
+failed movement/presses, GUI/focus/tool changes, casting aim requirements, real
+worker confirmation and unconfirmed recovery. The full regression suite is
+required. The recording confirms the v103 failure; v104 input behavior remains
+unverified in the user's live client.

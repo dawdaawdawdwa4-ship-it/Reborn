@@ -4384,7 +4384,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn fishing-reel-103",
+    return table.concat({"Reborn fishing-input-104",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6315,7 +6315,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn fishing-reel-103 · Propeller loot history (UTC)",
+    return table.concat({"Reborn fishing-input-104 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6419,7 +6419,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn fishing-reel-103 · Propeller tracker",
+    return table.concat({"Reborn fishing-input-104 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6455,8 +6455,9 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn fishing-reel-103", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn fishing-input-104", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
+        "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
         "Modes: Fishing "..(enabled and "ON" or "OFF")..", Bait "..(baitEnabled and "ON" or "OFF")..", Harvest "..(harvestEnabled and "ON" or "OFF")..", Wood "..(woodEnabled and "ON" or "OFF")..", Mining "..(mineEnabled and "ON" or "OFF")}
@@ -6730,11 +6731,18 @@ RemoteCatalog.EquipFishingRod=function(myCycle)
 end
 local lastFishingAim
 local function clickOnce(action, myCycle)
+    RemoteCatalog.FishingInputAction=action
+    RemoteCatalog.FishingInputTransport="none"
+    local function fail(reason,sent)
+        RemoteCatalog.FishingInputResult=reason
+        return false,reason,sent
+    end
     local camera = workspace.CurrentCamera
-    if baitBusy then return false,"bait is using the tool" end
-    if not camera then return false,"camera not ready" end
-    if not hasRodEquipped() then return false,"equip your fishing rod" end
-    if not running(myCycle) then return false,"fishing stopped" end
+    if fishingInputBusy then return fail("previous rod input is finishing") end
+    if baitBusy then return fail("bait is using the tool") end
+    if not camera then return fail("camera not ready") end
+    if not hasRodEquipped() then return fail("equip your fishing rod") end
+    if not running(myCycle) then return fail("fishing stopped") end
     local character = player.Character
     local tool=character and character:FindFirstChildOfClass("Tool")
     local function activeInput()
@@ -6743,7 +6751,7 @@ local function clickOnce(action, myCycle)
         local ok,focused=pcall(function() return UserInputService:GetFocusedTextBox() end)
         return not (ok and focused)
     end
-    if not activeInput() then return false,"close text input and keep the rod equipped" end
+    if not activeInput() then return fail("close text input and keep the rod equipped") end
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local x, y = camera.ViewportSize.X * 0.7, camera.ViewportSize.Y * 0.6
     if action == "reel" and lastFishingAim then
@@ -6761,7 +6769,7 @@ local function clickOnce(action, myCycle)
     if action ~= "reel" and overPanel(x, y) then x, y = camera.ViewportSize.X * 0.8, camera.ViewportSize.Y * 0.6 end
     if overPanel(x, y) then
         setStatus("Move the hub away from the water aiming area.", COLORS.warn)
-        return false,"move the hub away from the fishing aim"
+        return fail("move the hub away from the fishing aim")
     end
     local function clearInputPoint()
         if overPanel(x,y) then return false end
@@ -6775,33 +6783,60 @@ local function clickOnce(action, myCycle)
     end
     if not clearInputPoint() then
         setStatus("Move on-screen controls away from the fishing aim.",COLORS.warn)
-        return false,"on-screen controls cover the fishing aim"
+        return fail("on-screen controls cover the fishing aim")
     end
     -- Update the Mouse ray first; button events alone leave the aim over the UI.
     -- The user or another tool may have moved the cursor since the cast.
     -- Restore the saved aim for every reel as well as every new cast.
-    local moved = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
-    if not moved then return false,"mouse movement was blocked" end
+    local function attempt(fn)
+        local ok,result=pcall(fn)
+        return ok and result~=false
+    end
+    local transport="virtual mouse"
+    local press=function() return VirtualInputManager:SendMouseButtonEvent(x,y,0,true,game,0) end
+    local release=function() return VirtualInputManager:SendMouseButtonEvent(x,y,0,false,game,0) end
+    local moved=attempt(function() return VirtualInputManager:SendMouseMoveEvent(x,y,game) end)
+    if not moved then
+        -- A failed move sent no click. Select one complete alternate backend;
+        -- once a press is attempted, its matching release is used without replay.
+        local moveHost,pressHost,releaseHost=mousemoveabs,mouse1press,mouse1release
+        if type(moveHost)=="function" and type(pressHost)=="function" and type(releaseHost)=="function" then
+            moved=attempt(function() return moveHost(x,y) end)
+            if moved then transport="host mouse";press=pressHost;release=releaseHost end
+        end
+        if not moved and action=="reel" then
+            local available,activate,deactivate=pcall(function() return tool.Activate,tool.Deactivate end)
+            if available and type(activate)=="function" and type(deactivate)=="function" then
+                if tool.Enabled==false then return fail("fishing rod is not ready to activate") end
+                moved=true;transport="rod activation"
+                press=function() return activate(tool) end
+                release=function() return deactivate(tool) end
+            end
+        end
+    end
+    if not moved then return fail("mouse movement was blocked; no usable alternate input") end
+    RemoteCatalog.FishingInputTransport=transport
     task.wait(action == "reel" and .01 or .03)
-    if not activeInput() then return false,"tool, character or text focus changed while aiming" end
-    if not clearInputPoint() then return false,"on-screen controls moved over the fishing aim" end
-    lastFishingAim = {X=x,Y=y}
+    if not activeInput() then return fail("tool, character or text focus changed while aiming") end
+    if not clearInputPoint() then return fail("on-screen controls moved over the fishing aim") end
+    if transport~="rod activation" then lastFishingAim={X=x,Y=y} end
     fishingInputBusy = true
     RemoteCatalog.FishingMouseInput=true
-    local pressed = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0) end)
+    local pressed=attempt(press)
     local held = pcall(function()
         if not pressed then return end
         local deadline = os.clock() + (action == "cast" and CONFIG.CastHold or 0.01)
         while activeInput() and os.clock() < deadline do task.wait(0.01) end
     end)
     -- Release independently of both input errors and Stop during the charge.
-    local released = pcall(function() VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0) end)
+    local released=attempt(release)
     fishingInputBusy = false
     RemoteCatalog.FishingMouseInput=false
-    if not pressed then return false,"mouse press was blocked" end
-    if not held then return false,"mouse hold was interrupted",true end
-    if not released then return false,"mouse release was blocked",true end
-    if not activeInput() then return false,"tool, character or text focus changed during input",true end
+    if not pressed then return fail(transport.." press was blocked") end
+    if not held then return fail("mouse hold was interrupted",true) end
+    if not released then return fail(transport.." release was blocked",true) end
+    if not activeInput() then return fail("tool, character or text focus changed during input",true) end
+    RemoteCatalog.FishingInputResult="Input sent; catch confirmation remains separate"
     return true,nil,true
 end
 local function getBobber()
@@ -8655,7 +8690,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn fishing-reel-103\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn fishing-input-104\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -8717,7 +8752,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn fishing-reel-103 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn fishing-input-104 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9309,7 +9344,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn fishing-reel-103\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn fishing-input-104\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -10420,7 +10455,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn fishing-reel-103 · Craft diagnostics",
+    return table.concat({"Reborn fishing-input-104 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -10499,7 +10534,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn fishing-reel-103 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn fishing-input-104 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
