@@ -326,6 +326,15 @@ do
  damage=false;farm:Start();a.attributes.Health=30;step(.7)
  assert(farm.Drops==1,'an HP attribute drop counts as a hit');a.attributes=nil;a.GetAttribute=nil
 end
+-- A slime jumping at the character is dodged with a sidestep instead of waited for.
+do
+ reset();stuck=true;local dodges=0
+ ctx.Sidestep=function(h,r,threat,distance) assert(h==human and r==root and distance==5);dodges+=1 end
+ ar.Position=v(9);farm:Start();ar.Position=v(7);ar.Position.Y=6;step()
+ assert(dodges==1 and farm.Message:find('Dodging',1,true) and sent==0,'an airborne closing slime must be sidestepped')
+ ar.Position.Y=0;ar.Position=v(7);step();assert(farm.Message:find('is coming',1,true) or sent>=0)
+ ctx.Sidestep=nil
+end
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
 `;

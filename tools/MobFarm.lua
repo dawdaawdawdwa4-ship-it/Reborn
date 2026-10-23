@@ -212,7 +212,14 @@ function MobFarm.new(ctx)
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
         self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.StartedAt=now();self.EndedAt=nil
-        publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
+        local char=ctx.Player.Character
+        local human=char and char:FindFirstChildOfClass("Humanoid")
+        local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
+        if fraction<=self.RetreatBelow then
+            publish("Low health ("..math.floor(fraction*100).."%) · waiting until "..math.floor(self.ResumeAbove*100).."% HP before attacking · eat or let it regenerate")
+        else
+            publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
+        end
         scheduler.spawn(function()
             local healthSeen=setmetatable({},{__mode="k"})
             local cooldowns=setmetatable({},{__mode="k"})
@@ -370,7 +377,12 @@ function MobFarm.new(ctx)
                                 local closing=previous~=nil and (previous-root.Position).Magnitude-chosen.Distance>=1.5 and chosen.Distance<=self.Reach*2
                                 local airborne=math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0))>self.Reach*.75
                                 if chosen.Distance<=self.Reach*2 and ctx.Face then pcall(ctx.Face,root,chosen.Root) end
-                                if closing and chosen.Distance>self.Reach then
+                                if self.Walk and closing and airborne and chosen.Distance<=self.Reach*1.5 and ctx.Sidestep then
+                                    -- A slime jumping at the character lands where the character was; step aside.
+                                    boost(human,true)
+                                    if pcall(ctx.Sidestep,human,root,chosen.Root.Position,5) then self.Chase={Humanoid=human,Root=root} end
+                                    publish("Dodging · "..chosen.Model.Name.." is jumping at you")
+                                elseif closing and chosen.Distance>self.Reach then
                                     halt();publish("Holding · "..chosen.Model.Name.." is coming · "..math.floor(chosen.Distance).." studs")
                                 elseif chosen.Distance>self.Reach then
                                     local clear=self.Walk and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
@@ -450,6 +462,10 @@ function MobFarm.new(ctx)
                                             self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                             if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
                                             self.Swings+=1;attempts+=1;unconfirmed+=1
+                                            -- Back out again right after the swing, not only before the next one.
+                                            if self.Walk and (chosen.Root.Position-root.Position).Magnitude<standoff then
+                                                retreat(human,root,chosen.Root,math.max(1,standoff+1-(chosen.Root.Position-root.Position).Magnitude))
+                                            end
                                             attackedAt[chosen.Model]=now();lastAttackAt=now()
                                             attackedNear[chosen.Model]=(chosen.Root.Position-root.Position).Magnitude
                                             if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end

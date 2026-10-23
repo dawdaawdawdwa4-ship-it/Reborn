@@ -1772,7 +1772,14 @@ function MobFarm.new(ctx)
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
         self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.StartedAt=now();self.EndedAt=nil
-        publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
+        local char=ctx.Player.Character
+        local human=char and char:FindFirstChildOfClass("Humanoid")
+        local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
+        if fraction<=self.RetreatBelow then
+            publish("Low health ("..math.floor(fraction*100).."%) · waiting until "..math.floor(self.ResumeAbove*100).."% HP before attacking · eat or let it regenerate")
+        else
+            publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
+        end
         scheduler.spawn(function()
             local healthSeen=setmetatable({},{__mode="k"})
             local cooldowns=setmetatable({},{__mode="k"})
@@ -1930,7 +1937,12 @@ function MobFarm.new(ctx)
                                 local closing=previous~=nil and (previous-root.Position).Magnitude-chosen.Distance>=1.5 and chosen.Distance<=self.Reach*2
                                 local airborne=math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0))>self.Reach*.75
                                 if chosen.Distance<=self.Reach*2 and ctx.Face then pcall(ctx.Face,root,chosen.Root) end
-                                if closing and chosen.Distance>self.Reach then
+                                if self.Walk and closing and airborne and chosen.Distance<=self.Reach*1.5 and ctx.Sidestep then
+                                    -- A slime jumping at the character lands where the character was; step aside.
+                                    boost(human,true)
+                                    if pcall(ctx.Sidestep,human,root,chosen.Root.Position,5) then self.Chase={Humanoid=human,Root=root} end
+                                    publish("Dodging · "..chosen.Model.Name.." is jumping at you")
+                                elseif closing and chosen.Distance>self.Reach then
                                     halt();publish("Holding · "..chosen.Model.Name.." is coming · "..math.floor(chosen.Distance).." studs")
                                 elseif chosen.Distance>self.Reach then
                                     local clear=self.Walk and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
@@ -2010,6 +2022,10 @@ function MobFarm.new(ctx)
                                             self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                             if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
                                             self.Swings+=1;attempts+=1;unconfirmed+=1
+                                            -- Back out again right after the swing, not only before the next one.
+                                            if self.Walk and (chosen.Root.Position-root.Position).Magnitude<standoff then
+                                                retreat(human,root,chosen.Root,math.max(1,standoff+1-(chosen.Root.Position-root.Position).Magnitude))
+                                            end
                                             attackedAt[chosen.Model]=now();lastAttackAt=now()
                                             attackedNear[chosen.Model]=(chosen.Root.Position-root.Position).Magnitude
                                             if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end
@@ -5154,7 +5170,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-loot-141",
+    return table.concat({"Reborn mob-dodge-142",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7184,7 +7200,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-loot-141 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-dodge-142 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7288,7 +7304,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-loot-141 · Propeller tracker",
+    return table.concat({"Reborn mob-dodge-142 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7324,7 +7340,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-loot-141", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-dodge-142", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10045,7 +10061,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-loot-141\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-dodge-142\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10107,7 +10123,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-loot-141 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-dodge-142 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10740,7 +10756,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-loot-141\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-dodge-142\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11858,7 +11874,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-loot-141 · Craft diagnostics",
+    return table.concat({"Reborn mob-dodge-142 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11937,7 +11953,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-loot-141 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-dodge-142 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12605,7 +12621,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-loot-141 · Mobs",
+    return table.concat({"Reborn mob-dodge-142 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12800,6 +12816,16 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
         return counts
     end,
     Flatten=function(v) return Vector3.new(v.X,0,v.Z) end,
+    -- One step perpendicular to the line from the threat, so a jumping mob lands beside the character.
+    Sidestep=function(human,root,threatPosition,distance)
+        local away=Vector3.new(root.Position.X-threatPosition.X,0,root.Position.Z-threatPosition.Z)
+        if away.Magnitude<.1 then away=root.CFrame.LookVector end
+        away=Vector3.new(away.X,0,away.Z).Unit
+        local side=Vector3.new(-away.Z,0,away.X)
+        -- Alternate sides so repeated jumps do not walk the character in one direction.
+        RemoteCatalog.MobDodgeSide=-(RemoteCatalog.MobDodgeSide or 1)
+        human:MoveTo(root.Position+side*(distance or 5)*RemoteCatalog.MobDodgeSide)
+    end,
     Face=function(root,target)
         -- Yaw only, so the character stays upright on slopes and hopping slimes.
         local flat=Vector3.new(target.Position.X,root.Position.Y,target.Position.Z)

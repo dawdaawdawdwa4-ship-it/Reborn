@@ -3687,3 +3687,17 @@ lists loot by item. Retreats and standoff steps move horizontally, so a mob
 underneath the character is stepped away from too.
 
 Report headers now read `Reborn mob-loot-141`.
+
+
+## Dodging jumping mobs · v142
+
+A v140 report showed the slime one stud from the character at 29% HP. Slimes
+attack by jumping onto the character, and the jump is visible: the mob is
+airborne and closing. With Auto Move on, the farm now sidesteps five studs
+perpendicular to the mob (alternating sides) while it is in the air and within
+1.5 × reach ("Dodging · slime is jumping at you"), so it lands beside the
+character. After every swing the standoff step-back runs again, not only before
+the next swing. Starting below 35% HP shows "Low health (N%) · waiting until 50%
+HP before attacking" instead of silently pausing.
+
+Report headers now read `Reborn mob-dodge-142`.
