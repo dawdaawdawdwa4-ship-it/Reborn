@@ -42,7 +42,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=6,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,PacketReach=9,Smart=true,KeepBias=0,JumpIntervals={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,RestDistanceTP=16,PacketReach=9,Smart=true,KeepBias=0,JumpIntervals={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -635,11 +635,12 @@ function MobFarm.new(ctx)
                                 elseif self.Walk and (teleport or near) then
                                     -- Hit and run (TP mode): between swings the character rests out of the mob's
                                     -- reach and hops in only when the next swing is due.
-                                    local hitRun=(teleport or near) and self.HitAndRun and self.RestDistance>keep
-                                    if hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and now()-lastAttack<.5 then
+                                    local rest=teleport and math.max(self.RestDistance,self.RestDistanceTP or 16) or self.RestDistance
+                                    local hitRun=(teleport or near) and self.HitAndRun and rest>keep
+                                    if hitRun and gap>keep+.75 and gap<=rest+1.5 and now()-lastAttack<.5 then
                                         if self.Chase then halt() end
                                         publish("Resting · "..chosen.Model.Name.." · "..math.floor(gap).." studs away · next swing shortly")
-                                    elseif hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and (airborne or not settled or jumpDue) then
+                                    elseif hitRun and gap>keep+.75 and gap<=rest+1.5 and (airborne or not settled or jumpDue) then
                                         -- Hopping in while the slime jumps lands the character under it; wait for the landing.
                                         if self.Chase then halt() end
                                         publish("Waiting · "..chosen.Model.Name.." is "..(airborne and "in the air" or not settled and "moving" or "about to jump").." · hopping in "..(jumpDue and not airborne and settled and "after its jump" or "once it settles"))
@@ -744,7 +745,8 @@ function MobFarm.new(ctx)
                                                 observe(chosen.Model)
                                                 publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
                                                 -- Hit and run: straight back out of the mob's reach after the swing.
-                                                if (teleport or near) and self.HitAndRun and self.RestDistance>keep and chosen.Root.Parent then
+                                                local rest=teleport and math.max(self.RestDistance,self.RestDistanceTP or 16) or self.RestDistance
+                                                if (teleport or near) and self.HitAndRun and rest>keep and chosen.Root.Parent then
                                                     -- Out of reach of every nearby mob, not only the one just hit.
                                                     local crowd=self:Threat(12)
                                                     local away=crowd and crowd.Away or root.Position-chosen.Root.Position
@@ -758,7 +760,7 @@ function MobFarm.new(ctx)
                                                             away=away.Unit+side.Unit*(1.2*self.ExitSide)
                                                         end
                                                     end
-                                                    local step=self.RestDistance-(chosen.Root.Position-root.Position).Magnitude
+                                                    local step=rest-(chosen.Root.Position-root.Position).Magnitude
                                                     if teleport then step=math.min(self.HopDistance,step) end
                                                     local out=away.Magnitude>.1 and step>.5
                                                     if out and teleport then out=pcall(ctx.Hop,root,root.Position+away.Unit*step,chosen.Root)

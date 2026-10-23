@@ -1620,7 +1620,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=6,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,PacketReach=9,Smart=true,KeepBias=0,JumpIntervals={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,RestDistanceTP=16,PacketReach=9,Smart=true,KeepBias=0,JumpIntervals={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -2213,11 +2213,12 @@ function MobFarm.new(ctx)
                                 elseif self.Walk and (teleport or near) then
                                     -- Hit and run (TP mode): between swings the character rests out of the mob's
                                     -- reach and hops in only when the next swing is due.
-                                    local hitRun=(teleport or near) and self.HitAndRun and self.RestDistance>keep
-                                    if hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and now()-lastAttack<.5 then
+                                    local rest=teleport and math.max(self.RestDistance,self.RestDistanceTP or 16) or self.RestDistance
+                                    local hitRun=(teleport or near) and self.HitAndRun and rest>keep
+                                    if hitRun and gap>keep+.75 and gap<=rest+1.5 and now()-lastAttack<.5 then
                                         if self.Chase then halt() end
                                         publish("Resting · "..chosen.Model.Name.." · "..math.floor(gap).." studs away · next swing shortly")
-                                    elseif hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and (airborne or not settled or jumpDue) then
+                                    elseif hitRun and gap>keep+.75 and gap<=rest+1.5 and (airborne or not settled or jumpDue) then
                                         -- Hopping in while the slime jumps lands the character under it; wait for the landing.
                                         if self.Chase then halt() end
                                         publish("Waiting · "..chosen.Model.Name.." is "..(airborne and "in the air" or not settled and "moving" or "about to jump").." · hopping in "..(jumpDue and not airborne and settled and "after its jump" or "once it settles"))
@@ -2322,7 +2323,8 @@ function MobFarm.new(ctx)
                                                 observe(chosen.Model)
                                                 publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
                                                 -- Hit and run: straight back out of the mob's reach after the swing.
-                                                if (teleport or near) and self.HitAndRun and self.RestDistance>keep and chosen.Root.Parent then
+                                                local rest=teleport and math.max(self.RestDistance,self.RestDistanceTP or 16) or self.RestDistance
+                                                if (teleport or near) and self.HitAndRun and rest>keep and chosen.Root.Parent then
                                                     -- Out of reach of every nearby mob, not only the one just hit.
                                                     local crowd=self:Threat(12)
                                                     local away=crowd and crowd.Away or root.Position-chosen.Root.Position
@@ -2336,7 +2338,7 @@ function MobFarm.new(ctx)
                                                             away=away.Unit+side.Unit*(1.2*self.ExitSide)
                                                         end
                                                     end
-                                                    local step=self.RestDistance-(chosen.Root.Position-root.Position).Magnitude
+                                                    local step=rest-(chosen.Root.Position-root.Position).Magnitude
                                                     if teleport then step=math.min(self.HopDistance,step) end
                                                     local out=away.Magnitude>.1 and step>.5
                                                     if out and teleport then out=pcall(ctx.Hop,root,root.Position+away.Unit*step,chosen.Root)
@@ -5500,7 +5502,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-diag-158",
+    return table.concat({"Reborn mob-terrain-159",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7562,7 +7564,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-diag-158 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-terrain-159 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7666,7 +7668,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-diag-158 · Propeller tracker",
+    return table.concat({"Reborn mob-terrain-159 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7702,7 +7704,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-diag-158", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-terrain-159", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10437,7 +10439,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-diag-158\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-terrain-159\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10499,7 +10501,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-diag-158 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-terrain-159 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11132,7 +11134,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-diag-158\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-terrain-159\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12250,7 +12252,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-diag-158 · Craft diagnostics",
+    return table.concat({"Reborn mob-terrain-159 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12329,7 +12331,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-diag-158 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-terrain-159 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12990,7 +12992,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn mob-diag-158 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn mob-terrain-159 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13017,14 +13019,33 @@ end
 -- earlier server resolves here, nil otherwise.
 -- Ground within 12 studs below a point (3 studs above it to clear small steps), ignoring the
 -- character and mobs; a miss means water, void or the island's edge.
-function RemoteCatalog.MobGround(point)
+-- Walkable ground under a point: cast from well above it (a ray that starts inside a slope sees
+-- nothing) and accept a hit between 15 studs below and 8 studs above the point. Higher means a
+-- wall or a roof, lower means a drop, nothing means water, void or the island's edge.
+function RemoteCatalog.MobGroundAt(point)
     local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude
     local exclude={}
     if player.Character then table.insert(exclude,player.Character) end
     pcall(function() for _,folder in ipairs(RemoteCatalog.MobFarmModule.Roots(workspace)) do table.insert(exclude,folder) end end)
     params.FilterDescendantsInstances=exclude
-    local hit=workspace:Raycast(point+Vector3.new(0,3,0),Vector3.new(0,-15,0),params)
-    return hit~=nil and not (hit.Instance and hit.Instance.CanCollide==false)
+    local hit=workspace:Raycast(point+Vector3.new(0,24,0),Vector3.new(0,-48,0),params)
+    if not hit or (hit.Instance and hit.Instance.CanCollide==false) then return nil end
+    if hit.Position.Y<point.Y-15 or hit.Position.Y>point.Y+8 then return nil end
+    return hit.Position
+end
+function RemoteCatalog.MobGround(point) return RemoteCatalog.MobGroundAt(point)~=nil end
+-- One TP hop that follows the terrain: the character lands standing on the ground under the
+-- destination, uphill or downhill, never inside a slope or in the air, facing the target.
+function RemoteCatalog.MobHop(root,destination,target)
+    local ground=RemoteCatalog.MobGroundAt(destination)
+    if not ground then error("No ground under the next hop",0) end
+    local humanoid=root.Parent and root.Parent:FindFirstChildOfClass("Humanoid")
+    local height=root.Size.Y/2+(humanoid and humanoid.HipHeight or 2)
+    local point=Vector3.new(destination.X,ground.Y+height,destination.Z)
+    local flat=Vector3.new(target.Position.X,point.Y,target.Position.Z)
+    root.AssemblyLinearVelocity=Vector3.zero
+    root.CFrame=(flat-point).Magnitude>.1 and CFrame.lookAt(point,flat) or root.CFrame+(point-root.Position)
+    return point
 end
 function RemoteCatalog.MobHitSource()
     local recorder=RemoteCatalog.LiveRecorder("MobBinding")
@@ -13173,7 +13194,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-diag-158 · Mobs",
+    return table.concat({"Reborn mob-terrain-159 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -13267,17 +13288,7 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
         for _,tool in ipairs(RemoteCatalog.OwnedTools()) do if tool.Name==name then return tool end end
     end,
     Equip=RemoteCatalog.EquipTool,
-    Hop=function(root,destination,target)
-        -- Never finish a hop below the slime's centre, which would sink the character into terrain.
-        local point=Vector3.new(destination.X,math.max(destination.Y,target.Position.Y+1),destination.Z)
-        local flat=Vector3.new(target.Position.X,point.Y,target.Position.Z)
-        -- Raycasts see empty air as clear; a hop over the gap between islands could drop into the void.
-        local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances={root.Parent}
-        if not workspace:Raycast(point,Vector3.new(0,-12,0),params) then error("No ground under the next hop",0) end
-        root.AssemblyLinearVelocity=Vector3.zero
-        root.CFrame=(flat-point).Magnitude>.1 and CFrame.lookAt(point,flat) or root.CFrame+(point-root.Position)
-    end,
+    Hop=function(root,destination,target) return RemoteCatalog.MobHop(root,destination,target) end,
     -- Screen point of the target for a real click; nil with a reason when a click cannot land on it.
     Aim=function(target)
         local camera=workspace.CurrentCamera

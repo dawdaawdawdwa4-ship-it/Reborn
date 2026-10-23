@@ -494,6 +494,34 @@ do
  RemoteCatalog.RefreshMobScore();assert(RemoteCatalog.MobScoreLabel.Text:find('Runs 0',1,true),'the Mobs tab card shows the totals')
  CONFIG.MobScore=savedScore
 end
+-- Ground under a point is found from well above it, so slopes count, and TP hops land on that ground.
+-- (One table local: this chunk shares the main chunk's 200-local budget.)
+do
+ local T={Vector3=Vector3,CFrame=CFrame,RaycastParams=RaycastParams,Raycast=workspace.Raycast,Filter=Enum.RaycastFilterType,mt={}}
+ Enum.RaycastFilterType=Enum.RaycastFilterType or {Exclude=1}
+ T.v=function(x,y,z) return setmetatable({X=x,Y=y,Z=z,Magnitude=math.sqrt(x*x+y*y+z*z)},T.mt) end
+ T.mt.__add=function(a,b) return T.v(a.X+b.X,a.Y+b.Y,a.Z+b.Z) end;T.mt.__sub=function(a,b) return T.v(a.X-b.X,a.Y-b.Y,a.Z-b.Z) end
+ Vector3={new=T.v,zero=T.v(0,0,0)};RaycastParams={new=function() return {} end}
+ CFrame={lookAt=function(point,at) return {Position=point,LookAt=at} end}
+ workspace.Raycast=function(_,origin,direction,params)
+  assert(origin.Y>=24,'the ground ray must start well above the point');assert(direction.Y<=-48,'and reach well below it')
+  if T.groundY==nil then return nil end
+  return {Position=T.v(origin.X,T.groundY,origin.Z),Instance={CanCollide=true}}
+ end
+ T.groundY=5;assert(RemoteCatalog.MobGroundAt(T.v(0,0,0)) and RemoteCatalog.MobGroundAt(T.v(0,0,0)).Y==5,'a slope 5 studs up still counts as ground')
+ T.groundY=-12;assert(RemoteCatalog.MobGround(T.v(0,0,0)),'ground 12 studs below counts')
+ T.groundY=12;assert(not RemoteCatalog.MobGround(T.v(0,0,0)),'a wall or roof 12 studs above does not')
+ T.groundY=-20;assert(not RemoteCatalog.MobGround(T.v(0,0,0)),'a drop of 20 studs does not')
+ T.groundY=nil;assert(not RemoteCatalog.MobGround(T.v(0,0,0)),'nothing below is water or void')
+ T.character={FindFirstChildOfClass=function(_,c) return c=='Humanoid' and {HipHeight=2} or nil end}
+ T.root={Parent=T.character,Size=T.v(2,2,1),Position=T.v(0,3,0),CFrame={}}
+ T.groundY=6
+ T.ok,T.point=pcall(RemoteCatalog.MobHop,T.root,T.v(8,3,0),{Position=T.v(20,3,0)})
+ assert(T.ok and T.point.Y==9 and T.root.CFrame.Position.Y==9 and T.root.CFrame.LookAt.X==20,'the hop lands at ground + hip height facing the target: '..tostring(T.point))
+ T.groundY=nil;T.ok,T.err=pcall(RemoteCatalog.MobHop,T.root,T.v(16,3,0),{Position=T.v(20,3,0)})
+ assert(not T.ok and tostring(T.err):find('No ground',1,true),'a hop without ground is refused')
+ Vector3,CFrame,RaycastParams,workspace.Raycast,Enum.RaycastFilterType=T.Vector3,T.CFrame,T.RaycastParams,T.Raycast,T.Filter
+end
 for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Normal' then option.Activated:Fire() end end
 assert(CONFIG.WoodTravelMode=='Normal' and CONFIG.FarmTravelMode=='Walk','Normal must be selectable for wood without changing crop travel')
 
@@ -1075,7 +1103,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn mob-diag-158',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn mob-terrain-159',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1817,7 +1845,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn mob-diag-158 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn mob-terrain-159 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

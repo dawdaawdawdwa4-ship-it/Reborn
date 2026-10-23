@@ -4013,3 +4013,21 @@ its attacker stood on, and a straight retreat stays inside that line.
   Status reads "backed off diagonally to N studs".
 
 Report headers now read `Reborn mob-diag-158`.
+
+## Terrain-following hops · v159
+
+A v157 TP-mode report: 13 "edge stops" on the hilly slime island and 12 hits
+taken while resting 12 studs out.
+
+- **Ground is found from above.** The walk and hop ground checks now cast from
+  24 studs above the point down 48 studs and accept ground between 15 studs
+  below and 8 above it. Before, the ray started 3 studs above the point, so on
+  an uphill slope it began inside the terrain, saw nothing and the move was
+  refused.
+- **Hops follow the terrain.** A TP hop lands standing on the ground under its
+  destination (ground plus hip height), uphill or downhill, facing the target,
+  instead of keeping the old height.
+- **TP rest at 16 studs.** In TP mode the hit-and-run rest point moves from 12
+  to 16 studs (hops are free); Walk mode keeps 12.
+
+Report headers now read `Reborn mob-terrain-159`.
