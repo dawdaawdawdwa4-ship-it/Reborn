@@ -66,30 +66,52 @@ function MobFarm.new(ctx)
     function self:ReleaseSwing(press)
         press=press or self.Press
         if not press or press.Released then return true end
-        local ok,result=pcall(function() return press.Tool:Deactivate() end)
+        local ok,result=pcall(function()
+            if press.Release then return press.Release() end
+            return press.Tool:Deactivate()
+        end)
         if not ok or result==false then return false end
         press.Released=true
         if self.Press==press then self.Press=nil end
         return true
     end
-    function self:Swing(tool,canStart,active)
+    -- A live clip showed Activate() swinging the axe beside a slime with no HP change: the weapon's
+    -- client hits what the cursor points at. So a swing is a real click aimed at the target when the
+    -- host can aim one, with Activate() as the fallback (off-screen target, no mouse API).
+    function self:Swing(tool,canStart,active,target)
         active=active or canStart
         if not canStart() then return false,"Swing cancelled" end
         if self.Press then return false,"Previous weapon activation is still releasing" end
         if tool.Enabled==false then return false,"Weapon is cooling down" end
+        local x,y,aimReason
+        if target and ctx.Aim and ctx.Click then
+            local aimed,ax,ay=pcall(ctx.Aim,target)
+            if aimed and ax and ay then x,y=ax,ay else aimReason=aimed and ay or ax end
+        end
         local press={Tool=tool}
+        if x then press.Release=function() return ctx.Click(x,y,false) end end
         self.Press=press
-        -- The weapon's own client must start its animation and send the hit. Replaying
-        -- only the learned hitUnit packet fails server validation with NO_ANIMATION.
+        local method=x and "mouse click at target" or "weapon activation"
         local ok,result=pcall(function()
-            local activated=tool:Activate()
-            if activated==false then error("Weapon activation was refused",0) end
+            if x then
+                if ctx.Click(x,y,true)==false then error("Mouse input unavailable",0) end
+            else
+                local activated=tool:Activate()
+                if activated==false then error("Weapon activation was refused",0) end
+            end
             if active() then scheduler.wait(.08) end
         end)
         if not self:ReleaseSwing(press) then return false,"Weapon release failed · press STOP to retry" end
         if not ok then return false,result end
         if not active() then return false,"Swing cancelled" end
-        return true,"Weapon activated · checking for HP changes"
+        -- Escalation: with the animation now playing, a learned hit packet is accepted where a bare
+        -- replay got NO_ANIMATION. Used only after clicks/activation produced no HP change.
+        if self.UseLearnedHit and target and ctx.LearnedHit then
+            local sent,detail=ctx.LearnedHit(target.Model)
+            method=method..(sent and " + learned hit" or " + learned hit rejected ("..(ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail))..")")
+        end
+        self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
+        return true,self.LastMethod.." · checking for HP changes"
     end
     function self:RunTime()
         if not self.StartedAt then return 0 end
@@ -132,7 +154,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.StartedAt=now();self.EndedAt=nil
         publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
         scheduler.spawn(function()
             local healthSeen=setmetatable({},{__mode="k"})
@@ -219,7 +241,16 @@ function MobFarm.new(ctx)
                                 end
                             end
                             if not chosen then
-                                halt();self.Target=nil;publish("Waiting · no living "..(self.Kind=="Slimes" and "slimes" or self.Kind=="All mobs" and "mobs" or self.Kind).." within "..(self.Walk and math.max(self.Radius,self.SeekRange) or self.Radius).." studs; scanning continues")
+                                halt();self.Target=nil
+                                local label=self.Kind=="Slimes" and "slimes" or self.Kind=="All mobs" and "mobs" or self.Kind
+                                -- Mobs hidden only by their no-damage cooldown are not "missing".
+                                local cooling,soonest=0,nil
+                                for _,entry in ipairs(self:Scan(nil,limit)) do
+                                    local until_=cooldowns[entry.Model]
+                                    if until_ and until_>now() then cooling+=1;soonest=math.min(soonest or until_,until_) end
+                                end
+                                if cooling>0 then publish("Waiting · "..cooling.." "..label.." cooling down after no HP drop · retry in "..math.max(1,math.ceil(soonest-now())).."s")
+                                else publish("Waiting · no living "..label.." within "..(self.Walk and math.max(self.Radius,self.SeekRange) or self.Radius).." studs; scanning continues") end
                             else
                                 if self.Target~=chosen.Model then attempts=0;progress={} end
                                 self.Target=chosen.Model;observe(self.Target)
@@ -293,7 +324,7 @@ function MobFarm.new(ctx)
                                                 return active() and ctx.Player.Character==char and tool.Parent==char
                                                     and char:FindFirstChild("HumanoidRootPart")==root
                                                     and char:FindFirstChildOfClass("Humanoid")==human
-                                            end)
+                                            end,chosen)
                                             if not active() then return end
                                             self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                             if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
@@ -304,9 +335,15 @@ function MobFarm.new(ctx)
                                             if unconfirmed>=self.RunBudget then
                                                 self:Stop("No HP drop observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
                                             elseif attempts>=self.TargetBudget then
-                                                -- One unhittable slime must not end the whole run.
-                                                cooldowns[chosen.Model]=now()+5;self.Target=nil;attempts=0
-                                                publish("No HP drop on "..chosen.Model.Name.." · trying another slime")
+                                                if ctx.LearnedHit and not self.UseLearnedHit then
+                                                    -- Try the stronger method on this same target before giving up on it.
+                                                    self.UseLearnedHit=true;attempts=0
+                                                    publish("No HP drop from clicks · adding the learned hit packet")
+                                                else
+                                                    -- One unhittable slime must not end the whole run.
+                                                    cooldowns[chosen.Model]=now()+5;self.Target=nil;attempts=0
+                                                    publish("No HP drop on "..chosen.Model.Name.." · trying another slime")
+                                                end
                                             end
                                         else
                                             cooldowns[chosen.Model]=now()+3;publish("Target obstructed · trying another slime")

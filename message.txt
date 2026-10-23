@@ -1625,30 +1625,52 @@ function MobFarm.new(ctx)
     function self:ReleaseSwing(press)
         press=press or self.Press
         if not press or press.Released then return true end
-        local ok,result=pcall(function() return press.Tool:Deactivate() end)
+        local ok,result=pcall(function()
+            if press.Release then return press.Release() end
+            return press.Tool:Deactivate()
+        end)
         if not ok or result==false then return false end
         press.Released=true
         if self.Press==press then self.Press=nil end
         return true
     end
-    function self:Swing(tool,canStart,active)
+    -- A live clip showed Activate() swinging the axe beside a slime with no HP change: the weapon's
+    -- client hits what the cursor points at. So a swing is a real click aimed at the target when the
+    -- host can aim one, with Activate() as the fallback (off-screen target, no mouse API).
+    function self:Swing(tool,canStart,active,target)
         active=active or canStart
         if not canStart() then return false,"Swing cancelled" end
         if self.Press then return false,"Previous weapon activation is still releasing" end
         if tool.Enabled==false then return false,"Weapon is cooling down" end
+        local x,y,aimReason
+        if target and ctx.Aim and ctx.Click then
+            local aimed,ax,ay=pcall(ctx.Aim,target)
+            if aimed and ax and ay then x,y=ax,ay else aimReason=aimed and ay or ax end
+        end
         local press={Tool=tool}
+        if x then press.Release=function() return ctx.Click(x,y,false) end end
         self.Press=press
-        -- The weapon's own client must start its animation and send the hit. Replaying
-        -- only the learned hitUnit packet fails server validation with NO_ANIMATION.
+        local method=x and "mouse click at target" or "weapon activation"
         local ok,result=pcall(function()
-            local activated=tool:Activate()
-            if activated==false then error("Weapon activation was refused",0) end
+            if x then
+                if ctx.Click(x,y,true)==false then error("Mouse input unavailable",0) end
+            else
+                local activated=tool:Activate()
+                if activated==false then error("Weapon activation was refused",0) end
+            end
             if active() then scheduler.wait(.08) end
         end)
         if not self:ReleaseSwing(press) then return false,"Weapon release failed · press STOP to retry" end
         if not ok then return false,result end
         if not active() then return false,"Swing cancelled" end
-        return true,"Weapon activated · checking for HP changes"
+        -- Escalation: with the animation now playing, a learned hit packet is accepted where a bare
+        -- replay got NO_ANIMATION. Used only after clicks/activation produced no HP change.
+        if self.UseLearnedHit and target and ctx.LearnedHit then
+            local sent,detail=ctx.LearnedHit(target.Model)
+            method=method..(sent and " + learned hit" or " + learned hit rejected ("..(ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail))..")")
+        end
+        self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
+        return true,self.LastMethod.." · checking for HP changes"
     end
     function self:RunTime()
         if not self.StartedAt then return 0 end
@@ -1691,7 +1713,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.StartedAt=now();self.EndedAt=nil
         publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
         scheduler.spawn(function()
             local healthSeen=setmetatable({},{__mode="k"})
@@ -1778,7 +1800,16 @@ function MobFarm.new(ctx)
                                 end
                             end
                             if not chosen then
-                                halt();self.Target=nil;publish("Waiting · no living "..(self.Kind=="Slimes" and "slimes" or self.Kind=="All mobs" and "mobs" or self.Kind).." within "..(self.Walk and math.max(self.Radius,self.SeekRange) or self.Radius).." studs; scanning continues")
+                                halt();self.Target=nil
+                                local label=self.Kind=="Slimes" and "slimes" or self.Kind=="All mobs" and "mobs" or self.Kind
+                                -- Mobs hidden only by their no-damage cooldown are not "missing".
+                                local cooling,soonest=0,nil
+                                for _,entry in ipairs(self:Scan(nil,limit)) do
+                                    local until_=cooldowns[entry.Model]
+                                    if until_ and until_>now() then cooling+=1;soonest=math.min(soonest or until_,until_) end
+                                end
+                                if cooling>0 then publish("Waiting · "..cooling.." "..label.." cooling down after no HP drop · retry in "..math.max(1,math.ceil(soonest-now())).."s")
+                                else publish("Waiting · no living "..label.." within "..(self.Walk and math.max(self.Radius,self.SeekRange) or self.Radius).." studs; scanning continues") end
                             else
                                 if self.Target~=chosen.Model then attempts=0;progress={} end
                                 self.Target=chosen.Model;observe(self.Target)
@@ -1852,7 +1883,7 @@ function MobFarm.new(ctx)
                                                 return active() and ctx.Player.Character==char and tool.Parent==char
                                                     and char:FindFirstChild("HumanoidRootPart")==root
                                                     and char:FindFirstChildOfClass("Humanoid")==human
-                                            end)
+                                            end,chosen)
                                             if not active() then return end
                                             self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                             if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
@@ -1863,9 +1894,15 @@ function MobFarm.new(ctx)
                                             if unconfirmed>=self.RunBudget then
                                                 self:Stop("No HP drop observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
                                             elseif attempts>=self.TargetBudget then
-                                                -- One unhittable slime must not end the whole run.
-                                                cooldowns[chosen.Model]=now()+5;self.Target=nil;attempts=0
-                                                publish("No HP drop on "..chosen.Model.Name.." · trying another slime")
+                                                if ctx.LearnedHit and not self.UseLearnedHit then
+                                                    -- Try the stronger method on this same target before giving up on it.
+                                                    self.UseLearnedHit=true;attempts=0
+                                                    publish("No HP drop from clicks · adding the learned hit packet")
+                                                else
+                                                    -- One unhittable slime must not end the whole run.
+                                                    cooldowns[chosen.Model]=now()+5;self.Target=nil;attempts=0
+                                                    publish("No HP drop on "..chosen.Model.Name.." · trying another slime")
+                                                end
                                             end
                                         else
                                             cooldowns[chosen.Model]=now()+3;publish("Target obstructed · trying another slime")
@@ -4991,7 +5028,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-seek-135",
+    return table.concat({"Reborn mob-click-136",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7021,7 +7058,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-seek-135 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-click-136 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7125,7 +7162,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-seek-135 · Propeller tracker",
+    return table.concat({"Reborn mob-click-136 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7161,7 +7198,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-seek-135", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-click-136", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -9882,7 +9919,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-seek-135\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-click-136\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9944,7 +9981,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-seek-135 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-click-136 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10561,7 +10598,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-seek-135\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-click-136\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11679,7 +11716,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-seek-135 · Craft diagnostics",
+    return table.concat({"Reborn mob-click-136 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11758,7 +11795,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-seek-135 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-click-136 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12060,7 +12097,7 @@ function RemoteCatalog.BeginPlowLearning()
 end
 function RemoteCatalog.PlowOtherBusy()
     return enabled or baitEnabled or baitBusy or harvestEnabled or woodEnabled or mineEnabled or RemoteCatalog.Planting
-        or RemoteCatalog.FishingMouseInput or RemoteCatalog.BaitMouseInput or RemoteCatalog.ResourceInputBusy
+        or RemoteCatalog.FishingMouseInput or RemoteCatalog.BaitMouseInput or RemoteCatalog.ResourceInputBusy or RemoteCatalog.MobMouseInput
         or buildController.Running or buildController.WorkerToken or buildController.Picking
         or RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy
 end
@@ -12405,12 +12442,13 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-seek-135 · Mobs",
+    return table.concat({"Reborn mob-click-136 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
         "Attack ready: "..tostring(recorder~=nil),
-        "Attack method: native weapon activation (animation + game client hit)",
+        "Attack method: "..tostring(farm.LastMethod or "mouse click aimed at the target (fallback: weapon activation)")..(farm.UseLearnedHit and " · learned hit escalation ON" or ""),
+        "Learned hit on this server: "..tostring(RemoteCatalog.LiveRecorder("MobBinding")~=nil and RemoteCatalog.LiveRecorder("MobBinding"):CanUseMobBinding()),
         "Weapon release pending: "..tostring(farm.Press~=nil),
         "Learning: "..tostring(RemoteCatalog.Recorder~=nil and RemoteCatalog.Recorder.LearnMobOnly==true),
         "Weapon: "..(recorder and recorder.MobBinding.WeaponName or "not learned for this server"),
@@ -12492,6 +12530,62 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
         root.AssemblyLinearVelocity=Vector3.zero
         root.CFrame=(flat-point).Magnitude>.1 and CFrame.lookAt(point,flat) or root.CFrame+(point-root.Position)
     end,
+    -- Screen point of the target for a real click; nil with a reason when a click cannot land on it.
+    Aim=function(target)
+        local camera=workspace.CurrentCamera
+        local char=player.Character
+        if not camera or not char then return nil,"camera unavailable" end
+        local focused,textBox=pcall(function() return UserInputService:GetFocusedTextBox() end)
+        if focused and textBox then return nil,"typing" end
+        if RemoteCatalog.MouseSteersCamera and RemoteCatalog.MouseSteersCamera() then return nil,"right mouse held" end
+        local point,visible=camera:WorldToScreenPoint(target.Root.Position)
+        if not visible or point.Z<=0 then return nil,"target off screen" end
+        local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances={char}
+        local hit=workspace:Raycast(camera.CFrame.Position,target.Root.Position-camera.CFrame.Position,params)
+        if hit and not hit.Instance:IsDescendantOf(target.Model) then return nil,"target hidden behind "..hit.Instance.Name end
+        local x,y=point.X,point.Y
+        if hub.Root.Visible then
+            local p,size=hub.Root.AbsolutePosition,hub.Root.AbsoluteSize
+            if x>=p.X and x<=p.X+size.X and y>=p.Y and y<=p.Y+size.Y then return nil,"hub covers the target" end
+        end
+        local checked,objects=pcall(function() return playerGui:GetGuiObjectsAtPosition(x,y) end)
+        if checked then
+            for _,object in ipairs(objects) do
+                if object:IsA("GuiButton") or object:IsA("TextBox") or object:IsDescendantOf(statsOverlayGui) then return nil,"a control covers the target" end
+            end
+        end
+        return x,y
+    end,
+    -- Host mouse when available (works with a captured camera), else VirtualInputManager.
+    Click=function(x,y,down)
+        local host=type(mousemoveabs)=="function" and type(mouse1press)=="function" and type(mouse1release)=="function"
+        if down then
+            local moved=pcall(function()
+                if host then mousemoveabs(x,y) else VirtualInputManager:SendMouseMoveEvent(x,y,game) end
+            end)
+            if not moved then return false end
+            RemoteCatalog.MobMouseInput=true
+            local pressed=pcall(function()
+                if host then mouse1press() else VirtualInputManager:SendMouseButtonEvent(x,y,0,true,game,0) end
+            end)
+            if not pressed then RemoteCatalog.MobMouseInput=false;return false end
+            return true
+        end
+        local released=pcall(function()
+            if host then mouse1release() else VirtualInputManager:SendMouseButtonEvent(x,y,0,false,game,0) end
+        end)
+        RemoteCatalog.MobMouseInput=false
+        return released
+    end,
+    -- The learned packet for this server, when one exists; used only as the escalation after clicks fail.
+    LearnedHit=(function()
+        return function(model)
+            local recorder=RemoteCatalog.LiveRecorder("MobBinding")
+            if not recorder or not recorder.MobHit or not recorder.CanUseMobBinding or not recorder:CanUseMobBinding() then return false,"no learned hit on this server" end
+            return recorder:MobHit(model)
+        end
+    end)(),
     Face=function(root,target)
         -- Yaw only, so the character stays upright on slopes and hopping slimes.
         local flat=Vector3.new(target.Position.X,root.Position.Y,target.Position.Z)
@@ -12855,7 +12949,7 @@ function RemoteCatalog.DropPauseReason()
     local char=player.Character
     local humanoid=char and char:FindFirstChildOfClass("Humanoid")
     if not char or not char.Parent or not humanoid or humanoid.Health<=0 or not char:FindFirstChild("HumanoidRootPart") then return "Paused · waiting for your character" end
-    if RemoteCatalog.FishingMouseInput or RemoteCatalog.BaitMouseInput or RemoteCatalog.ResourceInputBusy or RemoteCatalog.PlowWorker then
+    if RemoteCatalog.FishingMouseInput or RemoteCatalog.BaitMouseInput or RemoteCatalog.ResourceInputBusy or RemoteCatalog.MobMouseInput or RemoteCatalog.PlowWorker then
         return "Paused · another input action is active"
     end
 end

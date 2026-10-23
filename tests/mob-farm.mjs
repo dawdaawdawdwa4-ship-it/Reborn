@@ -226,6 +226,37 @@ reset();farm.SeekRange=300;farm.Walk=false;ar.Position=v(70);br.Position=v(90);f
 assert(sent==0 and walks==0 and moves==0 and farm.Message:find('within 60 studs',1,true),'Auto Move OFF must never seek beyond the radius')
 reset();farm.SeekRange=250;ar.Position=v(400);br.Position=v(400);farm:Start();step(2)
 assert(sent==0 and farm.Message:find('within 250 studs',1,true),'targets beyond SeekRange are not chased')
+-- Swings are real clicks aimed at the target; Activate() only when no click can land.
+do
+ reset();local clicks,releases,aimTarget={}, 0,nil
+ ctx.Aim=function(target) aimTarget=target;return 120,340 end
+ ctx.Click=function(x,y,down) if down then table.insert(clicks,{x,y}) else releases+=1 end;return true end
+ farm:Start()
+ assert(aimTarget and aimTarget.Model==a and #clicks==1 and clicks[1][1]==120 and releases==1 and sent==0,'an aimable target gets a mouse click, not Tool:Activate')
+ assert(farm.LastMethod=='mouse click at target' and farm.Swings==1,'the method must be reported')
+ ctx.Aim=function() return nil,'target off screen' end;clicks={}
+ step(.7);assert(#clicks==0 and sent==1 and farm.LastMethod:find('weapon activation',1,true) and farm.LastMethod:find('off screen',1,true),'an off-screen target falls back to activation and says why')
+ ctx.Aim=function() return 10,10 end
+ ctx.Click=function(x,y,down) if down then return true end;error('release failed') end
+ step(.7);assert(not farm.Enabled and farm.Press and farm.Message:find('release failed',1,true),'a click that cannot be released must stop with the press retained for STOP')
+ ctx.Click=function() return true end;assert(farm:ReleaseSwing() and not farm.Press)
+ ctx.Aim=nil;ctx.Click=nil
+end
+-- Clicks with no HP change escalate to the learned hit packet before giving up on the target.
+do
+ reset();damage=false;local learned={}
+ ctx.Aim=function() return 50,50 end;ctx.Click=function() return true end
+ ctx.LearnedHit=function(model) table.insert(learned,model);ah.Health-=10;return true end
+ farm:Start();for i=1,3 do step(.7) end
+ assert(farm.Swings==4 and #learned==0 and farm.UseLearnedHit and farm.Message:find('learned hit packet',1,true),'four unconfirmed clicks must switch on the learned hit')
+ step(.7);assert(#learned==1 and learned[1]==a and farm.Drops==1 and farm.LastMethod:find('+ learned hit',1,true),'the next swing adds the learned packet on the same target')
+ ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
+end
+-- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
+do
+ reset();damage=false;br.Position=v(300);farm:Start();for i=1,3 do step(.7) end
+ step(.7);assert(farm.Message:find('cooling down after no HP drop',1,true) and farm.Message:find('retry in',1,true),'cooldown must be explained instead of "no living slimes"')
+end
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
 `;

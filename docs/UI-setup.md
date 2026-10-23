@@ -3551,3 +3551,30 @@ seek range. Auto Move OFF never leaves the radius. The waiting message names the
 distance actually searched.
 
 Report headers now read `Reborn mob-seek-135`.
+
+
+## Mob attacks click the target · v136
+
+A live clip (ironWarAxe swinging beside a slime, 8 swings, 0 HP drops) showed
+that `Tool:Activate()` plays the swing but the weapon's client hits only what the
+cursor points at. Auto Mobs now attacks the way a player does:
+
+- **Aimed click.** Each swing moves the cursor to the target's screen position and
+  presses/releases mouse button 1 (host mouse functions when available, else
+  VirtualInputManager), with the same guards as resource input: target on screen,
+  no obstruction between camera and target, not under the hub, a control or the
+  stats overlay, no text box focused, right mouse not held. Other tool input
+  waits while a mob click is held (`MobMouseInput`).
+- **Fallback.** When no click can land (target off screen, hub covering it, no
+  mouse API), the swing uses `Tool:Activate()` as before, and Copy result names
+  the reason.
+- **Escalation.** After four swings with no HP change on a target, and only when a
+  learned attack exists on this server (Learn attack), each later swing also
+  sends the learned hit packet right after the click/activation while the
+  animation plays (the bare replay that got NO_ANIMATION never runs alone).
+- **Cooldown message.** A target hidden only by its five-second no-damage cooldown
+  is reported as "cooling down after no HP drop · retry in Ns" instead of "no
+  living slimes".
+- Copy result shows the last attack method and whether a learned hit exists here.
+
+Report headers now read `Reborn mob-click-136`.
