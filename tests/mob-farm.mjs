@@ -143,6 +143,8 @@ do
  assert(hops==1 and sent==0 and root.Position.X<=-8 and farm.Message:find('Retreating from buffalkor',1,true),'low HP must TP-hop away from any mob kind, not only slimes')
  step();step();assert(hops==3 and root.Position.X<=-21,'the retreat keeps hopping until the mob is 20 studs away')
  local before=hops;step();assert(hops==before and farm.Message:find('Paused · low health',1,true),'once every mob is 20 studs away the character waits for HP')
+ step(5);assert(farm.Message:find('HP not rising · stops in',1,true) and farm.Message:find('now 40%',1,true),'a flat HP line warns about the coming stop')
+ human.Health=45;step(5);assert(farm.Message:find('+0.5 HP/s',1,true) and farm.Message:find('s to go',1,true),'rising HP shows the rate and the time left to the resume point')
  step(46);assert(not farm.Enabled and farm.Message:find('not regenerating',1,true),'HP that never rises for 45 s must stop the run with a clear message')
  reset();farm.Travel='Teleport';human.Health=40;ar.Position=v(30);br.Position=v(60);farm:Start();step(20);human.Health=50;step(30)
  assert(farm.Enabled,'rising HP resets the regeneration watchdog')

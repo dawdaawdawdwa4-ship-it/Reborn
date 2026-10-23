@@ -262,7 +262,7 @@ function MobFarm.new(ctx)
             local lastDistance=setmetatable({},{__mode="k"})
             local progress={}
             local recovering=false
-            local regenAt,regenBest
+            local regenAt,regenBest,regenFrom,regenStart
             local function active()
                 return ctx.Alive() and self.Enabled and self.Generation==token and not ctx.Busy()
             end
@@ -357,12 +357,25 @@ function MobFarm.new(ctx)
                             -- Regeneration watchdog: a character that keeps losing HP while "recovering" is still
                             -- being hit (or starving); stopping with a clear message beats a silent death.
                             if recovering then
+                                if not regenAt then regenFrom=fraction;regenStart=now() end
                                 if not regenAt or fraction>regenBest+.02 then regenAt=now();regenBest=fraction
                                 elseif now()-regenAt>self.RegenTimeout then
                                     self:Stop("HP is not regenerating ("..math.floor(fraction*100).."%) · eat or heal, then start again");return
                                 end
                             else regenAt=nil end
+                            -- "+0.5 HP/s · ~60 s to 70%" tells the user the wait is working; "not rising" warns of the stop.
                             local resume=math.floor(self.ResumeAbove*100).."% HP"
+                            if recovering then
+                                local elapsed=now()-regenStart
+                                local rate=elapsed>=3 and (fraction-regenFrom)*human.MaxHealth/elapsed or nil
+                                if rate and rate>.01 then
+                                    local left=(self.ResumeAbove-fraction)*human.MaxHealth/rate
+                                    resume=resume..string.format(" · +%.1f HP/s · ~%d s to go",rate,math.ceil(left))
+                                elseif elapsed>=3 then
+                                    resume=resume..string.format(" · HP not rising · stops in %d s unless it does",math.ceil(self.RegenTimeout-(now()-regenAt)))
+                                end
+                                resume=resume.." · now "..math.floor(fraction*100).."%"
+                            end
                             local threat=recovering and not paused and self.Walk and self:Threat(self.SafeDistance)
                             if threat then
                                 -- Keep moving away until every mob is SafeDistance studs off, hopping in TP mode

@@ -3761,3 +3761,14 @@ while the character lost about 28 HP per slime from standing inside its reach.
   "learned hit rejected" after every swing.
 
 Report headers now read `Reborn mob-hitrun-145`.
+
+## Recovery progress · v146
+
+A v145 report started at 39 % HP with no food: the farm retreated to 20 studs
+and showed only "Paused · low health; resumes at 70% HP".
+
+- The paused message now shows the regeneration trend: "+0.5 HP/s · ~60 s to
+  go · now 42%" while HP rises, or "HP not rising · stops in N s unless it
+  does" so the 45 s watchdog never surprises anyone.
+
+Report headers now read `Reborn mob-regen-146`.
