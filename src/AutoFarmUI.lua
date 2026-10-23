@@ -123,7 +123,8 @@ local function tweenColor(obj, prop, target, duration)
 end
 
 -- Slider widget
-local function createSlider(parent, label, min, max, initial, onChange)
+-- connections: the owning UI's list, so Destroy can disconnect the global input listeners.
+local function createSlider(parent, label, min, max, initial, onChange, connections)
 	local container = create("Frame", {
 		Size = UDim2.new(1, 0, 0, 50),
 		BackgroundTransparency = 1,
@@ -190,17 +191,17 @@ local function createSlider(parent, label, min, max, initial, onChange)
 		end
 	end)
 
-	UserInputService.InputChanged:Connect(function(input)
+	table.insert(connections, UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			update(input)
 		end
-	end)
+	end))
 
-	UserInputService.InputEnded:Connect(function(input)
+	table.insert(connections, UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
 		end
-	end)
+	end))
 
 	return container
 end
@@ -368,7 +369,7 @@ function AutoFarmUI:_build()
 			startPos = mainFrame.Position
 		end
 	end)
-	UserInputService.InputChanged:Connect(function(input)
+	table.insert(self._connections, UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local delta = input.Position - dragStart
 			mainFrame.Position = UDim2.new(
@@ -376,12 +377,12 @@ function AutoFarmUI:_build()
 				startPos.Y.Scale, startPos.Y.Offset + delta.Y
 			)
 		end
-	end)
-	UserInputService.InputEnded:Connect(function(input)
+	end))
+	table.insert(self._connections, UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
 		end
-	end)
+	end))
 
 	-- Tab bar
 	local tabContainer = create("Frame", {
@@ -538,7 +539,7 @@ function AutoFarmUI:_build()
 		if callbacks.onOrbitDistanceChanged then
 			callbacks.onOrbitDistanceChanged(val)
 		end
-	end)
+	end, self._connections)
 	orbitSlider.LayoutOrder = 10
 
 	-- Walk speed slider
@@ -547,7 +548,7 @@ function AutoFarmUI:_build()
 		if callbacks.onWalkSpeedChanged then
 			callbacks.onWalkSpeedChanged(val)
 		end
-	end)
+	end, self._connections)
 	walkSlider.LayoutOrder = 11
 
 	-- Fishing page (hidden by default)
@@ -687,7 +688,7 @@ function AutoFarmUI:_build()
 			hidePanel()
 		end)
 
-		UserInputService.InputBegan:Connect(function(input, processed)
+		table.insert(self._connections, UserInputService.InputBegan:Connect(function(input, processed)
 			if processed then return end
 			if input.KeyCode == Enum.KeyCode.RightControl then
 				panelOpen = not panelOpen
@@ -697,7 +698,7 @@ function AutoFarmUI:_build()
 					hidePanel()
 				end
 			end
-		end)
+		end))
 	end
 end
 
@@ -733,6 +734,10 @@ function AutoFarmUI:OnWalkSpeedChanged(fn)
 end
 
 function AutoFarmUI:Destroy()
+	for _, connection in ipairs(self._connections or {}) do
+		connection:Disconnect()
+	end
+	self._connections = {}
 	if self.icon then
 		self.icon:destroy()
 	end

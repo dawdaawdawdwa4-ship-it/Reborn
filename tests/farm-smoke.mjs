@@ -119,6 +119,12 @@ for _,item in ipairs(getMineTargets()) do assert(item.instance~=orangeTree,'Wood
 harvestEnabled=true
 orangeTree.children={}
 for _,item in ipairs(getMineTargets()) do assert(item.instance~=orangeTree,'fruit tree must remain protected after fruit removal') end
+local route={{name='a',position=vec(10,0,0),distance=10},{name='b',position=vec(12,0,0),distance=12},{name='c',position=vec(-11,0,0),distance=11}}
+assert(FarmLogic.TakeNearest(route,vec(0,0,0)).name=='a','first target must be the nearest')
+assert(FarmLogic.TakeNearest(route,vec(10,0,0)).name=='b','after moving, the next target must be nearest to the new position, not the scan order')
+assert(FarmLogic.TakeNearest(route,vec(12,0,0)).name=='c' and #route==0 and FarmLogic.TakeNearest(route,vec(0,0,0))==nil)
+local legacy={{name='x',distance=5},{name='y',distance=2}}
+assert(FarmLogic.TakeNearest(legacy,nil).name=='y','targets without positions fall back to scan distance')
 return 'Farm rules passed: owned island, mode/crop filtering, maturity, independent ranges, backoff, sorting, prompt selection and confirmation'
 `;
 const state=await LuauState.createAsync();

@@ -3131,3 +3131,22 @@ Report headers now read `Reborn improve-112`.
   the farm picks the one with the lowest HP; the current target is still kept.
 
 Report headers now read `Reborn mob-survive-113`.
+
+
+## Nearest-next routing, hotbar fallback and 200-stud mob radius · v114
+
+- **Nearest-next farm routing.** Crop, fruit, wood and mine passes no longer
+  follow the order sorted at scan time. After every target the loop picks the
+  remaining target nearest to where the character stands now
+  (`FarmLogic.TakeNearest`, using the scan-time position of each target). With
+  Walk/Tween/Teleport this removes the zigzag across a field after the first
+  move. Targets without a stored position fall back to their scan distance.
+- **Hotbar fallback.** `CallHotbar` resolves the game definition separately from
+  sending it. A missing or renamed `CLIENT_HOTBAR_LAYOUT_UPDATE` now falls back to
+  the learned hotbar request; a request that was sent is never repeated elsewhere.
+- **Mob search radius** adds 200 studs (useful with TP hops) and is saved.
+- **Studio UI module.** Slider, drag and RightControl listeners are tracked and
+  disconnected by `Destroy()`. `init.client.lua` finds `AutoFarmUI` either as a
+  child (Rojo's `init.client.lua` layout) or as a sibling (manual copy).
+
+Report headers now read `Reborn route-114`.

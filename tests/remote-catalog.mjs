@@ -310,6 +310,17 @@ assert(table.find(RemoteCatalog.SeedNames('blueFlowers'),'blueFlowerSeeds'),'met
 
 assert(setHotbarLayout('stonePickaxe,,,,,,,'))
 assert(requestedName=='CLIENT_HOTBAR_LAYOUT_UPDATE' and gameBody.layout=='stonePickaxe,,,,,,,','game hotbar API not used')
+do
+ local lookup,previous=RemoteCatalog.PlacementClient,RemoteCatalog.Recorder
+ local used
+ RemoteCatalog.Recorder={HotbarBinding={Remote={Parent=true}},Hotbar=function(_,layout) used=layout;return true end}
+ RemoteCatalog.PlacementClient=function() return {Get=function() error('definition renamed') end} end
+ assert(RemoteCatalog.CallHotbar('ironAxe,,,,,,,') and used=='ironAxe,,,,,,,','a missing game hotbar definition must fall back to the learned request')
+ used=nil
+ RemoteCatalog.PlacementClient=function() return {Get=function() return {CallServer=function() error('timeout') end} end} end
+ assert(not RemoteCatalog.CallHotbar('ironAxe,,,,,,,') and used==nil,'a sent hotbar request must never be repeated through another route')
+ RemoteCatalog.PlacementClient,RemoteCatalog.Recorder=lookup,previous
+end
 local cropTarget={Name='wheat'}
 RemoteCatalog.Recorder={Harvest=function() error('must not use recorder when native API exists') end}
 assert(RemoteCatalog.CallHarvest(cropTarget))

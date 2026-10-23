@@ -66,6 +66,15 @@ function FarmLogic.ReplantType(name,selection,fallback)
     end
     return fallback
 end
+-- Greedy nearest-next routing: continue from where the character stands now, not the scan order.
+function FarmLogic.TakeNearest(targets, origin)
+    local bestIndex, bestDistance
+    for index, target in ipairs(targets) do
+        local distance = origin and target.position and (target.position - origin).Magnitude or target.distance or 0
+        if not bestDistance or distance < bestDistance then bestIndex, bestDistance = index, distance end
+    end
+    return bestIndex and table.remove(targets, bestIndex)
+end
 function FarmLogic.Range(category, config)
     if category == "wood" then return config.WoodRange end
     if category == "crop" then return config.CropRange end

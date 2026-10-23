@@ -429,8 +429,11 @@ local RemoteCatalog = (function()
     end
     function catalog.CallHotbar(layout)
         local client = catalog.PlacementClient()
-        if client then
-            local ok, result = pcall(function() return client:Get("CLIENT_HOTBAR_LAYOUT_UPDATE"):CallServer({layout = layout}) end)
+        -- Resolve first: a missing definition may fall back, a sent request never does.
+        local found, endpoint = false, nil
+        if client then found, endpoint = pcall(function() return client:Get("CLIENT_HOTBAR_LAYOUT_UPDATE") end) end
+        if found and endpoint then
+            local ok, result = pcall(function() return endpoint:CallServer({layout = layout}) end)
             if not ok or result == false or type(result) == "table" and result.success == false then return false, result end
             return true, result
         end
@@ -1446,6 +1449,15 @@ function FarmLogic.ReplantType(name,selection,fallback)
         if FarmLogic.CropMatches(name,crop) then return crop end
     end
     return fallback
+end
+-- Greedy nearest-next routing: continue from where the character stands now, not the scan order.
+function FarmLogic.TakeNearest(targets, origin)
+    local bestIndex, bestDistance
+    for index, target in ipairs(targets) do
+        local distance = origin and target.position and (target.position - origin).Magnitude or target.distance or 0
+        if not bestDistance or distance < bestDistance then bestIndex, bestDistance = index, distance end
+    end
+    return bestIndex and table.remove(targets, bestIndex)
 end
 function FarmLogic.Range(category, config)
     if category == "wood" then return config.WoodRange end
@@ -3938,7 +3950,7 @@ local function loadPreferences()
     if type(data.MineDelay) == "number" then CONFIG.MineDelay = math.clamp(data.MineDelay, 0.08, 1) end
     if type(data.MineScanInterval) == "number" then CONFIG.MineScanInterval = math.clamp(data.MineScanInterval, 0.15, 2) end
     if type(data.PlantDelay) == "number" then CONFIG.PlantDelay = math.clamp(data.PlantDelay, 0.08, 1) end
-    if data.MobRadius==30 or data.MobRadius==60 or data.MobRadius==120 then CONFIG.MobRadius=data.MobRadius end
+    if data.MobRadius==30 or data.MobRadius==60 or data.MobRadius==120 or data.MobRadius==200 then CONFIG.MobRadius=data.MobRadius end
     if type(data.MobWalk)=="boolean" then CONFIG.MobWalk=data.MobWalk end
     if data.MobTravel=="Walk" or data.MobTravel=="Teleport" then CONFIG.MobTravel=data.MobTravel end
     if type(data.WoodToolPreference) == "string" then woodToolPreference = data.WoodToolPreference == "Wood axe" and "Wooden axe" or data.WoodToolPreference end
@@ -4836,7 +4848,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-survive-113",
+    return table.concat({"Reborn route-114",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6793,7 +6805,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-survive-113 · Propeller loot history (UTC)",
+    return table.concat({"Reborn route-114 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6897,7 +6909,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-survive-113 · Propeller tracker",
+    return table.concat({"Reborn route-114 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6933,7 +6945,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-survive-113", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn route-114", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -7657,7 +7669,7 @@ local function getMineTargets()
         local distance = (position - hrp.Position).Magnitude
         if distance > FarmLogic.Range(category, CONFIG) then return end
         table.insert(targets, {kind = category == "crop" and "model" or "block",
-            instance = obj, name = obj.Name, distance = distance, category = category})
+            instance = obj, name = obj.Name, distance = distance, position = position, category = category})
     end
     local function scan(folder, allowCrops)
         if folder then for _, obj in ipairs(folder:GetChildren()) do consider(obj, allowCrops) end end
@@ -7702,7 +7714,7 @@ local function getMineTargets()
                     local distance=(position-hrp.Position).Magnitude
                     if distance<=CONFIG.CropRange then
                         seen[fruit]=true;FarmState.FruitTrees[tree]=true
-                        table.insert(targets,{kind="fruit",instance=fruit,model=tree,name=tree.Name.." fruit",distance=distance,category="crop"})
+                        table.insert(targets,{kind="fruit",instance=fruit,model=tree,name=tree.Name.." fruit",distance=distance,position=position,category="crop"})
                     end
                 end
             end
@@ -7982,8 +7994,11 @@ local function harvestLoop(myCycle)
             task.wait(CONFIG.MineScanInterval)
             continue
         end
-        for _, target in ipairs(targets) do
+        while #targets > 0 do
             if not active() then break end
+            -- After walking or teleporting, the scan-time order zigzags; pick the nearest from here.
+            local here = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            local target = FarmLogic.TakeNearest(targets, here and here.Position)
             local obj = target.instance
             if not obj.Parent then continue end
             if target.category=="crop" and not FarmLogic.IsReady(obj) then continue end
@@ -9247,7 +9262,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-survive-113\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn route-114\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9309,7 +9324,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-survive-113 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn route-114 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9905,7 +9920,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-survive-113\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn route-114\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11023,7 +11038,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-survive-113 · Craft diagnostics",
+    return table.concat({"Reborn route-114 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11102,7 +11117,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-survive-113 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn route-114 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11679,7 +11694,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-survive-113 · Mobs",
+    return table.concat({"Reborn route-114 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -11819,7 +11834,7 @@ do
         hint.Position=UDim2.fromOffset(10,162+extra)
         setup.Size=UDim2.new(1,-12,0,198+extra)
     end
-    RemoteCatalog.MobRadiusMenu=RemoteCatalog.ChoiceDropdown(setup,RemoteCatalog.MobRadius,{30,60,120},{
+    RemoteCatalog.MobRadiusMenu=RemoteCatalog.ChoiceDropdown(setup,RemoteCatalog.MobRadius,{30,60,120,200},{
         Name="MobRadiusDropdown",Title="Search radius · studs",Get=function() return RemoteCatalog.Mobs.Radius end,
         Set=function(value) RemoteCatalog.Mobs.Radius=value;RemoteCatalog.SaveMobPreferences();RemoteCatalog.RefreshMobUI() end,
         Locked=function() return RemoteCatalog.Mobs.Worker~=nil end,Layout=layout})

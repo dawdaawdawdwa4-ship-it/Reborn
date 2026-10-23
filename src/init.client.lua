@@ -1,4 +1,5 @@
-local AutoFarmUI = require(script.Parent.AutoFarmUI)
+-- Rojo makes init.client.lua the folder's LocalScript (module is a child); a manual copy keeps it as a sibling.
+local AutoFarmUI = require(script:FindFirstChild("AutoFarmUI") or script.Parent:WaitForChild("AutoFarmUI"))
 
 local ui = AutoFarmUI.new()
 
