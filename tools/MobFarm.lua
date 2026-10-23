@@ -30,7 +30,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.35,ResumeAbove=.5}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.35,ResumeAbove=.5,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -41,18 +41,41 @@ function MobFarm.new(ctx)
         self.Message=text
         if ctx.Update then ctx.Update(self) end
     end
+    -- Faster travel while the farm moves the character; the original speed returns on every halt.
+    local function boost(human,on)
+        if not ctx.Boost then return end
+        if on then
+            if self.BoostedHuman~=human then
+                if self.BoostedHuman then pcall(ctx.Boost,self.BoostedHuman,nil) end
+                self.BoostedHuman=human
+            end
+            pcall(ctx.Boost,human,self.WalkSpeed)
+        elseif self.BoostedHuman then
+            pcall(ctx.Boost,self.BoostedHuman,nil);self.BoostedHuman=nil
+        end
+    end
     local function halt()
         ctx.Navigation.Stop("Mobs")
         -- Direct chasing bypasses the pathfinder, so clear its MoveTo destination here too.
         local chase=self.Chase
         self.Chase=nil
         if chase then pcall(function() chase.Humanoid:MoveTo(chase.Root.Position) end) end
+        boost(nil,false)
+    end
+    -- Stand outside the mob: a melee raycast that starts inside its body hits nothing, and a slime
+    -- the character is inside of hits constantly. Half its width plus a margin, within reach.
+    local function standoffFor(entry)
+        local size=0
+        pcall(function() local s=entry.Root.Size;size=math.max(s.X,s.Z) end)
+        if size==0 then pcall(function() local s=entry.Model:GetExtentsSize();size=math.max(s.X,s.Z) end) end
+        return math.min(self.Reach-.5,math.max(self.Standoff,size/2+1.5))
     end
     -- Hopping slimes invalidate computed paths; follow nearby visible ones directly.
-    local function chase(human,root,target)
+    local function chase(human,root,target,keep)
         local offset=target.Position-root.Position
         if offset.Magnitude<.1 then return false end
-        local ok=pcall(function() human:MoveTo(target.Position-offset.Unit*3) end)
+        boost(human,true)
+        local ok=pcall(function() human:MoveTo(target.Position-offset.Unit*(keep or 3)) end)
         if ok then self.Chase={Humanoid=human,Root=root} end
         return ok
     end
@@ -61,6 +84,7 @@ function MobFarm.new(ctx)
     local function retreat(human,root,threat,distance)
         local away=root.Position-threat.Position
         if away.Magnitude<.1 then return false end
+        boost(human,true)
         local ok=pcall(function() human:MoveTo(root.Position+away.Unit*(distance or 12)) end)
         if ok then self.Chase={Humanoid=human,Root=root} end
         return ok
@@ -129,8 +153,9 @@ function MobFarm.new(ctx)
         local ok,threat=pcall(function() return self:Scan(nil,10)[1] end)
         if not ok or not threat then return false end
         local stepped=retreat(human,root,threat.Root,12)
-        -- One MoveTo that finishes on its own; a stopped farm holds no movement state.
+        -- One MoveTo that finishes on its own; a stopped farm holds no movement state or speed.
         self.Chase=nil
+        boost(nil,false)
         return stepped
     end
     function self:Stop(reason)
@@ -296,6 +321,7 @@ function MobFarm.new(ctx)
                                         and (p.Position-root.Position).Magnitude<=limit
                                 end
                                 local chasing=false
+                                local standoff=standoffFor(chosen)
                                 if chosen.Distance>self.Reach then
                                     local clear=self.Walk and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
                                     -- Teleport mode loops short hops, one per tick; walls still route through the pathfinder.
@@ -314,14 +340,14 @@ function MobFarm.new(ctx)
                                         elseif teleport then
                                             if self.Chase then halt() end
                                             local offset=chosen.Root.Position-root.Position
-                                            local hop=math.min(self.HopDistance,offset.Magnitude-3)
+                                            local hop=math.min(self.HopDistance,offset.Magnitude-(standoff+1))
                                             if hop>.1 and pcall(ctx.Hop,root,root.Position+offset.Unit*hop,chosen.Root) then
                                                 publish("Teleporting · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
                                             else
                                                 cooldowns[chosen.Model]=now()+3;self.Target=nil
                                                 publish("Teleport unavailable · trying another slime shortly")
                                             end
-                                        elseif chase(human,root,chosen.Root) then
+                                        elseif chase(human,root,chosen.Root,standoff+1) then
                                             publish("Chasing · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
                                         else
                                             halt();cooldowns[chosen.Model]=now()+3;self.Target=nil
@@ -331,7 +357,8 @@ function MobFarm.new(ctx)
                                         if self.Chase then halt() end
                                         publish("Walking · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
                                         local point=chosen.Root.Position
-                                        local arrived=ctx.Navigation.Approach(ctx.Player,chosen.Model,4,function()
+                                        boost(human,true)
+                                        local arrived=ctx.Navigation.Approach(ctx.Player,chosen.Model,math.max(4,standoff+1),function()
                                             return valid() and (chosen.Root.Position-point).Magnitude<6
                                         end,function() return chosen.Root.Position end,"Walk","Mobs")
                                         if not active() then return end
@@ -350,10 +377,12 @@ function MobFarm.new(ctx)
                                     if tool.Enabled==false then publish("Waiting · weapon cooldown")
                                     elseif valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
                                         if ctx.ClearLine(root,chosen.Root,char,chosen.Model) then
-                                            -- A mob on top of the character hits constantly; swing from the edge of reach.
-                                            if self.Walk and (chosen.Root.Position-root.Position).Magnitude<self.Standoff then
-                                                retreat(human,root,chosen.Root,self.Reach-1)
-                                            end
+                                            -- A mob on top of the character hits constantly and blocks the weapon's own
+                                            -- raycast; swing from just outside its body.
+                                            local gap=(chosen.Root.Position-root.Position).Magnitude
+                                            if self.Walk and gap<standoff then
+                                                retreat(human,root,chosen.Root,math.max(1,standoff+1-gap))
+                                            else boost(nil,false) end
                                             -- Native melee hits what the character faces, not what the hub selected.
                                             if ctx.Face then pcall(ctx.Face,root,chosen.Root) end
                                             lastAttack=now()

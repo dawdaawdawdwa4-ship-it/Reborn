@@ -198,7 +198,7 @@ assert(runTime>=1 and farm:RunTime()==runTime and farm.EndedAt,'run time must fr
 reset();ar.Position=v(40);br.Position=v(32);farm.Travel='Teleport';farm:Start()
 assert(hops==1 and root.Position.X==8 and walks==0 and moves==0 and sent==0 and farm.Message:find('Teleporting',1,true),'TP mode must hop 8 studs toward the slime, not walk')
 step();step();assert(hops==3 and root.Position.X==24 and sent==0)
-step();assert(hops==4 and root.Position.X==29 and sent==0,'the last hop must stop short of the slime')
+step();assert(hops==4 and root.Position.X>=28 and root.Position.X<=29 and sent==0,'the last hop must stop just outside the slime')
 step();assert(sent==1 and farm.Target==b,'TP hops must loop until the slime is in reach, then attack')
 reset();farm.Travel='Teleport';blocked=true;ar.Position=v(40);br.Position=v(60);farm:Start();step()
 assert(hops==0 and walks>=1,'obstructed slimes must be pathfound instead of teleported through walls')
@@ -275,8 +275,19 @@ end
 -- A mob standing on the character is attacked from the edge of reach, not from inside it.
 do
  reset();ar.Position=v(1);farm:Start()
- assert(sent==1 and moves>=1 and root.Position.X<=-3,'a mob within the standoff distance must be stepped away from before the swing')
+ assert(sent==1 and moves>=1 and (ar.Position.X-root.Position.X)>=farm.Standoff,'a mob within the standoff distance must be stepped away from before the swing')
  reset();farm.Walk=false;ar.Position=v(1);farm:Start();assert(sent==1 and moves==0,'Auto Move OFF never steps')
+end
+-- Travel runs at the farm's walk speed and the original speed returns on every halt and swing.
+do
+ reset();local speeds={}
+ ctx.Boost=function(h,speed) assert(h==human);table.insert(speeds,speed or 'restore') end
+ ar.Position=v(15);farm:Start()
+ assert(speeds[1]==24,'chasing must apply the farm walk speed')
+ step();assert(sent==1 and speeds[#speeds]=='restore','the swing restores the original speed')
+ farm.WalkSpeed=32;ar.Position=v(30);speeds={};step(.7);assert(speeds[1]==32,'the chosen walk speed is used')
+ farm:Stop();assert(speeds[#speeds]=='restore','Stop must restore the original speed')
+ ctx.Boost=nil
 end
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'

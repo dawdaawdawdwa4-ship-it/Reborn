@@ -3623,3 +3623,24 @@ of the mob's attacks:
   farming resumes at 50% (was 45%).
 
 Report headers now read `Reborn mob-alive-138`.
+
+
+## Mobs: stand outside the mob, walk faster · v139
+
+A live report with aimed clicks still showed 12 swings and 0 HP drops while the
+character stood inside the slime. A melee raycast that starts inside a body hits
+nothing, so the farm now keeps the character outside the mob:
+
+- **Size-based standoff.** The standoff is half the target's width (root part
+  size or model extents) plus 1.5 studs, at least 2.5 and within reach − 0.5.
+  Chasing, walking and TP hops stop at standoff + 1 instead of 3 studs short,
+  and a target closer than the standoff is stepped away from before the swing.
+- **Walk speed** (Mobs → Setup, default 24; 16/20/24/32/40, saved). While the
+  farm moves the character (chase, walk, retreat, safety step) the humanoid
+  WalkSpeed is raised to this value and restored on every halt and before each
+  swing. The Movement tab's custom walk, when enabled, takes precedence.
+- Copy result shows the walk speed and whether the Movement tab overrides it.
+- Auto eat found no food in the live inventory; it stays available for when a
+  prepared food is carried, and the low-health retreat covers the rest.
+
+Report headers now read `Reborn mob-standoff-139`.
