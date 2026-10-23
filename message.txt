@@ -1429,7 +1429,7 @@ local FarmLogic = (function()
 local FarmLogic = {}
 local cropNames = {"wheat", "berry", "carrot", "potato", "corn", "tomato", "pumpkin", "melon", "cabbage", "lettuce", "flower", "crop", "bush"}
 local woodNames = {"tree", "wood", "log", "oak", "pine", "birch", "palm"}
-local mineNames = {"rock", "stone", "ore", "iron", "coal", "gold", "copper", "tin", "silver", "crystal", "gem", "mineral"}
+local mineNames = {"rock", "stone", "ore", "iron", "coal", "gold", "copper", "tin", "silver", "crystal", "gem", "mineral", "aquamarine", "emerald", "sapphire", "ruby", "amethyst", "quartz", "diamond"}
 local readiness = {"Mature", "IsMature", "FullyGrown", "Harvestable", "ReadyToHarvest"}
 local function contains(name, patterns)
     for _, pattern in ipairs(patterns) do
@@ -1513,6 +1513,15 @@ FarmLogic.TreeOptions = {"All", "oak", "pine", "birch", "palm"}
 function FarmLogic.TreeMatches(name, kind)
     if kind == nil or kind == "All" then return true end
     return string.find(string.lower(name), string.lower(kind), 1, true) ~= nil
+end
+-- Rock filter for Mining: "All" accepts every rock/ore; "stone" means plain rock or stone;
+-- any other option (e.g. "aquamarine") must appear in the block name.
+FarmLogic.RockOptions = {"All", "aquamarine", "iron", "coal", "gold", "stone"}
+function FarmLogic.RockMatches(name, kind)
+    if kind == nil or kind == "All" then return true end
+    local lower = string.lower(name)
+    if kind == "stone" then return string.find(lower, "stone", 1, true) ~= nil or string.find(lower, "rock", 1, true) ~= nil end
+    return string.find(lower, string.lower(kind), 1, true) ~= nil
 end
 function FarmLogic.Snapshot(target)
     local values = {}
@@ -4289,7 +4298,7 @@ local function savePreferences(snapshotOnly)
     local data = {
         WoodTravelMode = CONFIG.WoodTravelMode, FarmTravelMode = CONFIG.FarmTravelMode, HarvestWalk = CONFIG.HarvestWalk, HarvestCrops = CONFIG.HarvestCrops, HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
         FruitEnabled = CONFIG.FruitEnabled, AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
-        WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, WoodTrees = CONFIG.WoodTrees, MineDelay = CONFIG.MineDelay,
+        WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, WoodTrees = CONFIG.WoodTrees, MineRocks = CONFIG.MineRocks, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
         MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, MobKind = CONFIG.MobKind, MobAutoEat = CONFIG.MobAutoEat, MobWalkSpeed = CONFIG.MobWalkSpeed, MobKeep = CONFIG.MobKeep, MobHitRun = CONFIG.MobHitRun, HopSize = CONFIG.HopSize,
@@ -4324,6 +4333,7 @@ local function loadPreferences(supplied)
     if type(data.MineRange) == "number" then CONFIG.MineRange = math.clamp(data.MineRange, 15, 150) end
     if type(data.CropRange) == "number" then CONFIG.CropRange = data.CropRange == 0 and 0 or math.clamp(data.CropRange, 10, 120) end
     if type(data.WoodTrees) == "string" and table.find(FarmLogic.TreeOptions, data.WoodTrees) then CONFIG.WoodTrees = data.WoodTrees end
+    if type(data.MineRocks) == "string" and table.find(FarmLogic.RockOptions, data.MineRocks) then CONFIG.MineRocks = data.MineRocks end
     if type(data.WoodRange) == "number" then CONFIG.WoodRange = math.clamp(data.WoodRange, 15, 150) end
     if type(data.MineDelay) == "number" then CONFIG.MineDelay = math.clamp(data.MineDelay, 0.08, 1) end
     if type(data.MineScanInterval) == "number" then CONFIG.MineScanInterval = math.clamp(data.MineScanInterval, 0.15, 2) end
@@ -5274,7 +5284,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-settle-147",
+    return table.concat({"Reborn mine-aqua-148",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6444,11 +6454,19 @@ local woodToolSelect = button({ Parent = woodPage, Text = "Axe: " .. woodToolPre
 
 local mineToggle = button({ Parent = minePage, Switch = true, Text = "MINING OFF", TextSize = 13, Bg = COLORS.off,
     Size = UDim2.new(1, -12, 0, 36), Position = UDim2.fromOffset(6, 8) })
-local mineInfo = label({ Parent = minePage, Text = "Mine rocks/ores via API or normal tool input. Input mode needs a visible target within tool reach.", Color = COLORS.muted,
+local mineInfo = label({ Parent = minePage, Text = "Mine rocks, ores and aquamarine crystals via API or normal tool input. Rocks: All, or one kind (aquamarine = Aquamarine Shards).", Color = COLORS.muted,
     TextSize = 11, Size = UDim2.new(1, -16, 0, 40), Position = UDim2.fromOffset(8, 50) })
 mineInfo.TextWrapped = true
 local mineRangeBtn = button({ Parent = minePage, Text = "Mining range: 90 studs  (+ / −)", TextSize = 12,
-    Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 100) })
+    Size = UDim2.new(.5, -9, 0, 34), Position = UDim2.fromOffset(6, 100) })
+RemoteCatalog.MineRocksButton = button({ Parent = minePage, Text = "Rocks: " .. (CONFIG.MineRocks or "All") .. "  ↻", TextSize = 12,
+    Size = UDim2.new(.5, -9, 0, 34), Position = UDim2.new(.5, 3, 0, 100) })
+track(RemoteCatalog.MineRocksButton.Activated:Connect(function()
+    local options = FarmLogic.RockOptions
+    CONFIG.MineRocks = options[(table.find(options, CONFIG.MineRocks or "All") or 1) % #options + 1]
+    RemoteCatalog.MineRocksButton.Text = "Rocks: " .. CONFIG.MineRocks .. "  ↻"
+    savePreferences()
+end))
 pageHeading(minePage, "TOOL PREFERENCE", 144)
 local mineToolOptions = {"Auto best pickaxe", "Iron pickaxe", "Stone pickaxe", "Wooden pickaxe", "Auto best axe", "Iron axe", "Stone axe", "Wooden axe"}
 local mineToolIndex = table.find(mineToolOptions, mineToolPreference) or 1
@@ -7136,6 +7154,7 @@ function RemoteCatalog.ReflectPreferences()
     scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  ↻"
     if RemoteCatalog.CropRangeButton then RemoteCatalog.CropRangeButton.Text = RemoteCatalog.CropRangeText() end
     if RemoteCatalog.WoodTreesButton then RemoteCatalog.WoodTreesButton.Text = "Trees: " .. (CONFIG.WoodTrees or "All") .. "  ↻" end
+    if RemoteCatalog.MineRocksButton then RemoteCatalog.MineRocksButton.Text = "Rocks: " .. (CONFIG.MineRocks or "All") .. "  ↻" end
     if RemoteCatalog.HarvestWalkButton then
         RemoteCatalog.HarvestWalkButton.Text = CONFIG.HarvestWalk and "AUTO MOVE: ON" or "AUTO MOVE: OFF"
         RemoteCatalog.HarvestWalkButton.BackgroundColor3 = CONFIG.HarvestWalk and COLORS.on or COLORS.off
@@ -7304,7 +7323,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-settle-147 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mine-aqua-148 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7408,7 +7427,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-settle-147 · Propeller tracker",
+    return table.concat({"Reborn mine-aqua-148 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7444,7 +7463,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-settle-147", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mine-aqua-148", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -8283,10 +8302,11 @@ local function modeAllows(name)
     local category = targetCategory(name)
     if category == "crop" then return harvestEnabled and FarmLogic.CropsMatch(name, CONFIG.HarvestCrops, CONFIG.HarvestCrop) end
     if category == "wood" then return woodEnabled and FarmLogic.TreeMatches(name, CONFIG.WoodTrees) end
-    return category == "mine" and mineEnabled
+    return category == "mine" and mineEnabled and FarmLogic.RockMatches(name, CONFIG.MineRocks)
 end
 local FarmState = { Cooldowns = setmetatable({}, { __mode = "k" }), FruitTrees = setmetatable({}, { __mode = "k" }) }
-local function getMineTargets()
+-- anyRock: list every rock/ore in range regardless of the Rocks filter (diagnostics only).
+local function getMineTargets(anyRock)
     local targets, seen = {}, {}
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -8295,7 +8315,8 @@ local function getMineTargets()
         if seen[obj] then return end
         seen[obj] = true
         local category = targetCategory(obj.Name)
-        if not category or not modeAllows(obj.Name) then return end
+        if not category then return end
+        if not (anyRock and category == "mine" and mineEnabled or modeAllows(obj.Name)) then return end
         if category == "crop" and not allowCrops then return end
         -- Wood and Harvest never run together, so protection follows the saved fruit setting.
         if category == "wood" and allowCrops and CONFIG.FruitEnabled then
@@ -8673,7 +8694,19 @@ local function harvestLoop(myCycle)
         if #targets == 0 then
             local category=harvestEnabled and "crop" or woodEnabled and "wood" or "mine"
             local failure=FarmState.LastFailure[category]
-            local scan=category=="crop" and "Scanning your island for selected ready crops." or category=="wood" and "Scanning nearby trees; recent targets may be cooling down." or "Scanning nearby rocks and ores."
+            local scan=category=="crop" and "Scanning your island for selected ready crops." or category=="wood" and "Scanning nearby trees; recent targets may be cooling down." or ((CONFIG.MineRocks or "All")=="All" and "Scanning nearby rocks and ores." or "Scanning nearby "..CONFIG.MineRocks.." rocks · none in range yet (Rocks: All mines everything).")
+            if category=="mine" and (CONFIG.MineRocks or "All")~="All" then
+                -- Show what the filter is skipping so a wrong block name is obvious from the status line.
+                local counts,names={}, {}
+                for _,other in ipairs(getMineTargets(true)) do
+                    if not counts[other.name] then counts[other.name]=0;table.insert(names,other.name) end
+                    counts[other.name]+=1
+                end
+                table.sort(names,function(a,b) return counts[a]>counts[b] end)
+                local parts={}
+                for i=1,math.min(4,#names) do table.insert(parts,names[i].." ×"..counts[names[i]]) end
+                if #parts>0 then scan=scan.." In range but skipped: "..table.concat(parts,", ").."." end
+            end
             setStatus(failure and (category.." waiting: "..failure) or scan,failure and COLORS.warn or COLORS.muted)
             task.wait(CONFIG.MineScanInterval)
             continue
@@ -10165,7 +10198,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-settle-147\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mine-aqua-148\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10227,7 +10260,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-settle-147 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mine-aqua-148 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10860,7 +10893,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-settle-147\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mine-aqua-148\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11978,7 +12011,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-settle-147 · Craft diagnostics",
+    return table.concat({"Reborn mine-aqua-148 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12057,7 +12090,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-settle-147 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mine-aqua-148 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12744,7 +12777,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-settle-147 · Mobs",
+    return table.concat({"Reborn mine-aqua-148 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

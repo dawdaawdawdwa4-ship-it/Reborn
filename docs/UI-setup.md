@@ -3790,3 +3790,18 @@ slime was mid-jump and landing under it.
   on the hop in or while resting.
 
 Report headers now read `Reborn mob-settle-147`.
+
+## Aquamarine mining · v148
+
+Requested with a clip of mining a grey rock with green crystals and receiving
+"+2 Aquamarine Shard".
+
+- **Aquamarine rocks are mining targets.** Mining now recognises blocks whose
+  name contains aquamarine (and emerald, sapphire, ruby, amethyst, quartz,
+  diamond) next to rocks and ores. Mining uses the pickaxe preference as before.
+- **Rocks filter** (Mining tab, next to the range button, saved and in
+  profiles): All, aquamarine, iron, coal, gold or stone. With a filter the
+  status line also lists what is in range but skipped ("In range but skipped:
+  rock ×3, ironOre ×2"), so a block name that does not match is visible at once.
+
+Report headers now read `Reborn mine-aqua-148`.

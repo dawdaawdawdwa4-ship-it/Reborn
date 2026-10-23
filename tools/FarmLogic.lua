@@ -2,7 +2,7 @@
 local FarmLogic = {}
 local cropNames = {"wheat", "berry", "carrot", "potato", "corn", "tomato", "pumpkin", "melon", "cabbage", "lettuce", "flower", "crop", "bush"}
 local woodNames = {"tree", "wood", "log", "oak", "pine", "birch", "palm"}
-local mineNames = {"rock", "stone", "ore", "iron", "coal", "gold", "copper", "tin", "silver", "crystal", "gem", "mineral"}
+local mineNames = {"rock", "stone", "ore", "iron", "coal", "gold", "copper", "tin", "silver", "crystal", "gem", "mineral", "aquamarine", "emerald", "sapphire", "ruby", "amethyst", "quartz", "diamond"}
 local readiness = {"Mature", "IsMature", "FullyGrown", "Harvestable", "ReadyToHarvest"}
 local function contains(name, patterns)
     for _, pattern in ipairs(patterns) do
@@ -86,6 +86,15 @@ FarmLogic.TreeOptions = {"All", "oak", "pine", "birch", "palm"}
 function FarmLogic.TreeMatches(name, kind)
     if kind == nil or kind == "All" then return true end
     return string.find(string.lower(name), string.lower(kind), 1, true) ~= nil
+end
+-- Rock filter for Mining: "All" accepts every rock/ore; "stone" means plain rock or stone;
+-- any other option (e.g. "aquamarine") must appear in the block name.
+FarmLogic.RockOptions = {"All", "aquamarine", "iron", "coal", "gold", "stone"}
+function FarmLogic.RockMatches(name, kind)
+    if kind == nil or kind == "All" then return true end
+    local lower = string.lower(name)
+    if kind == "stone" then return string.find(lower, "stone", 1, true) ~= nil or string.find(lower, "rock", 1, true) ~= nil end
+    return string.find(lower, string.lower(kind), 1, true) ~= nil
 end
 function FarmLogic.Snapshot(target)
     local values = {}

@@ -67,6 +67,9 @@ assert(#trees==1 and trees[1].instance==publicTree,'a tree type filter must keep
 CONFIG.WoodTrees='All';assert(#getMineTargets()==2,'All trees returns every tree in range')
 CONFIG.WoodTrees=nil;woodEnabled=false;harvestEnabled=true
 assert(FarmLogic.TreeMatches('treeOak','oak') and not FarmLogic.TreeMatches('treePine','oak') and FarmLogic.TreeMatches('treePine',nil))
+assert(FarmLogic.Category('aquamarine')=='mine' and FarmLogic.Category('rockAquamarine')=='mine','aquamarine crystal rocks are mining targets')
+assert(FarmLogic.RockMatches('aquamarine','All') and FarmLogic.RockMatches('aquamarine',nil) and FarmLogic.RockMatches('rockAquamarine','aquamarine') and not FarmLogic.RockMatches('ironOre','aquamarine'),'the rock filter matches by name')
+assert(FarmLogic.RockMatches('rock','stone') and FarmLogic.RockMatches('stoneSmall','stone') and not FarmLogic.RockMatches('ironOre','stone'),'stone covers plain rocks and stone')
 CONFIG.CropRange=0;assert(FarmLogic.Range('crop',CONFIG)==math.huge,'crop range 0 means the whole island');CONFIG.CropRange=15
 CONFIG.HarvestCrops=FarmLogic.NormalizeCrops({wheat=true,carrot=true,invalid=true},'wheat')
 woodEnabled=false;mineEnabled=false
