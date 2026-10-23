@@ -3289,3 +3289,19 @@ Report headers now read `Reborn no-learn-120`.
   checks mention, keeping the fixed test heap within its limit.
 
 Report headers now read `Reborn keys-121`.
+
+
+## Self-test and status history · v122
+
+- **Stats → Run self-test** copies a read-only report (or prints it when the
+  clipboard is unavailable): executor name, which host functions exist
+  (file, clipboard, hook, mouse and signal APIs), VirtualInputManager, character
+  health, owned island with block and chest counts, game request health, the
+  number of request definitions, remembered mob weapon and chest slots and how
+  many remembered chests were found on this server, whether preferences are
+  saved, physics FPS, ping, place and a short server id. Nothing is sent.
+- **Status history.** The last 30 distinct status messages are kept with a clock
+  time and included at the end of the self-test, so a report shows what happened
+  while nobody was watching.
+
+Report headers now read `Reborn self-test-122`.

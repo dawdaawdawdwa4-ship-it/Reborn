@@ -1037,7 +1037,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn keys-121',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn self-test-122',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1777,7 +1777,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn keys-121 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn self-test-122 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2526,6 +2526,10 @@ end)()
   r.KeybindButtons.ToggleKey.Activated:Fire();UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Keyboard,KeyCode=Enum.KeyCode.F6},false)
   assert(CONFIG.MobKey==Enum.KeyCode.F4 and CONFIG.ToggleKey==Enum.KeyCode.F6,'keys must be restorable through the same rows')
   r.PerformanceButton.Activated:Fire();assert(r.Performance.On and r.PerformanceButton.Text=='Performance mode: ON')
+  local report=r.SelfTest()
+  assert(string.find(report,'Own island:',1,true) and string.find(report,'Game requests:',1,true) and string.find(report,'Recent status:',1,true),'self-test must cover island, requests and status history')
+  assert(#r.StatusHistory>0 and #r.StatusHistory<=30,'status history must be bounded')
+  r.SelfTestButton.Activated:Fire()
   r.PerformanceButton.Activated:Fire();assert(not r.Performance.On and r.PerformanceButton.Text=='Performance mode: OFF','performance mode must switch back off')
  end
  r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk and r.MobWalk.Text=='AUTO MOVE: OFF');r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Walk')
