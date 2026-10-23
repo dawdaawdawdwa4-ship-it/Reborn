@@ -3835,3 +3835,21 @@ studs" with the screen flashing red).
   (was 4.5) is sidestepped; the swing still waits for it to land.
 
 Report headers now read `Reborn mob-walkrun-150`.
+
+## Slime crowds · v151
+
+A v149 report (20 swings, 3 damage numbers, 101 HP taken in 19 hits, 11 of
+them within 1 s of a swing) and a clip of three big slimes around the
+character hopping in to "→ 3 studs", inside the slime's body.
+
+- **Body-size standoff.** Auto keep distance now uses the larger of the root
+  part and the model extents, so a 6-stud slime is kept at its body edge plus
+  1.5 studs (capped at reach − 0.5) instead of 3 studs from its centre.
+- **Hit what is in reach.** A grounded slime already within reach is attacked
+  before travelling to the chosen target.
+- **Back out of the crowd.** The hit-and-run hop out moves away from every mob
+  within 12 studs at once, not only the one just hit.
+- **Other mobs do not block the line.** The line-of-sight check ignores mobs,
+  so a slime crowd no longer turns TP hops into "Path blocked" pathfinding.
+
+Report headers now read `Reborn mob-crowd-151`.

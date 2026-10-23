@@ -77,9 +77,10 @@ function MobFarm.new(ctx)
     -- Stand outside the mob: a melee raycast that starts inside its body hits nothing, and a slime
     -- the character is inside of hits constantly. Half its width plus a margin, within reach.
     local function standoffFor(entry)
+        -- A slime's root part is small; its body (model extents) is what must be kept outside of.
         local size=0
         pcall(function() local s=entry.Root.Size;size=math.max(s.X,s.Z) end)
-        if size==0 then pcall(function() local s=entry.Model:GetExtentsSize();size=math.max(s.X,s.Z) end) end
+        pcall(function() local s=entry.Model:GetExtentsSize();size=math.max(size,s.X,s.Z) end)
         return math.min(self.Reach-.5,math.max(self.Standoff,size/2+1.5))
     end
     -- Hopping slimes invalidate computed paths; follow nearby visible ones directly.
@@ -417,6 +418,13 @@ function MobFarm.new(ctx)
                             local chosen
                             -- Keep the current living target instead of bouncing between close mobs.
                             for _,entry in ipairs(targets) do if entry.Model==self.Target then chosen=entry;break end end
+                            -- A grounded slime already within reach is hit before travelling to the chosen one.
+                            if chosen and chosen.Distance>self.Reach then
+                                for _,entry in ipairs(targets) do
+                                    if entry.Distance>self.Reach then break end
+                                    if math.abs((entry.Root.Position.Y or 0)-(root.Position.Y or 0))<=2 then chosen=entry;break end
+                                end
+                            end
                             if not chosen and targets[1] then
                                 -- Among slimes about as close as the nearest, finish the most damaged one first.
                                 chosen=targets[1]
@@ -575,7 +583,9 @@ function MobFarm.new(ctx)
                                                 publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
                                                 -- Hit and run: straight back out of the mob's reach after the swing.
                                                 if (teleport or near) and self.HitAndRun and self.RestDistance>keep and chosen.Root.Parent then
-                                                    local away=root.Position-chosen.Root.Position
+                                                    -- Out of reach of every nearby mob, not only the one just hit.
+                                                    local crowd=self:Threat(12)
+                                                    local away=crowd and crowd.Away or root.Position-chosen.Root.Position
                                                     if ctx.Flatten then away=ctx.Flatten(away) end
                                                     local step=self.RestDistance-(chosen.Root.Position-root.Position).Magnitude
                                                     if teleport then step=math.min(self.HopDistance,step) end

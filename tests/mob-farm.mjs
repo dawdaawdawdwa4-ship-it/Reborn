@@ -307,6 +307,20 @@ do
  step();assert(sent==1 and farm.Message:find('Resting',1,true),'it rests there until the next swing is due')
  step(.7);assert(sent==2 and math.abs(ar.Position.X-root.Position.X-12)<1e-6,'then walks in, swings and walks out again')
 end
+-- A grounded slime already within reach is hit before travelling to the chosen target.
+do
+ reset();ar.Position=v(30);farm.ChaseRange=0;farm:Start();assert(farm.Target==a or farm.Target==b)
+ reset();ar.Position=v(30);br.Position=v(5);farm:Start();assert(farm.Target==b and sent==1,'the slime within reach is hit first')
+ reset();ar.Position=v(30);br.Position=v(5);farm:Start();step();ar.Position=v(5);br.Position=v(30);step(.7)
+ assert(farm.Target==a,'when the target leaves and another slime stands within reach, that one is hit next')
+end
+-- The kept distance follows the body size (model extents), not the small root part.
+do
+ reset();local big=a;function big:GetExtentsSize() return {X=8,Y=8,Z=8} end
+ ar.Position=v(20);br.Position=v(60);farm:Start()
+ assert(math.abs(ar.Position.X-root.Position.X-5.5)<1e-6,'an 8-stud slime is kept at its body edge + 1.5, capped at reach - .5')
+ big.GetExtentsSize=nil
+end
 -- A mob standing on the character is attacked from the edge of reach, not from inside it.
 do
  reset();ar.Position=v(1);farm:Start()
@@ -372,7 +386,7 @@ do
 end
 -- Tether: the kept distance is held in both directions, following a moving mob.
 do
- reset();farm.KeepDistance=4;ar.Position=v(20);farm:Start()
+ reset();farm.KeepDistance=4;ar.Position=v(20);br.Position=v(60);farm:Start()
  assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6 and sent==1,'the farm closes to the kept distance and swings')
  ar.Position=v(26);step(.7);assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6,'when the mob moves away the farm follows at the same distance')
  ar.Position=root.Position;ar.Position=v(root.Position.X+1);step(.7)
