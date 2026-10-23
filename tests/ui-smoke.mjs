@@ -49,15 +49,16 @@ ${farmBindings}
 ${fishBindings}
 track(baitToggle.Activated:Connect(function() setBaitEnabled(not baitEnabled) end))
 `;
+const mobUI=source.slice(source.indexOf('-- MOB FARM UI BEGIN'),source.indexOf('-- MOB FARM UI END'));
 const checks=`
 local valid=pcall(function() Instance.new('ScrollingFrame').ScrollBarInset=Enum.ScrollBarInset.ScrollBar end)
 assert(not valid,'mock must reject invalid ScrollBarInset regression')
 flush()
-assert(#RemoteCatalog.Entries==147,'all captured remotes must be incorporated')
+assert(#RemoteCatalog.Entries==148,'all captured remotes must be incorporated')
 RemoteCatalog.RefreshButton.Activated:Fire()
-assert(string.find(RemoteCatalog.Summary.Text,'147',1,true),'remote discovery summary missing')
+assert(string.find(RemoteCatalog.Summary.Text,'148',1,true),'remote discovery summary missing')
 assert(gui.Parent==playerGui,'hub must use PlayerGui')
-assert(#hub.Tabs==12,'twelve tabs must exist')
+assert(#hub.Tabs==13,'thirteen tabs must exist')
 assert(hub.Root.Visible and hub.Body.GroupTransparency==0,'hub intro must finish')
 assert(hub.CurrentTab==airflowTabs.Fishing,'Fishing must be initial tab')
 for name,page in pairs(pages) do
@@ -212,7 +213,7 @@ end
  assert(removed.Parent==nil and removedWindow._inPage==nil,'settleIn must not reparent a destroyed page')
  removedWindow:Destroy();flush()
 end)()
-return 'UI, twelve tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
+return 'UI, thirteen tabs, resize/reset and embedded recorder controls passed; hooks=' .. tostring(CAPTURE_SUPPORTED)
 `;
 for (const supported of [variant==='with-hooks']) {
  const hooks=`
@@ -227,7 +228,7 @@ if CAPTURE_SUPPORTED then
  getnamecallmethod=function() return 'InvokeServer' end
 end
 `;
- try { console.log(await state.loadstring(setup+'\n'+hooks+'\nlocal function runUI()\n'+prefix+'\n'+craft+'\n'+wiring+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); }
+ try { console.log(await state.loadstring(setup+'\n'+hooks+'\nlocal function runUI()\n'+prefix+'\n'+craft+'\n'+wiring+'\n'+mobUI+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); }
  catch(error) {console.error(String(error));process.exitCode=1;}
 }
 state.destroy();

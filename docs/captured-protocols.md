@@ -1155,3 +1155,36 @@ replay prepares and mutates a cloned template separately from dispatch, preservi
 context, extra fields, argument count and nil positions. Invalid/missing nested
 bodies fail before sending. v32 bindings migrate into the v33 implementation;
 same-version restarts retain the existing hook and keyboard listener.
+
+
+## Slime attack · v106 / recorder v34
+
+The user's Cobalt capture identifies RemoteFunction
+`ReplicatedStorage.rbxts_include.node_modules.@rbxts.net.out.I6j1Fhxt8XQFwb.vsDa9Tj8HsvSPz`
+with one InvokeServer argument: a packet whose `U2NRKBAkSyCyXM` body contains
+`hitUnit = slimeBlue` and whose `oWybFA5HSVijAB` field contains the captured session
+string. The equipped tool was `ironWarAxe` with behavior `sword-legacy`. This is
+catalog entry 148. The captured session string and detached debug ID are not
+embedded as operational defaults.
+
+**Learn attack** observes one manual InvokeServer request under the network `out`
+tree. It recognizes one nested body containing a living non-player entity as
+`hitUnit`, with bounded scalar fields in the envelope/body. It stores a cloned
+packet, the actual endpoint, equipped weapon name and actor/character/place/server
+context. Body and envelope keys are learned, allowing renamed grouping folders and
+rotated field names. Unsupported nested data, extra Instances, players, detached
+or dead targets and calls outside the game network are ignored. Original calls,
+all returns (including nil positions) and thrown error values are preserved. A
+failed/rejected manual request restores the prior binding and leaves learning on.
+A successful observation ends the dedicated learner without logging extra calls.
+Pending calls publish no candidate binding. Stop, a newer learning attempt or a
+changed session discards the late candidate when the original call completes.
+
+Replay substitutes only the actual target Instance, preserving current-session
+fields in a new clone. It checks the learned actor/session, live network endpoint,
+matching equipped weapon and living entity before dispatch. False, `success=false`
+and transport errors remain failures. No fixed token, debug-ID lookup or alternate
+transport is used. The mob controller separately enforces slime filtering,
+proximity, visibility and cancellation and confirms observations through health.
+Recorder v34 retains v33 bindings while upgrading methods; same-version restarts
+reuse its existing hook and hotkey listener. Stop also cancels mob learning.

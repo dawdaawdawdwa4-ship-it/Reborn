@@ -1,0 +1,135 @@
+import fs from 'node:fs';
+import {LuauState} from 'luau-web';
+const module=fs.readFileSync(new URL('../tools/MobFarm.lua',import.meta.url),'utf8');
+const code=`
+local time=0
+local mt={}
+local function v(x) return setmetatable({X=x,Y=0,Z=0},mt) end
+mt.__sub=function(a,b) return v(a.X-b.X) end
+mt.__index=function(a,k) if k=='Magnitude' then return math.abs(a.X) end end
+local function node(name,kind,parent)
+ local n={Name=name,ClassName=kind,Parent=parent,children={}}
+ if parent then table.insert(parent.children,n) end
+ function n:IsA(c) return c==kind or c=='BasePart' and kind=='Part' end
+ function n:FindFirstChild(name) for _,c in ipairs(self.children) do if c.Name==name then return c end end end
+ function n:FindFirstChildOfClass(kind) for _,c in ipairs(self.children) do if c:IsA(kind) then return c end end end
+ function n:GetChildren() return self.children end
+ return n
+end
+local world=node('Workspace','Workspace')
+local wild=node('WildernessIsland','Model',world)
+local nested=node('Entities','Folder',wild)
+local direct=node('Entities','Folder',world)
+local foreign=node('Decorations','Folder',world)
+local function actor(name,x,parent)
+ local m=node(name,'Model',parent)
+ local h=node('Humanoid','Humanoid',m);h.Health=100;h.MaxHealth=100
+ local r=node('HumanoidRootPart','Part',m);r.Position=v(x)
+ return m,h,r
+end
+local char,human,root=actor('Character',0,world)
+local player={Character=char}
+local players={GetPlayerFromCharacter=function(_,model) return model.IsPlayer and {} or nil end}
+local a,ah,ar=actor('slimeBlue',4,nested)
+local b,bh,br=actor('greenSlime',20,direct)
+actor('slimeKing',1,nested);actor('slimeQueen',1,direct);actor('slimeBoss',1,direct)
+actor('slime',1,foreign)
+local fake=actor('slime',1,nested);fake.IsPlayer=true
+local dead,dh=actor('slime',1,nested);dh.Health=0
+actor('buffalkor',1,nested);actor('slime',300,direct)
+local Module=(function() ${module} end)()
+local workers={}
+local scheduler={spawn=function(fn)
+ local co=coroutine.create(fn);table.insert(workers,co)
+ local ok,err=coroutine.resume(co);assert(ok,err);return co
+end,wait=function(dt) return coroutine.yield(dt) end}
+local function step(dt)
+ time+=dt or .15
+ for _,co in ipairs(table.clone(workers)) do
+  if coroutine.status(co)=='suspended' then local ok,err=coroutine.resume(co);assert(ok,err) end
+ end
+end
+local busy,pause,damage,blocked,transport,learned,alive=nil,nil,true,false,false,true,true
+local bindingChar=char
+local sent,walks,halts=0,0,0
+local tool={Name='swordWood',Parent=char}
+local equipHook,walkHook,attackHook
+local recorder={MobBinding={WeaponName='swordWood'}}
+function recorder:CanUseMobBinding() return bindingChar==player.Character and learned end
+function recorder:MobHit(target)
+ sent+=1
+ if attackHook then attackHook() end
+ if transport then return false,'transport failed' end
+ if damage then target:FindFirstChildOfClass('Humanoid').Health-=10 end
+ return true
+end
+local ctx={Player=player,Players=players,World=world,Now=function() return time end,Scheduler=scheduler,
+ Alive=function() return alive end,Busy=function() return busy end,PauseReason=function() return pause end,
+ Recorder=function() return learned and recorder or nil end,Weapon=function() return tool end,
+ Equip=function() if equipHook then equipHook() end;return true end,ClearLine=function() return not blocked end,
+ Navigation={Stop=function(owner) assert(owner=='Mobs');halts+=1 end,
+ Approach=function(who,target,reach,active,positionOf,mode,owner)
+  walks+=1;assert(who==player and owner=='Mobs' and mode=='Walk' and reach==4)
+  if walkHook then return walkHook(active) end
+  assert(active());root.Position=v(positionOf(target).X-3);return true
+ end}}
+local farm=Module.new(ctx)
+local targets=farm:Scan()
+assert(#targets==2 and targets[1].Model==a and targets[2].Model==b,'only living non-player regular slimes in either Entities root, nearest first')
+farm.Radius=10;assert(#farm:Scan()==1);farm.Radius=60
+learned=false;assert(not farm:Start() and sent==0);learned=true
+busy='other worker';assert(not farm:Start());busy=nil
+assert(farm:Start() and sent==1 and farm.Swings==1 and farm.Drops==1)
+step();assert(sent==1,'cadence must include time spent in RPC/equip and never spam')
+step(.6);assert(sent==2 and farm.Drops==2)
+farm:Stop();local before=sent;step(1)
+assert(sent==before and not farm.Worker and not farm.Enabled,'Stop must end worker and future attacks')
+local function reset()
+ farm:Stop();step();farm=Module.new(ctx)
+ ah.Health=100;bh.Health=100;ar.Position=v(4);br.Position=v(20);root.Position=v(0)
+ human.Health=100;human.MaxHealth=100;player.Character=char;bindingChar=char
+ busy=nil;pause=nil;damage=true;blocked=false;transport=false;learned=true;alive=true
+ equipHook=nil;walkHook=nil;attackHook=nil;sent=0;walks=0;tool.Parent=char
+end
+reset();ah.Health=10;farm:Start()
+assert(farm.Defeats==1 and farm.Drops==1,'zero HP must count once, and never infer a kill from dispatch alone')
+step();step();assert(farm.Defeats==1)
+reset();farm:Start();local prior=farm.Drops;a.Parent=nil;step(.7)
+assert(farm.Defeats==0 and farm.Drops==prior,'streaming out must not count a defeat');a.Parent=nested
+reset();ar.Position=v(30);farm:Start();assert(walks==1 and sent==0);step();assert(sent==1 and farm.Target==b,'Auto Walk must approach nearest living target and attack only after rechecking reach')
+reset();ar.Position=v(30);farm.Walk=false;farm:Start();step(2);assert(walks==0 and sent==0 and farm.Enabled)
+reset();human.Health=25;farm:Start();assert(sent==0 and farm.Enabled)
+human.Health=40;step(1);assert(sent==0,'health recovery must use hysteresis')
+human.Health=45;step();assert(sent==1)
+reset();pause='typing';farm:Start();step(2);assert(sent==0 and walks==0 and farm.Enabled);pause=nil;step();assert(sent==1)
+reset();equipHook=function() farm:Stop();scheduler.wait(.1) end;farm:Start()
+assert(not farm:Start() and farm.Worker,'restart must wait for old yielding equip cleanup')
+step();assert(sent==0 and not farm.Worker,'Stop during equip must prevent a late attack')
+equipHook=nil;assert(farm:Start());assert(sent==1,'fresh restart must create one worker')
+reset();equipHook=function() ar.Position=v(80) end;farm:Start();assert(sent==0,'target moving outside radius during equip must not be attacked')
+reset();walkHook=function(active) farm:Stop();assert(not active());scheduler.wait(.1);return true end
+ar.Position=v(30);farm:Start();step();assert(sent==0 and not farm.Worker,'Stop mid-walk must invalidate follow-up attacks')
+reset();walkHook=function(active) busy='other mode';assert(not active());return false end
+ar.Position=v(30);farm:Start();step();assert(sent==0 and not farm.Worker and not farm.Enabled,'new automation must take control without a combat dispatch')
+reset();transport=true;farm:Start();assert(sent==1 and farm.Swings==0 and not farm.Enabled and not farm.Worker,'transport failure must stop without fallback or false counters')
+reset();damage=false;farm:Start();for i=1,8 do step(.7) end
+assert(sent==8 and farm.Swings==8 and farm.Drops==0 and not farm.Enabled and not farm.Worker,'unconfirmed attacks must stop at a bounded budget')
+reset();blocked=true;farm:Start();step();assert(sent==0,'obstructed targets cannot be attacked')
+reset();walkHook=function() return false end;ar.Position=v(30);farm:Start();step();step()
+assert(walks==2,'each unreachable target gets its own cooldown');step();assert(walks==2,'unreachable targets must not be repathed every tick')
+reset();ar.Position=v(300);br.Position=v(300);farm:Start();step(3)
+assert(farm.Enabled and sent==0 and farm.Message:find('scanning continues',1,true),'empty scans must keep the farm ON')
+reset();human.Health=0;farm:Start();assert(sent==0 and farm.Enabled);player.Character={FindFirstChild=function() return root end,FindFirstChildOfClass=function() return human end};human.Health=100;step()
+assert(not farm.Enabled and sent==0,'a new character needs a new learned session before attacks')
+reset();attackHook=function() farm:Stop() end;farm:Start();assert(farm.Swings==0 and farm.Drops==0,'late completion after Stop must not update counters')
+reset();attackHook=function() scheduler.wait(.1) end;farm:Start()
+assert(sent==1 and farm.Worker and farm.Enabled)
+farm:Stop();step()
+assert(not farm.Worker and farm.Swings==0 and farm.Drops==0,'Stop while an InvokeServer call is pending must discard its late completion')
+reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
+return 'Mob farm: targeting, walking, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
+`;
+const state=await LuauState.createAsync();
+try {console.log(await state.loadstring(code,'mob-farm',true)());}
+catch(e) {console.error(String(e));process.exitCode=1;}
+finally {state.destroy();}

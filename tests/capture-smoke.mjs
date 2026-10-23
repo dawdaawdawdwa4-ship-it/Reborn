@@ -689,28 +689,28 @@ end)()
  old.CraftBinding.Remote.InvokeServer=function() return true end
  runRecorder()
  local upgraded=environment.RebornCapture
- assert(upgraded~=old and upgraded.Version==33 and upgraded.CraftBindings.bait==upgraded.CraftBinding and upgraded.CraftBinding.Item=='bait','v29 upgrade must retain the exact bait binding in the new recipe catalog')
+ assert(upgraded~=old and upgraded.Version==34 and upgraded.CraftBindings.bait==upgraded.CraftBinding and upgraded.CraftBinding.Item=='bait','v29 upgrade must retain the exact bait binding in the new recipe catalog')
  assert(upgraded:CraftBait(100),'migrated bait request must remain usable for this same character/server')
  local bindings=upgraded.ChestBindings
  upgraded.Version=30
  runRecorder()
  local latest=environment.RebornCapture
- assert(latest~=upgraded and latest.Version==33 and latest.ChestBindings==bindings and latest.CraftBindings.bait==latest.CraftBinding,'v30 upgrade must preserve learned chest and crafting bindings while installing failure origins')
+ assert(latest~=upgraded and latest.Version==34 and latest.ChestBindings==bindings and latest.CraftBindings.bait==latest.CraftBinding,'v30 upgrade must preserve learned chest and crafting bindings while installing failure origins')
  local placement=latest.PlacementBinding
  latest.Version=31
  runRecorder()
  local placementUpgrade=environment.RebornCapture
- assert(placementUpgrade~=latest and placementUpgrade.Version==33 and placementUpgrade.PlacementBinding==placement and placementUpgrade.ChestBindings==bindings,'v31 upgrades must install rotated placement learning while preserving existing bindings')
+ assert(placementUpgrade~=latest and placementUpgrade.Version==34 and placementUpgrade.PlacementBinding==placement and placementUpgrade.ChestBindings==bindings,'v31 upgrades must install rotated placement learning while preserving existing bindings')
  local beforeHooks,beforeConnections=hookCount,connectionCount
  placementUpgrade.Version=32
  runRecorder()
  local recovery=environment.RebornCapture
- assert(recovery~=placementUpgrade and recovery.Version==33 and recovery.PlacementBinding==placement and recovery.ChestBindings==bindings,'v32 upgrade must preserve live bindings while installing placement failure origins')
+ assert(recovery~=placementUpgrade and recovery.Version==34 and recovery.PlacementBinding==placement and recovery.ChestBindings==bindings,'v32 upgrade must preserve live bindings while installing placement failure origins')
  local sent,result,origin=recovery:Place({cframe=newCf,blockType='stone'})
  assert(not sent and result==false and origin=='rejected','the preserved v32 placement binding must use the corrected replay method after upgrade')
  assert(hookCount==beforeHooks+1 and connectionCount==beforeConnections+1,'upgrade installs only one replacement recorder')
  runRecorder()
- assert(environment.RebornCapture==recovery and hookCount==beforeHooks+1 and connectionCount==beforeConnections+1,'v33 reuse must not stack hooks or key listeners')
+ assert(environment.RebornCapture==recovery and hookCount==beforeHooks+1 and connectionCount==beforeConnections+1,'v34 reuse must not stack hooks or key listeners')
  recovery:Stop()
  placementUpgrade:Stop()
  latest:Stop()

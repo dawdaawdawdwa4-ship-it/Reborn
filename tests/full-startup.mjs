@@ -21,13 +21,15 @@ function task.spawn(fn,...)
  local co=coroutine.create(fn)
  local ok,failure=coroutine.resume(co,...)
  assert(ok,failure)
- table.insert(workers,co)
+ if coroutine.status(co)=='suspended' then table.insert(workers,co) end
  return co
 end
 local function stepWorkers()
  for _,co in ipairs(table.clone(workers)) do
   if coroutine.status(co)=='suspended' then local ok,err=coroutine.resume(co);assert(ok,err) end
  end
+ -- Roblox releases completed tasks; the fixture must not retain every old coroutine.
+ for i=#workers,1,-1 do if coroutine.status(workers[i])=='dead' then table.remove(workers,i) end end
 end
 local function warn() end
 `;
@@ -1005,7 +1007,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn fishing-camera-105',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn slime-farm-106',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1533,7 +1535,7 @@ end)()
  local r=RemoteCatalog
  assert(not r.CraftEnabled and not r.CraftWorker and r.CraftBatch==100 and r.CraftTarget==100,'craft startup must be OFF with batch/target 100')
  assert(r.CraftMode=='Make amount','craft default must make extra bait independently of stock')
- assert(#hub.Tabs==12 and r.CraftPage.Parent.Name~='Fishing','Crafting must be an independent twelfth tab')
+ assert(#hub.Tabs==13 and r.CraftPage.Parent.Name~='Fishing','Crafting must be an independent tab')
  local oldRecorder=r.Recorder
  local bench={Parent=true}
  local learnedRecipes={CraftBinding={Item='bait',Remote={Parent=true},Workbench=bench},CraftBindings={testRecipe={Item='testRecipe',Workbench=bench}},CanUseCraftBinding=function() return true end,CraftItem=function() error('picker must never craft') end}
@@ -1745,7 +1747,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn fishing-camera-105 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn slime-farm-106 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2429,7 +2431,55 @@ end)()
  enabled=oldEnabled;RemoteCatalog.FishingStatus=oldState;RemoteCatalog.RefreshFishingStatus()
 end)()
 
-local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause,BuildCopyAll=buildController.Buttons.CopyAllHistory,BuildRestock=buildController.Buttons.CopyMissing}
+;(function()
+ local r=RemoteCatalog
+ r.StopAllAutomation();stepWorkers()
+ assert(#hub.Tabs==13 and pages.Mobs==r.MobPage and #r.MobPage:GetChildren()>=3,'Mobs must have its own populated tab')
+ assert(airflowTabs.Mobs._revealed,'native tab reveal must preserve closed mob dropdowns')
+ local saved={Character=player.Character,Find=workspace.FindFirstChild,Recorder=r.Recorder,Start=r.StartCapture,Focus=UserInputService.GetFocusedTextBox}
+ workspace.FindFirstChild=function() return nil end
+ UserInputService.GetFocusedTextBox=function() return nil end
+ r.Recorder=nil
+ r.MobToggle.Activated:Fire()
+ assert(not r.Mobs.Enabled and r.MobInfo.Text:find('Learn attack first',1,true),'Start without a learned attack must send nothing and explain setup')
+ r.MobScan.Activated:Fire()
+ assert(r.MobInfo.Text:find('0 living slimes',1,true) and not r.Mobs.Worker,'Scan must be read-only')
+ r.MobRadius.Activated:Fire()
+ assert(r.MobRadiusMenu.Menu.Visible and r.MobWalk.Position.Y.Offset>=r.MobRadiusMenu.Menu.Position.Y.Offset+r.MobRadiusMenu.Menu.Size.Y.Offset,'radius dropdown must push following controls down')
+ r.MobRadiusMenu.Options[3].Activated:Fire()
+ assert(r.Mobs.Radius==120 and not r.MobRadiusMenu.Menu.Visible)
+ r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk);r.MobWalk.Activated:Fire();assert(r.Mobs.Walk)
+ local weapon={Name='ironWarAxe'}
+ local human={Health=100,MaxHealth=100}
+ local root={Position={X=0,Y=0,Z=0}}
+ local character={Parent=true,FindFirstChild=function(_,name) if name=='HumanoidRootPart' then return root end end,
+  FindFirstChildOfClass=function(_,kind) if kind=='Tool' then return weapon elseif kind=='Humanoid' then return human end end}
+ weapon.Parent=character;player.Character=character
+ local sends=0
+ local learned={Records={},MaxCalls=100,RequestIds={},MobBinding={WeaponName='ironWarAxe',Remote={Parent=true}},CanUseMobBinding=function() return true end,
+  MobHit=function() sends+=1;return true end,Stop=function(self) self.Stopped=true;self.LearnMobOnly=false end}
+ r.StartCapture=function() learned.Stopped=false;return learned end
+ r.MobLearn.Activated:Fire()
+ assert(learned.LearnMobOnly and learned.Active==false and sends==0,'Learn attack must wait for one manual hit without sending a request')
+ r.MobStop.Activated:Fire();assert(not learned.LearnMobOnly and learned.Stopped,'Stop must cancel learning too')
+ r.MobToggle.Activated:Fire()
+ assert(r.Mobs.Enabled and r.Mobs.Worker and sends==0 and r.MobInfo.Text:find('scanning continues',1,true),'empty native scan must stay ON without attacking: '..tostring(r.Mobs.Enabled)..' / '..tostring(r.MobInfo.Text))
+ assert(not r.MobLearn.Active and r.BuildTravelBlocked():find('Auto Mobs',1,true),'combat must lock learning and compete explicitly with build walking')
+ local radius=r.Mobs.Radius;r.MobRadiusMenu.Options[1].Activated:Fire();assert(r.Mobs.Radius==radius,'in-flight worker must lock setup edits')
+ r.MobStop.Activated:Fire();assert(not r.Mobs.Enabled and r.Mobs.Worker and not r.MobToggle.Active,'Stop must keep Start locked until worker cleanup')
+ stepWorkers();assert(not r.Mobs.Worker and r.MobToggle.Active)
+ r.MobToggle.Activated:Fire();assert(r.Mobs.Enabled)
+ setEnabled(true);assert(not r.Mobs.Enabled,'starting Fishing must stop combat immediately')
+ setEnabled(false);stepWorkers()
+ r.MobToggle.Activated:Fire();assert(r.Mobs.Enabled)
+ r.StopAllAutomation();stepWorkers()
+ assert(not r.Mobs.Enabled and not r.Mobs.Worker and not learned.LearnMobOnly,'Stop All must cancel combat and its navigation worker')
+ assert(r.SessionReport():find('Mobs: OFF',1,true),'session report must include combat status and observed counters')
+ player.Character=saved.Character;workspace.FindFirstChild=saved.Find;r.Recorder=saved.Recorder;r.StartCapture=saved.Start;UserInputService.GetFocusedTextBox=saved.Focus
+ r.Mobs.Radius=60;r.RefreshMobUI()
+end)()
+
+local cleanupOptions={MobToggle=RemoteCatalog.MobToggle,MobStop=RemoteCatalog.MobStop,Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause,BuildCopyAll=buildController.Buttons.CopyAllHistory,BuildRestock=buildController.Buttons.CopyMissing}
  ;(function()
  local oldPress,oldRelease,oldFocus,oldCharacter=keypress,keyrelease,UserInputService.GetFocusedTextBox,player.Character
  local events=cleanupOptions.DropEvents
@@ -2441,6 +2491,9 @@ local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=
  end)()
 RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
+RemoteCatalog.Mobs.Start=function() error('mob Start survived GUI removal') end
+RemoteCatalog.Mobs.Stop=function() error('mob Stop survived GUI removal') end
+cleanupOptions.MobToggle.Activated:Fire();cleanupOptions.MobStop.Activated:Fire()
 assert(cleanupOptions.DropEvents[2]=='up' and not RemoteCatalog.DropEnabled and not RemoteCatalog.DropHeld and not RemoteCatalog.DropWorker,'destroying the hub must release Q and end the drop worker')
 RemoteCatalog.SetDropEnabled=function() error('Q drop callback survived GUI removal') end
 cleanupOptions.Drop.Activated:Fire();cleanupOptions.DropStop.Activated:Fire();UserInputService.WindowFocusReleased:Fire()

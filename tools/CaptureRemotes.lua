@@ -8,13 +8,13 @@ if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" t
 end
 local environment = type(getgenv) == "function" and getgenv() or _G
 local previous = environment.RebornCapture
-if previous and previous.Version == 33 and previous.Resume then
+if previous and previous.Version == 34 and previous.Resume then
     previous:Resume()
     print("[Reborn capture] Existing recorder reused; " .. #previous.Records .. " calls retained. F9 exports.")
     return previous
 end
 if previous and previous.Stop then previous:Stop() end
-local capture = { Version = 33, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
+local capture = { Version = 34, Active = true, Stopped = false, Records = {}, MaxCalls = 100, RequestIds = {} }
 if previous then
     capture.Records = previous.Records or capture.Records
     capture.RequestIds = previous.RequestIds or capture.RequestIds
@@ -31,6 +31,7 @@ if previous then
     capture.ChestBindings = previous.ChestBindings or (previous.ChestBinding and {previous.ChestBinding} or {})
     capture.FruitBinding = previous.FruitBinding
     capture.HotbarBinding = previous.HotbarBinding
+    capture.MobBinding = previous.MobBinding
     capture.HotbarLayout = previous.HotbarLayout
     capture.AutoReplantState = previous.AutoReplantState
     capture.Active = #capture.Records < capture.MaxCalls
@@ -38,6 +39,7 @@ end
 capture.ChestBindings=capture.ChestBindings or {}
 capture.CraftBindings=capture.CraftBindings or {}
 local exactNames = {
+    vsDa9Tj8HsvSPz = true, -- Supplied slimeBlue / ironWarAxe hit; learn the current envelope.
     tIFPj2BFAwqodE = true, -- Bait crafting; learn the live envelope and workbench.
     FiAxD3JcLWBD6I = true, -- Supplied potatoSalad chest withdrawal; learn its live envelope.
     PdqfVEBKHDSMfE = true, -- Supplied hoe/plow endpoint; context is learned live.
@@ -196,6 +198,8 @@ function capture:CopyAll()
 end
 function capture:Stop()
     self.Active, self.Stopped = false, true
+    self.LearnMobOnly = false
+    self.MobLearnToken = nil
     self.LearnPlowOnly = false
     self.LearnWoodOnly = false
     self.LearnCraftOnly = false
@@ -222,6 +226,86 @@ local function cloneArguments(value, oldTarget, newTarget, seen, budget)
     seen[value] = copy
     for key, item in next, value do copy[key] = cloneArguments(item, oldTarget, newTarget, seen, budget) end
     return copy
+end
+-- The supplied melee capture wraps hitUnit and a session token in one packet.
+-- Learn its scalar fields from a real swing; never embed the supplied old token.
+local function mobEntity(target)
+    if typeof(target)~="Instance" or not target:IsA("Model") then return false end
+    local world=game:GetService("Workspace")
+    local wild=world:FindFirstChild("WildernessIsland")
+    local folder=target.Parent
+    if not folder or (folder~=world:FindFirstChild("Entities") and folder~=(wild and wild:FindFirstChild("Entities"))) then return false end
+    local players=game:GetService("Players")
+    if players:GetPlayerFromCharacter(target) then return false end
+    local health=target:FindFirstChildOfClass("Humanoid")
+    return health~=nil and health.Health>0 and target:FindFirstChild("HumanoidRootPart")~=nil
+end
+local function mobRemote(remote)
+    if typeof(remote)~="Instance" or not remote:IsA("RemoteFunction") then return false end
+    local cursor=remote.Parent
+    local out=false
+    while cursor and cursor~=game:GetService("ReplicatedStorage") do
+        if cursor.Name=="out" then out=true end
+        cursor=cursor.Parent
+    end
+    return cursor~=nil and out
+end
+local function learnMobHit(remote,method,args)
+    if capture.DispatchingMob or method~="InvokeServer" or not mobRemote(remote) then return false end
+    local body,bodyKey
+    if args.n~=1 or type(args[1])~="table" then return false end
+    local count=0
+    for key,value in pairs(args[1]) do
+        count+=1
+        if count>32 or type(key)~="string" then return false end
+        if type(value)=="table" then
+            if body or typeof(value.hitUnit)~="Instance" then return false end
+            body=value;bodyKey=key
+        elseif type(value)~="string" and type(value)~="number" and type(value)~="boolean" then return false
+        elseif type(value)=="string" and #value>1024 or type(value)=="number" and (value~=value or math.abs(value)==math.huge) then return false end
+    end
+    if not body then return false end
+    if not mobEntity(body.hitUnit) then return false end
+    local count=0
+    for key,value in pairs(body) do
+        count+=1
+        if count>32 or type(key)~="string" then return false end
+        if key~="hitUnit" then
+            local kind=type(value)
+            if kind~="string" and kind~="number" and kind~="boolean" then return false end
+            if kind=="string" and #value>1024 or kind=="number" and (value~=value or math.abs(value)==math.huge) then return false end
+        end
+    end
+    local owner=game:GetService("Players").LocalPlayer
+    local tool=owner and owner.Character and owner.Character:FindFirstChildOfClass("Tool")
+    if not tool then return false end
+    return {Remote=remote,Method=method,Args=cloneArguments(args),Target=body.hitUnit,BodyKey=bodyKey,
+        WeaponName=tool.Name,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,PlaceId=game.PlaceId}
+end
+function capture:CanUseMobBinding()
+    local b=self.MobBinding
+    local owner=game:GetService("Players").LocalPlayer
+    return b~=nil and b.Method=="InvokeServer" and mobRemote(b.Remote) and owner~=nil and owner.Character~=nil
+        and b.OwnerCharacter==owner.Character and b.OwnerUserId==owner.UserId and b.JobId==game.JobId and b.PlaceId==game.PlaceId
+end
+function capture:MobHit(target)
+    if not self:CanUseMobBinding() then return false,"Learn a manual attack on this character/server" end
+    if not mobEntity(target) then return false,"Choose a living mob in Entities" end
+    local owner=game:GetService("Players").LocalPlayer
+    local tool=owner.Character:FindFirstChildOfClass("Tool")
+    if not tool or tool.Name~=self.MobBinding.WeaponName then return false,"Equip the weapon used for learning" end
+    local prepared,args=pcall(function()
+        return cloneArguments(self.MobBinding.Args,self.MobBinding.Target,target)
+    end)
+    if not prepared then return false,args end
+    self.DispatchingMob=true
+    local ok,result=pcall(function()
+        local binding=self.MobBinding
+        return binding.Remote[binding.Method](binding.Remote,table.unpack(args,1,args.n))
+    end)
+    self.DispatchingMob=false
+    if not ok or result==false or type(result)=="table" and result.success==false then return false,result end
+    return true,result
 end
 local function learnHotbar(remote,method,args)
     if method~="InvokeServer" or type(args[1])~="table" then return false end
@@ -648,6 +732,25 @@ local original
 local function intercept(remote, ...)
     if capture.Stopped then return original(remote, ...) end
     local method = getnamecallmethod()
+    if capture.LearnMobOnly then
+        local args=table.pack(...)
+        local token=capture.MobLearnToken
+        local candidate
+        pcall(function() candidate=learnMobHit(remote,method,args) end)
+        local returned=table.pack(pcall(original,remote,...))
+        if candidate and not capture.Stopped and capture.LearnMobOnly and capture.MobLearnToken==token then
+            local response=returned[2]
+            local owner=game:GetService("Players").LocalPlayer
+            if returned[1] and response~=false and not (type(response)=="table" and response.success==false)
+                and owner and owner.UserId==candidate.OwnerUserId and owner.Character==candidate.OwnerCharacter
+                and game.PlaceId==candidate.PlaceId and game.JobId==candidate.JobId then
+                capture.MobBinding=candidate
+                capture:Stop()
+            end
+        end
+        if not returned[1] then error(returned[2],0) end
+        return table.unpack(returned,2,returned.n)
+    end
     if capture.LearnCraftOnly or capture.LearnWoodOnly or capture.LearnBaitOnly or capture.LearnChestOnly or capture.LearnPlowOnly then
         if method == "InvokeServer" then
             local args = table.pack(...)

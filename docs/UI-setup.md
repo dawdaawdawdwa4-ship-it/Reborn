@@ -23,14 +23,14 @@ npm --prefix tests test
 ```
 
 The test compiles the hub, both src scripts, and the recorder and constructs the full Farming Hub UI using
-Roblox mocks. It checks that all twelve tabs have content, switches tabs, closes and
+Roblox mocks. It checks that all thirteen tabs have content, switches tabs, closes and
 reopens the hub, and exercises resize/reset. The reduced Roblox API name fixture
 comes from MaximumADHD/Roblox-Client-Tracker's `roblox/API-Dump.json`, retrieved
 2026-10-17; the mock rejects invalid initialization properties and property signals.
 Mocks do not validate actual rendering, input routing, or server interactions.
 
 In Roblox Studio, put the contents of `message.txt` into a LocalScript under
-StarterPlayerScripts in your own experience. Verify that the twelve tabs render,
+StarterPlayerScripts in your own experience. Verify that the thirteen tabs render,
 scrolling/clicking does not drag the hub, dragging the header works, the corner
 handle resizes, RightControl and the floating button reopen the closed window,
 and Settings > Reset view restores its original size and centered position.
@@ -2891,3 +2891,46 @@ capture during aim/hold, automatic resumption, bait input, Stop during catch
 registration, persistent status timing, stale workers and layout. The full suite
 is required. v104 reeling was confirmed by the user; the v105 camera changes and
 status remain unverified in the user's live client.
+
+
+## Slime farming · v106
+
+**Mobs** is the thirteenth tab. Equip a melee weapon, press **Learn attack**, hide
+or move the hub and hit one slime manually. Then enable **Auto Mobs**. The learned
+weapon is shown in Setup and equipped for attacks. Learning sends no extra request;
+unsupported hosts or shapes show a setup message instead of dispatching guessed
+packets. Learn again after a character, account, place or server change.
+
+The worker finds living regular slimes in both `WildernessIsland.Entities` and
+`workspace.Entities`, excluding player characters and Slime King/Queen/boss names.
+It keeps its current eligible target, then chooses the nearest. Search radius is
+30/60/120 studs (default 60). **Scan slimes** only reports eligible targets. No
+island teleport or boss spawning is performed. **Auto Walk** uses the existing
+pathfinder with owner `Mobs`, stops about four studs short and rechecks character,
+health, target identity and distance after travelling and equipping. Moving targets
+trigger a fresh path; blocked targets get a three-second backoff. With Auto Walk
+off, only targets already within six studs can be attacked.
+
+Attacks are separated by at least 0.65 seconds and require a clear line from the
+character to the target. No cursor or camera movement is used. Chat/text focus
+pauses the farm. Health at or below 25% pauses walking and attacks until 45% health.
+An empty scan stays ON. A changed session or missing learned weapon requires setup
+again. Eight swings without an observed HP drop stop the run with a recovery hint;
+a rejected or failed attack stops without replaying it through another transport.
+
+The run panel shows swings sent, observed HP drops and observed defeats. Only a
+visible positive-to-zero HP transition counts as a defeat; disappearing/streamed
+mobs do not. These observations cannot establish which player earned a kill.
+Stop cancels owned travel immediately, invalidates the worker and keeps Start
+locked through any in-flight request cleanup. Stop All, hub removal and saved
+teleports also stop combat. Starting Fishing, Bait, resource farming, chest
+collection, crafting or plowing stops combat; Auto Build walking reports the
+conflict. Combat refuses to start while another automation owns tools/movement.
+
+`tools/MobFarm.lua` is the controller source; run `node scripts/embed-mobs.mjs`
+after editing it. New module, recorder and full-startup tests cover the supplied
+attack envelope, targeting, movement cancellation, delayed equip/attack results,
+low-health/chat pauses, empty scans, failed paths, cooldowns, bounded unconfirmed
+attacks, character changes, dropdown layout, learning, Stop/Start and GUI cleanup.
+The full existing suite remains required. Roblox rendering, pathfinding and live
+server acceptance remain unverified here.
