@@ -282,31 +282,32 @@ do
  step(.7);assert(#learned==1 and learned[1]==a and farm.Drops==1 and farm.LastMethod:find('+ learned hit',1,true),'the next swing adds the learned packet on the same target')
  ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
 end
--- A ready hit packet (learned, auto-learned or remembered) follows every click from the first swing.
+-- A ready hit packet (learned, auto-learned or remembered) follows every click from the first swing,
+-- starting from the far end of its range probe where a click cannot land.
 do
  reset();damage=false;local learned={};local accept=true
  ctx.Aim=function() return 50,50 end;ctx.Click=function() return true end
  ctx.LearnedHitReady=function() return true end
- ctx.LearnedHit=function(model) table.insert(learned,model);if accept then ah.Health-=10;return true end;return false,'NO_ANIMATION' end
- farm:Start();assert(#learned==1 and farm.LearnedHits==1 and farm.UseLearnedHit and farm.LastMethod:find('+ learned hit',1,true),'a ready packet is used from the first swing')
+ ctx.LearnedHit=function(model) table.insert(learned,model);if accept then ah.Health-=10;return true end;return false,{success=false} end
+ farm:Start();assert(#learned==1 and farm.LearnedHits==1 and farm.UseLearnedHit and farm.PacketKeep==9 and farm.LastMethod:find('+ learned hit',1,true),'a ready packet is used from the first swing and the probe starts at 9 studs')
  step(.7);assert(#learned==2 and farm.Drops==2,'and on every later swing')
- accept=false;step(.7);assert(#learned==3 and farm.UseLearnedHit and farm.LearnedHitRejections==1 and farm.LastRejection=='NO_ANIMATION' and farm.LastMethod:find('rejected',1,true),'one rejection is recorded and the packet stays on')
- for i=1,5 do step(.7) end
- assert(#learned==8 and not farm.UseLearnedHit and farm.LearnedHitRejected and farm.LastMethod:find('packet off',1,true),'six rejections in a row switch the packet off')
- step(.7);assert(#learned==8,'a packet switched off is not retried in the same run')
- -- "Too fast" means the game's own client already sent this hit; the packet stays on.
- reset();damage=false;learned={};accept=false
- ctx.LearnedHit=function(model) table.insert(learned,model);return false,'TOO_FAST' end
- farm:Start();for i=1,7 do step(.7) end
- assert(#learned==8 and farm.UseLearnedHit and not farm.LearnedHitRejected,'rate-limit rejections never switch the packet off')
- -- Accepted packets earn range: every third one adds a stud, up to 9, so the swing starts outside contact range.
- reset();damage=false;learned={};farm.Travel='Teleport';farm.HitAndRun=false;ar.Position=v(30);br.Position=v(60);ah.Health=1000;ah.MaxHealth=1000
+ accept=false;for i=1,8 do step(.7) end
+ assert(#learned==10 and farm.UseLearnedHit and farm.LearnedHitRejections==8 and farm.LastRejection:find('success=false',1,true) and not farm.LearnedHitRejected,'rejections are counted and never switch the packet off')
+ assert(farm.PacketKeep==5.5,'two rejections in a row step the probe one stud closer until the normal distance')
+ ctx.LearnedHitReady=nil;ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
+end
+-- The kept distance follows the packet range while packets are accepted out there.
+do
+ reset();damage=false;local learned={};farm.Travel='Teleport';farm.HitAndRun=false;ar.Position=v(30);br.Position=v(60);ah.Health=1000;ah.MaxHealth=1000
+ ctx.Aim=function() return 50,50 end;ctx.Click=function() return true end
+ ctx.LearnedHitReady=function() return true end
  ctx.LearnedHit=function(model) table.insert(learned,model);ah.Health-=10;return true end
- farm:Start();for i=1,12 do step(.7) end
- assert(farm.PacketKeep and farm.PacketKeep>=7 and math.abs(ar.Position.X-root.Position.X-farm.PacketKeep)<1e-6,'the kept distance follows the packet range')
- local range=farm.PacketKeep
- ctx.LearnedHit=function(model) table.insert(learned,model);return false,'OUT_OF_RANGE' end
- step(.7);assert(farm.PacketKeep==range-1 and farm.PacketLimit==range-1 and farm.UseLearnedHit,'a range rejection steps back one stud and caps the probe there')
+ farm:Start();for i=1,4 do step(.7) end
+ assert(farm.PacketKeep==9 and farm.PacketAcceptedAt==9 and math.abs(ar.Position.X-root.Position.X-9)<1e-6 and #learned>=3,'accepted packets keep the character 9 studs out')
+ ctx.LearnedHit=function(model) table.insert(learned,model);return false,{success=false} end
+ step(.7);step(.7);assert(farm.PacketKeep==8,'two rejections step one stud closer')
+ ctx.LearnedHit=function(model) table.insert(learned,model);ah.Health-=10;return true end
+ step(.7);step(.7);assert(farm.PacketKeep==8 and farm.PacketAcceptedAt==8 and math.abs(ar.Position.X-root.Position.X-8)<1e-6,'an accepted packet holds the new distance')
  ctx.LearnedHitReady=nil;ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
 end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.

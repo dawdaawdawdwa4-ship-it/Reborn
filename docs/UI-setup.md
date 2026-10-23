@@ -3906,3 +3906,24 @@ matched from the Capture tab; 13 of 15 hits taken within 1 s of a swing.
   endpoint and by remote name, and no longer caches a miss.
 
 Report headers now read `Reborn mob-range-153`.
+
+## Probe from the far end · v154
+
+A v153 report: 1 packet accepted, 7 rejected with `{success=false}` and no
+reason, while the clicks themselves landed 13 times in 19 swings. The most
+likely reading: at the normal distance the packet duplicates a click that
+already landed, and the server drops the duplicate.
+
+- **Probe reversed.** When a packet becomes ready, the kept distance jumps to
+  9 studs, where a click cannot land, so an accepted packet is the only hit and
+  the character stays outside the slime's contact range. Two rejections in a
+  row step one stud closer, down to the normal distance. An accepted packet
+  holds the distance.
+- **Never switched off.** Rejections are only counted (with the last reason);
+  clicks continue regardless.
+- **Packet diagnostics.** Copy result gains "Learned packet": the remote
+  name, the envelope's keys with value types, the body's keys with short values
+  and how many request definitions the game exposes, so a per-swing field or a
+  missing definition can be seen from a report.
+
+Report headers now read `Reborn mob-probe-154`.

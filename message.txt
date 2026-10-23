@@ -1729,39 +1729,28 @@ function MobFarm.new(ctx)
         -- remembered by its stable definition) follows every click; otherwise it is the escalation
         -- after clicks produced no confirmed hit.
         if not self.UseLearnedHit and not self.LearnedHitRejected and target and ctx.LearnedHit and ctx.LearnedHitReady and ctx.LearnedHitReady() then
-            self.UseLearnedHit=true
+            -- Start the packet from the far end of its probe: out there a click cannot land, so an
+            -- accepted packet is the only hit and the character is outside the mob's contact range.
+            self.UseLearnedHit=true;self.PacketKeep=self.PacketReach;self.PacketMisses=0
         end
         if self.UseLearnedHit and target and ctx.LearnedHit then
             local sent,detail=ctx.LearnedHit(target.Model)
             local text=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
             if sent then
-                self.LearnedHits=(self.LearnedHits or 0)+1;self.PacketStreak=(self.PacketStreak or 0)+1
-                self.PacketAccepted=(self.PacketAccepted or 0)+1
-                -- Every third accepted packet from the current distance earns one more stud of range,
-                -- so the character ends up swinging from outside the mob's contact range.
-                local current=self.PacketKeep or self.Reach-.5
-                if self.PacketAccepted>=3 and current<(self.PacketLimit or self.PacketReach) then
-                    self.PacketKeep=math.min(self.PacketLimit or self.PacketReach,current+1);self.PacketAccepted=0
-                end
+                self.LearnedHits=(self.LearnedHits or 0)+1;self.PacketMisses=0
+                self.PacketAcceptedAt=self.PacketKeep
                 method=method.." + learned hit"
             else
+                -- At the normal distance a rejection usually means the click already landed and the
+                -- game's own client sent this hit (a duplicate), or the melee cooldown is running:
+                -- harmless, so the packet is never switched off. Beyond it, two rejections in a row
+                -- mean the server will not take a hit from that far: step one stud closer.
                 self.LearnedHitRejections=(self.LearnedHitRejections or 0)+1;self.LastRejection=text
-                self.PacketAccepted=0
-                local upper=string.upper(text)
-                -- "Too fast" means the game's own client already sent this hit (our click landed) or the
-                -- melee cooldown is running: harmless, keep the packet. Anything else at an extended
-                -- distance means the range probe went too far: step back one stud and cap it there.
-                local rate=upper:find("FAST",1,true) or upper:find("COOLDOWN",1,true) or upper:find("RATE",1,true)
-                if not rate and self.PacketKeep and self.PacketKeep>self.Reach-.5 then
-                    self.PacketLimit=self.PacketKeep-1;self.PacketKeep=math.max(self.Reach-.5,self.PacketKeep-1)
-                    self.PacketStreak=0
-                elseif rate then self.PacketStreak=0
-                else
-                    self.PacketStreak=math.min(0,(self.PacketStreak or 0))-1
-                    -- Six rejections in a row at the normal distance: the packet is wrong for this server.
-                    if self.PacketStreak<=-6 then self.UseLearnedHit=false;self.LearnedHitRejected=true end
+                self.PacketMisses=(self.PacketMisses or 0)+1
+                if self.PacketKeep and self.PacketKeep>self.Reach-.5 and self.PacketMisses>=2 then
+                    self.PacketKeep=math.max(self.Reach-.5,self.PacketKeep-1);self.PacketMisses=0
                 end
-                method=method.." + learned hit rejected ("..text..")"..(self.LearnedHitRejected and " · packet off" or "")
+                method=method.." + learned hit rejected ("..text..")"
             end
         end
         self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
@@ -1852,7 +1841,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketAccepted=0;self.PacketLimit=self.PacketReach;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
@@ -5364,7 +5353,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-range-153",
+    return table.concat({"Reborn mob-probe-154",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7426,7 +7415,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-range-153 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-probe-154 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7530,7 +7519,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-range-153 · Propeller tracker",
+    return table.concat({"Reborn mob-probe-154 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7566,7 +7555,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-range-153", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-probe-154", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10301,7 +10290,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-range-153\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-probe-154\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10363,7 +10352,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-range-153 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-probe-154 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10996,7 +10985,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-range-153\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-probe-154\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12114,7 +12103,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-range-153 · Craft diagnostics",
+    return table.concat({"Reborn mob-probe-154 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12193,7 +12182,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-range-153 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-probe-154 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12811,6 +12800,34 @@ function RemoteCatalog.MobHitSource()
     if RemoteCatalog.RememberedMobHitReady() then return "remembered" end
     return nil
 end
+-- Keys and short values of the learned hit packet, so a per-swing field (a nonce, an attack id)
+-- can be spotted from a report; the envelope's own values stay private.
+function RemoteCatalog.MobPacketText()
+    local recorder=RemoteCatalog.LiveRecorder("MobBinding")
+    local binding=recorder and recorder.MobBinding
+    if not binding or not binding.Args then return "none on this server" end
+    local ok,text=pcall(function()
+        local envelope=binding.Args[1]
+        local parts={}
+        for key,value in pairs(envelope) do
+            if key~=binding.BodyKey then table.insert(parts,tostring(key).."="..type(value)..(type(value)=="string" and ("["..#value.."]") or "")) end
+        end
+        table.sort(parts)
+        local body={}
+        local inner=envelope[binding.BodyKey]
+        if type(inner)=="table" then
+            for key,value in pairs(inner) do
+                if key=="hitUnit" then table.insert(body,"hitUnit="..(typeof(value)=="Instance" and value.Name or typeof(value)))
+                else table.insert(body,tostring(key).."="..tostring(value):sub(1,24)) end
+            end
+        end
+        table.sort(body)
+        local names={}
+        pcall(function() names=RemoteCatalog.RequestDefinitionNames() end)
+        return "remote "..tostring(binding.Remote and binding.Remote.Name).." · envelope {"..table.concat(parts,", ").."} · body "..tostring(binding.BodyKey).."={"..table.concat(body,", ").."} · definitions exposed: "..#names
+    end)
+    return ok and text or ("unreadable: "..tostring(text))
+end
 function RemoteCatalog.RememberedMobHitReady()
     local name=type(CONFIG.LearnedDefinitions)=="table" and CONFIG.LearnedDefinitions.MobBinding
     if type(name)~="string" or type(CONFIG.MobHitBody)~="table" then return false end
@@ -12924,7 +12941,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-range-153 · Mobs",
+    return table.concat({"Reborn mob-probe-154 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12938,8 +12955,9 @@ function RemoteCatalog.MobResultReport()
                 ..(CONFIG.MobHitBody and " · body remembered" or " · body not remembered")
                 ..(RemoteCatalog.MobAutoLearnToken and " · auto-learn armed" or "")
                 .." · packets sent this run: "..tostring(farm.LearnedHits or 0).." · rejected: "..tostring(farm.LearnedHitRejections or 0)..(farm.LastRejection and (" (last: "..tostring(farm.LastRejection)..")") or "")
-                ..(farm.PacketKeep and (" · packet range "..tostring(farm.PacketKeep).." studs") or "")
+                ..(farm.PacketKeep and (" · packet range "..tostring(farm.PacketKeep).." studs"..(farm.PacketAcceptedAt and (", accepted at "..tostring(farm.PacketAcceptedAt)) or "")) or "")
         end)(),
+        "Learned packet: "..RemoteCatalog.MobPacketText(),
         "Weapon release pending: "..tostring(farm.Press~=nil),
         "Learning: "..tostring(RemoteCatalog.Recorder~=nil and RemoteCatalog.Recorder.LearnMobOnly==true),
         "Weapon: "..(recorder and recorder.MobBinding.WeaponName or "not learned for this server"),

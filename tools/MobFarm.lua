@@ -151,39 +151,28 @@ function MobFarm.new(ctx)
         -- remembered by its stable definition) follows every click; otherwise it is the escalation
         -- after clicks produced no confirmed hit.
         if not self.UseLearnedHit and not self.LearnedHitRejected and target and ctx.LearnedHit and ctx.LearnedHitReady and ctx.LearnedHitReady() then
-            self.UseLearnedHit=true
+            -- Start the packet from the far end of its probe: out there a click cannot land, so an
+            -- accepted packet is the only hit and the character is outside the mob's contact range.
+            self.UseLearnedHit=true;self.PacketKeep=self.PacketReach;self.PacketMisses=0
         end
         if self.UseLearnedHit and target and ctx.LearnedHit then
             local sent,detail=ctx.LearnedHit(target.Model)
             local text=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
             if sent then
-                self.LearnedHits=(self.LearnedHits or 0)+1;self.PacketStreak=(self.PacketStreak or 0)+1
-                self.PacketAccepted=(self.PacketAccepted or 0)+1
-                -- Every third accepted packet from the current distance earns one more stud of range,
-                -- so the character ends up swinging from outside the mob's contact range.
-                local current=self.PacketKeep or self.Reach-.5
-                if self.PacketAccepted>=3 and current<(self.PacketLimit or self.PacketReach) then
-                    self.PacketKeep=math.min(self.PacketLimit or self.PacketReach,current+1);self.PacketAccepted=0
-                end
+                self.LearnedHits=(self.LearnedHits or 0)+1;self.PacketMisses=0
+                self.PacketAcceptedAt=self.PacketKeep
                 method=method.." + learned hit"
             else
+                -- At the normal distance a rejection usually means the click already landed and the
+                -- game's own client sent this hit (a duplicate), or the melee cooldown is running:
+                -- harmless, so the packet is never switched off. Beyond it, two rejections in a row
+                -- mean the server will not take a hit from that far: step one stud closer.
                 self.LearnedHitRejections=(self.LearnedHitRejections or 0)+1;self.LastRejection=text
-                self.PacketAccepted=0
-                local upper=string.upper(text)
-                -- "Too fast" means the game's own client already sent this hit (our click landed) or the
-                -- melee cooldown is running: harmless, keep the packet. Anything else at an extended
-                -- distance means the range probe went too far: step back one stud and cap it there.
-                local rate=upper:find("FAST",1,true) or upper:find("COOLDOWN",1,true) or upper:find("RATE",1,true)
-                if not rate and self.PacketKeep and self.PacketKeep>self.Reach-.5 then
-                    self.PacketLimit=self.PacketKeep-1;self.PacketKeep=math.max(self.Reach-.5,self.PacketKeep-1)
-                    self.PacketStreak=0
-                elseif rate then self.PacketStreak=0
-                else
-                    self.PacketStreak=math.min(0,(self.PacketStreak or 0))-1
-                    -- Six rejections in a row at the normal distance: the packet is wrong for this server.
-                    if self.PacketStreak<=-6 then self.UseLearnedHit=false;self.LearnedHitRejected=true end
+                self.PacketMisses=(self.PacketMisses or 0)+1
+                if self.PacketKeep and self.PacketKeep>self.Reach-.5 and self.PacketMisses>=2 then
+                    self.PacketKeep=math.max(self.Reach-.5,self.PacketKeep-1);self.PacketMisses=0
                 end
-                method=method.." + learned hit rejected ("..text..")"..(self.LearnedHitRejected and " · packet off" or "")
+                method=method.." + learned hit rejected ("..text..")"
             end
         end
         self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
@@ -274,7 +263,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketAccepted=0;self.PacketLimit=self.PacketReach;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
