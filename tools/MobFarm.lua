@@ -29,7 +29,8 @@ end
 function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
-        ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300}
+        ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.35,ResumeAbove=.5}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -55,11 +56,12 @@ function MobFarm.new(ctx)
         if ok then self.Chase={Humanoid=human,Root=root} end
         return ok
     end
-    -- Low health: step away from the closest slime instead of standing in its attacks.
-    local function retreat(human,root,threat)
+    -- Step away from a mob: low health, a mob standing on the character, or a stop that would
+    -- otherwise leave the character inside the mob's attacks.
+    local function retreat(human,root,threat,distance)
         local away=root.Position-threat.Position
         if away.Magnitude<.1 then return false end
-        local ok=pcall(function() human:MoveTo(root.Position+away.Unit*12) end)
+        local ok=pcall(function() human:MoveTo(root.Position+away.Unit*(distance or 12)) end)
         if ok then self.Chase={Humanoid=human,Root=root} end
         return ok
     end
@@ -117,10 +119,27 @@ function MobFarm.new(ctx)
         if not self.StartedAt then return 0 end
         return math.max(0,(self.EndedAt or now())-self.StartedAt)
     end
+    -- A live clip showed a stopped run leaving the character inside a slime until it died.
+    function self:SafetyStep()
+        if not self.Walk or not ctx.Player or not ctx.Navigation then return false end
+        local char=ctx.Player.Character
+        local human=char and char:FindFirstChildOfClass("Humanoid")
+        local root=char and char:FindFirstChild("HumanoidRootPart")
+        if not human or not root or human.Health<=0 then return false end
+        local ok,threat=pcall(function() return self:Scan(nil,10)[1] end)
+        if not ok or not threat then return false end
+        local stepped=retreat(human,root,threat.Root,12)
+        -- One MoveTo that finishes on its own; a stopped farm holds no movement state.
+        self.Chase=nil
+        return stepped
+    end
     function self:Stop(reason)
         if self.StartedAt and not self.EndedAt then self.EndedAt=now() end
         self.Enabled=false;self.Generation+=1;self.Target=nil
         halt()
+        if not (reason and string.find(reason,"another mode",1,true)) and self:SafetyStep() then
+            reason=(reason or "Stopped · movement and attacks cancelled").." · stepping away from the mob"
+        end
         local released=self:ReleaseSwing()
         publish(not released and "Weapon release failed · press STOP to retry" or reason or "Stopped · movement and attacks cancelled")
     end
@@ -154,7 +173,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.StartedAt=now();self.EndedAt=nil
         publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
         scheduler.spawn(function()
             local healthSeen=setmetatable({},{__mode="k"})
@@ -164,6 +183,7 @@ function MobFarm.new(ctx)
             local lastAttack=-math.huge
             local attempts=0
             local unconfirmed=0
+            local lastEat=-math.huge
             local progress={}
             local recovering=false
             local function active()
@@ -210,16 +230,26 @@ function MobFarm.new(ctx)
                         self:Stop("Character/session changed · learn one manual attack again");return
                     else
                         local fraction=human.MaxHealth>0 and human.Health/human.MaxHealth or 0
-                        recovering=fraction<=.25 or recovering and fraction<.45
+                        -- Food first: eating is quicker than walking away and keeps the run going.
+                        if self.AutoEat and ctx.Eat and fraction<=self.EatBelow and now()-lastEat>=4 then
+                            lastEat=now()
+                            publish("Eating · HP "..math.floor(fraction*100).."%")
+                            local ate,detail=ctx.Eat()
+                            self.LastEat=(ate and "ate " or "could not eat · ")..tostring(detail)
+                            if not active() then return end
+                            if ate then self.Meals=(self.Meals or 0)+1 end
+                            fraction=human.MaxHealth>0 and human.Health/human.MaxHealth or 0
+                        end
+                        recovering=fraction<=self.RetreatBelow or recovering and fraction<self.ResumeAbove
                         local paused=ctx.PauseReason()
                         if recovering or paused then
                             self.Target=nil
                             local threat=recovering and not paused and self.Walk and self:Scan()[1]
                             if threat and threat.Distance<12 and retreat(human,root,threat.Root) then
-                                publish("Retreating from "..threat.Model.Name.." · low health; resumes at 45% HP")
+                                publish("Retreating from "..threat.Model.Name.." · low health; resumes at "..math.floor(self.ResumeAbove*100).."% HP")
                             else
                                 halt()
-                                publish(recovering and "Paused · low health; resumes at 45% HP" or paused)
+                                publish(recovering and ("Paused · low health; resumes at "..math.floor(self.ResumeAbove*100).."% HP") or paused)
                             end
                         else
                             local targets=self:Scan(cooldowns)
@@ -249,13 +279,17 @@ function MobFarm.new(ctx)
                                     local until_=cooldowns[entry.Model]
                                     if until_ and until_>now() then cooling+=1;soonest=math.min(soonest or until_,until_) end
                                 end
-                                if cooling>0 then publish("Waiting · "..cooling.." "..label.." cooling down after no HP drop · retry in "..math.max(1,math.ceil(soonest-now())).."s")
+                                if cooling>0 then
+                                    -- Do not stand inside a mob while waiting on it.
+                                    local close=self.Walk and self:Scan(nil,self.Standoff*2)[1]
+                                    if close then retreat(human,root,close.Root,8) end
+                                    publish("Waiting · "..cooling.." "..label.." cooling down after no HP drop · retry in "..math.max(1,math.ceil(soonest-now())).."s")
                                 else publish("Waiting · no living "..label.." within "..(self.Walk and math.max(self.Radius,self.SeekRange) or self.Radius).." studs; scanning continues") end
                             else
                                 if self.Target~=chosen.Model then attempts=0;progress={} end
                                 self.Target=chosen.Model;observe(self.Target)
                                 local function valid()
-                                    if not active() or ctx.Player.Character~=char or human.Health<=human.MaxHealth*.25 or ctx.PauseReason() then return false end
+                                    if not active() or ctx.Player.Character~=char or human.Health<=human.MaxHealth*self.RetreatBelow or ctx.PauseReason() then return false end
                                     if char:FindFirstChild("HumanoidRootPart")~=root or char:FindFirstChildOfClass("Humanoid")~=human then return false end
                                     local h,p=MobFarm.Details(chosen.Model,MobFarm.Roots(ctx.World),ctx.Players,self.Kind)
                                     return h==chosen.Humanoid and p==chosen.Root and h.Health>0
@@ -316,6 +350,10 @@ function MobFarm.new(ctx)
                                     if tool.Enabled==false then publish("Waiting · weapon cooldown")
                                     elseif valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
                                         if ctx.ClearLine(root,chosen.Root,char,chosen.Model) then
+                                            -- A mob on top of the character hits constantly; swing from the edge of reach.
+                                            if self.Walk and (chosen.Root.Position-root.Position).Magnitude<self.Standoff then
+                                                retreat(human,root,chosen.Root,self.Reach-1)
+                                            end
                                             -- Native melee hits what the character faces, not what the hub selected.
                                             if ctx.Face then pcall(ctx.Face,root,chosen.Root) end
                                             lastAttack=now()

@@ -133,14 +133,16 @@ reset();ar.Position=v(30);farm.Walk=false;farm:Start();step(2);assert(walks==0 a
 reset();human.Health=25;farm:Start();assert(sent==0 and farm.Enabled)
 assert(moves==1 and root.Position.X<0 and farm.Message:find('Retreating',1,true),'low health must step away from the nearest slime')
 human.Health=40;step(1);assert(sent==0,'health recovery must use hysteresis')
-human.Health=45;for i=1,4 do step() end;assert(sent==1,'farming must resume after recovery')
+human.Health=45;step();assert(sent==0,'45% is still below the 50% resume point')
+human.Health=50;for i=1,4 do step() end;assert(sent==1,'farming must resume after recovery')
 reset();farm.Walk=false;human.Health=25;farm:Start()
 assert(moves==0 and farm.Message:find('low health',1,true),'Auto Move OFF must never retreat on its own')
 reset();pause='typing';farm:Start();step(2);assert(sent==0 and walks==0 and farm.Enabled);pause=nil;step();assert(sent==1)
 reset();equipHook=function() farm:Stop();scheduler.wait(.1) end;farm:Start()
 assert(not farm:Start() and farm.Worker,'restart must wait for old yielding equip cleanup')
 step();assert(sent==0 and not farm.Worker,'Stop during equip must prevent a late attack')
-equipHook=nil;assert(farm:Start());assert(sent==1,'fresh restart must create one worker')
+assert(root.Position.X<=-8,'a stop must step the character away from the adjacent slime')
+equipHook=nil;root.Position=v(0);assert(farm:Start());assert(sent==1,'fresh restart must create one worker')
 reset();equipHook=function() ar.Position=v(80) end;farm:Start();assert(sent==0,'target moving outside radius during equip must not be attacked')
 reset();walkHook=function(active) farm:Stop();assert(not active());scheduler.wait(.1);return true end
 ar.Position=v(30);farm.ChaseRange=0;farm:Start();step();assert(sent==0 and not farm.Worker,'Stop mid-walk must invalidate follow-up attacks')
@@ -164,7 +166,7 @@ reset();ar.Position=v(15);farm:Start()
 assert(walks==0 and moves==1 and sent==0 and farm.Message:find('Chasing',1,true),'nearby visible slimes must be chased directly without pathfinding')
 step();assert(sent==1 and farm.Target==a and walks==0,'a chased slime must be attacked once in reach')
 reset();ar.Position=v(15);farm:Start();farm:Stop()
-assert(moves==2 and not farm.Chase,'Stop must clear the direct chase destination')
+assert(moves==3 and not farm.Chase and root.Position.X<=0,'Stop must clear the direct chase destination and step away from the adjacent slime')
 reset();stuck=true;ar.Position=v(15);br.Position=v(40);farm:Start()
 local stalled=false
 for i=1,20 do step();if farm.Message:find('Chase stalled',1,true) then stalled=true;break end end
@@ -256,6 +258,25 @@ end
 do
  reset();damage=false;br.Position=v(300);farm:Start();for i=1,3 do step(.7) end
  step(.7);assert(farm.Message:find('cooling down after no HP drop',1,true) and farm.Message:find('retry in',1,true),'cooldown must be explained instead of "no living slimes"')
+end
+-- Food below 50% HP, before any retreat; the eat hook is rate limited and counted.
+do
+ reset();local meals=0
+ ctx.Eat=function() meals+=1;human.Health=90;return true,'potatoSalad · HP 90/100' end
+ human.Health=45;farm:Start()
+ assert(meals==1 and farm.Meals==1 and farm.LastEat:find('ate potatoSalad',1,true) and sent==1,'low HP must eat first, then attack once healed')
+ human.Health=45;step(.7);assert(meals==1,'eating is rate limited to one meal per 4 seconds')
+ step(4);assert(meals==2,'the next meal follows after the limit')
+ farm.AutoEat=false;human.Health=45;step(4);assert(meals==2,'AUTO EAT OFF never eats')
+ ctx.Eat=function() meals+=1;return false,'no food in the inventory' end
+ farm.AutoEat=true;human.Health=20;step(4);assert(meals==3 and farm.LastEat:find('could not eat',1,true) and farm.Message:find('low health',1,true) or farm.Message:find('Retreating',1,true),'without food the low-health retreat still applies')
+ ctx.Eat=nil
+end
+-- A mob standing on the character is attacked from the edge of reach, not from inside it.
+do
+ reset();ar.Position=v(1);farm:Start()
+ assert(sent==1 and moves>=1 and root.Position.X<=-3,'a mob within the standoff distance must be stepped away from before the swing')
+ reset();farm.Walk=false;ar.Position=v(1);farm:Start();assert(sent==1 and moves==0,'Auto Move OFF never steps')
 end
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'

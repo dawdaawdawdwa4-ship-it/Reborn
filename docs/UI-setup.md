@@ -3596,3 +3596,30 @@ From the user's continuous-collect patch (an extract of this hub's chest section
   for a refill (v132).
 
 Report headers now read `Reborn chest-empty-137`.
+
+
+## Mobs: staying alive · v138
+
+A clip showed the character standing inside a slime, nearly dead, after the run
+had stopped on "No HP drop after 12 swings". Four changes keep the character out
+of the mob's attacks:
+
+- **Standoff.** With Auto Move on, a target closer than 2.5 studs is stepped away
+  from (to about reach − 1) before the swing, so attacks come from the edge of
+  the 6-stud reach instead of from inside the mob. Auto Move OFF never moves.
+- **Safety step.** Any stop except a mode handover (Stop button, F3/F4, no-damage
+  budget, errors) first steps 12 studs away from a matching mob within 10 studs;
+  the status says "stepping away from the mob". While a target is only cooling
+  down, a mob within 5 studs is stepped away from too.
+- **Auto eat** (Mobs → Setup, default ON, saved with preferences and profiles).
+  At or below 50% HP the farm eats one prepared food from the inventory (names
+  with salad, bread, cooked, roast, fried, grilled, pie, soup, stew, cake, cookie,
+  juice, sushi, sandwich, steak, meal or food; never bait, seeds or raw crops)
+  through the game's `CLIENT_EAT_FOOD` request that Auto Bait already uses:
+  equip the food, send, confirm by HP rising or the stack shrinking within 1.5 s,
+  re-equip the weapon. At most one meal per 4 seconds. Copy result shows the food
+  that would be eaten, meals this run and the last result.
+- **Earlier retreat.** The low-health retreat now starts at 35% HP (was 25%) and
+  farming resumes at 50% (was 45%).
+
+Report headers now read `Reborn mob-alive-138`.
