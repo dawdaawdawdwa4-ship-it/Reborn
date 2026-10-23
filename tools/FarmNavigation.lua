@@ -76,7 +76,7 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode,owner)
                     -- A server position reset would otherwise hop forever.
                     if os.clock()>hopDeadline then return false end
                     root.AssemblyLinearVelocity=Vector3.zero
-                    root.CFrame=root.CFrame+offset.Unit*math.min(8,offset.Magnitude)
+                    root.CFrame=root.CFrame+offset.Unit*math.min(Navigation.HopSize or 8,offset.Magnitude)
                     task.wait(.1)
                 end
                 if not valid() then return false end

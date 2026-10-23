@@ -36,7 +36,10 @@ local blocks=node('Blocks','Folder',{stone,wheat,young,tree,farTree,carrot,node(
 local owned=node('7-island','Model',{blocks})
 local other=node('8-island','Model',{node('Blocks','Folder',{node('stone','Part',nil,vec(1,0,0)),node('wheat','Model',nil,vec(1,0,0))})})
 local publicTree=node('treePalm','Model',nil,vec(25,0,0))
-local workspace=node('Workspace','Workspace',{node('Islands','Folder',{owned,other}),node('spawnPrefabs','Folder',{node('Forest','Folder',{publicTree})})})
+local decoyStone=node('stone','Part',nil,vec(2,0,0))
+local distant=node('9-island','Model',{node('Blocks','Folder',{decoyStone})})
+distant.GetBoundingBox=function() return {PointToObjectSpace=function(_,p) return vec(p.X-1000,p.Y,p.Z) end},vec(20,20,20) end
+local workspace=node('Workspace','Workspace',{node('Islands','Folder',{owned,other,distant}),node('spawnPrefabs','Folder',{node('Forest','Folder',{publicTree})})})
 local player={UserId=7,Character=node('Character','Model',{node('HumanoidRootPart','Part')})}
 local RemoteCatalog={}
 local CONFIG={HarvestCrop='wheat',WoodRange=30,MineRange=90,CropRange=15}
@@ -49,6 +52,7 @@ assert(FarmLogic.Category('saplingOrange')==nil and FarmLogic.Category('berryHar
 assert(FarmLogic.Category('grass')==nil and FarmLogic.Category('treeOak')=='wood')
 assert(getPlayerIsland()==owned,'must select owned island')
 local targets=getMineTargets()
+for _,item in ipairs(targets) do assert(item.instance~=decoyStone,'islands whose bounds are beyond resource range must not be scanned') end
 assert(#targets==5,'must skip immature/unselected crops, saplings, unrelated blocks, foreign crops and trees outside wood range')
 assert(targets[2].instance==wheat and targets[3].instance==stone and targets[4].instance==tree,'targets must be nearest first')
 FarmState.Cooldowns[wheat]=os.clock()+10

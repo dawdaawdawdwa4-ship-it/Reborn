@@ -1,12 +1,17 @@
 import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const source=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
+// The Luau heap is fixed-size; compile without indentation or comment-only lines (line numbers kept).
+const compiled=source.split('\n').map(line=>{const text=line.trimStart();return text.startsWith('--')?'':text;}).join('\n');
 const schema=JSON.parse(fs.readFileSync(new URL('roblox-api.json',import.meta.url),'utf8'));
 const lit=v=>typeof v==='string'?JSON.stringify(v):'{'+Object.entries(v).map(([k,x])=>'['+JSON.stringify(k)+']='+lit(x)).join(',')+'}';
 const used=new Set(schema.Classes.filter(c=>source.includes('"'+c.Name+'"')||source.includes("'"+c.Name+"'")).map(c=>c.Name));
 for(let changed=true;changed;){changed=false;for(const c of schema.Classes)if(used.has(c.Name)&&!used.has(c.Superclass)){used.add(c.Superclass);changed=true;}}
 const classes=Object.fromEntries(schema.Classes.filter(c=>used.has(c.Name)).map(c=>[c.Name,{super:c.Superclass,members:Object.fromEntries(c.Members.map(m=>[m.Name,m.MemberType]))}]));
-const enums=Object.fromEntries(schema.Enums.map(e=>[e.Name,Object.fromEntries(e.Items.map(i=>[i.Name,{Name:i.Name}]))]));
+// The fixed-size Luau heap cannot hold every Roblox enum next to the full hub; keep the ones referenced.
+const enumText=source+fs.readFileSync(new URL('roblox-mock.luau',import.meta.url),'utf8')+fs.readFileSync(new URL(import.meta.url),'utf8');
+const usedEnums=new Set([...enumText.matchAll(/Enum\.(\w+)/g)].map(m=>m[1]));
+const enums=Object.fromEntries(schema.Enums.filter(e=>usedEnums.has(e.Name)).map(e=>[e.Name,Object.fromEntries(e.Items.map(i=>[i.Name,{Name:i.Name}]))]));
 const setup='local API_CLASSES='+lit(classes)+'\nlocal Enum='+lit(enums)+'\n'+fs.readFileSync(new URL('roblox-mock.luau',import.meta.url),'utf8')+`
 local time=os.clock
 function services.GuiService:GetGuiInset() return Vector2.zero,Vector2.zero end
@@ -432,6 +437,11 @@ assert(not enabled and not woodEnabled and not harvestEnabled,'choosing a travel
 for _,option in ipairs(harvestPage:GetChildren()) do if option.Text=='TP hops' then option.Activated:Fire() end end
 assert(CONFIG.FarmTravelMode=='Hop' and string.find(RemoteCatalog.TravelSelectors[1].Text,'TP hops',1,true),'Harvest must offer TP hops and store it as the Hop navigation mode')
 for _,option in ipairs(harvestPage:GetChildren()) do if option.Text=='Walk' then option.Activated:Fire() end end
+assert(CONFIG.HopSize==8 and RemoteCatalog.Navigation.HopSize==8 and RemoteCatalog.Mobs.HopDistance==8,'hop size must default to 8 studs everywhere')
+RemoteCatalog.HopSizeButton.Activated:Fire()
+assert(CONFIG.HopSize==12 and RemoteCatalog.Navigation.HopSize==12 and RemoteCatalog.Mobs.HopDistance==12 and string.find(RemoteCatalog.HopSizeButton.Text,'12 studs',1,true),'one hop size must drive navigation and mob hops')
+RemoteCatalog.HopSizeButton.Activated:Fire();assert(CONFIG.HopSize==4,'hop size must cycle back to the shortest step')
+RemoteCatalog.HopSizeButton.Activated:Fire();RemoteCatalog.HopSizeButton.Activated:Fire();assert(CONFIG.HopSize==8)
 for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Normal' then option.Activated:Fire() end end
 assert(CONFIG.WoodTravelMode=='Normal' and CONFIG.FarmTravelMode=='Walk','Normal must be selectable for wood without changing crop travel')
 
@@ -1013,7 +1023,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn farm-hops-117',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn hop-size-118',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1753,7 +1763,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn farm-hops-117 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn hop-size-118 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2581,6 +2591,6 @@ assert(#connections==0,'cleanup must disconnect tracked listeners')
 return 'Full application startup, real switch handlers/workers and cleanup passed without recorder or learned IDs'
 `;
 const state=await LuauState.createAsync();
-try {console.log(await state.loadstring(setup+'\nlocal function runApplication()\n'+source+'\n'+checks+'\nend\nreturn runApplication()','full-startup',true)());}
+try {console.log(await state.loadstring(setup+'\nlocal function runApplication()\n'+compiled+'\n'+checks+'\nend\nreturn runApplication()','full-startup',true)());}
 catch(e) {console.error(String(e));process.exitCode=1;}
 finally {state.destroy();}

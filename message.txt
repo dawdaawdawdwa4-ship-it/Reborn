@@ -3886,6 +3886,7 @@ local CONFIG = {
 	ToggleKey = Enum.KeyCode.F6,          -- fishing ON/OFF
 	HarvestKey = Enum.KeyCode.F7,         -- mine / harvest ON/OFF
 	MobKey = Enum.KeyCode.F4,             -- Auto Mobs ON/OFF
+	HopSize = 8,                          -- studs per TP hop (mobs, chests, harvest, wood)
 	RequireTool = true,                   -- only cast while a Tool (rod) is equipped
 	CastTimeout = 2.0,                  -- typical bobber response is quick; allow a small network margin
 	CastHold = 0.35,
@@ -3935,7 +3936,7 @@ local function savePreferences()
         WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
-        MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel,
+        MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, HopSize = CONFIG.HopSize,
     }
     local ok = pcall(function() writefile(SETTINGS_FILE, HttpService:JSONEncode(data)) end)
     return ok
@@ -3963,6 +3964,7 @@ local function loadPreferences()
     if type(data.PlantDelay) == "number" then CONFIG.PlantDelay = math.clamp(data.PlantDelay, 0.08, 1) end
     if data.MobRadius==30 or data.MobRadius==60 or data.MobRadius==120 or data.MobRadius==200 then CONFIG.MobRadius=data.MobRadius end
     if type(data.MobWalk)=="boolean" then CONFIG.MobWalk=data.MobWalk end
+    if data.HopSize==4 or data.HopSize==6 or data.HopSize==8 or data.HopSize==12 then CONFIG.HopSize=data.HopSize end
     if data.MobTravel=="Walk" or data.MobTravel=="Teleport" then CONFIG.MobTravel=data.MobTravel end
     if type(data.WoodToolPreference) == "string" then woodToolPreference = data.WoodToolPreference == "Wood axe" and "Wooden axe" or data.WoodToolPreference end
     if type(data.MineToolPreference) == "string" then mineToolPreference = data.MineToolPreference == "Wood pickaxe" and "Wooden pickaxe" or data.MineToolPreference end
@@ -4859,7 +4861,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn farm-hops-117",
+    return table.concat({"Reborn hop-size-118",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6821,7 +6823,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn farm-hops-117 · Propeller loot history (UTC)",
+    return table.concat({"Reborn hop-size-118 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6925,7 +6927,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn farm-hops-117 · Propeller tracker",
+    return table.concat({"Reborn hop-size-118 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6961,7 +6963,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn farm-hops-117", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn hop-size-118", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -7713,9 +7715,30 @@ local function getMineTargets()
     if woodEnabled or mineEnabled then scanResources(prefabs, 5) end
     local owned = getPlayerIsland()
     local islands = workspace:FindFirstChild("Islands")
+    -- Scanning every block of every island 5x a second lags busy servers. Skip islands whose
+    -- bounds (cached 5s) are beyond the resource range; unknown bounds are still scanned.
+    FarmState.IslandBounds = FarmState.IslandBounds or setmetatable({}, { __mode = "k" })
+    local resourceRange = woodEnabled and CONFIG.WoodRange or CONFIG.MineRange
+    local function islandInRange(island)
+        local entry = FarmState.IslandBounds[island]
+        if not entry or os.clock() - entry.At > 5 then
+            local ok, frame, size = pcall(function() return island:GetBoundingBox() end)
+            entry = { At = os.clock(), Frame = ok and frame or nil, Size = ok and size or nil }
+            FarmState.IslandBounds[island] = entry
+        end
+        if not entry.Frame or not entry.Size then return true end
+        local ok, near = pcall(function()
+            local point = entry.Frame:PointToObjectSpace(hrp.Position)
+            local dx = math.max(math.abs(point.X) - entry.Size.X / 2, 0)
+            local dy = math.max(math.abs(point.Y) - entry.Size.Y / 2, 0)
+            local dz = math.max(math.abs(point.Z) - entry.Size.Z / 2, 0)
+            return math.sqrt(dx * dx + dy * dy + dz * dz) <= resourceRange
+        end)
+        return not ok or near
+    end
     if islands then
         for _, island in ipairs(islands:GetChildren()) do
-            if island == owned or woodEnabled or mineEnabled then
+            if island == owned or (woodEnabled or mineEnabled) and islandInRange(island) then
                 scan(island:FindFirstChild("Blocks"), island == owned)
                 scan(island:FindFirstChild("Prefabs"), island == owned)
             end
@@ -7852,7 +7875,7 @@ function Navigation.Approach(player,target,reach,active,positionOf,mode,owner)
                     -- A server position reset would otherwise hop forever.
                     if os.clock()>hopDeadline then return false end
                     root.AssemblyLinearVelocity=Vector3.zero
-                    root.CFrame=root.CFrame+offset.Unit*math.min(8,offset.Magnitude)
+                    root.CFrame=root.CFrame+offset.Unit*math.min(Navigation.HopSize or 8,offset.Magnitude)
                     task.wait(.1)
                 end
                 if not valid() then return false end
@@ -7897,6 +7920,7 @@ end
 return Navigation
 end)()
 -- FARM NAVIGATION END
+RemoteCatalog.Navigation.HopSize=CONFIG.HopSize
 
 function RemoteCatalog.BuildTravelBlocked()
     if RemoteCatalog.Mobs and RemoteCatalog.Mobs.Enabled then return "Stop Auto Mobs before Auto Walk." end
@@ -9318,7 +9342,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn farm-hops-117\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn hop-size-118\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9380,7 +9404,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn farm-hops-117 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn hop-size-118 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9979,7 +10003,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn farm-hops-117\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn hop-size-118\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11097,7 +11121,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn farm-hops-117 · Craft diagnostics",
+    return table.concat({"Reborn hop-size-118 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11176,7 +11200,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn farm-hops-117 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn hop-size-118 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11753,7 +11777,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn farm-hops-117 · Mobs",
+    return table.concat({"Reborn hop-size-118 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -11851,6 +11875,7 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
 RemoteCatalog.Mobs.Radius=CONFIG.MobRadius or RemoteCatalog.Mobs.Radius
 if CONFIG.MobWalk~=nil then RemoteCatalog.Mobs.Walk=CONFIG.MobWalk end
 RemoteCatalog.Mobs.Travel=CONFIG.MobTravel or RemoteCatalog.Mobs.Travel
+RemoteCatalog.Mobs.HopDistance=CONFIG.HopSize or RemoteCatalog.Mobs.HopDistance
 function RemoteCatalog.SaveMobPreferences()
     local farm=RemoteCatalog.Mobs
     CONFIG.MobRadius,CONFIG.MobWalk,CONFIG.MobTravel=farm.Radius,farm.Walk,farm.Travel
@@ -11882,7 +11907,7 @@ do
     RemoteCatalog.MobRadius=button({Parent=setup,Text="Search radius: 60 studs  ▾",TextSize=13,Size=UDim2.new(1,-20,0,34),Position=UDim2.fromOffset(10,78)})
     RemoteCatalog.MobWalk=button({Parent=setup,Switch=true,Text="AUTO MOVE: WALK",TextSize=13,Size=UDim2.new(.6,-16,0,36),Position=UDim2.fromOffset(10,120)})
     RemoteCatalog.MobCopy=button({Parent=setup,Text="Copy result",TextSize=13,Size=UDim2.new(.4,-16,0,36),Position=UDim2.new(.6,6,0,120)})
-    local hint=label({Parent=setup,Text="Learn once → Start (F4 toggles). Auto Move: Walk → TP hops (8 studs) → Off.",TextSize=12,Color=COLORS.muted,
+    local hint=label({Parent=setup,Text="Learn once → Start (F4 toggles). Auto Move: Walk → TP hops → Off (hop size in Settings).",TextSize=12,Color=COLORS.muted,
         Size=UDim2.new(1,-20,0,28),Position=UDim2.fromOffset(10,162)})
     local function layout()
         local menu=RemoteCatalog.MobRadiusMenu and RemoteCatalog.MobRadiusMenu.Menu
@@ -12060,7 +12085,18 @@ do
     RemoteCatalog.SettingsAdvancedBody.Visible=false;RemoteCatalog.SettingsAdvancedBody.Parent=RemoteCatalog.SettingsAdvancedCard
     place(delayButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(.5,-16,0,36),UDim2.fromOffset(10,0))
     place(scanButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(.5,-16,0,36),UDim2.new(.5,6,0,0))
-    place(saveButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(1,-20,0,36),UDim2.fromOffset(10,44))
+    place(saveButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(.5,-16,0,36),UDim2.fromOffset(10,44))
+    -- One hop size for every TP hops mode; shorter hops help if the server resets long ones.
+    RemoteCatalog.HopSizeButton=button({Parent=RemoteCatalog.SettingsAdvancedBody,Text="TP hop size: "..CONFIG.HopSize.." studs  ↻",TextSize=12,
+        Size=UDim2.new(.5,-16,0,36),Position=UDim2.new(.5,6,0,44)})
+    track(RemoteCatalog.HopSizeButton.Activated:Connect(function()
+        local sizes={4,6,8,12}
+        CONFIG.HopSize=sizes[(table.find(sizes,CONFIG.HopSize) or 3)%#sizes+1]
+        RemoteCatalog.Navigation.HopSize=CONFIG.HopSize
+        if RemoteCatalog.Mobs then RemoteCatalog.Mobs.HopDistance=CONFIG.HopSize end
+        RemoteCatalog.HopSizeButton.Text="TP hop size: "..CONFIG.HopSize.." studs  ↻"
+        savePreferences()
+    end))
     place(settingsText,RemoteCatalog.SettingsAdvancedBody,UDim2.new(1,-20,0,100),UDim2.fromOffset(10,90))
     settingsText.TextTruncate=Enum.TextTruncate.None
     for _,control in ipairs({reset,layoutBtn,plantBtn,smallerUI,largerUI,resetUI,delayButton,scanButton,saveButton}) do

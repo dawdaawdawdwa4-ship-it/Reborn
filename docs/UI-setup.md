@@ -3195,3 +3195,19 @@ resets the position. Reach checks, Stop, nearest-next routing and the saved
 preference work as for the other modes.
 
 Report headers now read `Reborn farm-hops-117`.
+
+
+## Shared TP hop size and lighter resource scans · v118
+
+- **Settings → Advanced → TP hop size** cycles 4 / 6 / 8 / 12 studs (default 8)
+  and drives every TP hops mode: mobs, chests, Harvest and Wood Farm. Shorter hops
+  help if the server resets long ones. The value is saved with preferences.
+- **Lighter Wood/Mine scans.** Other players' islands whose bounding box (cached
+  for 5 seconds) lies beyond the Wood or Mine range are no longer scanned block by
+  block on every pass. Your own island and islands with unknown bounds are always
+  scanned.
+- Tests: `full-startup.mjs` compiles the hub without indentation and comment-only
+  lines (line numbers kept) and loads only referenced enums, so the fixed-size
+  Luau test heap fits the full hub.
+
+Report headers now read `Reborn hop-size-118`.
