@@ -1035,7 +1035,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn remember-119',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn no-learn-120',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1775,7 +1775,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn remember-119 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn no-learn-120 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2502,6 +2502,15 @@ end)()
   UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.F4},false);assert(starts==1 and stops==0,'F4 must start Auto Mobs')
   r.Mobs.Enabled=true;UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.F4},false);assert(stops==1,'F4 must stop a running mob farm')
   r.Mobs.Enabled=false;r.Mobs.Start,r.Mobs.Stop=start,stop
+ end
+ do
+  local stops=0
+  local stopAll=r.StopAllAutomation
+  r.StopAllAutomation=function() stops+=1 end
+  UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.F3},true);assert(stops==0,'F3 typed into chat must not stop automation')
+  UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.F3},false);assert(stops==1,'F3 must run Stop All')
+  r.StopAllAutomation=stopAll
+  assert(type(r.GameRequestHealth())=='string','game request health must always describe its state')
  end
  r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk and r.MobWalk.Text=='AUTO MOVE: OFF');r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Walk')
  local weapon={Name='ironWarAxe'}

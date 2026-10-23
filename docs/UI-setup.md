@@ -3237,3 +3237,36 @@ definitions needs those names from a live report first, because their bodies and
 envelopes cannot be confirmed offline.
 
 Report headers now read `Reborn remember-119`.
+
+
+## Chests and hoe without learning, setup ideas from Insane_version_clean · v120
+
+The user's earlier hub (`Insane_version_clean.lua`) was reviewed for setup and
+ideas; our own remotes, learning and confirmation logic are kept as they are.
+
+- **Remembered chests.** Learned withdrawals are saved (`RememberedChests`, up to
+  64) as chest name, position relative to the owned island's pivot (0.1 stud),
+  slot, item and amount. On another server the same chests are found again by
+  name and island offset (within 1 stud), including whole-chest discovery, and
+  withdrawals are sent through the game's stable `CLIENT_CHEST_TRANSACTION`
+  request with the learned body shape `{chest, slot, item, amount,
+  action="withdraw"}`. Live learned bindings for the same chest/slot still win.
+  Every run keeps confirming items by inventory gain, so a request the server
+  does not accept stops the run instead of repeating.
+- **Hoe without learning.** When no learned hoe request exists, Auto/Captured
+  plowing uses the stable `CLIENT_PLOW_BLOCK_REQUEST` with `{block}` (result shows
+  "Game hoe request"); soil confirmation is unchanged. Input mode is unchanged.
+- **F3** runs Stop All Automation (panic), ignored while typing.
+- **Load wait.** The hub waits for `game.Loaded` before resolving anything, for
+  autoexec injection.
+- **Game request health.** Copy session report lists which stable game requests
+  are available (chests, hoe, bait, harvest, wood/mining, build/replant, hotbar)
+  and which features therefore fall back to learning or input.
+
+Not adopted: vending/ATM/sniper, block nuke, visitor watch and auto-panic on join
+(they affect other players or evade detection). Ideas kept for later: rebindable
+keys, openers (cauldrons/treasure chests/eggs), Find In Chests, auto-deposit when
+the inventory is full, per-mob kill report, performance mode, totem upgrades
+(remote unverified) and the direct fishing protocol (comment-only in that file).
+
+Report headers now read `Reborn no-learn-120`.

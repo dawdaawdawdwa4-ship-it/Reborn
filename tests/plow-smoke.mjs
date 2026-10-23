@@ -245,6 +245,18 @@ do
 end
 reset();hook=function(dt) if dt==.06 then gui.Parent=nil end end
 assert(RemoteCatalog.SetPlowEnabled(true));drain();assert(events[#events]=='up' and not RemoteCatalog.PlowWorker,'destroyed GUI must release held input')
+do
+ reset();RemoteCatalog.LiveRecorder=function() return nil end
+ local sentBody
+ RemoteCatalog.GameEndpoint=function(name) assert(name=='CLIENT_PLOW_BLOCK_REQUEST');return {CallServer=function(_,body) sentBody=body;return true end} end
+ RemoteCatalog.SendEndpoint=function(endpoint,body) return endpoint:CallServer(body)~=false,nil end
+ local native=RemoteCatalog.PlowRecorder()
+ assert(native and native.NativePlow and native:CanUsePlowBinding(),'without a learned hoe request the stable game plow request must be used')
+ local grass={Name='grass'}
+ assert(native:Plow(grass) and sentBody.block==grass,'native plow must send the block body')
+ RemoteCatalog.GameEndpoint=nil;RemoteCatalog.NativePlowRecorder=nil;RemoteCatalog.LiveRecorder=nil
+ assert(RemoteCatalog.PlowRecorder()==nil)
+end
 return 'Auto Plow: owned surface scan, cap, hoe selection, native input guards, observed soil confirmation, continuous rescan/cooldown, queued restart, Stop/error release and tool/character cleanup passed'
 `;
 const state=await LuauState.createAsync();

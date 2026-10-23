@@ -15,6 +15,9 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- Injected early (autoexec), the game's remotes and request modules may not exist yet.
+pcall(function() if not game:IsLoaded() then game.Loaded:Wait() end end)
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -3925,6 +3928,7 @@ local CONFIG = {
 	ToggleKey = Enum.KeyCode.F6,          -- fishing ON/OFF
 	HarvestKey = Enum.KeyCode.F7,         -- mine / harvest ON/OFF
 	MobKey = Enum.KeyCode.F4,             -- Auto Mobs ON/OFF
+	StopAllKey = Enum.KeyCode.F3,         -- Stop all automation (panic)
 	HopSize = 8,                          -- studs per TP hop (mobs, chests, harvest, wood)
 	RequireTool = true,                   -- only cast while a Tool (rod) is equipped
 	CastTimeout = 2.0,                  -- typical bobber response is quick; allow a small network margin
@@ -3976,7 +3980,7 @@ local function savePreferences()
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
         MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, HopSize = CONFIG.HopSize,
-        MobWeapon = CONFIG.MobWeapon, LearnedDefinitions = CONFIG.LearnedDefinitions,
+        MobWeapon = CONFIG.MobWeapon, LearnedDefinitions = CONFIG.LearnedDefinitions, RememberedChests = CONFIG.RememberedChests,
     }
     local ok = pcall(function() writefile(SETTINGS_FILE, HttpService:JSONEncode(data)) end)
     return ok
@@ -4006,6 +4010,17 @@ local function loadPreferences()
     if type(data.MobWalk)=="boolean" then CONFIG.MobWalk=data.MobWalk end
     if data.HopSize==4 or data.HopSize==6 or data.HopSize==8 or data.HopSize==12 then CONFIG.HopSize=data.HopSize end
     if type(data.MobWeapon)=="string" and #data.MobWeapon>0 and #data.MobWeapon<=60 then CONFIG.MobWeapon=data.MobWeapon end
+    if type(data.RememberedChests)=="table" then
+        CONFIG.RememberedChests={}
+        for _,entry in ipairs(data.RememberedChests) do
+            if type(entry)=="table" and type(entry.Name)=="string" and #entry.Name<=80 and type(entry.Item)=="string" and #entry.Item<=128
+                and type(entry.X)=="number" and type(entry.Y)=="number" and type(entry.Z)=="number"
+                and type(entry.Slot)=="number" and entry.Slot>=0 and entry.Slot<=12 and entry.Slot%1==0
+                and type(entry.Amount)=="number" and entry.Amount>0 and entry.Amount%1==0 and #CONFIG.RememberedChests<64 then
+                table.insert(CONFIG.RememberedChests,{Name=entry.Name,X=entry.X,Y=entry.Y,Z=entry.Z,Slot=entry.Slot,Item=entry.Item,Amount=entry.Amount})
+            end
+        end
+    end
     if type(data.LearnedDefinitions)=="table" then
         CONFIG.LearnedDefinitions={}
         for kind,name in pairs(data.LearnedDefinitions) do
@@ -4908,7 +4923,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn remember-119",
+    return table.concat({"Reborn no-learn-120",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6609,6 +6624,14 @@ function RemoteCatalog.RememberDefinitions()
             if name and CONFIG.LearnedDefinitions[kind]~=name then CONFIG.LearnedDefinitions[kind]=name;changed=true end
         end
     end
+    local live=recorder.GetChestBindings and recorder:GetChestBindings() or {}
+    if #live>0 and RemoteCatalog.SnapshotChestMemory then
+        local snapshot=RemoteCatalog.SnapshotChestMemory(live)
+        local ok,encoded=pcall(function() return HttpService:JSONEncode(snapshot) end)
+        if #snapshot>0 and ok and encoded~=RemoteCatalog.ChestMemoryEncoded then
+            RemoteCatalog.ChestMemoryEncoded=encoded;CONFIG.RememberedChests=snapshot;changed=true
+        end
+    end
     if changed then savePreferences() end
 end
 function RemoteCatalog.UpdateCaptureUI()
@@ -6888,7 +6911,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn remember-119 · Propeller loot history (UTC)",
+    return table.concat({"Reborn no-learn-120 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6992,7 +7015,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn remember-119 · Propeller tracker",
+    return table.concat({"Reborn no-learn-120 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7028,7 +7051,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn remember-119", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn no-learn-120", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -7040,6 +7063,7 @@ function RemoteCatalog.SessionReport()
         local m=RemoteCatalog.Mobs
         table.insert(text,"Mobs: "..(m.Enabled and "ON" or "OFF").." · "..m.Message.." · "..m.Swings.." swings · "..m.Drops.." HP drops · "..m.Defeats.." defeats observed")
     end
+    table.insert(text,"Game requests: "..RemoteCatalog.GameRequestHealth())
     do
         local names={}
         pcall(function() names=RemoteCatalog.RequestDefinitionNames() end)
@@ -8592,6 +8616,98 @@ track(RemoteCatalog.ChestLearnButton.Activated:Connect(function()
     RemoteCatalog.ChestLearnButton.Text="Stop learning"
     RemoteCatalog.UpdateCaptureUI()
 end))
+-- GAME REQUEST HEALTH BEGIN
+-- Stable game requests each feature can use without learning; missing ones fall back to learning or input.
+RemoteCatalog.GameRequests={{"CLIENT_CHEST_TRANSACTION","chests"},{"CLIENT_PLOW_BLOCK_REQUEST","hoe"},{"CLIENT_EAT_FOOD","bait"},
+    {"CLIENT_HARVEST_CROP_REQUEST","harvest"},{"BLOCK_HIT_REQUEST","wood/mining"},{"BLOCK_PLACE_REQUEST","build/replant"},{"CLIENT_HOTBAR_LAYOUT_UPDATE","hotbar"}}
+function RemoteCatalog.GameRequestHealth()
+    if not RemoteCatalog.PlacementClient() then return "game Requests module unavailable · every feature uses learning or normal input" end
+    local ok,missing={},{}
+    for _,entry in ipairs(RemoteCatalog.GameRequests) do
+        local endpoint=RemoteCatalog.GameEndpoint(entry[1])
+        table.insert(endpoint and ok or missing,entry[2])
+    end
+    return (#ok>0 and "OK: "..table.concat(ok,", ") or "none OK")..(#missing>0 and " · missing (learn or input): "..table.concat(missing,", ") or "")
+end
+-- GAME REQUEST HEALTH END
+-- REMEMBERED CHESTS BEGIN
+-- Learned withdrawals are remembered by chest name, position on the owned island, slot and item.
+-- On a new server they are found again and sent through the game's own stable
+-- CLIENT_CHEST_TRANSACTION request; the run still confirms every item by inventory gain.
+function RemoteCatalog.ChestIslandOffset(chest)
+    local island=getPlayerIsland()
+    local position=getPartPosition(chest)
+    if not island or not position then return nil end
+    local ok,offset=pcall(function() return island:GetPivot():PointToObjectSpace(position) end)
+    return ok and offset or nil
+end
+function RemoteCatalog.SnapshotChestMemory(bindings)
+    local list={}
+    for _,binding in ipairs(bindings) do
+        local offset=binding.Chest and binding.Chest.Parent and RemoteCatalog.ChestIslandOffset(binding.Chest)
+        if offset and type(binding.Slot)=="number" and type(binding.Item)=="string" then
+            table.insert(list,{Name=binding.Chest.Name,X=math.floor(offset.X*10+.5)/10,Y=math.floor(offset.Y*10+.5)/10,Z=math.floor(offset.Z*10+.5)/10,
+                Slot=binding.Slot,Item=binding.Item,Amount=type(binding.Amount)=="number" and binding.Amount or 1})
+        end
+        if #list>=64 then break end
+    end
+    return list
+end
+function RemoteCatalog.ChestEndpoint()
+    local endpoint=RemoteCatalog.GameEndpoint("CLIENT_CHEST_TRANSACTION")
+    if endpoint and type(endpoint.CallServer)=="function" then return endpoint end
+end
+function RemoteCatalog.RememberedChestRecorder()
+    local memory=CONFIG.RememberedChests
+    if type(memory)~="table" or #memory==0 or not RemoteCatalog.ChestEndpoint() then return nil end
+    local island=getPlayerIsland()
+    local blocks=island and island:FindFirstChild("Blocks")
+    if not blocks then return nil end
+    local cache=RemoteCatalog.RememberedChestCache
+    if cache and cache.Blocks==blocks and cache.Memory==memory and os.clock()-cache.At<2 then return cache.Recorder end
+    local recorder={Remembered=true,ChestBindings={}}
+    for _,chest in ipairs(blocks:GetChildren()) do
+        local offset
+        for _,entry in ipairs(memory) do
+            if chest.Name==entry.Name then
+                offset=offset or RemoteCatalog.ChestIslandOffset(chest)
+                if offset and math.abs(offset.X-entry.X)<1 and math.abs(offset.Y-entry.Y)<1 and math.abs(offset.Z-entry.Z)<1 then
+                    table.insert(recorder.ChestBindings,{Chest=chest,Slot=entry.Slot,Item=entry.Item,Amount=entry.Amount,ObservedAt=0,Remembered=true})
+                end
+            end
+        end
+    end
+    recorder.ChestBinding=recorder.ChestBindings[1]
+    function recorder:CanUseChestBinding(binding)
+        local b=binding or self.ChestBinding
+        return b~=nil and b.Chest~=nil and b.Chest.Parent~=nil and player.Character~=nil
+    end
+    function recorder:GetChestBindings()
+        local result={}
+        for _,binding in ipairs(self.ChestBindings) do if self:CanUseChestBinding(binding) then table.insert(result,binding) end end
+        return result
+    end
+    function recorder:MakeChestTarget(binding,chest,slot)
+        if typeof(chest)~="Instance" or not chest.Parent or chest.Name~=binding.Chest.Name then return nil end
+        if type(slot)~="number" or slot<0 or slot>12 or slot%1~=0 then return nil end
+        return {Chest=chest,Slot=slot,Item=binding.Item,Amount=binding.Amount,ObservedAt=0,Remembered=true,Generated=true}
+    end
+    function recorder:WithdrawItems(amount,binding)
+        local b=binding or self.ChestBinding
+        if not self:CanUseChestBinding(b) then return false,"Remembered chest is unavailable","context" end
+        amount=amount==nil and b.Amount or amount
+        if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount","invalid" end
+        local endpoint=RemoteCatalog.ChestEndpoint()
+        if not endpoint then return false,"Game chest request unavailable · learn one withdrawal on this server","unavailable" end
+        local ok,result=RemoteCatalog.SendEndpoint(endpoint,{chest=b.Chest,slot=b.Slot,item=b.Item,amount=amount,action="withdraw"})
+        if not ok then return false,result,"rejected" end
+        return true,result
+    end
+    recorder.WithdrawCarrots=recorder.WithdrawItems
+    RemoteCatalog.RememberedChestCache={Blocks=blocks,Memory=memory,At=os.clock(),Recorder=recorder}
+    return recorder
+end
+-- REMEMBERED CHESTS END
 -- CHEST TARGETS BEGIN
 -- CHEST CONVEYOR GUARD BEGIN
 function RemoteCatalog.ChestConveyorProtected(binding)
@@ -8620,6 +8736,9 @@ function RemoteCatalog.ChestTargets()
         local fallback=RemoteCatalog.LiveRecorder("ChestBinding")
         if fallback then table.insert(recorders,fallback) end
     end
+    -- Remembered last: live learned bindings for the same chest/slot are newer and win.
+    local remembered=RemoteCatalog.RememberedChestRecorder and RemoteCatalog.RememberedChestRecorder()
+    if remembered then table.insert(recorders,remembered) end
     local targets={}
     for _,recorder in ipairs(recorders) do
         local bindings=recorder.GetChestBindings and recorder:GetChestBindings() or (recorder.ChestBinding and {recorder.ChestBinding} or {})
@@ -9416,7 +9535,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn remember-119\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn no-learn-120\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9478,7 +9597,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn remember-119 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn no-learn-120 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10077,7 +10196,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn remember-119\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn no-learn-120\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11195,7 +11314,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn remember-119 · Craft diagnostics",
+    return table.concat({"Reborn no-learn-120 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11274,7 +11393,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn remember-119 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn no-learn-120 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11529,6 +11648,18 @@ function RemoteCatalog.PlowRecorder()
     if type(RemoteCatalog.LiveRecorder)~="function" then return nil end
     local recorder=RemoteCatalog.LiveRecorder("PlowBinding")
     if recorder and type(recorder.CanUsePlowBinding)=="function" and type(recorder.Plow)=="function" and recorder:CanUsePlowBinding() then return recorder end
+    -- No learned hoe request on this server: the game's stable plow request needs no learning.
+    local endpoint=type(RemoteCatalog.GameEndpoint)=="function" and RemoteCatalog.GameEndpoint("CLIENT_PLOW_BLOCK_REQUEST")
+    if endpoint and type(endpoint.CallServer)=="function" then
+        RemoteCatalog.NativePlowRecorder=RemoteCatalog.NativePlowRecorder or {NativePlow=true,
+            CanUsePlowBinding=function() return player.Character~=nil end,
+            Plow=function(_,block)
+                local current=RemoteCatalog.GameEndpoint("CLIENT_PLOW_BLOCK_REQUEST")
+                if not current then return false,"Game hoe request unavailable" end
+                return RemoteCatalog.SendEndpoint(current,{block=block})
+            end}
+        return RemoteCatalog.NativePlowRecorder
+    end
 end
 function RemoteCatalog.StopPlowLearning()
     local recorder=RemoteCatalog.Recorder
@@ -11695,7 +11826,7 @@ function RemoteCatalog.SetPlowEnabled(state)
     RemoteCatalog.PlowGeneration+=1;local token=RemoteCatalog.PlowGeneration
     RemoteCatalog.PlowWorker=token;RemoteCatalog.PlowEnabled=true;RemoteCatalog.PlowPendingStart=false
     RemoteCatalog.PlowConfirmed=0;RemoteCatalog.PlowFailed=0;RemoteCatalog.PlowSkipped=0
-    RemoteCatalog.PlowBackend=recorder and "Captured request" or "Hoe input"
+    RemoteCatalog.PlowBackend=recorder and (recorder.NativePlow and "Game hoe request" or "Captured request") or "Hoe input"
     RemoteCatalog.UpdatePlowControls()
     local continuous=RemoteCatalog.PlowRunMode=="Continuous"
     task.spawn(function()
@@ -11865,7 +11996,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn remember-119 · Mobs",
+    return table.concat({"Reborn no-learn-120 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12539,6 +12670,8 @@ track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		setEnabled(not enabled)
 	elseif input.KeyCode == CONFIG.HarvestKey then
 		setHarvestEnabled(not harvestEnabled)
+	elseif input.KeyCode == CONFIG.StopAllKey then
+		RemoteCatalog.StopAllAutomation()
 	elseif input.KeyCode == CONFIG.MobKey and RemoteCatalog.Mobs then
 		if RemoteCatalog.Mobs.Enabled then RemoteCatalog.Mobs:Stop() else RemoteCatalog.Mobs:Start() end
 		RemoteCatalog.RefreshMobUI()
