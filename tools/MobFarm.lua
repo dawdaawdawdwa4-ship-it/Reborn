@@ -49,6 +49,14 @@ function MobFarm.new(ctx)
         if ok then self.Chase={Humanoid=human,Root=root} end
         return ok
     end
+    -- Low health: step away from the closest slime instead of standing in its attacks.
+    local function retreat(human,root,threat)
+        local away=root.Position-threat.Position
+        if away.Magnitude<.1 then return false end
+        local ok=pcall(function() human:MoveTo(root.Position+away.Unit*12) end)
+        if ok then self.Chase={Humanoid=human,Root=root} end
+        return ok
+    end
     function self:ReleaseSwing(press)
         press=press or self.Press
         if not press or press.Released then return true end
@@ -161,14 +169,27 @@ function MobFarm.new(ctx)
                         recovering=fraction<=.25 or recovering and fraction<.45
                         local paused=ctx.PauseReason()
                         if recovering or paused then
-                            halt();self.Target=nil
-                            publish(recovering and "Paused · low health; resumes at 45% HP" or paused)
+                            self.Target=nil
+                            local threat=recovering and not paused and self.Walk and self:Scan()[1]
+                            if threat and threat.Distance<12 and retreat(human,root,threat.Root) then
+                                publish("Retreating from "..threat.Model.Name.." · low health; resumes at 45% HP")
+                            else
+                                halt()
+                                publish(recovering and "Paused · low health; resumes at 45% HP" or paused)
+                            end
                         else
                             local targets=self:Scan(cooldowns)
                             local chosen
                             -- Keep the current living target instead of bouncing between close mobs.
                             for _,entry in ipairs(targets) do if entry.Model==self.Target then chosen=entry;break end end
-                            chosen=chosen or targets[1]
+                            if not chosen and targets[1] then
+                                -- Among slimes about as close as the nearest, finish the most damaged one first.
+                                chosen=targets[1]
+                                for _,entry in ipairs(targets) do
+                                    if entry.Distance>targets[1].Distance+6 then break end
+                                    if entry.Humanoid.Health<chosen.Humanoid.Health then chosen=entry end
+                                end
+                            end
                             if not chosen then
                                 halt();self.Target=nil;publish("Waiting · no living slimes within "..self.Radius.." studs; scanning continues")
                             else

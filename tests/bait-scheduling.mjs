@@ -36,6 +36,16 @@ do
  assert(attempts==2 and not RemoteCatalog.BaitPending,'worker must retry after a transient exception')
  setBaitEnabled(false)
 end
+-- A sent but unconfirmed use may still have eaten bait: the next attempt waits a full minute.
+do
+ local attempts=0
+ applyBait=function() attempts+=1;return false,'Bait use unconfirmed; quantity stayed at 4.' end
+ setBaitEnabled(true)
+ for i=1,59 do assert(coroutine.resume(worker)) end
+ assert(attempts==1,'failed bait must not retry before a minute has passed')
+ assert(coroutine.resume(worker));assert(attempts==2,'failed bait must retry after one minute')
+ setBaitEnabled(false)
+end
 -- Execute the actual fishing loop with a pending application and no bobber.
 local enabled,cycleId=true,1
 local harvestEnabled,woodEnabled,mineEnabled=false,false,false

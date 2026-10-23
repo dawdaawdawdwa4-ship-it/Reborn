@@ -1547,6 +1547,14 @@ function MobFarm.new(ctx)
         if ok then self.Chase={Humanoid=human,Root=root} end
         return ok
     end
+    -- Low health: step away from the closest slime instead of standing in its attacks.
+    local function retreat(human,root,threat)
+        local away=root.Position-threat.Position
+        if away.Magnitude<.1 then return false end
+        local ok=pcall(function() human:MoveTo(root.Position+away.Unit*12) end)
+        if ok then self.Chase={Humanoid=human,Root=root} end
+        return ok
+    end
     function self:ReleaseSwing(press)
         press=press or self.Press
         if not press or press.Released then return true end
@@ -1659,14 +1667,27 @@ function MobFarm.new(ctx)
                         recovering=fraction<=.25 or recovering and fraction<.45
                         local paused=ctx.PauseReason()
                         if recovering or paused then
-                            halt();self.Target=nil
-                            publish(recovering and "Paused · low health; resumes at 45% HP" or paused)
+                            self.Target=nil
+                            local threat=recovering and not paused and self.Walk and self:Scan()[1]
+                            if threat and threat.Distance<12 and retreat(human,root,threat.Root) then
+                                publish("Retreating from "..threat.Model.Name.." · low health; resumes at 45% HP")
+                            else
+                                halt()
+                                publish(recovering and "Paused · low health; resumes at 45% HP" or paused)
+                            end
                         else
                             local targets=self:Scan(cooldowns)
                             local chosen
                             -- Keep the current living target instead of bouncing between close mobs.
                             for _,entry in ipairs(targets) do if entry.Model==self.Target then chosen=entry;break end end
-                            chosen=chosen or targets[1]
+                            if not chosen and targets[1] then
+                                -- Among slimes about as close as the nearest, finish the most damaged one first.
+                                chosen=targets[1]
+                                for _,entry in ipairs(targets) do
+                                    if entry.Distance>targets[1].Distance+6 then break end
+                                    if entry.Humanoid.Health<chosen.Humanoid.Health then chosen=entry end
+                                end
+                            end
                             if not chosen then
                                 halt();self.Target=nil;publish("Waiting · no living slimes within "..self.Radius.." studs; scanning continues")
                             else
@@ -4815,7 +4836,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn improve-112",
+    return table.concat({"Reborn mob-survive-113",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5237,7 +5258,8 @@ local function setBaitEnabled(state)
             end
             if applied then setStatus(detail == "tool activation attempted" and "Bait tool activated; next attempt in 60s" or "Auto Bait applied; refresh in 60s", COLORS.good) end
             baitToggle.BackgroundColor3 = applied and COLORS.on or COLORS.off
-            local delay = applied and (RemoteCatalog.BaitRefreshDelay or 60) or detail==RemoteCatalog.BaitUnverified and 60 or 5
+            -- Bait runs once a minute. Only an empty inventory or a client error before use is rechecked sooner.
+            local delay = applied and (RemoteCatalog.BaitRefreshDelay or 60) or (RemoteCatalog.BaitOutOfStock or not succeeded) and 5 or 60
             RemoteCatalog.BaitRefreshDelay=nil
             for remaining = delay, 1, -1 do
                 if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
@@ -6771,7 +6793,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn improve-112 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-survive-113 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6875,7 +6897,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn improve-112 · Propeller tracker",
+    return table.concat({"Reborn mob-survive-113 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6911,7 +6933,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn improve-112", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-survive-113", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -7511,6 +7533,9 @@ local function equipBestResourceTool(category)
         local name = string.lower(tool.Name)
         local isPick = string.find(name, "pickaxe", 1, true) ~= nil
         local isAxe = string.find(name, "axe", 1, true) ~= nil and not isPick
+        -- Combat axes (the mob farm's ironWarAxe, battle axes) cannot chop and would steal the weapon.
+        local compact = name:gsub("[%s_%-]", "")
+        if isAxe and (string.find(compact, "waraxe", 1, true) or string.find(compact, "battleaxe", 1, true)) then isAxe = false end
         if (wantAxe and isAxe) or (not wantAxe and isPick) then
             local score = 1
             if string.find(name, "mythic", 1, true) then score = 100
@@ -7852,7 +7877,9 @@ local function resourceInputHit(target)
     local category = targetCategory(target.Name)
     local toolName = tool and string.lower(tool.Name) or ""
     local pickaxe = string.find(toolName, "pickaxe", 1, true) ~= nil
+    local compactTool = toolName:gsub("[%s_%-]", "")
     local axe = string.find(toolName, "axe", 1, true) ~= nil and not pickaxe
+        and not string.find(compactTool, "waraxe", 1, true) and not string.find(compactTool, "battleaxe", 1, true)
     local choice=type(mineToolPreference)=="string" and string.lower(mineToolPreference) or ""
     local miningAxe=string.find(choice,"axe",1,true) and not string.find(choice,"pickaxe",1,true)
     if not root or category == "mine" and not (miningAxe and axe or not miningAxe and pickaxe) or category == "wood" and not axe then
@@ -9220,7 +9247,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn improve-112\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-survive-113\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9282,7 +9309,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn improve-112 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-survive-113 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9878,7 +9905,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn improve-112\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-survive-113\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -10996,7 +11023,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn improve-112 · Craft diagnostics",
+    return table.concat({"Reborn mob-survive-113 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11075,7 +11102,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn improve-112 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-survive-113 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11652,7 +11679,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn improve-112 · Mobs",
+    return table.concat({"Reborn mob-survive-113 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

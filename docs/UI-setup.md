@@ -3112,3 +3112,22 @@ Rojo. Run the full suite after editing any `tools/` source and its embed script.
   saved with the other preferences when changed and restored on the next load.
 
 Report headers now read `Reborn improve-112`.
+
+
+## Bait once a minute, war-axe exclusion and mob survival · v113
+
+- **Bait once a minute.** Every bait attempt that may have used bait (confirmed,
+  unconfirmed or failed after input) now waits 60 seconds before the next one.
+  Only an empty bait inventory or an unexpected client error before use is
+  rechecked after 5 seconds. Queuing behind an active cast is unchanged.
+- **Wood Farm ignores combat axes.** Tool names containing `waraxe` or `battleaxe`
+  (for example the mob farm's `ironWarAxe`) are no longer treated as woodcutting
+  or mining axes, including for the "Iron axe" preference and the resource input
+  tool check. With only a war axe, Wood Farm reports that no axe was found.
+- **Low-health retreat.** At or below 25% HP with Auto Move on, Auto Mobs walks
+  12 studs away from a slime within 12 studs instead of standing in its attacks;
+  it resumes at 45% HP. Auto Move OFF still only pauses.
+- **Finish damaged slimes.** Among slimes within six studs of the nearest one,
+  the farm picks the one with the lowest HP; the current target is still kept.
+
+Report headers now read `Reborn mob-survive-113`.

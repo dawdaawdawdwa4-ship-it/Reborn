@@ -262,6 +262,18 @@ for _,name in ipairs({'woodAxe','woodenAxe'}) do
  mineToolPreference='Wooden axe'
  assert(equipBestResourceTool('mine') and mineToolPreference=='Wooden axe','Mining must honor explicitly selected axes')
 end
+woodToolPreference='Auto best axe'
+local warAxe,stoneAxe={Name='ironWarAxe',Parent=player.Character},{Name='stoneAxe',Parent=player.Character}
+local equippedName
+local originalEquip=RemoteCatalog.EquipTool
+RemoteCatalog.EquipTool=function(tool) equippedName=tool.Name;return true end
+RemoteCatalog.OwnedTools=function() return {warAxe,stoneAxe} end
+assert(equipBestResourceTool('wood') and equippedName=='stoneAxe','Wood Farm must never pick the mob farm war axe over a real axe')
+woodToolPreference='Iron axe';equippedName=nil
+assert(equipBestResourceTool('wood') and equippedName=='stoneAxe','an Iron axe preference must not match ironWarAxe')
+RemoteCatalog.OwnedTools=function() return {warAxe} end;equippedName=nil
+assert(not equipBestResourceTool('wood') and equippedName==nil,'a war axe alone is not a woodcutting tool')
+RemoteCatalog.EquipTool=originalEquip;woodToolPreference='Auto best axe'
 RemoteCatalog.OwnedTools=allOwned
 assert(RemoteCatalog.PlacementAvailable(),'game request module should permit placement without recorder ID')
 assert(firePlant(cf,'blueFlowers'))
