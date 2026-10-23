@@ -84,6 +84,64 @@ do
  run(1)
  assert(recoveries==1 and misses==1 and stats.bites==1 and queueGaps>=2,'three unconfirmed reels must recover once, preserve counters and hand control back to queued bait')
 end
+-- A single bite must survive blocked input and action cooldowns until reeling.
+local function transientBite(mode)
+ local time,enabled=0,true
+ local os={clock=function() return time end}
+ local CONFIG={ActionCooldown=.04,ReelSettleDelay=.01,ReelTimeout=.7}
+ local gui={Parent=true}
+ local baitBusy,baitEnabled=false,false
+ local harvestEnabled,woodEnabled,mineEnabled=false,false,false
+ local lastAction=mode=='cooldown' and 0 or -100
+ local original={Parent=true};local current=original
+ local waits,inputs,catches,recoveries=0,0,0,0
+ local stats={bites=0}
+ local function running(token) return enabled and token==1 end
+ local function getBobber() return current.Parent and current or nil end
+ local function waitForTug()
+  waits+=1
+  if mode=='replaced' then current={Parent=true} end
+  return waits==1,waits>1
+ end
+ local function clickOnce(action,token)
+  assert(action=='reel' and token==1)
+  inputs+=1
+  if mode=='interrupted' then return false,'mouse hold interrupted',true end
+  if mode=='blocked' or mode=='stop' then
+   if inputs<=4 then return false,'on-screen controls cover the fishing aim' end
+  end
+  current.Parent=nil;return true
+ end
+ local function waitUntil(_,_,predicate) return running(1) and predicate() end
+ local function updateBoard() end
+ local message
+ local function setStatus(text) message=text end
+ local COLORS={warn=1,gold=2,good=3}
+ local function registerMiss() error('a blocked input cannot invent a missed catch') end
+ local function registerCatch() catches+=1;enabled=false end
+ local RemoteCatalog={CompleteModeGoal=function() end,RecoverFishingCast=function()
+  recoveries+=1
+  assert(mode=='interrupted','blocked/unsent reels cannot consume the three-attempt reset budget')
+  enabled=false;return false
+ end}
+ local steps=0
+ local task={wait=function(dt)
+  time+=dt;steps+=1;assert(steps<30,'fishing worker did not settle')
+  if mode=='stop' or mode=='replaced' then enabled=false end
+ end}
+ ${run}
+ run(1)
+ if mode=='blocked' then
+  assert(waits==1 and inputs==5 and catches==1 and recoveries==0 and stats.bites==1,'a transient bite must survive four blocked clicks and reel once controls clear without resetting or waiting for a second bite')
+ elseif mode=='cooldown' then
+  assert(waits==1 and inputs==1 and catches==1 and time>=.04 and stats.bites==1,'a bite during the action cooldown must yield then reel the same bite')
+ elseif mode=='stop' then
+  assert(inputs==1 and catches==0 and recoveries==0 and string.find(message,'on-screen controls cover',1,true),'Stop must cancel a retained bite and preserve the specific blocking reason')
+ elseif mode=='replaced' then
+  assert(inputs==0 and catches==0 and stats.bites==0,'a replaced bobber cannot receive a reel intended for the old bite')
+ else assert(inputs==3 and recoveries==1 and catches==0,'dispatched but interrupted input must still consume the bounded recovery budget') end
+end
+for _,mode in ipairs({'blocked','cooldown','stop','replaced','interrupted'}) do transientBite(mode) end
 return 'Fishing recovery: persistent cast limit, native slot zero/fallback, observed removal, queued bait handoff, no-bait continuation, failure, Stop, respawn and manual tool preservation passed'
 `;
 const state=await LuauState.createAsync();

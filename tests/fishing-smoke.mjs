@@ -62,7 +62,8 @@ failMove=false
 cancel=true;events={};time=0
 assert(not clickOnce('cast',1) and not down and events[#events][1]=='up','Stop must release cast')
 cancel=false;enabled=true;failWait=true;events={}
-assert(not clickOnce('cast',1) and not down and events[#events][1]=='up','interrupted hold must release')
+local heldOK,heldReason,heldSent=clickOnce('cast',1)
+assert(not heldOK and heldSent and not down and events[#events][1]=='up','interrupted hold must release while retaining its dispatched-input classification')
 failWait=false;failDown=true;events={}
 assert(not clickOnce('cast',1) and events[#events][1]=='up','failed press still needs independent release')
 failDown=false;failMove=true;events={}
@@ -73,6 +74,8 @@ focused={};events={}
 assert(not clickOnce('cast',1) and #events==0,'editing chat must pause fishing input')
 focused=nil;covered=true;events={}
 assert(not clickOnce('reel',1) and #events==0,'game buttons covering the aim must prevent synthetic clicks')
+local blocked,reason,sent=clickOnce('reel',1)
+assert(not blocked and not sent and string.find(reason,'controls cover',1,true),'blocked reel must retain its precise reason and report no sent input')
 covered=false;swapOnAim=true;events={}
 assert(not clickOnce('cast',1) and #events==1 and events[1][1]=='move','tool switch during aiming must prevent press')
 swapOnAim=false;tool={Name='fishingRod'}
@@ -122,6 +125,36 @@ bobber.GetAttribute=function() return false end;time=0;disconnected=false
 task.wait=function(dt) time+=dt;enabled=false end
 local tugged,timedOut=waitForTug(bobber,1)
 assert(not tugged and not timedOut and disconnected,'Stop must exit bite wait without false timeout')
+-- Subscribe before reading, and keep transient callbacks even when Tug clears.
+do
+ enabled=true;time=0;disconnected=false
+ local value=false
+ bobber.Parent=true
+ bobber.GetAttribute=function() return value end
+ bobber.GetAttributeChangedSignal=function() return {Connect=function()
+  value=true -- Arrival between the old initial read and connection registration.
+  return {Disconnect=function() disconnected=true end}
+ end} end
+ local tugged,timedOut=waitForTug(bobber,1)
+ assert(tugged and not timedOut and time==0 and disconnected,'a bite arriving during listener registration must be detected immediately')
+ local callback
+ value=false;time=0;disconnected=false
+ bobber.GetAttributeChangedSignal=function() return {Connect=function(_,fn) callback=fn;return {Disconnect=function() disconnected=true end} end} end
+ task.wait=function(dt) time+=dt;value=true;callback();value=false end
+ assert(waitForTug(bobber,1) and disconnected and value==false,'brief Tug pulses must remain latched after the attribute resets')
+ value=false;time=0;disconnected=false
+ task.wait=function(dt) time+=dt;value=true end
+ assert(waitForTug(bobber,1) and disconnected,'attribute polling must recover a missed signal notification')
+ value=false;time=0;disconnected=false
+ task.wait=function(dt) time+=dt;value=true;callback();bobber.Parent=nil end
+ tugged,timedOut=waitForTug(bobber,1)
+ assert(not tugged and not timedOut and disconnected,'a removed bobber cannot authorize a stale reel after a bite pulse')
+ value=false;bobber.Parent=true;time=0;disconnected=false
+ task.wait=function(dt) time+=dt;enabled=false end
+ CONFIG.BiteTimeout=.01
+ tugged,timedOut=waitForTug(bobber,1)
+ assert(not tugged and not timedOut and disconnected,'Stop at the timeout boundary cannot trigger cast recovery')
+end
 return 'Fishing input passed: aim first, charged cast, short reel, cancellation/error release, rod validation and owned bobber discovery'
 `;
 const state=await LuauState.createAsync();

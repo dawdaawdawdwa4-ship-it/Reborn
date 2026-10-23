@@ -50,7 +50,8 @@ assert(not enabled,'queued bait must yield instead of casting')
 -- Existing casts must still be allowed to finish while bait is queued.
 enabled=true
 local tugChecks=0
-getBobber=function() return {Parent=true} end
+local existingBobber={Parent=true}
+getBobber=function() return existingBobber end
 local function waitForTug() tugChecks+=1;return false,false end
 -- Rebind the real run function to this existing-bobber fixture.
 ${run.replace('local function run(myCycle)','local function runExisting(myCycle)')}
@@ -191,7 +192,8 @@ do
  local function updateBoard() end
  local function setEnabled() error('retry must not switch Fishing OFF') end
  local mode='bite'
- local function getBobber() if mode=='bite' then return {Parent=true} end end
+ local existingBobber={Parent=true}
+ local function getBobber() if mode=='bite' then return existingBobber end end
  local function waitForTug() return false,true end
  local function hasRodEquipped() return true end
  local clicks=0

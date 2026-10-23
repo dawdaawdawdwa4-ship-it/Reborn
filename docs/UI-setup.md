@@ -2793,3 +2793,34 @@ restoration and width bounds, field focus and repeated styling, existing real
 switch handlers, all tabs, resize/reset, supported/unsupported recorder hosts and
 the full regression suite. Roblox rendering and live game behavior remain
 unverified; the supplied script was not executed.
+
+## Retained fishing bites and reel retries (v103)
+
+A detected bite is retained for that exact owned bobber until the run ends or the
+bobber disappears. Previously, returning to the loop after a blocked reel or an
+action cooldown started a fresh Tug wait; a short Tug pulse could already have
+cleared, leaving fishing waiting for another bite instead of reeling. Retained
+bites now retry the reel without requiring a second pulse. Cooldown-only waits
+yield instead of spinning.
+
+A click blocked before its mouse press does not consume the three-reel recovery
+budget. Dispatched input, including an interrupted hold/release, still consumes
+that budget. Existing bounded recovery after three unconfirmed/dispatched reels
+remains; blocked input alone cannot reset a live cast. The reel status preserves
+the specific reason, such as controls covering the aim, text focus, a missing rod
+or blocked mouse movement. Controls covering the saved cast aim still need to be
+moved away; the script does not click through them.
+
+Tug observation subscribes before its initial read and also checks the attribute
+on the existing polling loop. Brief signaled pulses stay latched, and a missed
+notification can be recovered by the next read. Stop at the timeout boundary
+cannot request a reset. A removed/replaced bobber cannot authorize a stale reel.
+Each bobber still counts at most one bite/miss, and catches still require observed
+bobber disappearance after a successful reel. No new bait activation or extra
+fishing worker is introduced.
+
+Validation reproduces four blocked clicks after one transient bite, bites arriving
+during cooldown or listener registration, missed notifications, Stop, bobber
+replacement/removal and the dispatched-input recovery budget. The full suite is
+required. Live Roblox reeling remains unverified; these fixes address reproduced
+client-side failures, not a confirmed live server diagnosis.
