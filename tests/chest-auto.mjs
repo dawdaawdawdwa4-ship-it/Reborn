@@ -543,6 +543,18 @@ do
  calls=#trace;usable=false
  untilTrue(function() return not RemoteCatalog.ChestAutoWorker end)
  assert(#trace==calls and not RemoteCatalog.ChestAutoEnabled and string.find(RemoteCatalog.ChestLastDetail,'no current learned targets',1,true),'repeat must stop explicitly if no current binding survives')
+ -- Chests read from Contents can be empty for a while: Repeat must wait for the refill, not stop.
+ prepare(0)
+ RemoteCatalog.ContentsChestRecorder=function() return {} end
+ assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
+ calls=#trace;usable=false
+ untilTrue(function() return string.find(RemoteCatalog.ChestLastDetail or RemoteCatalog.ChestAutoText or '','empty',1,true) or RemoteCatalog.ChestRepeatWaiting and #trace==calls end,200)
+ resume(80)
+ assert(RemoteCatalog.ChestAutoWorker and RemoteCatalog.ChestAutoEnabled and #trace==calls,'empty readable chests must keep Repeat waiting with no requests')
+ usable=true;stock[8]=30
+ untilTrue(function() return qty>=30 end)
+ assert(RemoteCatalog.ChestAutoEnabled,'a refill must be collected by the same run')
+ RemoteCatalog.SetChestAuto(false);drain();RemoteCatalog.ContentsChestRecorder=nil
  -- GUI removal also cancels the repeat delay with no follow-up request.
  prepare(0)
  assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)

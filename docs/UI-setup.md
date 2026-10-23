@@ -3495,3 +3495,23 @@ Report headers now read `Reborn deposit-130`.
   loads refresh the Deposit buttons, and the overlay shows "whole island".
 
 Report headers now read `Reborn review-131`.
+
+
+## Chest collection keeps going · v132
+
+Live report: collection took one slot and stopped; after Fast slot setup it
+emptied the chest once and stopped again.
+
+- **Contents stacks in every scope again.** v131 left Contents stacks out under
+  Scope: Learned only, so a run collected only the learned slot. Stacks read from
+  Contents need no learning and are now offered in both scopes; Scope only
+  controls template discovery for learned slots.
+- **Repeat is the default.** START COLLECTING now runs Repeat (2s) unless Run is
+  set to One pass, like a refill loop.
+- **Empty chests wait for a refill.** Repeat used to stop with "no current learned
+  targets" once every selected chest was empty. While the Contents of owned
+  chests can be read, it now waits ("Selected chests are empty · waiting for a
+  refill", checking every 2 s) and collects the refill in the same run; Stop
+  still ends it at once.
+
+Report headers now read `Reborn chest-repeat-132`.

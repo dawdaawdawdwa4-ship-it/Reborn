@@ -126,7 +126,7 @@ do
  assert(found[fresh] and not found[dupe],'content stacks add new items but never duplicate a learned chest item')
  RemoteCatalog.ChestDiscover=false;found={}
  for _,entry in ipairs(RemoteCatalog.ChestTargets()) do found[entry.Binding]=true end
- assert(not found[fresh],'Learned only scope must leave Contents stacks out')
+ assert(found[fresh],'Contents stacks need no learning and stay available in Learned only scope')
  RemoteCatalog.ContentsChestRecorder=nil;RemoteCatalog.ChestDiscover=true
 end
 return 'Chest targets: conveyor Skip/Include, matching owned discovery, range/type filtering, complete slot coverage, deduplication, individual/scope controls and expired-session guards passed'
