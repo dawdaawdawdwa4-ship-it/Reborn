@@ -4985,7 +4985,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn deposit-130",
+    return table.concat({"Reborn review-131",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7013,7 +7013,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn deposit-130 · Propeller loot history (UTC)",
+    return table.concat({"Reborn review-131 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7117,7 +7117,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn deposit-130 · Propeller tracker",
+    return table.concat({"Reborn review-131 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7153,7 +7153,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn deposit-130", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn review-131", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -7393,7 +7393,8 @@ local function updateBoard()
         overlayLabels.attempts.Text="Actions / collected"
         overlayValues.attempts.Text=stats.resourceAttempts[category].." / "..count
         overlayLabels.success.Text="Range / state"
-        overlayValues.success.Text=FarmLogic.Range(category,CONFIG).." studs / "..(on and "ON" or "OFF")
+        local range=FarmLogic.Range(category,CONFIG)
+        overlayValues.success.Text=(range==math.huge and "whole island" or range.." studs").." / "..(on and "ON" or "OFF")
         overlayValues.session.Text=formatTime(t).." / "..title
         overlayLabels.harvests.Text="Last collected"
         overlayValues.harvests.Text=stats.resourceLast[category] or "–"
@@ -8388,6 +8389,8 @@ local function harvestLoop(myCycle)
         end
         while #targets > 0 do
             if not active() then break end
+            -- A deposit owns movement; resume the batch on the next scan.
+            if RemoteCatalog.DepositBusy then break end
             -- After walking or teleporting, the scan-time order zigzags; pick the nearest from here.
             local here = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
             local target = FarmLogic.TakeNearest(targets, here and here.Position)
@@ -8408,7 +8411,7 @@ local function harvestLoop(myCycle)
                     local reached,reason=false,"Move closer to "..target.name.." (scan range is not interaction range)"
                     if CONFIG.HarvestWalk then
                         setStatus((CONFIG.FarmTravelMode=="Hop" and "TP hops" or CONFIG.FarmTravelMode or "Walk").." to "..target.name,COLORS.muted)
-                        reached,reason=RemoteCatalog.Navigation.Approach(player,obj,reach,function() return active() and CONFIG.HarvestWalk and harvestEnabled and not enabled end,getPartPosition,CONFIG.FarmTravelMode)
+                        reached,reason=RemoteCatalog.Navigation.Approach(player,obj,reach,function() return active() and CONFIG.HarvestWalk and harvestEnabled and not enabled and not RemoteCatalog.DepositBusy end,getPartPosition,CONFIG.FarmTravelMode)
                     end
                     if not active() then break end
                     if not reached then
@@ -8432,7 +8435,7 @@ local function harvestLoop(myCycle)
                 local reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position)
                 if not reachable and CONFIG.WoodTravelMode~="Normal" then
                     setStatus((CONFIG.WoodTravelMode=="Hop" and "TP hops" or CONFIG.WoodTravelMode or "Normal").." to "..target.name,COLORS.muted)
-                    reachable,reason=RemoteCatalog.Navigation.Approach(player,obj,8,function() return active() and woodEnabled and not enabled end,RemoteCatalog.ResourcePosition,CONFIG.WoodTravelMode)
+                    reachable,reason=RemoteCatalog.Navigation.Approach(player,obj,8,function() return active() and woodEnabled and not enabled and not RemoteCatalog.DepositBusy end,RemoteCatalog.ResourcePosition,CONFIG.WoodTravelMode)
                     if not active() then break end
                     if reachable then reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position) end
                 end
@@ -8908,8 +8911,9 @@ function RemoteCatalog.ChestTransactionRemote()
 end
 function RemoteCatalog.StackAmount(stack)
     local value=stack and stack:FindFirstChild("Amount")
-    local amount=value and tonumber(value.Value)
-    return amount and amount>0 and math.floor(amount) or 1
+    if not value then return 1 end
+    local amount=tonumber(value.Value)
+    return amount and math.max(0,math.floor(amount)) or 0
 end
 function RemoteCatalog.ChestStack(chest,item)
     local contents=chest and chest:FindFirstChild("Contents")
@@ -8929,12 +8933,15 @@ function RemoteCatalog.SendChestWithdraw(chest,item,amount,slot,stack)
         if result==false or type(result)=="table" and result.success==false then return false,result,"rejected" end
         return true,result
     end
+    if remote and chest and chest:FindFirstChild("Contents") then return false,{success=false,error="EMPTY_SLOT"},"rejected" end
     local endpoint=RemoteCatalog.ChestEndpoint()
     if not endpoint then return false,"Game chest request unavailable · learn one withdrawal on this server","unavailable" end
     local ok,result=RemoteCatalog.SendEndpoint(endpoint,{chest=chest,slot=slot,item=item,amount=amount,action="withdraw"})
     if not ok then return false,result,"rejected" end
     return true,result
 end
+RemoteCatalog.ContentsSlotIds=setmetatable({},{__mode="k"})
+RemoteCatalog.ContentsNextSlot=1000
 -- Every stack in every owned chest with a readable Contents folder, without any learning.
 function RemoteCatalog.ContentsChestRecorder()
     if not RemoteCatalog.ChestTransactionRemote() then return nil end
@@ -8947,10 +8954,16 @@ function RemoteCatalog.ContentsChestRecorder()
     for _,chest in ipairs(blocks:GetChildren()) do
         local contents=chest:FindFirstChild("Contents")
         if contents and string.find(string.lower(chest.Name),"chest",1,true) then
-            for index,stack in ipairs(contents:GetChildren()) do
-                -- Slots 1000+ keep content stacks apart from learned slot numbers (0–12).
-                table.insert(recorder.ChestBindings,{Chest=chest,Slot=1000+index,Item=stack.Name,Amount=RemoteCatalog.StackAmount(stack),
-                    Stack=stack,ObservedAt=0,FromContents=true})
+            for _,stack in ipairs(contents:GetChildren()) do
+                -- A stable id per stack (from 1001) keeps a selection on the same stack when others empty;
+                -- it never collides with learned slot numbers (0–12).
+                local ids=RemoteCatalog.ContentsSlotIds
+                if not ids[stack] then RemoteCatalog.ContentsNextSlot+=1;ids[stack]=RemoteCatalog.ContentsNextSlot end
+                local amount=RemoteCatalog.StackAmount(stack)
+                if amount>0 then
+                    table.insert(recorder.ChestBindings,{Chest=chest,Slot=ids[stack],Item=stack.Name,Amount=amount,
+                        Stack=stack,ObservedAt=0,FromContents=true})
+                end
             end
         end
     end
@@ -8958,6 +8971,7 @@ function RemoteCatalog.ContentsChestRecorder()
     function recorder:CanUseChestBinding(binding)
         local b=binding or self.ChestBinding
         return b~=nil and b.Chest~=nil and b.Chest.Parent~=nil and b.Stack~=nil and b.Stack.Parent~=nil and player.Character~=nil
+            and RemoteCatalog.StackAmount(b.Stack)>0
     end
     function recorder:GetChestBindings()
         local result={}
@@ -9053,7 +9067,8 @@ function RemoteCatalog.ChestTargets()
     -- Remembered and Contents last: live learned bindings for the same chest are newer and win.
     local remembered=RemoteCatalog.RememberedChestRecorder and RemoteCatalog.RememberedChestRecorder()
     if remembered then table.insert(recorders,remembered) end
-    local contents=RemoteCatalog.ContentsChestRecorder and RemoteCatalog.ContentsChestRecorder()
+    -- "Learned only" scope means exactly the learned slots; Contents stacks belong to All matching.
+    local contents=RemoteCatalog.ChestDiscover and RemoteCatalog.ContentsChestRecorder and RemoteCatalog.ContentsChestRecorder()
     if contents then table.insert(recorders,contents) end
     local targets={}
     for _,recorder in ipairs(recorders) do
@@ -9456,7 +9471,7 @@ function RemoteCatalog.ChestTargetLabel(binding,all)
         if not seen[chest] then count+=1;seen[chest]=count end
         if chest==binding.Chest then
             local priority=RemoteCatalog.ChestPriorities[chest] or 0
-            return "Chest #"..seen[chest]..(RemoteCatalog.ChestWhole and " · whole chest" or " · slot "..tostring(binding.Slot or "?"))..
+            return "Chest #"..seen[chest]..(RemoteCatalog.ChestWhole and " · whole chest" or binding.FromContents and (" · "..tostring(binding.Item)) or " · slot "..tostring(binding.Slot or "?"))..
                 (priority==1 and " · FIRST" or priority==-1 and " · LAST" or "")..(RemoteCatalog.ChestIsExcluded(binding) and " · EXCLUDED" or "")
         end
     end
@@ -9532,6 +9547,8 @@ track(RemoteCatalog.ChestSelectButton.Activated:Connect(function()
     RemoteCatalog.LayoutChestControls()
 end))
 function RemoteCatalog.WithdrawSelectedCarrots(generation)
+    -- A withdrawal into a stack being deposited would break both confirmations.
+    if RemoteCatalog.DepositBusy then return false,"Wait for the current deposit to finish" end
     local targets=RemoteCatalog.SelectedChestTargets()
     local details,checked={},{}
     local sent,skipped=0,0
@@ -9856,7 +9873,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn deposit-130\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn review-131\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9918,7 +9935,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn deposit-130 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn review-131 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10100,6 +10117,7 @@ function RemoteCatalog.SetChestAuto(state)
         if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return false end
     end
     if state and RemoteCatalog.ChestTransferBusy then RemoteCatalog.ChestAutoMessage("Wait for chest setup import/export to finish");return false end
+    if state and RemoteCatalog.DepositBusy then RemoteCatalog.ChestAutoMessage("Wait for the current deposit to finish");return false end
     if state and RemoteCatalog.CraftWorker then RemoteCatalog.ChestAutoMessage("Stop crafting and wait for its current request to finish first");return false end
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);RemoteCatalog.ChestAutoMessage("Wait for Auto Plow input cleanup");return false end
     if not state then
@@ -10294,7 +10312,7 @@ function RemoteCatalog.SetChestAuto(state)
                 if state.Done or state.Waiting then continue end
                 RemoteCatalog.ChestInventoryWaiting=nil
                 local recorder,binding=state.Recorder,state.Binding
-                local target="Chest #"..tostring(chestNumbers[binding.Chest] or index).." · slot "..tostring(binding.Slot or "?").." · "..tostring(binding.Item or "carrotHarvested")
+                local target="Chest #"..tostring(chestNumbers[binding.Chest] or index)..(binding.FromContents and "" or " · slot "..tostring(binding.Slot or "?")).." · "..tostring(binding.Item or "carrotHarvested")
                 if not recorder:CanUseChestBinding(binding) then
                     state.Done=true
                     RemoteCatalog.ChestAutoMessage("Skipping "..target..": its session or chest is no longer valid")
@@ -10517,7 +10535,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn deposit-130\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn review-131\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11635,7 +11653,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn deposit-130 · Craft diagnostics",
+    return table.concat({"Reborn review-131 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11714,7 +11732,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn deposit-130 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn review-131 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12327,7 +12345,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn deposit-130 · Mobs",
+    return table.concat({"Reborn review-131 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12548,7 +12566,8 @@ RemoteCatalog.DepositGeneration=0
 CONFIG.DepositCategory=CONFIG.DepositCategory or "Crops"
 CONFIG.DepositInterval=CONFIG.DepositInterval or 60
 do
-    local never={"axe","sword","rod","hoe","sickle","hammer","bow","staff","wand","shovel","bucket","bait","seed","sapling","blueprint","totem","net","spear","dagger","club","mace","scythe"}
+    local never={"axe","sword","rod","hoe","sickle","hammer","bow","staff","wand","shovel","bucket","bait","seed","sapling","blueprint","totem","net","spear","dagger","club","mace","scythe",
+        "shears","shield","armor","armour","helmet","boots","pick","rake","trowel","lantern","torch","tool","glove","ring","amulet"}
     local crops={"wheat","carrot","potato","corn","tomato","pumpkin","melon","cabbage","lettuce","berr","onion","radish","beet","rice","grape","pineapple","starfruit","dragonfruit","cactus","seaweed","flower","mushroom","spinach","garlic","chili","pepper","cucumber","fruit","orange","apple"}
     local wood={"log","wood","plank","lumber"}
     local ores={"ore","coal","stone","iron","gold","copper","tin","silver","crystal","gem","diamond","clay","sand","marble","slate","obsidian","electrite","bar"}
@@ -12571,16 +12590,28 @@ function RemoteCatalog.DepositItems()
     local items,seen={},{}
     local char=player.Character
     local held=char and char:FindFirstChildOfClass("Tool")
+    -- Planting stock may be named exactly like the crop; replanting needs it in the inventory.
+    local planting={}
+    local crops=FarmLogic.SelectedCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)
+    table.insert(crops,CONFIG.PlantType)
+    for _,crop in ipairs(crops) do
+        for _,name in ipairs(RemoteCatalog.SeedNames(crop) or {}) do planting[name]=true end
+    end
     for _,tool in ipairs(RemoteCatalog.OwnedTools()) do
-        local kind=RemoteCatalog.DepositKind(tool.Name)
+        local kind=not planting[tool.Name] and RemoteCatalog.DepositKind(tool.Name) or nil
         -- The held tool is left alone so a running farm keeps its equipment.
         if not seen[tool] and tool~=held and tool.Parent and RemoteCatalog.DepositWanted(kind) then
             seen[tool]=true
-            table.insert(items,{Tool=tool,Kind=kind,Amount=RemoteCatalog.StackAmount(tool)})
+            table.insert(items,{Tool=tool,Kind=kind,Amount=RemoteCatalog.DepositAmount(tool)})
         end
     end
     table.sort(items,function(a,b) return a.Tool.Name<b.Tool.Name end)
     return items
+end
+-- Inventory quantities can live in attributes or other value names; read them like bait.
+function RemoteCatalog.DepositAmount(tool)
+    local count=RemoteCatalog.BaitCount and RemoteCatalog.BaitCount(tool)
+    return type(count)=="number" and count>0 and math.floor(count) or RemoteCatalog.StackAmount(tool)
 end
 function RemoteCatalog.DepositChests()
     local island=getPlayerIsland()
@@ -12608,7 +12639,11 @@ function RemoteCatalog.DepositPreview()
 end
 function RemoteCatalog.DepositOnce(active)
     active=active or function() return gui.Parent~=nil end
+    if RemoteCatalog.DepositBusy then return 0,"A deposit is already running" end
     if RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then return 0,"Waiting · chest collection is running" end
+    if RemoteCatalog.CraftWorker or RemoteCatalog.PlowWorker or buildController.Running or buildController.WorkerToken then
+        return 0,"Waiting · crafting, Auto Plow or Auto Build is running"
+    end
     local remote=RemoteCatalog.ChestTransactionRemote()
     if not remote then return 0,"Chest request unavailable on this server" end
     local items=RemoteCatalog.DepositItems()
@@ -12640,17 +12675,17 @@ function RemoteCatalog.DepositOnce(active)
                 if not active() then break end
                 local tool=item.Tool
                 if tool.Parent then
-                    local before=RemoteCatalog.StackAmount(tool)
+                    local before=RemoteCatalog.DepositAmount(tool)
                     pcall(function()
                         remote.InvokeServer(remote,{chest=chest,player_tracking_category="join_from_web",amount=before,tool=tool,action="deposit"})
                     end)
                     local confirmed=false
                     for _=1,15 do
-                        if not tool.Parent or RemoteCatalog.StackAmount(tool)<before then confirmed=true;break end
+                        if not tool.Parent or RemoteCatalog.DepositAmount(tool)<before then confirmed=true;break end
                         task.wait(.1)
                     end
                     if confirmed then
-                        deposited+=tool.Parent and before-RemoteCatalog.StackAmount(tool) or before
+                        deposited+=tool.Parent and before-RemoteCatalog.DepositAmount(tool) or before
                         if tool.Parent then table.insert(remaining,item) end
                     else table.insert(remaining,item) end
                     task.wait(.15)
@@ -12694,9 +12729,12 @@ end
 do
     local page=RemoteCatalog.DepositPage
     pageHeading(page,"AUTO DEPOSIT",8)
-    RemoteCatalog.DepositInfo=label({Parent=page,Text="Puts farm items from your inventory into the nearest own chest. Weapons, tools, bait and seeds are never deposited. Preview first.",
+    local intro=label({Parent=page,Text="Puts farm items into your nearest own chest. Tools, weapons, bait and seeds stay. Preview first.",
         TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-12,0,48),Position=UDim2.fromOffset(6,30)})
+    intro.TextWrapped=true
+    RemoteCatalog.DepositInfo=label({Parent=page,Text="",TextSize=12,Size=UDim2.new(1,-12,0,24),Position=UDim2.fromOffset(6,208)})
     RemoteCatalog.DepositInfo.TextWrapped=true;RemoteCatalog.DepositInfo.TextTruncate=Enum.TextTruncate.None
+    RemoteCatalog.DepositInfo.TextYAlignment=Enum.TextYAlignment.Top;RemoteCatalog.DepositInfo.AutomaticSize=Enum.AutomaticSize.Y
     RemoteCatalog.DepositToggle=button({Parent=page,Switch=true,Text="AUTO DEPOSIT: OFF",TextSize=13,Bg=COLORS.off,Size=UDim2.new(.5,-9,0,36),Position=UDim2.fromOffset(6,84)})
     RemoteCatalog.DepositNowButton=button({Parent=page,Text="Deposit now",TextSize=13,Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,84)})
     RemoteCatalog.DepositItemsButton=button({Parent=page,Text="",TextSize=12,Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,126)})
@@ -12900,6 +12938,7 @@ do
         if RemoteCatalog.RefreshKeybinds then RemoteCatalog.RefreshKeybinds() end
         if RemoteCatalog.RefreshRejoinButton then RemoteCatalog.RefreshRejoinButton() end
         if RemoteCatalog.RefreshMobUI then RemoteCatalog.RefreshMobUI() end
+        if RemoteCatalog.RefreshDepositUI then RemoteCatalog.RefreshDepositUI() end
         savePreferences()
         setStatus("Profile "..RemoteCatalog.ProfileSlot.." loaded · "..tostring(profile.Name),COLORS.good)
         return true
@@ -13202,6 +13241,7 @@ RemoteCatalog.LayoutSettings()
 -- AUTO DROP UI END
 
 function RemoteCatalog.StopAllAutomation()
+    if RemoteCatalog.SetDepositEnabled then RemoteCatalog.SetDepositEnabled(false) end
     RemoteCatalog.StopMobLearning()
     RemoteCatalog.Mobs:Stop()
     RemoteCatalog.SetDropEnabled(false)
@@ -13594,6 +13634,7 @@ end)
 
 gui.Destroying:Connect(function()
     pcall(RemoteCatalog.SetPerformanceMode,false)
+    if RemoteCatalog.SetDepositEnabled then pcall(RemoteCatalog.SetDepositEnabled,false) end
     RemoteCatalog.StopMobLearning()
     RemoteCatalog.Mobs:Stop()
     RemoteCatalog.SetDropEnabled(false)

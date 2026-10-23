@@ -34,14 +34,14 @@ local remote={InvokeServer=function(self,body)
  assert(body.action=='deposit' and body.player_tracking_category=='join_from_web' and body.amount==body.tool.Amount.Value,'deposit body must match the confirmed chest transaction shape')
  if body.chest.capacity>0 then body.tool.Parent=nil end
 end}
-local CONFIG={}
+local CONFIG={PlantType='potato'}
 local saves=0
 local function savePreferences() saves+=1 end
 local enabled=false
 local gui={Parent=true}
 local COLORS={on=1,off=2,muted=3}
 local approached=0
-local RemoteCatalog={DepositPage={},ChestTravel='Stay',ChestScanRange=120,OwnedTools=function() return owned end,
+local RemoteCatalog={DepositPage={},SeedNames=function(crop) return crop=='wheat' and {'wheatSeeds'} or crop=='potato' and {'potato'} or {} end,ChestTravel='Stay',ChestScanRange=120,OwnedTools=function() return owned end,
  ChestTransactionRemote=function() return remote end,StackAmount=function(t) return t.Amount and t.Amount.Value or 1 end,
  ChestTargetProtected=function(b) return b.Chest.Name=='chestMediumIndustrialIO' end,
  Navigation={Stop=function() end,Approach=function(_,c) approached+=1;root.Position=c.Position;return true end}}
@@ -51,14 +51,25 @@ local function pageHeading() return {} end
 local function track(c) return c end
 local task={wait=function() end,spawn=function() end}
 local UDim2={new=function() return {} end,fromOffset=function() return {} end}
-local Enum={TextTruncate={None=0}}
+local Enum={TextTruncate={None=0},TextYAlignment={Top=0},AutomaticSize={Y=0}}
+local FarmLogic={SelectedCrops=function() return {'wheat'} end}
+local buildController={}
 ${source}
 assert(RemoteCatalog.DepositKind('wheat')=='crop' and RemoteCatalog.DepositKind('oakLog')=='wood' and RemoteCatalog.DepositKind('ironOre')=='ore')
 for _,name in ipairs({'ironAxe','stonePickaxe','ironWarAxe','bait','wheatSeeds','saplingOrange','fishingRod','hoe'}) do
  assert(RemoteCatalog.DepositKind(name)==nil,name..' must never be deposited')
 end
+local plantStock=tool('potato',6)
+table.insert(owned,plantStock)
 local items=RemoteCatalog.DepositItems()
-assert(#items==2 and items[1].Tool==carrots and items[2].Tool==wheat,'Crops mode takes crops only, never the held tool')
+assert(#items==2 and items[1].Tool==carrots and items[2].Tool==wheat,'Crops mode takes crops only, never the held tool or the replant stock')
+for _,name in ipairs({'ironShears','woodShield','goldHelmet'}) do assert(RemoteCatalog.DepositKind(name)==nil,name..' is gear, not farm produce') end
+RemoteCatalog.DepositBusy=true
+assert(select(2,RemoteCatalog.DepositOnce()):find('already running',1,true),'two deposits must never overlap')
+RemoteCatalog.DepositBusy=false
+RemoteCatalog.CraftWorker=1
+assert(select(2,RemoteCatalog.DepositOnce()):find('crafting',1,true),'deposits wait while crafting uses the inventory')
+RemoteCatalog.CraftWorker=nil
 CONFIG.DepositCategory='Wood + ores';assert(#RemoteCatalog.DepositItems()==1);CONFIG.DepositCategory='Crops'
 local chests=RemoteCatalog.DepositChests()
 assert(#chests==2 and chests[1].Chest==full and chests[2].Chest==spare,'nearest unprotected chests with contents first; conveyor input chests are skipped')

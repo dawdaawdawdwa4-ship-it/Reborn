@@ -83,6 +83,11 @@ do
  assert(recorder:WithdrawItems(500,bindings[2]) and invoked[2].amount==7,'amounts are capped at the stack size')
  salad.Parent=nil
  assert(not recorder:CanUseChestBinding(bindings[1]),'an emptied stack is no longer a target')
+ local carrotSlot=bindings[2].Slot
+ io.FindFirstChild=function(_,child) return child=='Contents' and {GetChildren=function() return {carrots,stack('stone',0)} end} or nil end
+ RemoteCatalog.ContentsChestCache=nil
+ local again=RemoteCatalog.ContentsChestRecorder():GetChestBindings()
+ assert(#again==1 and again[1].Item=='carrotHarvested' and again[1].Slot==carrotSlot,'a stack keeps its slot id when another stack empties, and zero-amount stacks are skipped')
  RemoteCatalog.FindNamed=nil;RemoteCatalog.ContentsChestCache=nil
  assert(RemoteCatalog.ContentsChestRecorder()==nil,'without the chest remote nothing is offered')
 end

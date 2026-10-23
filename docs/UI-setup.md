@@ -3469,3 +3469,29 @@ A new **Deposit** tab puts farm items from the inventory into owned chests.
 - Category and interval are saved; Auto deposit always starts OFF.
 
 Report headers now read `Reborn deposit-130`.
+
+
+## Review fixes for v127–v130 · v131
+
+- **Deposit owns movement.** Harvest/Wood batches stop at the next target while a
+  deposit runs and their travel cancels, so the two never steer at once.
+- **One deposit at a time.** A second run (Deposit now plus Auto, or a quick
+  OFF/ON) is refused while one runs. Deposits also wait for crafting, Auto Plow
+  and Auto Build; chest collection and manual withdrawals wait for a deposit.
+- **Stop All** (and hub removal) turns Auto Deposit off.
+- **Stable content stacks.** A Contents stack keeps its own id (1001+) for as long
+  as it exists, so a chosen stack never turns into another item when a stack
+  before it empties. Labels show the item instead of the id. Stacks with Amount 0
+  are not targets; a missing Amount means one item.
+- **Remembered items not in a chest** are skipped like an empty slot instead of
+  blocking the run.
+- **Scope: Learned only** now excludes Contents stacks; they belong to All
+  matching.
+- **Never deposited** now also covers replant stock named like the crop
+  (`SeedNames` of the selected crops and plant type) and more gear words (shears,
+  shield, armour, helmet, pick, rake, torch …). Inventory quantities are read like
+  bait (attributes and value names).
+- **Layout.** Deposit status sits below the buttons and grows downwards. Profile
+  loads refresh the Deposit buttons, and the overlay shows "whole island".
+
+Report headers now read `Reborn review-131`.
