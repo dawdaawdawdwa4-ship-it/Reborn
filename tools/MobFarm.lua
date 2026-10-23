@@ -39,7 +39,7 @@ function MobFarm.HealthOf(model,humanoid)
     return humanoid.Health
 end
 function MobFarm.new(ctx)
-    local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},
+    local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
         Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.35,ResumeAbove=.5,WalkSpeed=24}
@@ -211,7 +211,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
@@ -276,6 +276,15 @@ function MobFarm.new(ctx)
                     if self.Target then observe(self.Target) end
                     -- HP replication can trail a swing; keep watching recent targets after a switch.
                     checkLoot()
+                    -- The game's floating damage numbers are a direct hit signal when mob HP never replicates.
+                    if ctx.DamageSeen and now()-lastAttackAt<=1.5 then
+                        local ok,count,total=pcall(ctx.DamageSeen,lastAttackAt)
+                        if ok and type(count)=="number" and count>0 then
+                            self.DamageNumbers+=count;self.DamageTotal+=(total or 0)
+                            unconfirmed=0;attempts=0
+                            publish("Hit · damage number "..tostring(total or "?").." · hits are landing")
+                        end
+                    end
                     for model,at in pairs(attackedAt) do
                         if not MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players,self.Kind) then
                             -- Mobs usually despawn at 0 HP before it replicates, if HP replicates at all. A
@@ -369,58 +378,64 @@ function MobFarm.new(ctx)
                                 end
                                 local chasing=false
                                 local standoff=standoffFor(chosen)
-                                -- Slimes hop at the character. Measured per tick: a target closing fast is left
-                                -- to arrive rather than hopped into (which ends with the character inside it).
-                                -- Compared from the character's current spot, so the hub's own hops do not count.
+                                -- Tether: the distance kept from the mob, every tick, in both directions.
+                                local keep=(self.KeepDistance=="Auto" or type(self.KeepDistance)~="number") and standoff or math.min(self.Reach-.5,self.KeepDistance)
                                 local previous=lastDistance[chosen.Model]
                                 lastDistance[chosen.Model]=chosen.Root.Position
                                 local closing=previous~=nil and (previous-root.Position).Magnitude-chosen.Distance>=1.5 and chosen.Distance<=self.Reach*2
-                                local airborne=math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0))>self.Reach*.75
+                                local function dy() return math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0)) end
+                                local airborne=dy()>self.Reach*.75
                                 if chosen.Distance<=self.Reach*2 and ctx.Face then pcall(ctx.Face,root,chosen.Root) end
-                                if self.Walk and closing and airborne and chosen.Distance<=self.Reach*1.5 and ctx.Sidestep then
+                                local clear=self.Walk and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
+                                local teleport=clear and self.Travel=="Teleport" and ctx.Hop~=nil
+                                local near=clear and chosen.Distance<=self.ChaseRange and dy()<(progress.Best and 12 or 6)
+                                local gap=chosen.Distance
+                                if self.Walk and closing and airborne and gap<=self.Reach*1.5 and ctx.Sidestep then
                                     -- A slime jumping at the character lands where the character was; step aside.
                                     boost(human,true)
                                     if pcall(ctx.Sidestep,human,root,chosen.Root.Position,5) then self.Chase={Humanoid=human,Root=root} end
                                     publish("Dodging · "..chosen.Model.Name.." is jumping at you")
-                                elseif closing and chosen.Distance>self.Reach then
-                                    halt();publish("Holding · "..chosen.Model.Name.." is coming · "..math.floor(chosen.Distance).." studs")
-                                elseif chosen.Distance>self.Reach then
-                                    local clear=self.Walk and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
-                                    -- Teleport mode loops short hops, one per tick; walls still route through the pathfinder.
-                                    local teleport=clear and self.Travel=="Teleport" and ctx.Hop~=nil
-                                    local close=teleport or clear and chosen.Distance<=self.ChaseRange
-                                        -- Hops lift the slime; allow more height once a chase is underway.
-                                        and math.abs(chosen.Root.Position.Y-root.Position.Y)<(progress.Best and 12 or 6)
-                                    if close then
-                                        chasing=true
-                                        if not progress.Best or chosen.Distance<progress.Best-.5 then
-                                            progress.Best=chosen.Distance;progress.At=now()
+                                elseif self.Walk and (teleport or near) then
+                                    -- Attached to the mob: too far → close in, too close → back out, both to `keep` studs.
+                                    if math.abs(gap-keep)>.75 then
+                                        chasing=gap>keep
+                                        if chasing then
+                                            if not progress.Best or gap<progress.Best-.5 then progress.Best=gap;progress.At=now() end
                                         end
-                                        if now()-progress.At>2 then
+                                        local offset=chosen.Root.Position-root.Position
+                                        local desired=offset.Magnitude>.1 and chosen.Root.Position-offset.Unit*keep or nil
+                                        if chasing and now()-progress.At>2 then
                                             halt();cooldowns[chosen.Model]=now()+3;self.Target=nil
                                             publish((teleport and "Teleport" or "Chase").." stalled · trying another slime shortly")
+                                        elseif not desired then
+                                            -- Standing exactly inside the mob: any direction out.
+                                            retreat(human,root,chosen.Root,keep)
                                         elseif teleport then
                                             if self.Chase then halt() end
-                                            local offset=chosen.Root.Position-root.Position
-                                            local hop=math.min(self.HopDistance,offset.Magnitude-(standoff+1))
-                                            if hop>.1 and pcall(ctx.Hop,root,root.Position+offset.Unit*hop,chosen.Root) then
-                                                publish("Teleporting · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
+                                            local move=desired-root.Position
+                                            local step=math.min(self.HopDistance,move.Magnitude)
+                                            if step>.1 and pcall(ctx.Hop,root,root.Position+move.Unit*step,chosen.Root) then
+                                                publish((gap>keep and "Teleporting · " or "Backing off · ")..chosen.Model.Name.." · "..math.floor(gap).." → "..math.floor(keep+.5).." studs")
                                             else
                                                 cooldowns[chosen.Model]=now()+3;self.Target=nil
                                                 publish("Teleport unavailable · trying another slime shortly")
                                             end
-                                        elseif chase(human,root,chosen.Root,standoff+1) then
-                                            publish("Chasing · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
+                                        elseif chase(human,root,chosen.Root,keep) then
+                                            publish((gap>keep and "Chasing · " or "Backing off · ")..chosen.Model.Name.." · "..math.floor(gap).." → "..math.floor(keep+.5).." studs")
                                         else
                                             halt();cooldowns[chosen.Model]=now()+3;self.Target=nil
                                             publish("Movement unavailable · trying another slime shortly")
                                         end
-                                    elseif self.Walk then
+                                        gap=(chosen.Root.Position-root.Position).Magnitude
+                                    elseif self.Chase then halt() end
+                                elseif gap>self.Reach then
+                                    if self.Walk then
+                                        -- No clear line or beyond chase range: the pathfinder, then the tether takes over.
                                         if self.Chase then halt() end
-                                        publish("Walking · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
+                                        publish("Walking · "..chosen.Model.Name.." · "..math.floor(gap).." studs")
                                         local point=chosen.Root.Position
                                         boost(human,true)
-                                        local arrived=ctx.Navigation.Approach(ctx.Player,chosen.Model,math.max(4,standoff+1),function()
+                                        local arrived=ctx.Navigation.Approach(ctx.Player,chosen.Model,math.max(4,keep+1),function()
                                             return valid() and (chosen.Root.Position-point).Magnitude<6
                                         end,function() return chosen.Root.Position end,"Walk","Mobs")
                                         if not active() then return end
@@ -428,64 +443,56 @@ function MobFarm.new(ctx)
                                             cooldowns[chosen.Model]=now()+3
                                             publish("Path blocked · trying another slime shortly")
                                         end
-                                    else publish("Waiting · move within 6 studs or enable Auto Move") end
-                                elseif airborne then
-                                    -- A swing at a slime above head height misses; it lands within a moment.
-                                    if self.Chase then halt() end
-                                    publish("Waiting · "..chosen.Model.Name.." is in the air")
-                                elseif now()-lastAttack>=.65 and valid() then
-                                    if self.Chase then halt() end
-                                    local tool=ctx.Weapon(recorder.MobBinding.WeaponName)
-                                    if not tool or not ctx.Equip(tool) then
-                                        self:Stop("Learned weapon unavailable · equip it and learn attack again");return
-                                    end
-                                    -- Equipping may yield or change the character/target. Recheck before sending.
-                                    if tool.Enabled==false then publish("Waiting · weapon cooldown")
-                                    elseif valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
-                                        if ctx.ClearLine(root,chosen.Root,char,chosen.Model) then
-                                            -- A mob on top of the character hits constantly and blocks the weapon's own
-                                            -- raycast; swing from just outside its body.
-                                            local gap=(chosen.Root.Position-root.Position).Magnitude
-                                            if self.Walk and gap<standoff then
-                                                retreat(human,root,chosen.Root,math.max(1,standoff+1-gap))
-                                            else boost(nil,false) end
-                                            -- Native melee hits what the character faces, not what the hub selected.
-                                            if ctx.Face then pcall(ctx.Face,root,chosen.Root) end
-                                            lastAttack=now()
-                                            self.LastTarget=chosen.Model.Name
-                                            local sent,detail=self:Swing(tool,valid,function()
-                                                return active() and ctx.Player.Character==char and tool.Parent==char
-                                                    and char:FindFirstChild("HumanoidRootPart")==root
-                                                    and char:FindFirstChildOfClass("Humanoid")==human
-                                            end,chosen)
-                                            if not active() then return end
-                                            self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
-                                            if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
-                                            self.Swings+=1;attempts+=1;unconfirmed+=1
-                                            -- Back out again right after the swing, not only before the next one.
-                                            if self.Walk and (chosen.Root.Position-root.Position).Magnitude<standoff then
-                                                retreat(human,root,chosen.Root,math.max(1,standoff+1-(chosen.Root.Position-root.Position).Magnitude))
-                                            end
-                                            attackedAt[chosen.Model]=now();lastAttackAt=now()
-                                            attackedNear[chosen.Model]=(chosen.Root.Position-root.Position).Magnitude
-                                            if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end
-                                            observe(chosen.Model)
-                                            publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
-                                            if unconfirmed>=self.RunBudget then
-                                                self:Stop("No HP drop, loot or defeat observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
-                                            elseif attempts>=self.TargetBudget then
-                                                if ctx.LearnedHit and not self.UseLearnedHit then
-                                                    -- Try the stronger method on this same target before giving up on it.
-                                                    self.UseLearnedHit=true;attempts=0
-                                                    publish("No HP drop from clicks · adding the learned hit packet")
-                                                else
-                                                    -- One unhittable slime must not end the whole run.
-                                                    cooldowns[chosen.Model]=now()+5;self.Target=nil;attempts=0
-                                                    publish("No HP drop on "..chosen.Model.Name.." · trying another slime")
+                                    else publish("Waiting · move within "..self.Reach.." studs or enable Auto Move") end
+                                end
+                                if self.Target==chosen.Model and gap<=self.Reach and valid() then
+                                    if airborne then
+                                        -- A swing at a slime above head height misses; it lands within a moment.
+                                        publish("Waiting · "..chosen.Model.Name.." is in the air")
+                                    elseif now()-lastAttack>=.65 then
+                                        local tool=ctx.Weapon(recorder.MobBinding.WeaponName)
+                                        if not tool or not ctx.Equip(tool) then
+                                            self:Stop("Learned weapon unavailable · equip it and learn attack again");return
+                                        end
+                                        -- Equipping may yield or change the character/target. Recheck before sending.
+                                        if tool.Enabled==false then publish("Waiting · weapon cooldown")
+                                        elseif valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
+                                            if ctx.ClearLine(root,chosen.Root,char,chosen.Model) then
+                                                boost(nil,false)
+                                                -- Native melee hits what the character faces, not what the hub selected.
+                                                if ctx.Face then pcall(ctx.Face,root,chosen.Root) end
+                                                lastAttack=now()
+                                                self.LastTarget=chosen.Model.Name
+                                                local sent,detail=self:Swing(tool,valid,function()
+                                                    return active() and ctx.Player.Character==char and tool.Parent==char
+                                                        and char:FindFirstChild("HumanoidRootPart")==root
+                                                        and char:FindFirstChildOfClass("Humanoid")==human
+                                                end,chosen)
+                                                if not active() then return end
+                                                self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
+                                                if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
+                                                self.Swings+=1;attempts+=1;unconfirmed+=1
+                                                attackedAt[chosen.Model]=now();lastAttackAt=now()
+                                                attackedNear[chosen.Model]=(chosen.Root.Position-root.Position).Magnitude
+                                                if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end
+                                                observe(chosen.Model)
+                                                publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
+                                                if unconfirmed>=self.RunBudget then
+                                                    self:Stop("No HP drop, damage number, loot or defeat observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
+                                                elseif attempts>=self.TargetBudget then
+                                                    if ctx.LearnedHit and not self.UseLearnedHit then
+                                                        -- Try the stronger method on this same target before giving up on it.
+                                                        self.UseLearnedHit=true;attempts=0
+                                                        publish("No HP drop from clicks · adding the learned hit packet")
+                                                    else
+                                                        -- One unhittable slime must not end the whole run.
+                                                        cooldowns[chosen.Model]=now()+5;self.Target=nil;attempts=0
+                                                        publish("No HP drop on "..chosen.Model.Name.." · trying another slime")
+                                                    end
                                                 end
+                                            else
+                                                cooldowns[chosen.Model]=now()+3;publish("Target obstructed · trying another slime")
                                             end
-                                        else
-                                            cooldowns[chosen.Model]=now()+3;publish("Target obstructed · trying another slime")
                                         end
                                     end
                                 end

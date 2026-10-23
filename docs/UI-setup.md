@@ -3701,3 +3701,25 @@ the next swing. Starting below 35% HP shows "Low health (N%) · waiting until 50
 HP before attacking" instead of silently pausing.
 
 Report headers now read `Reborn mob-dodge-142`.
+
+
+## Tether and damage numbers · v143
+
+Requested after a clip: teleport to the mob, stay a fixed number of studs away,
+and move with it so the distance stays the same.
+
+- **Tether.** With Auto Move on, the farm keeps the character at the kept
+  distance from the target every tick, in both directions: too far → close in
+  (TP hop or walk), too close → back out, moving mob → follow. "Keep distance"
+  (Mobs → Setup; Auto = just outside the mob's body, or 3 / 4 / 5 studs, saved
+  and in profiles) replaces the separate standoff, holding and step-back rules;
+  dodging a jumping mob and the airborne wait remain. A swing follows in the same
+  tick once the distance is reached. Targets with no clear line or beyond the
+  chase range still use the pathfinder first.
+- **Damage numbers.** The clip showed "16" over the slime: the game's floating
+  damage number. Numeric TextLabels created in the world or the player's GUI
+  (never the hub's own) are logged; any that appear within 1.5 s of a swing count
+  as hits ("Hit · damage number 16 · hits are landing") and refill the budgets.
+  Copy result shows damage numbers seen and the total.
+
+Report headers now read `Reborn mob-tether-143`.

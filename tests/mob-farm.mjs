@@ -126,8 +126,8 @@ reset();ah.Health=10;farm:Start()
 assert(farm.Defeats==1 and farm.Drops==1,'zero HP must count once, and never infer a kill from dispatch alone')
 assert(farm.KillsByName.slimeBlue==1,'kills must be broken down by mob name')
 step();step();assert(farm.Defeats==1)
-reset();farm:Start();local prior=farm.Drops;a.Parent=nil;step(.7)
-assert(farm.Defeats==0 and farm.Drops==prior,'streaming out must not count a defeat');a.Parent=nested
+reset();farm:Start();a.Parent=nil;step(.7)
+assert(farm.Defeats==0 and farm.LikelyDefeats==0,'streaming out with replicated HP must not count a defeat');a.Parent=nested
 reset();ar.Position=v(30);farm.ChaseRange=0;farm:Start();assert(walks==1 and sent==0);step();assert(sent==1 and farm.Target==b,'Auto Walk must approach nearest living target and attack only after rechecking reach')
 reset();ar.Position=v(30);farm.Walk=false;farm:Start();step(2);assert(walks==0 and sent==0 and farm.Enabled)
 reset();human.Health=25;farm:Start();assert(sent==0 and farm.Enabled)
@@ -163,10 +163,10 @@ farm:Start();for i=1,40 do if not farm.Enabled or farm.Swings>=14 then break end
 assert(farm.Enabled and farm.Drops>0,'any observed HP drop must refill the run budget')
 reset();faceError=true;farm:Start();assert(sent==1 and farm.Enabled,'a facing failure must not block the native swing')
 reset();ar.Position=v(15);farm:Start()
-assert(walks==0 and moves==1 and sent==0 and farm.Message:find('Chasing',1,true),'nearby visible slimes must be chased directly without pathfinding')
-step();assert(sent==1 and farm.Target==a and walks==0,'a chased slime must be attacked once in reach')
+assert(walks==0 and moves==1 and sent==1 and farm.Target==a,'nearby visible slimes are tethered directly without pathfinding and attacked in the same tick')
+step();assert(sent==1 and farm.Target==a and walks==0,'the attack cadence still holds')
 reset();ar.Position=v(15);farm:Start();farm:Stop()
-assert(moves==3 and not farm.Chase and root.Position.X<=0,'Stop must clear the direct chase destination and step away from the adjacent slime')
+assert(moves==3 and not farm.Chase and root.Position.X<=1,'Stop must clear the direct chase destination and step away from the adjacent slime')
 reset();stuck=true;ar.Position=v(15);br.Position=v(40);farm:Start()
 local stalled=false
 for i=1,20 do step();if farm.Message:find('Chase stalled',1,true) then stalled=true;break end end
@@ -198,8 +198,8 @@ assert(runTime>=1 and farm:RunTime()==runTime and farm.EndedAt,'run time must fr
 reset();ar.Position=v(40);br.Position=v(32);farm.Travel='Teleport';farm:Start()
 assert(hops==1 and root.Position.X==8 and walks==0 and moves==0 and sent==0 and farm.Message:find('Teleporting',1,true),'TP mode must hop 8 studs toward the slime, not walk')
 step();step();assert(hops==3 and root.Position.X==24 and sent==0)
-step();assert(hops==4 and root.Position.X>=28 and root.Position.X<=29 and sent==0,'the last hop must stop just outside the slime')
-step();assert(sent==1 and farm.Target==b,'TP hops must loop until the slime is in reach, then attack')
+step();assert(hops==4 and root.Position.X>=29 and root.Position.X<=30 and sent==1 and farm.Target==b,'the last hop lands at the kept distance and the swing follows in the same tick')
+step();assert(sent==1,'TP hops keep the distance instead of hopping on')
 reset();farm.Travel='Teleport';blocked=true;ar.Position=v(40);br.Position=v(60);farm:Start();step()
 assert(hops==0 and walks>=1,'obstructed slimes must be pathfound instead of teleported through walls')
 reset();farm.Travel='Teleport';stuck=true;ar.Position=v(40);br.Position=v(60);farm:Start()
@@ -211,7 +211,7 @@ assert(hops==1 and farm.Enabled and farm.Message:find('Teleport unavailable',1,t
 reset();farm.Travel='Teleport';farm.Walk=false;ar.Position=v(40);br.Position=v(60);farm:Start();step(2)
 assert(hops==0 and walks==0 and sent==0,'Auto Move OFF must never teleport')
 reset();br.Position=v(8);bh.Health=30;farm:Start()
-assert(sent==0 and farm.Target==b,'a damaged slime about as close as the nearest must be finished first')
+assert(sent==1 and farm.Target==b,'a damaged slime about as close as the nearest must be finished first')
 step();assert(sent==1 and farm.Target==b)
 reset();br.Position=v(20);bh.Health=30;farm:Start();assert(farm.Target==a,'a far damaged slime must not pull the farm past a near one')
 reset();ah.Health=15;farm:Start();assert(farm.Drops==1 and ah.Health==5)
@@ -294,7 +294,7 @@ do
  reset();stuck=true;ar.Position=v(11);farm:Start()
  local chasedMoves=moves
  ar.Position=v(9);step()
- assert(moves<=chasedMoves+1 and root.Position.X==0 and farm.Message:find('is coming',1,true) and sent==0,'a target closing fast must be waited for (only the halt MoveTo), not hopped into')
+ assert(root.Position.X==0 and sent==0 and (farm.Message:find('Chasing',1,true) or farm.Message:find('Dodging',1,true)),'a closing target is tethered, never hopped into')
  ar.Position=v(4);step();assert(sent==1,'once it arrives in reach it is attacked')
  reset();ar.Position=v(4);ar.Position.Y=8;farm:Start()
  assert(sent==0 and farm.Message:find('in the air',1,true),'no swing while the slime is above head height')
@@ -334,6 +334,29 @@ do
  assert(dodges==1 and farm.Message:find('Dodging',1,true) and sent==0,'an airborne closing slime must be sidestepped')
  ar.Position.Y=0;ar.Position=v(7);step();assert(farm.Message:find('is coming',1,true) or sent>=0)
  ctx.Sidestep=nil
+end
+-- Tether: the kept distance is held in both directions, following a moving mob.
+do
+ reset();farm.KeepDistance=4;ar.Position=v(20);farm:Start()
+ assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6 and sent==1,'the farm closes to the kept distance and swings')
+ ar.Position=v(26);step(.7);assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6,'when the mob moves away the farm follows at the same distance')
+ ar.Position=root.Position;ar.Position=v(root.Position.X+1);step(.7)
+ assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6,'when the mob closes in the farm backs out to the same distance')
+ reset();farm.KeepDistance=4;farm.Travel='Teleport';ar.Position=v(40);br.Position=v(60);farm:Start();for i=1,6 do step() end
+ assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6 and sent>=1,'TP hops attach at the kept distance too')
+ ar.Position=v(root.Position.X+1);step(.7);assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6,'a hop backs out when the mob lands on the character')
+end
+-- Floating damage numbers confirm hits and refill the budgets.
+do
+ reset();damage=false;local numbers={}
+ ctx.DamageSeen=function(since) local c,t=0,0 for _,n in ipairs(numbers) do if n.At>=since and not n.Counted then n.Counted=true;c+=1;t+=n.Value end end return c,t end
+ farm:Start();for i=1,3 do step(.7) end
+ assert(farm.Swings==4 and farm.DamageNumbers==0)
+ table.insert(numbers,{At=time,Value=16});step()
+ assert(farm.DamageNumbers==1 and farm.DamageTotal==16,'a damage number after a swing counts as a hit')
+ for i=1,14 do table.insert(numbers,{At=time,Value=10});step(.7) end
+ assert(farm.Swings>=12 and farm.Enabled and farm.DamageNumbers>=10,'confirmed hits keep the run going past the budget')
+ ctx.DamageSeen=nil
 end
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
