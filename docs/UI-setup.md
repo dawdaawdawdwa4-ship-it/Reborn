@@ -3723,3 +3723,23 @@ and move with it so the distance stays the same.
   Copy result shows damage numbers seen and the total.
 
 Report headers now read `Reborn mob-tether-143`.
+
+## Survival retreat · v144
+
+Requested after a run that landed 4 damage numbers (72 total) and then ended
+with the character dead at 0/100 HP, with no food in the inventory.
+
+- **Earlier, longer break.** Retreat starts at 45 % HP (was 35 %) and fighting
+  resumes at 70 % (was 50 %). Auto eat still goes first at 50 %.
+- **Real retreat.** While recovering, the farm looks at every mob kind
+  (buffalkor, lizards, skorps too, never only slimes) within 20 studs and moves
+  away from all of them at once: TP hops of up to 8 studs per tick in Teleport
+  mode (each hop still ground checked), or a boosted walk otherwise. It keeps
+  doing so every tick, so a mob that follows is kept 20 studs off, and it waits
+  only once nothing is within 20 studs. The Stop safety step uses the same
+  all-mob logic.
+- **Regeneration watchdog.** If HP has not risen by 2 points within 45 s of
+  recovering, the run stops with "HP is not regenerating (N%) · eat or heal,
+  then start again" instead of letting the character die quietly.
+
+Report headers now read `Reborn mob-retreat-144`.

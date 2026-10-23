@@ -81,7 +81,7 @@ local ctx={Player=player,Players=players,World=world,Now=function() return time 
  Equip=function() if equipHook then equipHook() end;return true end,ClearLine=function() return not blocked end,
  DescribeResult=RemoteCatalog.ChestResultText,
  Hop=function(r,destination,t)
-  assert(r==root and t==farm.Target:FindFirstChild('HumanoidRootPart'));hops+=1
+  assert(r==root and (farm.Target==nil and t.Name=='HumanoidRootPart' or t==farm.Target:FindFirstChild('HumanoidRootPart')));hops+=1
   if hopError then error('anchored') end
   assert(math.abs((destination-root.Position).Magnitude)<=8.001,'each teleport must be a short hop')
   if not stuck then root.Position=destination end
@@ -132,16 +132,27 @@ reset();ar.Position=v(30);farm.ChaseRange=0;farm:Start();assert(walks==1 and sen
 reset();ar.Position=v(30);farm.Walk=false;farm:Start();step(2);assert(walks==0 and sent==0 and farm.Enabled)
 reset();human.Health=25;farm:Start();assert(sent==0 and farm.Enabled)
 assert(moves==1 and root.Position.X<0 and farm.Message:find('Retreating',1,true),'low health must step away from the nearest slime')
-human.Health=40;step(1);assert(sent==0,'health recovery must use hysteresis')
-human.Health=45;step();assert(sent==0,'45% is still below the 50% resume point')
-human.Health=50;for i=1,4 do step() end;assert(sent==1,'farming must resume after recovery')
+human.Health=50;step(1);assert(sent==0,'health recovery must use hysteresis')
+human.Health=65;step();assert(sent==0,'65% is still below the 70% resume point')
+human.Health=70;for i=1,4 do step() end;assert(sent==1,'farming must resume after recovery')
 reset();farm.Walk=false;human.Health=25;farm:Start()
 assert(moves==0 and farm.Message:find('low health',1,true),'Auto Move OFF must never retreat on its own')
+-- Low health in TP mode hops away from every mob kind until all are 20 studs off; HP that never rises stops the run.
+do
+ reset();farm.Travel='Teleport';human.Health=40;ar.Position=v(30);br.Position=v(60);farm:Start()
+ assert(hops==1 and sent==0 and root.Position.X<=-8 and farm.Message:find('Retreating from buffalkor',1,true),'low HP must TP-hop away from any mob kind, not only slimes')
+ step();step();assert(hops==3 and root.Position.X<=-21,'the retreat keeps hopping until the mob is 20 studs away')
+ local before=hops;step();assert(hops==before and farm.Message:find('Paused · low health',1,true),'once every mob is 20 studs away the character waits for HP')
+ step(46);assert(not farm.Enabled and farm.Message:find('not regenerating',1,true),'HP that never rises for 45 s must stop the run with a clear message')
+ reset();farm.Travel='Teleport';human.Health=40;ar.Position=v(30);br.Position=v(60);farm:Start();step(20);human.Health=50;step(30)
+ assert(farm.Enabled,'rising HP resets the regeneration watchdog')
+ human.Health=70;before=hops;step();step();assert(farm.Enabled and hops>before and farm.Message:find('Teleporting',1,true),'recovered HP resumes the hop loop toward the slime')
+end
 reset();pause='typing';farm:Start();step(2);assert(sent==0 and walks==0 and farm.Enabled);pause=nil;step();assert(sent==1)
 reset();equipHook=function() farm:Stop();scheduler.wait(.1) end;farm:Start()
 assert(not farm:Start() and farm.Worker,'restart must wait for old yielding equip cleanup')
 step();assert(sent==0 and not farm.Worker,'Stop during equip must prevent a late attack')
-assert(root.Position.X<=-8,'a stop must step the character away from the adjacent slime')
+assert(math.abs(root.Position.X-ar.Position.X)>=8 and math.abs(root.Position.X-1)>=8,'a stop must step the character away from every adjacent mob')
 equipHook=nil;root.Position=v(0);assert(farm:Start());assert(sent==1,'fresh restart must create one worker')
 reset();equipHook=function() ar.Position=v(80) end;farm:Start();assert(sent==0,'target moving outside radius during equip must not be attacked')
 reset();walkHook=function(active) farm:Stop();assert(not active());scheduler.wait(.1);return true end

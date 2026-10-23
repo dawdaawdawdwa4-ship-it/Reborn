@@ -42,7 +42,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.35,ResumeAbove=.5,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -93,8 +93,8 @@ function MobFarm.new(ctx)
     end
     -- Step away from a mob: low health, a mob standing on the character, or a stop that would
     -- otherwise leave the character inside the mob's attacks.
-    local function retreat(human,root,threat,distance)
-        local away=root.Position-threat.Position
+    local function retreat(human,root,threat,distance,away)
+        away=away or root.Position-threat.Position
         if ctx.Flatten then away=ctx.Flatten(away) end
         if away.Magnitude<.1 then return false end
         boost(human,true)
@@ -157,15 +157,41 @@ function MobFarm.new(ctx)
         return math.max(0,(self.EndedAt or now())-self.StartedAt)
     end
     -- A live clip showed a stopped run leaving the character inside a slime until it died.
+    -- Nearest mob of any kind within `radius`; a low-health character flees buffalkor and
+    -- lizards too, not only the kind it farms.
+    function self:Threat(radius)
+        local kind=self.Kind
+        self.Kind="All mobs"
+        local ok,found=pcall(function() return self:Scan(nil,radius) end)
+        self.Kind=kind
+        local nearest=ok and found[1] or nil
+        if not nearest then return nil end
+        -- Away from all of them at once: two mobs on opposite sides must not pin the character.
+        local root=nearest.Root
+        local char=ctx.Player.Character
+        local mine=char and char:FindFirstChild("HumanoidRootPart")
+        local away
+        for _,entry in ipairs(found) do
+            local offset=mine.Position-entry.Root.Position
+            if ctx.Flatten then offset=ctx.Flatten(offset) end
+            if offset.Magnitude>.1 then
+                local push=offset.Unit*(1-entry.Distance/(radius+1))
+                away=away and away+push or push
+            end
+        end
+        if away and away.Magnitude<.1 then away=nil end
+        nearest.Away=away
+        return nearest
+    end
     function self:SafetyStep()
         if not self.Walk or not ctx.Player or not ctx.Navigation then return false end
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local root=char and char:FindFirstChild("HumanoidRootPart")
         if not human or not root or human.Health<=0 then return false end
-        local ok,threat=pcall(function() return self:Scan(nil,10)[1] end)
-        if not ok or not threat then return false end
-        local stepped=retreat(human,root,threat.Root,12)
+        local threat=self:Threat(10)
+        if not threat then return false end
+        local stepped=retreat(human,root,threat.Root,12,threat.Away)
         -- One MoveTo that finishes on its own; a stopped farm holds no movement state or speed.
         self.Chase=nil
         boost(nil,false)
@@ -234,6 +260,7 @@ function MobFarm.new(ctx)
             local lastDistance=setmetatable({},{__mode="k"})
             local progress={}
             local recovering=false
+            local regenAt,regenBest
             local function active()
                 return ctx.Alive() and self.Enabled and self.Generation==token and not ctx.Busy()
             end
@@ -325,12 +352,37 @@ function MobFarm.new(ctx)
                         local paused=ctx.PauseReason()
                         if recovering or paused then
                             self.Target=nil
-                            local threat=recovering and not paused and self.Walk and self:Scan()[1]
-                            if threat and threat.Distance<12 and retreat(human,root,threat.Root) then
-                                publish("Retreating from "..threat.Model.Name.." · low health; resumes at "..math.floor(self.ResumeAbove*100).."% HP")
+                            -- Regeneration watchdog: a character that keeps losing HP while "recovering" is still
+                            -- being hit (or starving); stopping with a clear message beats a silent death.
+                            if recovering then
+                                if not regenAt or fraction>regenBest+.02 then regenAt=now();regenBest=fraction
+                                elseif now()-regenAt>self.RegenTimeout then
+                                    self:Stop("HP is not regenerating ("..math.floor(fraction*100).."%) · eat or heal, then start again");return
+                                end
+                            else regenAt=nil end
+                            local resume=math.floor(self.ResumeAbove*100).."% HP"
+                            local threat=recovering and not paused and self.Walk and self:Threat(self.SafeDistance)
+                            if threat then
+                                -- Keep moving away until every mob is SafeDistance studs off, hopping in TP mode
+                                -- (ground checked by ctx.Hop) and walking otherwise; stays attached while HP rises.
+                                local away=threat.Away or root.Position-threat.Root.Position
+                                if ctx.Flatten then away=ctx.Flatten(away) end
+                                local moved=false
+                                if self.Travel=="Teleport" and ctx.Hop and away.Magnitude>.1 then
+                                    if self.Chase then halt() end
+                                    local step=math.min(self.HopDistance,self.SafeDistance-threat.Distance+2)
+                                    moved=pcall(ctx.Hop,root,root.Position+away.Unit*step,threat.Root)
+                                end
+                                if not moved then moved=retreat(human,root,threat.Root,math.max(12,self.SafeDistance-threat.Distance+4),threat.Away) end
+                                if moved then
+                                    publish("Retreating from "..threat.Model.Name.." · "..math.floor(threat.Distance).." studs; low health, resumes at "..resume)
+                                else
+                                    halt()
+                                    publish("Paused · low health next to "..threat.Model.Name.."; resumes at "..resume)
+                                end
                             else
                                 halt()
-                                publish(recovering and ("Paused · low health; resumes at "..math.floor(self.ResumeAbove*100).."% HP") or paused)
+                                publish(recovering and ("Paused · low health; resumes at "..resume) or paused)
                             end
                         else
                             local targets=self:Scan(cooldowns)
