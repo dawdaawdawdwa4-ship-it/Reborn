@@ -14,7 +14,17 @@ local blocks={GetChildren=function() return children end}
 function island:FindFirstChild(name) return name=='Blocks' and blocks or nil end
 local function getPlayerIsland() return island end
 local function getPartPosition(chest) return chest.Position end
-local function chest(name,x) return {Name=name,Parent=blocks,Position=vec(x,0,5)} end
+local function chest(name,x,stacks)
+ local c={Name=name,Parent=blocks,Position=vec(x,0,5)}
+ local contents=stacks and {Name='Contents',Parent=c,children=stacks,GetChildren=function(self) return self.children end}
+ if contents then for _,stack in ipairs(stacks) do stack.Parent=contents end end
+ function c:FindFirstChild(child) return child=='Contents' and contents or nil end
+ return c
+end
+local function stack(name,amount)
+ local value={Value=amount}
+ return {Name=name,FindFirstChild=function(_,child) return child=='Amount' and value or nil end}
+end
 local player={Character={}}
 local CONFIG={}
 local sent={}
@@ -54,6 +64,27 @@ do
  local many={}
  for i=1,70 do table.insert(many,{Name='c',X=i,Y=0,Z=0,Slot=1,Item='x',Amount=1}) end
  assert(#RemoteCatalog.MergeChestMemory(many,{})==64,'remembered chests stay capped')
+end
+-- No learning: stacks come straight from chest Contents and use the field-confirmed request shape.
+do
+ local invoked={}
+ local remote={InvokeServer=function(self,body) table.insert(invoked,body);return true end}
+ RemoteCatalog.FindNamed=function(name,class) assert(name=='CLIENT_CHEST_TRANSACTION' and class=='RemoteFunction');return remote end
+ local salad,carrots=stack('potatoSalad',42),stack('carrotHarvested',7)
+ local io=chest('chestMediumIndustrialIO',0,{salad,carrots})
+ local plain=chest('chestSmall',4)
+ children={io,plain,{Name='grass',FindFirstChild=function() return nil end}}
+ local recorder=RemoteCatalog.ContentsChestRecorder()
+ local bindings=recorder:GetChestBindings()
+ assert(#bindings==2 and bindings[1].Item=='potatoSalad' and bindings[1].Amount==42 and bindings[1].Slot==1001 and bindings[2].Item=='carrotHarvested','every stack in a readable Contents folder becomes a withdrawal target')
+ assert(recorder:WithdrawItems(nil,bindings[1]))
+ local body=invoked[1]
+ assert(body.chest==io and body.tool==salad and body.amount==42 and body.action=='withdraw' and body.player_tracking_category=='join_from_web','withdrawal must use the confirmed CLIENT_CHEST_TRANSACTION shape with the stack Instance')
+ assert(recorder:WithdrawItems(500,bindings[2]) and invoked[2].amount==7,'amounts are capped at the stack size')
+ salad.Parent=nil
+ assert(not recorder:CanUseChestBinding(bindings[1]),'an emptied stack is no longer a target')
+ RemoteCatalog.FindNamed=nil;RemoteCatalog.ContentsChestCache=nil
+ assert(RemoteCatalog.ContentsChestRecorder()==nil,'without the chest remote nothing is offered')
 end
 return 'Chest memory: offset snapshot, new-server rediscovery, stable request body, invalid/rejected sends and missing endpoint passed'
 `;

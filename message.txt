@@ -4973,7 +4973,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-targets-127",
+    return table.concat({"Reborn chest-contents-128",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6990,7 +6990,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-targets-127 · Propeller loot history (UTC)",
+    return table.concat({"Reborn chest-contents-128 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7094,7 +7094,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-targets-127 · Propeller tracker",
+    return table.concat({"Reborn chest-contents-128 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7130,7 +7130,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-targets-127", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-contents-128", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -8869,9 +8869,83 @@ function RemoteCatalog.ChestEndpoint()
     local endpoint=RemoteCatalog.GameEndpoint("CLIENT_CHEST_TRANSACTION")
     if endpoint and type(endpoint.CallServer)=="function" then return endpoint end
 end
+-- Field-confirmed shape (user's working script): the stable _NetManaged remote, called directly,
+-- withdraws a stack Instance from the chest's Contents folder. Stack Amount values give the count.
+function RemoteCatalog.ChestTransactionRemote()
+    return RemoteCatalog.FindNamed and RemoteCatalog.FindNamed("CLIENT_CHEST_TRANSACTION","RemoteFunction") or nil
+end
+function RemoteCatalog.StackAmount(stack)
+    local value=stack and stack:FindFirstChild("Amount")
+    local amount=value and tonumber(value.Value)
+    return amount and amount>0 and math.floor(amount) or 1
+end
+function RemoteCatalog.ChestStack(chest,item)
+    local contents=chest and chest:FindFirstChild("Contents")
+    if not contents then return nil end
+    for _,stack in ipairs(contents:GetChildren()) do if stack.Name==item then return stack end end
+end
+function RemoteCatalog.SendChestWithdraw(chest,item,amount,slot,stack)
+    if not (stack and stack.Parent) then stack=RemoteCatalog.ChestStack(chest,item) end
+    local remote=RemoteCatalog.ChestTransactionRemote()
+    if stack and remote then
+        amount=math.min(amount,RemoteCatalog.StackAmount(stack))
+        -- Plain index call so the capture hook does not record the hub's own request.
+        local ok,result=pcall(function()
+            return remote.InvokeServer(remote,{chest=chest,player_tracking_category="join_from_web",amount=amount,tool=stack,action="withdraw"})
+        end)
+        if not ok then return false,result,"transport" end
+        if result==false or type(result)=="table" and result.success==false then return false,result,"rejected" end
+        return true,result
+    end
+    local endpoint=RemoteCatalog.ChestEndpoint()
+    if not endpoint then return false,"Game chest request unavailable · learn one withdrawal on this server","unavailable" end
+    local ok,result=RemoteCatalog.SendEndpoint(endpoint,{chest=chest,slot=slot,item=item,amount=amount,action="withdraw"})
+    if not ok then return false,result,"rejected" end
+    return true,result
+end
+-- Every stack in every owned chest with a readable Contents folder, without any learning.
+function RemoteCatalog.ContentsChestRecorder()
+    if not RemoteCatalog.ChestTransactionRemote() then return nil end
+    local island=getPlayerIsland()
+    local blocks=island and island:FindFirstChild("Blocks")
+    if not blocks then return nil end
+    local cache=RemoteCatalog.ContentsChestCache
+    if cache and cache.Blocks==blocks and os.clock()-cache.At<1 then return cache.Recorder end
+    local recorder={FromContents=true,ChestBindings={}}
+    for _,chest in ipairs(blocks:GetChildren()) do
+        local contents=chest:FindFirstChild("Contents")
+        if contents and string.find(string.lower(chest.Name),"chest",1,true) then
+            for index,stack in ipairs(contents:GetChildren()) do
+                -- Slots 1000+ keep content stacks apart from learned slot numbers (0–12).
+                table.insert(recorder.ChestBindings,{Chest=chest,Slot=1000+index,Item=stack.Name,Amount=RemoteCatalog.StackAmount(stack),
+                    Stack=stack,ObservedAt=0,FromContents=true})
+            end
+        end
+    end
+    recorder.ChestBinding=recorder.ChestBindings[1]
+    function recorder:CanUseChestBinding(binding)
+        local b=binding or self.ChestBinding
+        return b~=nil and b.Chest~=nil and b.Chest.Parent~=nil and b.Stack~=nil and b.Stack.Parent~=nil and player.Character~=nil
+    end
+    function recorder:GetChestBindings()
+        local result={}
+        for _,binding in ipairs(self.ChestBindings) do if self:CanUseChestBinding(binding) then table.insert(result,binding) end end
+        return result
+    end
+    function recorder:WithdrawItems(amount,binding)
+        local b=binding or self.ChestBinding
+        if not self:CanUseChestBinding(b) then return false,"That stack is no longer in the chest","context" end
+        amount=amount==nil and RemoteCatalog.StackAmount(b.Stack) or amount
+        if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount","invalid" end
+        return RemoteCatalog.SendChestWithdraw(b.Chest,b.Item,amount,b.Slot,b.Stack)
+    end
+    recorder.WithdrawCarrots=recorder.WithdrawItems
+    RemoteCatalog.ContentsChestCache={Blocks=blocks,At=os.clock(),Recorder=recorder}
+    return recorder
+end
 function RemoteCatalog.RememberedChestRecorder()
     local memory=CONFIG.RememberedChests
-    if type(memory)~="table" or #memory==0 or not RemoteCatalog.ChestEndpoint() then return nil end
+    if type(memory)~="table" or #memory==0 or not (RemoteCatalog.ChestTransactionRemote() or RemoteCatalog.ChestEndpoint()) then return nil end
     local island=getPlayerIsland()
     local blocks=island and island:FindFirstChild("Blocks")
     if not blocks then return nil end
@@ -8909,11 +8983,7 @@ function RemoteCatalog.RememberedChestRecorder()
         if not self:CanUseChestBinding(b) then return false,"Remembered chest is unavailable","context" end
         amount=amount==nil and b.Amount or amount
         if type(amount)~="number" or amount<=0 or amount%1~=0 or amount>1000000 then return false,"Choose a positive whole withdrawal amount","invalid" end
-        local endpoint=RemoteCatalog.ChestEndpoint()
-        if not endpoint then return false,"Game chest request unavailable · learn one withdrawal on this server","unavailable" end
-        local ok,result=RemoteCatalog.SendEndpoint(endpoint,{chest=b.Chest,slot=b.Slot,item=b.Item,amount=amount,action="withdraw"})
-        if not ok then return false,result,"rejected" end
-        return true,result
+        return RemoteCatalog.SendChestWithdraw(b.Chest,b.Item,amount,b.Slot)
     end
     recorder.WithdrawCarrots=recorder.WithdrawItems
     RemoteCatalog.RememberedChestCache={Blocks=blocks,Memory=memory,At=os.clock(),Recorder=recorder}
@@ -8948,15 +9018,22 @@ function RemoteCatalog.ChestTargets()
         local fallback=RemoteCatalog.LiveRecorder("ChestBinding")
         if fallback then table.insert(recorders,fallback) end
     end
-    -- Remembered last: live learned bindings for the same chest/slot are newer and win.
+    -- Remembered and Contents last: live learned bindings for the same chest are newer and win.
     local remembered=RemoteCatalog.RememberedChestRecorder and RemoteCatalog.RememberedChestRecorder()
     if remembered then table.insert(recorders,remembered) end
+    local contents=RemoteCatalog.ContentsChestRecorder and RemoteCatalog.ContentsChestRecorder()
+    if contents then table.insert(recorders,contents) end
     local targets={}
     for _,recorder in ipairs(recorders) do
         local bindings=recorder.GetChestBindings and recorder:GetChestBindings() or (recorder.ChestBinding and {recorder.ChestBinding} or {})
         for _,binding in ipairs(bindings) do
             if recorder.CanUseChestBinding and recorder:CanUseChestBinding(binding) then
                 local duplicate=false
+                if binding.FromContents then
+                    for _,entry in ipairs(targets) do
+                        if entry.Binding.Chest==binding.Chest and (entry.Binding.Item or "carrotHarvested")==binding.Item then duplicate=true;break end
+                    end
+                end
                 for i,entry in ipairs(targets) do
                     if entry.Binding.Chest==binding.Chest and entry.Binding.Slot==binding.Slot then
                         duplicate=true
@@ -9747,7 +9824,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-targets-127\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-contents-128\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9809,7 +9886,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-targets-127 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn chest-contents-128 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10408,7 +10485,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-targets-127\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-contents-128\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11526,7 +11603,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-targets-127 · Craft diagnostics",
+    return table.concat({"Reborn chest-contents-128 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11605,7 +11682,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-targets-127 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn chest-contents-128 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12218,7 +12295,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-targets-127 · Mobs",
+    return table.concat({"Reborn chest-contents-128 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

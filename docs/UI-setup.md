@@ -3403,3 +3403,30 @@ recheck. Target cannot change while the farm runs. Learning and the remembered
 weapon are unchanged; any melee weapon learned once is used for all targets.
 
 Report headers now read `Reborn mob-targets-127`.
+
+
+## Chests without learning from Contents · v128
+
+The user supplied a working withdrawal script that confirms the live protocol:
+each owned chest has a `Contents` folder whose children are stacks with an
+`Amount` value, and
+`_NetManaged.CLIENT_CHEST_TRANSACTION:InvokeServer({chest, player_tracking_category = "join_from_web", amount, tool = <stack>, action = "withdraw"})`
+withdraws a stack.
+
+- Every stack in every owned chest with a readable `Contents` folder is now a
+  withdrawal target without learning (`ContentsChestRecorder`, refreshed each
+  second). The Items checklist, chest selection, Whole chest, Auto Collect,
+  repeat, top-up targets, Walk/TP hops travel and inventory confirmation all
+  work with them. Amounts are capped at the stack size; a stack that disappears
+  stops being a target.
+- Content stacks use slot numbers from 1001 so they never collide with learned
+  slots, and a chest item already covered by a live learned binding is not
+  added twice.
+- Remembered chests now also withdraw through this request when the item's
+  stack is visible, falling back to the game Requests wrapper otherwise.
+- The hub's own request uses a plain index call, so the capture hook does not
+  record it.
+- Conveyor input chests (`chestMediumIndustrialIO`) stay protected unless the
+  conveyor option includes them, as before.
+
+Report headers now read `Reborn chest-contents-128`.

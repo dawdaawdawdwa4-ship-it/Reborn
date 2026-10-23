@@ -115,6 +115,17 @@ do
  assert(RemoteCatalog.NearestChestState(states)==3,'a FIRST chest still wins over a nearer one')
  rootX,RemoteCatalog.ChestPriorities=savedX,savedPriorities
 end
+do
+ local dupe={Chest=a,Slot=1001,Item='carrotHarvested',FromContents=true}
+ local fresh={Chest=a,Slot=1002,Item='potatoSalad',FromContents=true}
+ local contents={GetChestBindings=function() return {dupe,fresh} end,CanUseChestBinding=function() return true end}
+ RemoteCatalog.ContentsChestRecorder=function() return contents end
+ valid=true;learned={template};RemoteCatalog.ChestDiscover=false
+ local found={}
+ for _,entry in ipairs(RemoteCatalog.ChestTargets()) do found[entry.Binding]=true end
+ assert(found[fresh] and not found[dupe],'content stacks add new items but never duplicate a learned chest item')
+ RemoteCatalog.ContentsChestRecorder=nil;RemoteCatalog.ChestDiscover=true
+end
 return 'Chest targets: conveyor Skip/Include, matching owned discovery, range/type filtering, complete slot coverage, deduplication, individual/scope controls and expired-session guards passed'
 `;
 const state=await LuauState.createAsync();
