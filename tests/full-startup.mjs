@@ -1007,7 +1007,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn review-111',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn improve-112',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1747,7 +1747,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn review-111 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn improve-112 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2456,7 +2456,15 @@ end)()
  assert(r.Mobs.Radius==120 and not r.MobRadiusMenu.Menu.Visible)
  r.RefreshMobUI();r.MobRadius:GetPropertyChangedSignal('Text'):Fire()
  assert(r.MobRadius.Text:find('▼',1,true) and r.MobRadius:FindFirstChild('ChoiceChip').Visible,'board refresh must preserve the styled dropdown instead of replacing its arrow with an unsupported glyph')
- r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Teleport' and r.MobWalk.Text=='AUTO MOVE: TP HOPS','second move mode must be short teleport hops')
+  do
+  local saved
+  local previousWrite,previousEncode=writefile,HttpService.JSONEncode
+  writefile=function() end
+  HttpService.JSONEncode=function(_,data) saved=data;return 'preferences-json' end
+  r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Teleport' and r.MobWalk.Text=='AUTO MOVE: TP HOPS','second move mode must be short teleport hops')
+  assert(saved and saved.MobTravel=='Teleport' and saved.MobWalk==true and saved.MobRadius==r.Mobs.Radius,'mob move mode must be saved with preferences')
+  writefile,HttpService.JSONEncode=previousWrite,previousEncode
+ end
  r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk and r.MobWalk.Text=='AUTO MOVE: OFF');r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Walk')
  local weapon={Name='ironWarAxe'}
  local human={Health=100,MaxHealth=100}

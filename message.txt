@@ -3891,6 +3891,7 @@ local function savePreferences()
         WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
+        MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel,
     }
     local ok = pcall(function() writefile(SETTINGS_FILE, HttpService:JSONEncode(data)) end)
     return ok
@@ -3916,6 +3917,9 @@ local function loadPreferences()
     if type(data.MineDelay) == "number" then CONFIG.MineDelay = math.clamp(data.MineDelay, 0.08, 1) end
     if type(data.MineScanInterval) == "number" then CONFIG.MineScanInterval = math.clamp(data.MineScanInterval, 0.15, 2) end
     if type(data.PlantDelay) == "number" then CONFIG.PlantDelay = math.clamp(data.PlantDelay, 0.08, 1) end
+    if data.MobRadius==30 or data.MobRadius==60 or data.MobRadius==120 then CONFIG.MobRadius=data.MobRadius end
+    if type(data.MobWalk)=="boolean" then CONFIG.MobWalk=data.MobWalk end
+    if data.MobTravel=="Walk" or data.MobTravel=="Teleport" then CONFIG.MobTravel=data.MobTravel end
     if type(data.WoodToolPreference) == "string" then woodToolPreference = data.WoodToolPreference == "Wood axe" and "Wooden axe" or data.WoodToolPreference end
     if type(data.MineToolPreference) == "string" then mineToolPreference = data.MineToolPreference == "Wood pickaxe" and "Wooden pickaxe" or data.MineToolPreference end
     return true
@@ -4811,7 +4815,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn review-111",
+    return table.concat({"Reborn improve-112",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -4858,9 +4862,11 @@ RemoteCatalog.BaitCount=function(tool)
         for _,key in ipairs(keys) do if values[key]~=nil then return values[key] end end
     end
 end
+-- Sent, but unverifiable: not a success, yet retrying in 5s would eat bait about 12x faster.
+RemoteCatalog.BaitUnverified = "Bait input sent; quantity unreadable on this account, so consumption is not verified."
 RemoteCatalog.WithBaitTool = function(tool, callback)
     if baitBusy or fishingInputBusy then return false, "Waiting for current rod input" end
-    if RemoteCatalog.BobberActive and RemoteCatalog.BobberActive() then return false, "Waiting for the current cast to finish" end
+    if RemoteCatalog.CastInFlight or RemoteCatalog.BobberActive and RemoteCatalog.BobberActive() then return false, "Waiting for the current cast to finish" end
     local character = player.Character
     if not character then return false, "Wait for your character" end
     local previous = character:FindFirstChildOfClass("Tool")
@@ -4891,7 +4897,7 @@ RemoteCatalog.WithBaitTool = function(tool, callback)
                 task.wait(.05);elapsed+=.05
             until elapsed>=2
             sent=consumed
-            detail=consumed and "bait consumption confirmed" or before==nil and "Bait quantity unreadable on this account; consumption cannot be verified."
+            detail=consumed and "bait consumption confirmed" or before==nil and RemoteCatalog.BaitUnverified
                 or ("Bait use unconfirmed; quantity stayed at "..tostring(before)..".")
         end
     end)
@@ -4936,7 +4942,9 @@ RemoteCatalog.ClickBaitTool=function(tool)
         end
         local checked,objects=pcall(function() return playerGui:GetGuiObjectsAtPosition(candidate.X,candidate.Y) end)
         if checked then
-            for _,object in ipairs(objects) do if object:IsA("GuiButton") or object:IsA("TextBox") then blocked=true;break end end
+            for _,object in ipairs(objects) do
+                if object:IsA("GuiButton") or object:IsA("TextBox") or object:IsDescendantOf(statsOverlayGui) then blocked=true;break end
+            end
         end
         if not blocked then point=candidate;break end
     end
@@ -4965,7 +4973,9 @@ RemoteCatalog.ClickBaitTool=function(tool)
     pcall(task.wait,.03) -- Let GUI activation from the release finish before accepting toggles.
     RemoteCatalog.BaitMouseInput=false
     if not pressed or not held or not released then return false,"Bait mouse input failed" end
-    return active(),host and "host mouse bait click" or "virtual mouse bait click"
+    -- The last bait can vanish during the hold; WithBaitTool confirms consumption.
+    local running=baitEnabled and baitCycleId==token and gui.Parent~=nil and player.Character==character
+    return running,host and "host mouse bait click" or "virtual mouse bait click"
 end
 -- BAIT NORMAL CLICK END
 RemoteCatalog.BaitSignalAvailable=function()
@@ -5126,7 +5136,7 @@ local function applyBait()
     RemoteCatalog.BaitAttemptedBinding=nil
     local ok, result = RemoteCatalog.WithBaitTool(baitTool, function() return RemoteCatalog.CallBait(baitTool, true) end)
     if not ok then
-        if result~="Waiting for current rod input" and result~="Waiting for the current cast to finish" and result~="Auto Bait stopped" then
+        if result~="Waiting for current rod input" and result~="Waiting for the current cast to finish" and result~="Auto Bait stopped" and result~=RemoteCatalog.BaitUnverified then
             -- Normal input can capture a NEW request even when consumption is late.
             -- Reject only the exact learned template that was actually replayed.
             if RemoteCatalog.BaitAttemptedBinding then
@@ -5227,7 +5237,7 @@ local function setBaitEnabled(state)
             end
             if applied then setStatus(detail == "tool activation attempted" and "Bait tool activated; next attempt in 60s" or "Auto Bait applied; refresh in 60s", COLORS.good) end
             baitToggle.BackgroundColor3 = applied and COLORS.on or COLORS.off
-            local delay = applied and (RemoteCatalog.BaitRefreshDelay or 60) or 5
+            local delay = applied and (RemoteCatalog.BaitRefreshDelay or 60) or detail==RemoteCatalog.BaitUnverified and 60 or 5
             RemoteCatalog.BaitRefreshDelay=nil
             for remaining = delay, 1, -1 do
                 if not baitEnabled or baitCycleId ~= myCycle or not gui.Parent then return end
@@ -6761,7 +6771,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn review-111 · Propeller loot history (UTC)",
+    return table.concat({"Reborn improve-112 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -6865,7 +6875,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn review-111 · Propeller tracker",
+    return table.concat({"Reborn improve-112 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -6901,7 +6911,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn review-111", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn improve-112", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -7262,7 +7272,8 @@ local function clickOnce(action, myCycle, preferMouse)
         local ok,objects=pcall(function() return playerGui:GetGuiObjectsAtPosition(x,y) end)
         if ok then
             for _,object in ipairs(objects) do
-                if object:IsA("GuiButton") or object:IsA("TextBox") then return false end
+                -- The draggable stats overlay is an Active frame and swallows the click too.
+                if object:IsA("GuiButton") or object:IsA("TextBox") or object:IsDescendantOf(statsOverlayGui) then return false end
             end
         end
         return true
@@ -8199,9 +8210,13 @@ local function run(myCycle)
 					updateBoard()
 					-- Only wait for a bobber after an actual cast input; this avoids
 					-- burning the full timeout on frames where the cooldown is active.
-					local found = waitUntil(myCycle, CONFIG.CastTimeout, function()
+					-- Until the bobber spawns, Auto Bait must not swap the rod out of this cast.
+					RemoteCatalog.CastInFlight = true
+					local waited, found = pcall(waitUntil, myCycle, CONFIG.CastTimeout, function()
 						return getBobber() ~= nil
 					end)
+					RemoteCatalog.CastInFlight = false
+					if not waited then error(found, 0) end
 					if not running(myCycle) then break end
 					if not found then
 						failedCasts += 1
@@ -9205,7 +9220,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn review-111\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn improve-112\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9267,7 +9282,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn review-111 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn improve-112 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -9863,7 +9878,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn review-111\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn improve-112\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -10823,10 +10838,6 @@ function RemoteCatalog.SetCraftPaused(state)
     return true
 end
 function RemoteCatalog.SetCraftEnabled(state,queued)
-    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
-        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
-        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return false end
-    end
     if state and RemoteCatalog.CraftTransferBusy then RemoteCatalog.CraftMessage("Wait for queue import/export to finish before starting crafting.");return false end
     if state and RemoteCatalog.CraftPresetBusy then RemoteCatalog.CraftMessage("Wait for preset file work to finish before starting crafting.");return false end
     if state and RemoteCatalog.CraftCatalogLoading then RemoteCatalog.CraftMessage("Wait for recipe loading to finish first.");return false end
@@ -10855,6 +10866,11 @@ function RemoteCatalog.SetCraftEnabled(state,queued)
         local job,reason=RemoteCatalog.MakeCraftJob(entry.Item,entry.Mode,entry.Batch,entry.Target,not queued)
         if not job then RemoteCatalog.CraftMessage((queued and "Queue job "..index..": " or "")..reason);return false end
         table.insert(jobs,job)
+    end
+    -- Stop Mobs only after every start check passed, so a refused start leaves it running.
+    if RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
+        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
+        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return false end
     end
     RemoteCatalog.StopCraftLearning()
     RemoteCatalog.CloseMenus()
@@ -10980,7 +10996,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn review-111 · Craft diagnostics",
+    return table.concat({"Reborn improve-112 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11059,7 +11075,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn review-111 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn improve-112 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11448,10 +11464,6 @@ function RemoteCatalog.PlowAction(block,blocks,tool,active,recorder)
     return sent==true,result
 end
 function RemoteCatalog.SetPlowEnabled(state)
-    if state and RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
-        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
-        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return false end
-    end
     if not state then
         RemoteCatalog.PlowEnabled=false;RemoteCatalog.PlowPendingStart=false;RemoteCatalog.PlowGeneration+=1
         RemoteCatalog.UpdatePlowControls()
@@ -11476,6 +11488,11 @@ function RemoteCatalog.SetPlowEnabled(state)
         end
     end
     if not hoe then RemoteCatalog.PlowMessage("Own a hoe tool before starting Auto Plow. No blocks were changed.");return false end
+    -- Stop Mobs only after every start check passed, so a refused start leaves it running.
+    if RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
+        RemoteCatalog.Mobs:Stop("Stopped · another mode started")
+        if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return false end
+    end
     RemoteCatalog.PlowGeneration+=1;local token=RemoteCatalog.PlowGeneration
     RemoteCatalog.PlowWorker=token;RemoteCatalog.PlowEnabled=true;RemoteCatalog.PlowPendingStart=false
     RemoteCatalog.PlowConfirmed=0;RemoteCatalog.PlowFailed=0;RemoteCatalog.PlowSkipped=0
@@ -11635,7 +11652,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn review-111 · Mobs",
+    return table.concat({"Reborn improve-112 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -11729,6 +11746,15 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
     end,
     Update=function() RemoteCatalog.RefreshMobUI() end,
 })
+-- Saved mob choices (Settings → Save preferences or any mob setting change).
+RemoteCatalog.Mobs.Radius=CONFIG.MobRadius or RemoteCatalog.Mobs.Radius
+if CONFIG.MobWalk~=nil then RemoteCatalog.Mobs.Walk=CONFIG.MobWalk end
+RemoteCatalog.Mobs.Travel=CONFIG.MobTravel or RemoteCatalog.Mobs.Travel
+function RemoteCatalog.SaveMobPreferences()
+    local farm=RemoteCatalog.Mobs
+    CONFIG.MobRadius,CONFIG.MobWalk,CONFIG.MobTravel=farm.Radius,farm.Walk,farm.Travel
+    savePreferences()
+end
 do
     local page=RemoteCatalog.MobPage
     local function card(name,height,y)
@@ -11768,7 +11794,7 @@ do
     end
     RemoteCatalog.MobRadiusMenu=RemoteCatalog.ChoiceDropdown(setup,RemoteCatalog.MobRadius,{30,60,120},{
         Name="MobRadiusDropdown",Title="Search radius · studs",Get=function() return RemoteCatalog.Mobs.Radius end,
-        Set=function(value) RemoteCatalog.Mobs.Radius=value;RemoteCatalog.RefreshMobUI() end,
+        Set=function(value) RemoteCatalog.Mobs.Radius=value;RemoteCatalog.SaveMobPreferences();RemoteCatalog.RefreshMobUI() end,
         Locked=function() return RemoteCatalog.Mobs.Worker~=nil end,Layout=layout})
     track(RemoteCatalog.MobToggle.Activated:Connect(function()
         page.CanvasPosition=Vector2.zero
@@ -11796,6 +11822,7 @@ do
         if not farm.Walk then farm.Walk=true;farm.Travel="Walk"
         elseif farm.Travel=="Walk" then farm.Travel="Teleport"
         else farm.Walk=false end
+        RemoteCatalog.SaveMobPreferences()
         RemoteCatalog.RefreshMobUI()
     end))
     if RemoteCatalog.MobRecorder() then RemoteCatalog.Mobs.Message="Attack ready · press START FARMING" end

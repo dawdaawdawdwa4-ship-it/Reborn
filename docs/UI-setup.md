@@ -3092,3 +3092,23 @@ handling for resource/bait clicks and menu hit tests, bait retries when the bait
 count is unreadable, bait applied between cast release and bobber spawn, the stats
 overlay absorbing tool clicks, and `src/init.client.lua`'s sibling `require` under
 Rojo. Run the full suite after editing any `tools/` source and its embed script.
+
+
+## Bait timing, overlay clicks and saved mob settings · v112
+
+- **Cast in flight.** Fishing marks the time between cast release and the bobber
+  appearing (up to `CastTimeout`). Auto Bait waits instead of swapping the rod out
+  of that cast, and queues as for an active bobber.
+- **Unreadable bait quantity.** When the bait count cannot be read, a sent use is
+  still reported as unverified (never as confirmed), but the next attempt waits the
+  normal 60 seconds instead of 5 and does not switch input methods.
+- **Last bait.** A bait click that was sent counts as sent even when the last bait
+  disappears during the hold; consumption is still confirmed separately.
+- **Stats overlay.** Rod and bait click points under the draggable stats overlay
+  are treated as covered, like buttons and text fields, so another point is used.
+- **Mode handover.** Starting Crafting or Auto Plow stops Auto Mobs only after all
+  of their own start checks pass; a refused start leaves the mob farm running.
+- **Saved mob settings.** Search radius and Auto Move (Walk / TP hops / Off) are
+  saved with the other preferences when changed and restored on the next load.
+
+Report headers now read `Reborn improve-112`.
