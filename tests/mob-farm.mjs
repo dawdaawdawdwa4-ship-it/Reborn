@@ -115,7 +115,7 @@ step(.6);assert(sent==2 and farm.Drops==2)
 farm:Stop();local before=sent;step(1)
 assert(sent==before and not farm.Worker and not farm.Enabled,'Stop must end worker and future attacks')
 local function reset()
- farm:Stop();step();farm=Module.new(ctx);farm.SeekRange=0
+ farm:Stop();step();farm=Module.new(ctx);farm.SeekRange=0;farm.HitAndRun=false
  ah.Health=100;bh.Health=100;ar.Position=v(4);br.Position=v(20);root.Position=v(0)
  human.Health=100;human.MaxHealth=100;player.Character=char;bindingChar=char
  busy=nil;pause=nil;damage=true;blocked=false;transport=false;learned=true;alive=true
@@ -215,7 +215,7 @@ assert(hops>h and farm.Target==b,'a slime within the chase range is still worth 
 ah.Health-=10;step();assert(farm.Drops==1,'an HP drop replicated after a target switch must still be observed')
 reset();farm:Start();step(1);farm:Stop();local runTime=farm:RunTime();step(5)
 assert(runTime>=1 and farm:RunTime()==runTime and farm.EndedAt,'run time must freeze when the farm stops')
-reset();ar.Position=v(40);br.Position=v(32);farm.Travel='Teleport';farm:Start()
+reset();farm.HitAndRun=true;ar.Position=v(40);br.Position=v(32);farm.Travel='Teleport';farm:Start()
 assert(hops==1 and root.Position.X==8 and walks==0 and moves==0 and sent==0 and farm.Message:find('Teleporting',1,true),'TP mode must hop 8 studs toward the slime, not walk')
 step();step();assert(hops==3 and root.Position.X==24 and sent==0)
 step();assert(hops==5 and root.Position.X>=21 and root.Position.X<=22 and sent==1 and farm.Target==b and farm.Message:find('backed off to 11 studs',1,true),'the last hop lands at the kept distance, the swing follows in the same tick, then a hop back out of reach')
@@ -299,6 +299,13 @@ do
  ctx.Eat=function() meals+=1;return false,'no food in the inventory' end
  farm.AutoEat=true;human.Health=20;step(4);assert(meals==3 and farm.LastEat:find('could not eat',1,true) and farm.Message:find('low health',1,true) or farm.Message:find('Retreating',1,true),'without food the low-health retreat still applies')
  ctx.Eat=nil
+end
+-- Walk mode hit and run: walk in, swing, walk back out to the rest distance.
+do
+ reset();farm.HitAndRun=true;ar.Position=v(20);farm:Start()
+ assert(sent==1 and math.abs(ar.Position.X-root.Position.X-12)<1e-6 and farm.Message:find('backed off to 12 studs',1,true),'walk mode hit and run walks back out to 12 studs after the swing')
+ step();assert(sent==1 and farm.Message:find('Resting',1,true),'it rests there until the next swing is due')
+ step(.7);assert(sent==2 and math.abs(ar.Position.X-root.Position.X-12)<1e-6,'then walks in, swings and walks out again')
 end
 -- A mob standing on the character is attacked from the edge of reach, not from inside it.
 do

@@ -3820,3 +3820,18 @@ the farm set off across the island.
   teleporting away.
 
 Report headers now read `Reborn mob-near-149`.
+
+## Hit and run on foot · v150
+
+Two clips: TP hops with hit and run worked (28 swings, 6 loot, 2 kills/min),
+while Walk mode let the slime land on the character ("Backing off · 1 → 3
+studs" with the screen flashing red).
+
+- **HIT & RUN now also applies in Walk mode:** walk in to the kept distance,
+  swing, walk straight back out to 12 studs, rest until the next swing is
+  due, repeat. The settle gate (no walking in while the slime moves or is in
+  the air) applies too.
+- **Dodge triggers on low jumps.** A closing slime lifted more than 2 studs
+  (was 4.5) is sidestepped; the swing still waits for it to land.
+
+Report headers now read `Reborn mob-walkrun-150`.

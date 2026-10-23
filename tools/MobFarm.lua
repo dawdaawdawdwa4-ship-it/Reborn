@@ -469,12 +469,14 @@ function MobFarm.new(ctx)
                                 local settled=previous==nil or (chosen.Root.Position-previous).Magnitude<1
                                 local function dy() return math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0)) end
                                 local airborne=dy()>self.Reach*.75
+                                -- A slime jump peaks well below head height; any lift while closing is a jump at us.
+                                local jumping=dy()>2
                                 if chosen.Distance<=self.Reach*2 and ctx.Face then pcall(ctx.Face,root,chosen.Root) end
                                 local clear=self.Walk and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
                                 local teleport=clear and self.Travel=="Teleport" and ctx.Hop~=nil
                                 local near=clear and chosen.Distance<=self.ChaseRange and dy()<(progress.Best and 12 or 6)
                                 local gap=chosen.Distance
-                                if self.Walk and closing and airborne and gap<=self.Reach*1.5 and ctx.Sidestep then
+                                if self.Walk and closing and jumping and gap<=self.Reach*1.5 and ctx.Sidestep then
                                     -- A slime jumping at the character lands where the character was; step aside.
                                     boost(human,true)
                                     if pcall(ctx.Sidestep,human,root,chosen.Root.Position,5) then self.Chase={Humanoid=human,Root=root} end
@@ -482,7 +484,7 @@ function MobFarm.new(ctx)
                                 elseif self.Walk and (teleport or near) then
                                     -- Hit and run (TP mode): between swings the character rests out of the mob's
                                     -- reach and hops in only when the next swing is due.
-                                    local hitRun=teleport and self.HitAndRun and self.RestDistance>keep
+                                    local hitRun=(teleport or near) and self.HitAndRun and self.RestDistance>keep
                                     if hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and now()-lastAttack<.5 then
                                         if self.Chase then halt() end
                                         publish("Resting · "..chosen.Model.Name.." · "..math.floor(gap).." studs away · next swing shortly")
@@ -572,11 +574,15 @@ function MobFarm.new(ctx)
                                                 observe(chosen.Model)
                                                 publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
                                                 -- Hit and run: straight back out of the mob's reach after the swing.
-                                                if teleport and self.HitAndRun and self.RestDistance>keep and chosen.Root.Parent then
+                                                if (teleport or near) and self.HitAndRun and self.RestDistance>keep and chosen.Root.Parent then
                                                     local away=root.Position-chosen.Root.Position
                                                     if ctx.Flatten then away=ctx.Flatten(away) end
-                                                    local step=math.min(self.HopDistance,self.RestDistance-(chosen.Root.Position-root.Position).Magnitude)
-                                                    if away.Magnitude>.1 and step>.5 and pcall(ctx.Hop,root,root.Position+away.Unit*step,chosen.Root) then
+                                                    local step=self.RestDistance-(chosen.Root.Position-root.Position).Magnitude
+                                                    if teleport then step=math.min(self.HopDistance,step) end
+                                                    local out=away.Magnitude>.1 and step>.5
+                                                    if out and teleport then out=pcall(ctx.Hop,root,root.Position+away.Unit*step,chosen.Root)
+                                                    elseif out then out=retreat(human,root,chosen.Root,step,away) end
+                                                    if out then
                                                         publish("Attacking · "..chosen.Model.Name.." · backed off to "..math.floor((chosen.Root.Position-root.Position).Magnitude+.5).." studs")
                                                     end
                                                 end
