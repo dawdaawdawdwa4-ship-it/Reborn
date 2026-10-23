@@ -3444,3 +3444,28 @@ Report headers now read `Reborn chest-contents-128`.
   "Range: N studs ±" to share its row.
 
 Report headers now read `Reborn island-trees-129`.
+
+
+## Auto deposit · v130
+
+A new **Deposit** tab puts farm items from the inventory into owned chests.
+
+- **Items** cycles Crops / Crops + wood + ores / Wood + ores. Names are matched by
+  kind (crops, logs/wood/planks, ores/stone/bars); anything that looks like a tool
+  or weapon (axe, pickaxe, sword, rod, hoe, sickle …), bait, seeds and saplings is
+  never deposited, nor the currently held tool. **Preview** shows the stacks and
+  the nearest chest without sending anything.
+- **Deposit now** and **Auto deposit** (every 30 / 60 / 120 / 300 s). Each stack is
+  sent with `_NetManaged.CLIENT_CHEST_TRANSACTION` using the confirmed body with
+  `action = "deposit"` and the inventory tool, and counts only when the stack
+  shrinks or leaves the inventory within 1.5 s. Stacks a chest does not take are
+  tried in the next nearest chest (up to three).
+- Chests: owned chests with a `Contents` folder, nearest first; conveyor input
+  chests and excluded chests are skipped as in collection. A chest farther than
+  20 studs is reached with the chest Movement setting (Walk / TP hops) within the
+  approach range; Stay never moves, and with Fishing ON it never walks away.
+- While depositing, Harvest/Wood/Mining and Auto Mobs pause and then continue;
+  deposits wait while chest collection runs.
+- Category and interval are saved; Auto deposit always starts OFF.
+
+Report headers now read `Reborn deposit-130`.

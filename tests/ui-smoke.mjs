@@ -50,6 +50,7 @@ ${fishBindings}
 track(baitToggle.Activated:Connect(function() setBaitEnabled(not baitEnabled) end))
 `;
 const mobUI=source.slice(source.indexOf('-- MOB FARM UI BEGIN'),source.indexOf('-- MOB FARM UI END'));
+const depositUI=source.slice(source.indexOf('-- AUTO DEPOSIT BEGIN'),source.indexOf('-- AUTO DEPOSIT END'));
 const checks=`
 local valid=pcall(function() Instance.new('ScrollingFrame').ScrollBarInset=Enum.ScrollBarInset.ScrollBar end)
 assert(not valid,'mock must reject invalid ScrollBarInset regression')
@@ -58,7 +59,7 @@ assert(#RemoteCatalog.Entries==148,'all captured remotes must be incorporated')
 RemoteCatalog.RefreshButton.Activated:Fire()
 assert(string.find(RemoteCatalog.Summary.Text,'148',1,true),'remote discovery summary missing')
 assert(gui.Parent==playerGui,'hub must use PlayerGui')
-assert(#hub.Tabs==13,'thirteen tabs must exist')
+assert(#hub.Tabs==14,'fourteen tabs must exist (Deposit added)')
 assert(hub.Root.Visible and hub.Body.GroupTransparency==0,'hub intro must finish')
 assert(hub.CurrentTab==airflowTabs.Fishing,'Fishing must be initial tab')
 for name,page in pairs(pages) do
@@ -228,7 +229,7 @@ if CAPTURE_SUPPORTED then
  getnamecallmethod=function() return 'InvokeServer' end
 end
 `;
- try { console.log(await state.loadstring(setup+'\n'+hooks+'\nlocal function runUI()\n'+prefix+'\n'+craft+'\n'+wiring+'\n'+mobUI+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); }
+ try { console.log(await state.loadstring(setup+'\n'+hooks+'\nlocal function runUI()\n'+prefix+'\n'+craft+'\n'+wiring+'\n'+mobUI+'\n'+depositUI+'\n'+checks+'\nend\nreturn runUI()','ui-runtime-smoke',true)()); }
  catch(error) {console.error(String(error));process.exitCode=1;}
 }
 state.destroy();

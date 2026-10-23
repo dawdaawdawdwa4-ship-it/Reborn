@@ -1038,7 +1038,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn island-trees-129',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn deposit-130',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1567,7 +1567,7 @@ end)()
  local r=RemoteCatalog
  assert(not r.CraftEnabled and not r.CraftWorker and r.CraftBatch==100 and r.CraftTarget==100,'craft startup must be OFF with batch/target 100')
  assert(r.CraftMode=='Make amount','craft default must make extra bait independently of stock')
- assert(#hub.Tabs==13 and r.CraftPage.Parent.Name~='Fishing','Crafting must be an independent tab')
+ assert(#hub.Tabs==14 and r.CraftPage.Parent.Name~='Fishing','Crafting must be an independent tab')
  local oldRecorder=r.Recorder
  local bench={Parent=true}
  local learnedRecipes={CraftBinding={Item='bait',Remote={Parent=true},Workbench=bench},CraftBindings={testRecipe={Item='testRecipe',Workbench=bench}},CanUseCraftBinding=function() return true end,CraftItem=function() error('picker must never craft') end}
@@ -1779,7 +1779,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn island-trees-129 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn deposit-130 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2466,7 +2466,7 @@ end)()
 ;(function()
  local r=RemoteCatalog
  r.StopAllAutomation();stepWorkers()
- assert(#hub.Tabs==13 and pages.Mobs==r.MobPage and #r.MobPage:GetChildren()>=2,'Mobs must have its own populated tab')
+ assert(#hub.Tabs==14 and pages.Mobs==r.MobPage and #r.MobPage:GetChildren()>=2,'Mobs must have its own populated tab')
  assert(airflowTabs.Mobs._revealed,'native tab reveal must preserve closed mob dropdowns')
  local saved={Character=player.Character,Find=workspace.FindFirstChild,Recorder=r.Recorder,Start=r.StartCapture,Focus=UserInputService.GetFocusedTextBox}
  workspace.FindFirstChild=function() return nil end
