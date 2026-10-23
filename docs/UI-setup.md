@@ -3328,3 +3328,18 @@ Report headers now read `Reborn self-test-122`.
   hub keeps compiling in `full-startup.mjs` as it grows.
 
 Report headers now read `Reborn rejoin-123`.
+
+
+## Hub profiles · v124
+
+**Settings → Quick actions** has three hub profile slots. **Profile N** cycles the
+slot, **Save profile** stores every saved preference (travel modes, crops,
+ranges, delays, tools, mob radius/move mode, hop size, auto rejoin, keybinds) with
+a date/time name, and **Load profile** restores it through the same validation as
+the preferences file, updates the controls and saves it as the current
+preferences. Account memory (remembered mob weapon, chests and request
+definitions) is not part of a profile. Loading is refused while a farm runs.
+Profiles live in `IslandsFarmingHub_<UserId>_profiles.json`, or for the session
+only without file access.
+
+Report headers now read `Reborn profiles-124`.

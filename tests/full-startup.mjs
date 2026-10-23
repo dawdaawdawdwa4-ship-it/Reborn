@@ -1038,7 +1038,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn rejoin-123',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn profiles-124',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1779,7 +1779,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn rejoin-123 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn profiles-124 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2532,6 +2532,29 @@ end)()
   assert(string.find(report,'Own island:',1,true) and string.find(report,'Game requests:',1,true) and string.find(report,'Recent status:',1,true),'self-test must cover island, requests and status history')
   assert(#r.StatusHistory>0 and #r.StatusHistory<=30,'status history must be bounded')
   r.SelfTestButton.Activated:Fire()
+  do
+   local originalWrite,originalRead,originalIs=writefile,readfile,isfile
+   local mobTravel,mobWalk=r.Mobs.Travel,r.Mobs.Walk
+   writefile,readfile,isfile=nil,nil,nil
+   r.SessionProfiles=nil;r.ProfileSlot=2;r.RefreshProfileUI()
+   assert(string.find(r.ProfileSlotButton.Text,'Profile 2: empty',1,true))
+   r.ProfileLoadButton.Activated:Fire();assert(CONFIG.HopSize==8,'an empty profile must change nothing')
+   CONFIG.WoodTravelMode='Hop';r.Mobs.Travel='Walk';r.ProfileSaveButton.Activated:Fire()
+   assert(not string.find(r.ProfileSlotButton.Text,'empty',1,true),'a saved profile must show its name')
+   local saved=r.ReadProfiles()['2'].Data
+   assert(saved.WoodTravelMode=='Hop' and saved.MobWeapon==nil and saved.RememberedChests==nil,'profiles keep settings but not account memory')
+   r.HopSizeButton.Activated:Fire();CONFIG.WoodTravelMode='Normal';r.Mobs.Travel='Teleport'
+   assert(CONFIG.HopSize==12)
+   r.ProfileLoadButton.Activated:Fire()
+   assert(CONFIG.HopSize==8 and r.Navigation.HopSize==8 and CONFIG.WoodTravelMode=='Hop' and r.Mobs.Travel=='Walk','loading a profile must restore its settings')
+   assert(string.find(r.TravelSelectors[2].Text,'TP hops',1,true),'loaded travel modes must show in their selectors')
+   enabled=true;r.HopSizeButton.Activated:Fire();r.ProfileLoadButton.Activated:Fire()
+   assert(CONFIG.HopSize==12,'a profile must not load while a farm runs');enabled=false
+   r.HopSizeButton.Activated:Fire();r.HopSizeButton.Activated:Fire();r.HopSizeButton.Activated:Fire()
+   CONFIG.WoodTravelMode='Normal';r.ReflectPreferences();r.ProfileSlot=1
+   writefile,readfile,isfile=originalWrite,originalRead,originalIs
+   r.Mobs.Travel,r.Mobs.Walk=mobTravel,mobWalk
+  end
   r.PerformanceButton.Activated:Fire();assert(not r.Performance.On and r.PerformanceButton.Text=='Performance mode: OFF','performance mode must switch back off')
  end
  r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk and r.MobWalk.Text=='AUTO MOVE: OFF');r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Walk')

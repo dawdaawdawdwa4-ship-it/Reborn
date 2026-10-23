@@ -3975,8 +3975,9 @@ local SETTINGS_FILE = "IslandsFarmingHub_" .. tostring(player.UserId) .. "_setti
 -- Declare these before persistence helpers so the helpers capture the intended locals.
 local woodToolPreference = "Auto best axe"
 local mineToolPreference = "Auto best pickaxe"
-local function savePreferences()
-    if type(writefile) ~= "function" then return false end
+-- snapshotOnly returns the preference table without writing (hub profiles reuse it).
+local function savePreferences(snapshotOnly)
+    if not snapshotOnly and type(writefile) ~= "function" then return false end
     local data = {
         WoodTravelMode = CONFIG.WoodTravelMode, FarmTravelMode = CONFIG.FarmTravelMode, HarvestWalk = CONFIG.HarvestWalk, HarvestCrops = CONFIG.HarvestCrops, HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
         FruitEnabled = CONFIG.FruitEnabled, AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
@@ -3988,15 +3989,20 @@ local function savePreferences()
         AutoRejoin = CONFIG.AutoRejoin,
         Keybinds = { StopAllKey = CONFIG.StopAllKey.Name, ToggleKey = CONFIG.ToggleKey.Name, HarvestKey = CONFIG.HarvestKey.Name, MobKey = CONFIG.MobKey.Name },
     }
+    if snapshotOnly then return data end
     local ok = pcall(function() writefile(SETTINGS_FILE, HttpService:JSONEncode(data)) end)
     return ok
 end
-local function loadPreferences()
-    if type(readfile) ~= "function" or type(isfile) ~= "function" then return false end
-    local ok, data = pcall(function()
-        if not isfile(SETTINGS_FILE) then return nil end
-        return HttpService:JSONDecode(readfile(SETTINGS_FILE))
-    end)
+-- supplied: a profile's preference table, validated exactly like the saved file.
+local function loadPreferences(supplied)
+    local ok, data = true, supplied
+    if supplied == nil then
+        if type(readfile) ~= "function" or type(isfile) ~= "function" then return false end
+        ok, data = pcall(function()
+            if not isfile(SETTINGS_FILE) then return nil end
+            return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+        end)
+    end
     if not ok or type(data) ~= "table" then return false end
     if type(data.HarvestCrop) == "string" then CONFIG.HarvestCrop = data.HarvestCrop end
     if data.WoodTravelMode=="Normal" or data.WoodTravelMode=="Walk" or data.WoodTravelMode=="Hop" or data.WoodTravelMode=="Tween" or data.WoodTravelMode=="Teleport" then CONFIG.WoodTravelMode=data.WoodTravelMode end
@@ -4947,7 +4953,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn rejoin-123",
+    return table.concat({"Reborn profiles-124",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6782,13 +6788,28 @@ end
 track(RemoteCatalog.RefreshButton.Activated:Connect(RemoteCatalog.RefreshUI))
 RemoteCatalog.RefreshUI()
 
--- Reflect restored preference values in the controls.
-replantToggle.Text = CONFIG.AutoReplant and "AUTO-REPLANT: ON" or "AUTO-REPLANT: OFF"
-replantToggle.BackgroundColor3 = CONFIG.AutoReplant and COLORS.on or COLORS.off
-woodRangeBtn.Text = "Wood range: " .. CONFIG.WoodRange .. " studs  (+ / −)"
-mineRangeBtn.Text = "Mining range: " .. CONFIG.MineRange .. " studs  (+ / −)"
-delayButton.Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  ↻"
-scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  ↻"
+-- Reflect restored preference values in the controls (startup and hub profile loads).
+function RemoteCatalog.ReflectPreferences()
+    replantToggle.Text = CONFIG.AutoReplant and "AUTO-REPLANT: ON" or "AUTO-REPLANT: OFF"
+    replantToggle.BackgroundColor3 = CONFIG.AutoReplant and COLORS.on or COLORS.off
+    woodRangeBtn.Text = "Wood range: " .. CONFIG.WoodRange .. " studs  (+ / −)"
+    mineRangeBtn.Text = "Mining range: " .. CONFIG.MineRange .. " studs  (+ / −)"
+    delayButton.Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  ↻"
+    scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  ↻"
+    if RemoteCatalog.CropRangeButton then RemoteCatalog.CropRangeButton.Text = "Scan range: " .. CONFIG.CropRange .. " studs" end
+    if RemoteCatalog.HarvestWalkButton then
+        RemoteCatalog.HarvestWalkButton.Text = CONFIG.HarvestWalk and "AUTO MOVE: ON" or "AUTO MOVE: OFF"
+        RemoteCatalog.HarvestWalkButton.BackgroundColor3 = CONFIG.HarvestWalk and COLORS.on or COLORS.off
+    end
+    woodToolSelect.Text = "Axe: " .. woodToolPreference .. "  ▼"
+    mineToolSelect.Text = "Tool: " .. mineToolPreference .. "  ▼"
+    for _,selector in ipairs(RemoteCatalog.TravelSelectors or {}) do
+        local key=RemoteCatalog.TravelKeys[selector]
+        selector.Text=(key=="WoodTravelMode" and "Mode: " or "Travel: ")..RemoteCatalog.TravelLabel(CONFIG[key]).."  ▾"
+    end
+    pcall(refreshCropSelectionUI)
+end
+RemoteCatalog.ReflectPreferences()
 saveButton.Text = preferencesLoaded and "Preferences loaded" or "Save preferences"
 showTab("Fishing")
 
@@ -6938,7 +6959,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn rejoin-123 · Propeller loot history (UTC)",
+    return table.concat({"Reborn profiles-124 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7042,7 +7063,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn rejoin-123 · Propeller tracker",
+    return table.concat({"Reborn profiles-124 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7078,7 +7099,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn rejoin-123", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn profiles-124", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -9619,7 +9640,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn rejoin-123\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn profiles-124\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9681,7 +9702,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn rejoin-123 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn profiles-124 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10280,7 +10301,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn rejoin-123\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn profiles-124\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11398,7 +11419,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn rejoin-123 · Craft diagnostics",
+    return table.concat({"Reborn profiles-124 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11477,7 +11498,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn rejoin-123 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn profiles-124 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12088,7 +12109,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn rejoin-123 · Mobs",
+    return table.concat({"Reborn profiles-124 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12386,11 +12407,77 @@ do
     place(resetUI,RemoteCatalog.SettingsInterfaceCard,UDim2.new(.5,-16,0,36),UDim2.new(.5,6,0,40))
     RemoteCatalog.SettingsQuickBody=Instance.new("Frame")
     RemoteCatalog.SettingsQuickBody.Name="QuickActionsBody";RemoteCatalog.SettingsQuickBody.BackgroundTransparency=1
-    RemoteCatalog.SettingsQuickBody.Position=UDim2.fromOffset(0,44);RemoteCatalog.SettingsQuickBody.Size=UDim2.new(1,0,0,88)
+    RemoteCatalog.SettingsQuickBody.Position=UDim2.fromOffset(0,44);RemoteCatalog.SettingsQuickBody.Size=UDim2.new(1,0,0,132)
     RemoteCatalog.SettingsQuickBody.Visible=false;RemoteCatalog.SettingsQuickBody.Parent=RemoteCatalog.SettingsQuickCard
     place(reset,RemoteCatalog.SettingsQuickBody,UDim2.new(.5,-16,0,36),UDim2.fromOffset(10,0))
     place(layoutBtn,RemoteCatalog.SettingsQuickBody,UDim2.new(.5,-16,0,36),UDim2.new(.5,6,0,0))
     place(plantBtn,RemoteCatalog.SettingsQuickBody,UDim2.new(1,-20,0,36),UDim2.fromOffset(10,44))
+    -- HUB PROFILES BEGIN
+    -- Three named snapshots of every saved preference except account memory (weapon, chests, definitions).
+    RemoteCatalog.ProfileFile="IslandsFarmingHub_"..tostring(player.UserId).."_profiles.json"
+    RemoteCatalog.ProfileSlot=1
+    function RemoteCatalog.ReadProfiles()
+        if type(readfile)~="function" or type(isfile)~="function" then return RemoteCatalog.SessionProfiles or {} end
+        local ok,data=pcall(function()
+            if not isfile(RemoteCatalog.ProfileFile) then return {} end
+            return HttpService:JSONDecode(readfile(RemoteCatalog.ProfileFile))
+        end)
+        return ok and type(data)=="table" and data or {}
+    end
+    function RemoteCatalog.WriteProfiles(profiles)
+        RemoteCatalog.SessionProfiles=profiles
+        if type(writefile)~="function" then return false end
+        return (pcall(function() writefile(RemoteCatalog.ProfileFile,HttpService:JSONEncode(profiles)) end))
+    end
+    function RemoteCatalog.RefreshProfileUI()
+        local profile=RemoteCatalog.ReadProfiles()[tostring(RemoteCatalog.ProfileSlot)]
+        RemoteCatalog.ProfileSlotButton.Text="Profile "..RemoteCatalog.ProfileSlot..": "..(type(profile)=="table" and tostring(profile.Name) or "empty").."  ↻"
+    end
+    function RemoteCatalog.SaveHubProfile()
+        local farm=RemoteCatalog.Mobs
+        if farm then CONFIG.MobRadius,CONFIG.MobWalk,CONFIG.MobTravel=farm.Radius,farm.Walk,farm.Travel end
+        local data=savePreferences(true)
+        data.MobWeapon=nil;data.LearnedDefinitions=nil;data.RememberedChests=nil
+        local stamp="saved"
+        pcall(function() stamp=os.date("%d/%m %H:%M") end)
+        local profiles=RemoteCatalog.ReadProfiles()
+        profiles[tostring(RemoteCatalog.ProfileSlot)]={Name=stamp,Data=data}
+        local written=RemoteCatalog.WriteProfiles(profiles)
+        RemoteCatalog.RefreshProfileUI()
+        setStatus("Profile "..RemoteCatalog.ProfileSlot.." saved"..(written and "" or " for this session only (no file access)"),COLORS.good)
+        return true
+    end
+    function RemoteCatalog.LoadHubProfile()
+        if enabled or baitEnabled or harvestEnabled or woodEnabled or mineEnabled or RemoteCatalog.Mobs and RemoteCatalog.Mobs.Enabled then
+            setStatus("Stop running farms before loading a profile",COLORS.warn);return false
+        end
+        local profile=RemoteCatalog.ReadProfiles()[tostring(RemoteCatalog.ProfileSlot)]
+        if type(profile)~="table" or type(profile.Data)~="table" then setStatus("Profile "..RemoteCatalog.ProfileSlot.." is empty",COLORS.warn);return false end
+        if not loadPreferences(profile.Data) then setStatus("Profile could not be read",COLORS.bad);return false end
+        CONFIG.HarvestCrops=FarmLogic.NormalizeCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)
+        local farm=RemoteCatalog.Mobs
+        if farm then
+            farm.Radius=CONFIG.MobRadius or farm.Radius;if CONFIG.MobWalk~=nil then farm.Walk=CONFIG.MobWalk end
+            farm.Travel=CONFIG.MobTravel or farm.Travel;farm.HopDistance=CONFIG.HopSize or farm.HopDistance
+        end
+        RemoteCatalog.Navigation.HopSize=CONFIG.HopSize
+        RemoteCatalog.HopSizeButton.Text="TP hop size: "..CONFIG.HopSize.." studs  ↻"
+        RemoteCatalog.ReflectPreferences()
+        if RemoteCatalog.RefreshKeybinds then RemoteCatalog.RefreshKeybinds() end
+        if RemoteCatalog.RefreshRejoinButton then RemoteCatalog.RefreshRejoinButton() end
+        if RemoteCatalog.RefreshMobUI then RemoteCatalog.RefreshMobUI() end
+        savePreferences()
+        setStatus("Profile "..RemoteCatalog.ProfileSlot.." loaded · "..tostring(profile.Name),COLORS.good)
+        return true
+    end
+    RemoteCatalog.ProfileSlotButton=button({Parent=RemoteCatalog.SettingsQuickBody,Text="",TextSize=12,Size=UDim2.new(.5,-16,0,36),Position=UDim2.fromOffset(10,88)})
+    RemoteCatalog.ProfileSaveButton=button({Parent=RemoteCatalog.SettingsQuickBody,Text="Save profile",TextSize=12,Size=UDim2.new(.25,-8,0,36),Position=UDim2.new(.5,6,0,88)})
+    RemoteCatalog.ProfileLoadButton=button({Parent=RemoteCatalog.SettingsQuickBody,Text="Load profile",TextSize=12,Size=UDim2.new(.25,-8,0,36),Position=UDim2.new(.75,2,0,88)})
+    track(RemoteCatalog.ProfileSlotButton.Activated:Connect(function() RemoteCatalog.ProfileSlot=RemoteCatalog.ProfileSlot%3+1;RemoteCatalog.RefreshProfileUI() end))
+    track(RemoteCatalog.ProfileSaveButton.Activated:Connect(RemoteCatalog.SaveHubProfile))
+    track(RemoteCatalog.ProfileLoadButton.Activated:Connect(RemoteCatalog.LoadHubProfile))
+    RemoteCatalog.RefreshProfileUI()
+    -- HUB PROFILES END
     RemoteCatalog.SettingsAdvancedBody=Instance.new("Frame")
     RemoteCatalog.SettingsAdvancedBody.Name="AdvancedSettingsBody";RemoteCatalog.SettingsAdvancedBody.BackgroundTransparency=1
     RemoteCatalog.SettingsAdvancedBody.Position=UDim2.fromOffset(0,44);RemoteCatalog.SettingsAdvancedBody.Size=UDim2.new(1,0,0,322)
@@ -12434,7 +12521,7 @@ function RemoteCatalog.LayoutSettings()
     RemoteCatalog.SettingsDropCard.Size=UDim2.new(1,-12,0,134+infoHeight+offset)
     RemoteCatalog.SettingsQuickBody.Visible=RemoteCatalog.SettingsQuickOpen
     RemoteCatalog.SettingsAdvancedBody.Visible=RemoteCatalog.SettingsAdvancedOpen
-    RemoteCatalog.SettingsQuickCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsQuickOpen and 140 or 42)
+    RemoteCatalog.SettingsQuickCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsQuickOpen and 184 or 42)
     RemoteCatalog.SettingsAdvancedCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsAdvancedOpen and 374 or 42)
     RemoteCatalog.SettingsQuickButton.Text=RemoteCatalog.SettingsQuickOpen and "Quick actions  ▴" or "Quick actions  ▾"
     RemoteCatalog.SettingsAdvancedButton.Text=RemoteCatalog.SettingsAdvancedOpen and "Advanced settings  ▴" or "Advanced settings  ▾"
