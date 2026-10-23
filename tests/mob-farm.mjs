@@ -97,6 +97,16 @@ farm=Module.new(ctx)
 local targets=farm:Scan()
 assert(#targets==2 and targets[1].Model==a and targets[2].Model==b,'only living non-player regular slimes in either Entities root, nearest first')
 farm.Radius=10;assert(#farm:Scan()==1);farm.Radius=60
+actor('fireflyGlow',2,nested)
+farm.Kind='All mobs'
+local names={}
+for _,entry in ipairs(farm:Scan()) do names[entry.Model.Name]=true end
+assert(names.buffalkor and names.slimeBlue and names.greenSlime and not names.slimeKing and not names.slimeQueen and not names.slimeBoss and not names.fireflyGlow,'All mobs must include regular mobs but never bosses or critters')
+farm.Kind='buffalkor'
+local only=farm:Scan()
+assert(#only==1 and only[1].Model.Name=='buffalkor','a named target must match only that mob')
+farm.Kind='slimeKing';assert(#farm:Scan()==0,'a boss name stays excluded even when chosen')
+farm.Kind='Slimes'
 learned=false;assert(not farm:Start() and sent==0);learned=true
 busy='other worker';assert(not farm:Start());busy=nil
 assert(farm:Start() and sent==1 and farm.Swings==1 and farm.Drops==1)

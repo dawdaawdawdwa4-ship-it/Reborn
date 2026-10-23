@@ -9,19 +9,25 @@ function MobFarm.Roots(world)
     if direct and direct~=nested then table.insert(roots,direct) end
     return roots
 end
-function MobFarm.Details(model,roots,players)
+-- Bosses and harmless critters are never targets; kind is "Slimes", "All mobs" or one exact mob name.
+MobFarm.Excluded={"king","queen","boss","firefly","fireflies","butterfl"}
+function MobFarm.Matches(name,kind)
+    local compact=string.lower(name):gsub("[%s_%-]","")
+    for _,word in ipairs(MobFarm.Excluded) do if compact:find(word,1,true) then return false end end
+    if kind==nil or kind=="Slimes" then return compact:find("slime",1,true)~=nil end
+    return kind=="All mobs" or name==kind
+end
+function MobFarm.Details(model,roots,players,kind)
     if not model or not model:IsA("Model") or not table.find(roots,model.Parent) then return nil end
     if players:GetPlayerFromCharacter(model) then return nil end
-    local name=model.Name:lower():gsub("[%s_%-]","")
-    if not name:find("slime",1,true) or name:find("king",1,true)
-        or name:find("queen",1,true) or name:find("boss",1,true) then return nil end
+    if not MobFarm.Matches(model.Name,kind) then return nil end
     local humanoid=model:FindFirstChildOfClass("Humanoid")
     local root=model:FindFirstChild("HumanoidRootPart")
     if not humanoid or not root or not root:IsA("BasePart") then return nil end
     return humanoid,root
 end
 function MobFarm.new(ctx)
-    local self={Enabled=false,Generation=0,Radius=60,Walk=true,Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,
+    local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8}
     local now=ctx.Now or os.clock
@@ -104,7 +110,7 @@ function MobFarm.new(ctx)
         local result={}
         for _,folder in ipairs(roots) do
             for _,model in ipairs(folder:GetChildren()) do
-                local health,part=MobFarm.Details(model,roots,ctx.Players)
+                local health,part=MobFarm.Details(model,roots,ctx.Players,self.Kind)
                 if health and health.Health>0 and (not cooldowns or not cooldowns[model] or cooldowns[model]<=now()) then
                     local distance=(part.Position-root.Position).Magnitude
                     if distance<=self.Radius then table.insert(result,{Model=model,Humanoid=health,Root=part,Distance=distance}) end
@@ -143,7 +149,7 @@ function MobFarm.new(ctx)
             end
             local function observe(model)
                 local previous=healthSeen[model]
-                local health=MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players)
+                local health=MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players,self.Kind)
                 -- Streaming out is not proof of death; all counters describe observations.
                 if health and previous and health.Health<previous then
                     -- A late drop on an earlier target must not reset the current target's budget.
@@ -161,7 +167,7 @@ function MobFarm.new(ctx)
                     if self.Target then observe(self.Target) end
                     -- HP replication can trail a swing; keep watching recent targets after a switch.
                     for model,at in pairs(attackedAt) do
-                        if not MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players) then
+                        if not MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players,self.Kind) then
                             -- Slimes usually despawn at 0 HP before it replicates. Removal right after a hit
                             -- that could finish it is counted separately as a likely defeat, never as observed.
                             local last=healthSeen[model]
@@ -207,14 +213,14 @@ function MobFarm.new(ctx)
                                 end
                             end
                             if not chosen then
-                                halt();self.Target=nil;publish("Waiting · no living slimes within "..self.Radius.." studs; scanning continues")
+                                halt();self.Target=nil;publish("Waiting · no living "..(self.Kind=="Slimes" and "slimes" or self.Kind=="All mobs" and "mobs" or self.Kind).." within "..self.Radius.." studs; scanning continues")
                             else
                                 if self.Target~=chosen.Model then attempts=0;progress={} end
                                 self.Target=chosen.Model;observe(self.Target)
                                 local function valid()
                                     if not active() or ctx.Player.Character~=char or human.Health<=human.MaxHealth*.25 or ctx.PauseReason() then return false end
                                     if char:FindFirstChild("HumanoidRootPart")~=root or char:FindFirstChildOfClass("Humanoid")~=human then return false end
-                                    local h,p=MobFarm.Details(chosen.Model,MobFarm.Roots(ctx.World),ctx.Players)
+                                    local h,p=MobFarm.Details(chosen.Model,MobFarm.Roots(ctx.World),ctx.Players,self.Kind)
                                     return h==chosen.Humanoid and p==chosen.Root and h.Health>0
                                         and (p.Position-root.Position).Magnitude<=self.Radius
                                 end

@@ -1038,7 +1038,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn review-126',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn mob-targets-127',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1779,7 +1779,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn review-126 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn mob-targets-127 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2560,6 +2560,9 @@ end)()
   end
   r.PerformanceButton.Activated:Fire();assert(not r.Performance.On and r.PerformanceButton.Text=='Performance mode: OFF','performance mode must switch back off')
  end
+ assert(r.MobTarget.Text=='Target: Slimes  ↻')
+ r.MobTarget.Activated:Fire();assert(r.Mobs.Kind=='All mobs' and r.MobTarget.Text=='Target: All mobs  ↻','Target must cycle to All mobs')
+ r.MobTarget.Activated:Fire();assert(r.Mobs.Kind=='Slimes','with no other mobs nearby Target returns to Slimes')
  r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk and r.MobWalk.Text=='AUTO MOVE: OFF');r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Walk')
  local weapon={Name='ironWarAxe'}
  local human={Health=100,MaxHealth=100}

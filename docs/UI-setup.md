@@ -3388,3 +3388,18 @@ An independent review of the recent features found and fixed:
   current slime's no-damage budget.
 
 Report headers now read `Reborn review-126`.
+
+
+## Mob targets beyond slimes · v127
+
+Mobs → Setup has a **Target** button beside the search radius. It cycles
+**Slimes** (default) → **All mobs** → each mob name currently within the search
+radius → Slimes. All mobs means every living non-player Humanoid model in
+`WildernessIsland.Entities` or `workspace.Entities`; bosses (king/queen/boss
+names), fireflies and butterflies are never targets, even when named. A chosen
+name matches that exact model name. The target is saved with preferences and hub
+profiles, shown in the run card, and used by Scan targets, the worker and every
+recheck. Target cannot change while the farm runs. Learning and the remembered
+weapon are unchanged; any melee weapon learned once is used for all targets.
+
+Report headers now read `Reborn mob-targets-127`.
