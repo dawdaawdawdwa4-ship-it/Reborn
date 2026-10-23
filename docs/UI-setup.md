@@ -2856,3 +2856,38 @@ failed movement/presses, GUI/focus/tool changes, casting aim requirements, real
 worker confirmation and unconfirmed recovery. The full regression suite is
 required. The recording confirms the v103 failure; v104 input behavior remains
 unverified in the user's live client.
+
+## Camera-aware fishing and persistent status (v105)
+
+The next recording showed camera swings during fishing. Normal first reel
+attempts now prefer the equipped rod's paired Activate/Deactivate methods,
+without moving or clicking the cursor. If that attempt is rejected or does not
+confirm a catch, the next separate attempt may use the existing mouse path.
+The three-attempt recovery budget and observed catch confirmation remain.
+
+Mouse-based fishing and bait input now check right-button camera dragging and
+non-default MouseBehavior (including mouse lock) before moving the cursor. Casts
+wait while the camera owns the mouse, then retry automatically when it is
+released. Native rod reeling can continue while the mouse is captured. No camera
+CFrame, camera mode or MouseBehavior is changed by the script. A camera capture
+beginning during an aim delay cancels the press; one beginning during a charge
+still releases that attempt's paired button. The normal GUI/focus/tool guards
+remain for mouse input; direct rod activation never clicks the UI.
+
+The existing two-line area under the Fishing switch now shows fishing's current
+step independently of other automations' global status messages. Long waits show
+elapsed time in that step. Repeated updates to the same step retain its start
+time; a different step resets it. It refreshes through the existing board update,
+with no extra polling task or page height. The session report includes this status.
+
+Start, OFF and worker errors update the same panel. Old run tokens and a removed
+GUI cannot replace the current status. Stop is also rechecked after the short
+post-reel registration delay, so stopping/restarting during that delay cannot add
+a stale catch or update its goals/propeller attribution.
+
+Validation covers cursor-free native reeling, a separate mouse retry after
+unconfirmed native input, both mouse-lock modes, right-button dragging, camera
+capture during aim/hold, automatic resumption, bait input, Stop during catch
+registration, persistent status timing, stale workers and layout. The full suite
+is required. v104 reeling was confirmed by the user; the v105 camera changes and
+status remain unverified in the user's live client.

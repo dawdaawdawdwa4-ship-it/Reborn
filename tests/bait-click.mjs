@@ -13,14 +13,15 @@ local hub={Root={Visible=true,AbsolutePosition={X=0,Y=0},AbsoluteSize={X=500,Y=5
 local workspace={CurrentCamera={ViewportSize={X=1000,Y=600},WorldToScreenPoint=function() return {X=200,Y=200,Z=1},true end}}
 local objects={}
 local playerGui={GetGuiObjectsAtPosition=function() return objects end}
-local focused
-local UserInputService={GetFocusedTextBox=function() return focused end}
+local focused,rightMouse,captureAt
+local Enum={MouseBehavior={Default=1,LockCenter=2},UserInputType={MouseButton2=2}}
+local UserInputService={MouseBehavior=Enum.MouseBehavior.Default,GetFocusedTextBox=function() return focused end,IsMouseButtonPressed=function() return rightMouse end}
 local game={}
 local events={}
 local waits,stopAt=0,nil
 local pressFails,moveFails=false,false
 local mousemoveabs,mouse1press,mouse1release
-local task={wait=function() waits+=1;if stopAt==waits then baitEnabled=false end end}
+local task={wait=function() waits+=1;if stopAt==waits then baitEnabled=false end;if captureAt==waits then rightMouse=true end end}
 local VirtualInputManager={SendMouseMoveEvent=function(_,x,y)
  if moveFails then error('blocked') end
  assert(x==800 and y==300,'bait click must avoid the hub');table.insert(events,'move')
@@ -43,6 +44,13 @@ mouse1press=function() assert(RemoteCatalog.BaitMouseInput,'synthetic press must
 mouse1release=function() assert(RemoteCatalog.BaitMouseInput,'synthetic release must still guard UI activation');table.insert(events,'host-up') end
 assert(RemoteCatalog.ClickBaitTool(tool) and table.concat(events,',')=='host-move,host-down,host-up','host mouse backend must work when virtual input is blocked')
 assert(not RemoteCatalog.BaitMouseInput,'input guard must clear after release')
+reset();rightMouse=true
+assert(not RemoteCatalog.ClickBaitTool(tool) and #events==0,'right-button camera control must block bait mouse movement before any input')
+rightMouse=false;reset();UserInputService.MouseBehavior=Enum.MouseBehavior.LockCenter
+assert(not RemoteCatalog.ClickBaitTool(tool) and #events==0 and UserInputService.MouseBehavior==Enum.MouseBehavior.LockCenter,'bait must preserve mouse lock and send no mouse input')
+UserInputService.MouseBehavior=Enum.MouseBehavior.Default;reset();captureAt=1
+assert(not RemoteCatalog.ClickBaitTool(tool) and #events==1 and events[1]=='host-move','camera capture during bait aiming must prevent the press')
+rightMouse=false;captureAt=nil
 return 'Bait click: one backend, UI/chat protection, Stop/error release, unavailable input and host fallback passed'
 `;
 const state=await LuauState.createAsync();try{console.log(await state.loadstring(code,'bait-click',true)());}finally{state.destroy();}

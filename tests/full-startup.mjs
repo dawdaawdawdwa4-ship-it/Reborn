@@ -477,10 +477,15 @@ for _,button in ipairs({toggle,harvestToggle,woodToggle,mineToggle,baitToggle}) 
  if button==toggle then
   assert(not baitEnabled and baitApplications==0,'Fishing must leave bait OFF')
   setEnabled(true);assert(baitApplications==0,'repeated Start must not enable bait')
+  assert(RemoteCatalog.FishingStatus.Token==cycleId and string.find(fishInfo.Text,RemoteCatalog.FishingStatus.Text,1,true),'native Start must show this worker status under the fishing switch')
  end
  assert(string.find(button.Text,'ON',1,true),'actual switch/worker failed to stay ON: '..button.Text..' status='..status.Text)
  button.Activated:Fire()
- if button==toggle then assert(not baitEnabled,'Stopping Fishing must leave bait OFF') end
+ if button==toggle then
+  assert(not baitEnabled,'Stopping Fishing must leave bait OFF')
+  local text=fishInfo.Text
+  assert(text=='Fishing is off.' and not RemoteCatalog.SetFishingStatus(cycleId-1,'stale cast') and fishInfo.Text==text,'native OFF must reject status from its old worker')
+ end
  assert(string.find(button.Text,'OFF',1,true),'actual switch failed to turn OFF')
  stepWorkers()
 end
@@ -1000,8 +1005,9 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn fishing-input-104',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn fishing-camera-105',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
+ assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
  setclipboard=function() error('unavailable') end
  RemoteCatalog.SessionReportButton.Activated:Fire()
@@ -1739,7 +1745,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn fishing-input-104 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn fishing-camera-105 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2411,6 +2417,16 @@ end)()
  r.CarrotCount,r.ModuleCache,b.Cells,b.LayerIndex,player.Character,setclipboard,toclipboard=saved.Count,saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Copy,saved.Alternate
  for _,key in ipairs(fields) do b[key]=old[key] end
  b:RefreshFailureUI()
+end)()
+
+;(function()
+ local oldEnabled,oldState=enabled,RemoteCatalog.FishingStatus
+ local height=fishInfo.Size.Y.Offset
+ enabled=true;RemoteCatalog.SetFishingStatus(cycleId,'Waiting for fish...',nil,true)
+ RemoteCatalog.FishingStatus.At=os.clock()-5;updateBoard()
+ assert(string.find(fishInfo.Text,'Waiting for fish...',1,true) and fishInfo.Text:match('^%[%d+s%]'),'existing board updates must refresh elapsed fishing status')
+ assert(fishInfo.Size.Y.Offset==height and fishInfo.Position.Y.Offset+height<=baitToggle.Position.Y.Offset,'persistent fishing status must fit the original area without overlap')
+ enabled=oldEnabled;RemoteCatalog.FishingStatus=oldState;RemoteCatalog.RefreshFishingStatus()
 end)()
 
 local cleanupOptions={Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause,BuildCopyAll=buildController.Buttons.CopyAllHistory,BuildRestock=buildController.Buttons.CopyMissing}

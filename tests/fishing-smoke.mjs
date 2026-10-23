@@ -4,6 +4,7 @@ const source=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').r
 const helpers=source.slice(source.indexOf('local function hasRodEquipped()'),source.indexOf('local function waitForTug'));
 const waitHelpers=source.slice(source.indexOf('local function waitForTug'),source.indexOf('-- Auto Mine (Cobalt')) ;
 const run=source.slice(source.indexOf('local function run(myCycle)'),source.indexOf('-- Controls\n'));
+const cameraGuard=source.slice(source.indexOf('-- MOUSE CAMERA GUARD BEGIN'),source.indexOf('-- MOUSE CAMERA GUARD END'));
 const code=`
 local function vec(x,y,z)
  return setmetatable({X=x,Y=y,Z=z},{__add=function(a,b) return vec(a.X+b.X,a.Y+b.Y,a.Z+b.Z) end,__sub=function(a,b) return vec(a.X-b.X,a.Y-b.Y,a.Z-b.Z) end,__mul=function(a,b) return vec(a.X*b,a.Y*b,a.Z*b) end})
@@ -15,13 +16,18 @@ local root={Position=vec(0,0,0),CFrame={LookVector=vec(0,0,-1)}}
 local player={Name='Test',UserId=7,Character={FindFirstChildOfClass=function() return tool end,FindFirstChild=function() return root end}}
 local events={}
 local focused,covered,swapOnAim,respawnOnHold
-local UserInputService={GetFocusedTextBox=function() return focused end}
+local Enum={MouseBehavior={Default=1,LockCenter=2,LockCurrentPosition=3},UserInputType={MouseButton2=2}}
+local rightMouse,captureOnAim,captureOnHold=false,false,false
+local UserInputService={MouseBehavior=Enum.MouseBehavior.Default,GetFocusedTextBox=function() return focused end,
+ IsMouseButtonPressed=function(_,button) assert(button==Enum.UserInputType.MouseButton2);return rightMouse end}
 local playerGui={GetGuiObjectsAtPosition=function() return covered and {{IsA=function(_,class) return class=='GuiButton' end}} or {} end}
 local mouseX,mouseY=0,0
 local failMove,failDown,failWait=false,false,false
 local game={}
 local VirtualInputManager={}
+local virtualMoves=0
 function VirtualInputManager:SendMouseMoveEvent(x,y,target)
+ virtualMoves+=1
  assert(target==game,'input target missing')
  if failMove then error('blocked movement') end
  mouseX,mouseY=x,y
@@ -38,6 +44,7 @@ local CONFIG={CastHold=.35}
 local os={clock=function() return time end}
 local task={wait=function(dt)
  time+=dt
+ if captureOnAim and not down or captureOnHold and down then rightMouse=true end
  if swapOnAim and not down then tool={Name='stonePickaxe'} end
  if respawnOnHold and down then player.Character={} end
  if down and cancel then enabled=false end
@@ -51,6 +58,7 @@ local COLORS={warn=1}
 local folder
 local RemoteCatalog={}
 local workspace={CurrentCamera={ViewportSize={X=1920,Y=1080},WorldToScreenPoint=function() return {X=1200,Y=600},true end},FindFirstChild=function() return folder end}
+${cameraGuard}
 ${helpers}
 assert(clickOnce('cast',1) and not down)
 assert(events[1][1]=='move' and events[2][1]=='down' and events[3][1]=='up','aim/press/release order incorrect')
@@ -123,6 +131,7 @@ do
   tool=rod;enabled=true;cancel=false;covered=false;focused=nil
   failMove=true;failDown=false;failWait=false;down=false;events={}
   swapOnAim=false;respawnOnHold=false
+  rightMouse=false;captureOnAim=false;captureOnHold=false;UserInputService.MouseBehavior=Enum.MouseBehavior.Default;virtualMoves=0
   hostMoves,hostDowns,hostUps,toolDowns,toolUps=0,0,0,0,0
   mousemoveabs,mouse1press,mouse1release=nil,nil,nil
   rod.Activate=nil;rod.Deactivate=nil;rod.Enabled=true
@@ -137,7 +146,7 @@ do
   rod.Deactivate=function(self) assert(self==rod);toolUps+=1;down=false end
  end
  resetInput();host();native()
- assert(clickOnce('reel',1) and hostMoves==1 and hostDowns==1 and hostUps==1 and toolDowns==0 and #events==0 and not down,'blocked virtual movement must fall back to exactly one paired host mouse click')
+ assert(clickOnce('reel',1,true) and hostMoves==1 and hostDowns==1 and hostUps==1 and toolDowns==0 and #events==0 and not down,'blocked virtual movement must fall back to exactly one paired host mouse click')
  assert(RemoteCatalog.FishingInputTransport=='host mouse' and not RemoteCatalog.FishingMouseInput,'report must name the successful backend and release the UI guard')
  resetInput();host();assert(clickOnce('cast',1) and hostDowns==1 and hostUps==1,'host fallback may cast only after a successful aim move')
  resetInput();native()
@@ -150,28 +159,48 @@ do
  resetInput();native();mouse1press=function() error('incomplete backend cannot press') end
  assert(clickOnce('reel',1) and toolDowns==1 and toolUps==1,'an incomplete host backend cannot steal native rod fallback')
  resetInput();native();host();mousemoveabs=function() hostMoves+=1;return false end
- assert(clickOnce('reel',1) and hostMoves==1 and hostDowns==0 and hostUps==0 and toolDowns==1 and toolUps==1,'an explicit failed host move sends no click and may choose rod activation')
+ assert(clickOnce('reel',1,true) and hostMoves==1 and hostDowns==0 and hostUps==0 and toolDowns==1 and toolUps==1,'an explicit failed host move sends no click and may choose rod activation')
  resetInput();host();native();cancel=true
- assert(not clickOnce('reel',1) and hostDowns==1 and hostUps==1 and toolDowns==0 and not down,'Stop during host hold must release that backend without activating the rod again')
+ assert(not clickOnce('reel',1,true) and hostDowns==1 and hostUps==1 and toolDowns==0 and not down,'Stop during host hold must release that backend without activating the rod again')
  resetInput();native();cancel=true
  assert(not clickOnce('reel',1) and toolDowns==1 and toolUps==1 and not down,'Stop during normal rod activation must still deactivate the same rod')
  resetInput();host();native();swapOnAim=true
- assert(not clickOnce('reel',1) and hostMoves==1 and hostDowns==0 and toolDowns==0,'manual tool changes during fallback aiming must prevent every press')
+ assert(not clickOnce('reel',1,true) and hostMoves==1 and hostDowns==0 and toolDowns==0,'manual tool changes during fallback aiming must prevent every press')
  resetInput();host();native();focused={}
  assert(not clickOnce('reel',1) and hostMoves==0 and toolDowns==0,'fallback must preserve chat/text focus protection')
  resetInput();host();native();covered=true
- assert(not clickOnce('reel',1) and hostMoves==0 and toolDowns==0,'fallback must preserve GUI coverage protection')
+ assert(clickOnce('reel',1) and hostMoves==0 and toolDowns==1 and virtualMoves==0,'direct reeling may activate the rod over visible UI without moving or clicking the cursor')
  resetInput();host();native();failMove=false;failDown=true
- assert(not clickOnce('reel',1) and hostMoves==0 and hostDowns==0 and toolDowns==0 and #events==3,'a dispatched virtual press error must release virtual input without replaying another backend')
+ assert(not clickOnce('reel',1,true) and hostMoves==0 and hostDowns==0 and toolDowns==0 and #events==3,'a dispatched virtual press error must release virtual input without replaying another backend')
  resetInput();host();native()
  mouse1press=function() hostDowns+=1;down=true;error('host press failed') end
- assert(not clickOnce('reel',1) and hostDowns==1 and hostUps==1 and toolDowns==0 and not down,'host press errors must still release host input and cannot replay a native activation')
+ assert(not clickOnce('reel',1,true) and hostDowns==1 and hostUps==1 and toolDowns==0 and not down,'host press errors must still release host input and cannot replay a native activation')
  resetInput();native()
  rod.Activate=function() toolDowns+=1;down=true;error('activation failed') end
  assert(not clickOnce('reel',1) and toolDowns==1 and toolUps==1 and not down,'activation errors must still deactivate the rod')
  resetInput();host()
  mouse1press=function() hostDowns+=1;down=true;mouse1release=function() error('changed global must not replace the paired release') end end
  assert(clickOnce('reel',1) and hostDowns==1 and hostUps==1 and not down,'the selected host pair must stay stable if global functions change during the click')
+ resetInput();native();failMove=false
+ assert(clickOnce('reel',1) and toolDowns==1 and virtualMoves==0 and #events==0,'ordinary reels must prefer paired rod activation without moving the cursor')
+ for _,behavior in ipairs({Enum.MouseBehavior.LockCenter,Enum.MouseBehavior.LockCurrentPosition}) do
+  resetInput();host();native();UserInputService.MouseBehavior=behavior
+  assert(clickOnce('reel',1) and toolDowns==1 and hostMoves==0 and virtualMoves==0 and UserInputService.MouseBehavior==behavior,'native reels must preserve a captured camera and cursor mode')
+  resetInput();host();native();UserInputService.MouseBehavior=behavior
+  assert(not clickOnce('cast',1) and hostMoves==0 and virtualMoves==0 and hostDowns==0 and UserInputService.MouseBehavior==behavior,'casting must pause before any cursor movement while mouse lock is active')
+ end
+ resetInput();host();native();rightMouse=true
+ assert(not clickOnce('cast',1) and virtualMoves==0 and hostMoves==0 and hostDowns==0,'right-button camera dragging must pause casts without changing the camera')
+ assert(clickOnce('reel',1,true) and toolDowns==1 and virtualMoves==0 and hostMoves==0,'even mouse retries must use native reeling while the camera is captured')
+ resetInput();host();rightMouse=true
+ assert(not clickOnce('reel',1) and virtualMoves==0 and hostMoves==0,'a client without native rod activation must wait for camera release before mouse reeling')
+ resetInput();host();failMove=false;captureOnAim=true
+ assert(not clickOnce('cast',1) and #events==1 and events[1][1]=='move' and hostDowns==0,'camera capture beginning during the aim delay must prevent a press')
+ resetInput();host();failMove=false;captureOnHold=true
+ assert(not clickOnce('cast',1) and #events==3 and events[3][1]=='up' and not down and rightMouse,'camera capture during a charge must release the left button and preserve manual camera control')
+ resetInput();host();rightMouse=true
+ assert(not clickOnce('cast',1));rightMouse=false
+ assert(clickOnce('cast',1) and hostDowns==1 and hostUps==1,'casting must resume automatically after right-button camera control ends')
  resetInput();native();fishingInputBusy=true
  assert(not clickOnce('reel',1) and toolDowns==0,'restart cannot overlap a pending rod input')
  fishingInputBusy=false;resetInput();rod.Activate=activate;rod.Deactivate=deactivate
@@ -222,19 +251,26 @@ do
 end
 -- Exercise the real worker + real input helper against the exact blocked-move case.
 do
- for _,confirmed in ipairs({true,false}) do
-  enabled=true;cancel=false;failMove=true;failDown=false;failWait=false;focused=nil;covered=false;time=0;down=false
+ local originalMouseButton=VirtualInputManager.SendMouseButtonEvent
+ for _,mode in ipairs({'rod','unconfirmed','mouse','stop'}) do
+  local confirmed=mode=='rod' or mode=='stop'
+  enabled=true;cancel=false;failMove=mode~='mouse';failDown=false;failWait=false;focused=nil;covered=false;time=0;down=false
+  rightMouse=false;captureOnAim=false;captureOnHold=false;UserInputService.MouseBehavior=Enum.MouseBehavior.Default
   mousemoveabs,mouse1press,mouse1release=nil,nil,nil
   local bobber={Parent=true,IsA=function(_,kind) return kind=='BasePart' end,
    GetAttribute=function(_,name) return name=='Tug' end,
    GetAttributeChangedSignal=function() return {Connect=function() return {Disconnect=function() end} end} end}
   folder={FindFirstChild=function() return bobber.Parent and bobber or nil end,GetChildren=function() return {} end}
   local presses,releases,catches,misses,recoveries=0,0,0,0,0
+  VirtualInputManager.SendMouseButtonEvent=function(self,x,y,button,pressed,...)
+   originalMouseButton(self,x,y,button,pressed,...)
+   if mode=='mouse' and not pressed then bobber.Parent=nil end
+  end
   tool.Activate=function() presses+=1;down=true end
   tool.Deactivate=function() releases+=1;down=false;if confirmed then bobber.Parent=nil end end
   tool.Enabled=true
   CONFIG.ActionCooldown=.02;CONFIG.ReelSettleDelay=.01;CONFIG.ReelTimeout=.05
-  task.wait=function(dt) time+=dt;assert(time<5,'blocked-input worker did not settle') end
+  task.wait=function(dt) time+=dt;if mode=='stop' and dt==.05 and not bobber.Parent then enabled=false end;assert(time<5,'blocked-input worker did not settle') end
   local stats={bites=0,casts=0}
   local lastAction,cycleId=-100,1
   local baitEnabled,baitBusy=false,false
@@ -246,10 +282,13 @@ do
   RemoteCatalog.RecoverFishingCast=function() recoveries+=1;enabled=false;return false end
   ${run}
   run(1)
-  assert(not down and not RemoteCatalog.FishingMouseInput and RemoteCatalog.FishingInputTransport=='rod activation','worker must release the native backend even when virtual mouse movement is blocked')
-  if confirmed then assert(presses==1 and releases==1 and catches==1 and stats.bites==1 and misses==0 and recoveries==0,'blocked virtual movement must still reel a confirmed catch through one rod activation')
+  assert(not down and not RemoteCatalog.FishingMouseInput,'worker must release its selected backend')
+  if mode=='rod' then assert(presses==1 and releases==1 and catches==1 and stats.bites==1 and misses==0 and recoveries==0,'native reeling must confirm without a cursor move')
+  elseif mode=='mouse' then assert(presses==1 and releases==1 and catches==1 and misses==1 and recoveries==0 and RemoteCatalog.FishingInputTransport=='virtual mouse','unconfirmed native input must allow a separate mouse retry through existing confirmation')
+  elseif mode=='stop' then assert(presses==1 and releases==1 and catches==0 and misses==0,'Stop during the delayed catch registration must never add a stale catch')
   else assert(presses==3 and releases==3 and catches==0 and misses==1 and recoveries==1,'accepted rod activation alone cannot count a catch and must retain bounded recovery') end
  end
+ VirtualInputManager.SendMouseButtonEvent=originalMouseButton
 end
 return 'Fishing input passed: aim first, charged cast, short reel, cancellation/error release, rod validation and owned bobber discovery'
 `;
