@@ -362,6 +362,15 @@ do
  farm:Start();assert(moves==0 and farm.EdgeStops>=1 and farm.Message:find('Paused · low health next to',1,true),'with no ground on any side the character stays put instead of walking off')
  ctx.Ground=nil
 end
+-- The exit after a swing is diagonal and alternates sides, so a lunge at the attacker's spot misses.
+do
+ reset();farm.HitAndRun=true;ar.Position=v(20);br.Position=v(60)
+ ctx.Side=function(away) return v(1) end
+ farm:Start();assert(sent==1 and farm.ExitSide==-1 and farm.Message:find('backed off diagonally',1,true),'the first exit leaves diagonally')
+ for i=1,6 do step(.7);if sent>=2 then break end end
+ assert(sent>=2 and farm.ExitSide==1,'the next exit takes the other side')
+ ctx.Side=nil
+end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do
  reset();damage=false;br.Position=v(300);farm:Start();for i=1,5 do step(.7) end

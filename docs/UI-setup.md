@@ -4000,3 +4000,16 @@ from v155 broke the hub on the next launch.
   a RemoteCatalog function that is defined later in the file.
 
 Report headers now read `Reborn mob-boot-157`.
+
+## Diagonal exit · v158
+
+A v157 Walk-mode report: 11 of 12 hits taken within 1 s after a swing at 7–8
+studs, the same pattern as in TP mode. A mob that is hit lunges at the spot
+its attacker stood on, and a straight retreat stays inside that line.
+
+- **Diagonal exit.** After every swing the hit-and-run exit (TP hop or walk)
+  leaves at roughly 50° to the side instead of straight back, alternating
+  left and right, still ground checked and still away from the whole crowd.
+  Status reads "backed off diagonally to N studs".
+
+Report headers now read `Reborn mob-diag-158`.

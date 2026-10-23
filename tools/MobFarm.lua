@@ -749,13 +749,22 @@ function MobFarm.new(ctx)
                                                     local crowd=self:Threat(12)
                                                     local away=crowd and crowd.Away or root.Position-chosen.Root.Position
                                                     if ctx.Flatten then away=ctx.Flatten(away) end
+                                                    -- A hit mob lunges at where the attacker stood; a straight retreat stays in
+                                                    -- that line. Leave diagonally instead, alternating sides.
+                                                    if ctx.Side and away.Magnitude>.1 then
+                                                        local ok,side=pcall(ctx.Side,away)
+                                                        if ok and side and side.Magnitude>.1 then
+                                                            self.ExitSide=-(self.ExitSide or 1)
+                                                            away=away.Unit+side.Unit*(1.2*self.ExitSide)
+                                                        end
+                                                    end
                                                     local step=self.RestDistance-(chosen.Root.Position-root.Position).Magnitude
                                                     if teleport then step=math.min(self.HopDistance,step) end
                                                     local out=away.Magnitude>.1 and step>.5
                                                     if out and teleport then out=pcall(ctx.Hop,root,root.Position+away.Unit*step,chosen.Root)
                                                     elseif out then out=retreat(human,root,chosen.Root,step,away) end
                                                     if out then
-                                                        publish("Attacking · "..chosen.Model.Name.." · backed off to "..math.floor((chosen.Root.Position-root.Position).Magnitude+.5).." studs")
+                                                        publish("Attacking · "..chosen.Model.Name.." · backed off "..(self.ExitSide and "diagonally " or "").."to "..math.floor((chosen.Root.Position-root.Position).Magnitude+.5).." studs")
                                                     end
                                                 end
                                                 if unconfirmed>=self.RunBudget then
