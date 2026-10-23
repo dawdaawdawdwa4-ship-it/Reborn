@@ -352,6 +352,16 @@ do
  assert(farm.IdleFor>=2,'idle time is tracked for the Movement report line')
  ctx.Jump=nil
 end
+-- Walk destinations need ground: no retreat over the island's edge.
+do
+ reset();human.Health=25;ar.Position=v(4);br.Position=v(60)
+ ctx.Ground=function(point) return point.X>-7 end
+ farm:Start()
+ assert(moves>=1 and root.Position.X<0 and root.Position.X>=-7 and farm.Message:find('Retreating',1,true),'the retreat shortens to a point that still has ground')
+ reset();human.Health=25;ar.Position=v(4);br.Position=v(60);ctx.Ground=function(point) return point.X>=0 end
+ farm:Start();assert(moves==0 and farm.EdgeStops>=1 and farm.Message:find('Paused · low health next to',1,true),'with no ground on any side the character stays put instead of walking off')
+ ctx.Ground=nil
+end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do
  reset();damage=false;br.Position=v(300);farm:Start();for i=1,5 do step(.7) end

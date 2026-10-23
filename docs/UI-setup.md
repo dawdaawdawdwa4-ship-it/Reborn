@@ -3969,3 +3969,21 @@ Follow-up in the same version, after "walking also just stops sometimes":
   halt) and how long ago, how long the character has stood still, the number
   of stalls and whether the pathfinder is busy, so a stopped walk can be read
   from the report.
+
+## Ground under every step · v156
+
+A v155 Walk-mode report: the hit packet accepted at 7 studs with 29 damage
+numbers in 30 swings, and "it also runs off the map".
+
+- **Ground-checked walking.** Every walk destination the farm issues on its
+  own (retreat at low health, the hit-and-run walk out, the dodge sidestep and
+  the free-side approach points) is raycast for ground first, as TP hops
+  already were. A retreat with no ground at full distance tries 3/4, 1/2 and
+  1/4 of it, then either side; with none it stays put ("Paused · low health
+  next to …"). Copy result's Movement line counts these "edge stops".
+- **Range re-probe.** After 45 s of accepted packets at a reduced distance the
+  probe tries one stud further out again, in case the earlier step back was a
+  cooldown rejection rather than range.
+- The Search line no longer claims hit and run is TP-only.
+
+Report headers now read `Reborn mob-edge-156`.

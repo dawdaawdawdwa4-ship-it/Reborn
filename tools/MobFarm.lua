@@ -96,13 +96,34 @@ function MobFarm.new(ctx)
     end
     -- Step away from a mob: low health, a mob standing on the character, or a stop that would
     -- otherwise leave the character inside the mob's attacks.
+    -- Ground under a walk destination (ctx.Ground raycasts); without the hook every point counts.
+    local function grounded(point)
+        if not ctx.Ground then return true end
+        local ok,result=pcall(ctx.Ground,point)
+        return not ok or result~=false
+    end
+    -- Walking off the island is worse than standing still: the retreat point must have ground
+    -- under it; otherwise half the distance, then either side, then no move at all.
     local function retreat(human,root,threat,distance,away)
         away=away or root.Position-threat.Position
         if ctx.Flatten then away=ctx.Flatten(away) end
         if away.Magnitude<.1 then return false end
+        distance=distance or 12
+        local candidates={}
+        for _,fraction in ipairs({1,.75,.5,.25}) do table.insert(candidates,root.Position+away.Unit*(distance*fraction)) end
+        if ctx.Side then
+            local ok,side=pcall(ctx.Side,away)
+            if ok and side and side.Magnitude>.1 then
+                table.insert(candidates,root.Position+side.Unit*distance)
+                table.insert(candidates,root.Position-side.Unit*distance)
+            end
+        end
+        local destination
+        for _,point in ipairs(candidates) do if grounded(point) then destination=point;break end end
+        if not destination then self.EdgeStops=(self.EdgeStops or 0)+1;return false end
         self.LastCommand="retreat";self.LastCommandAt=now()
         boost(human,true)
-        local ok=pcall(function() human:MoveTo(root.Position+away.Unit*(distance or 12)) end)
+        local ok=pcall(function() human:MoveTo(destination) end)
         if ok then self.Chase={Humanoid=human,Root=root} end
         return ok
     end
@@ -164,6 +185,12 @@ function MobFarm.new(ctx)
             if sent then
                 self.LearnedHits=(self.LearnedHits or 0)+1;self.PacketMisses=0
                 self.PacketAcceptedAt=self.PacketKeep
+                -- Every 45 s of accepted packets, try one stud further out again: an earlier step
+                -- back may have been a cooldown rejection rather than range.
+                if self.PacketKeep and self.PacketKeep<self.PacketReach then
+                    self.PacketProbeAt=self.PacketProbeAt or now()
+                    if now()-self.PacketProbeAt>45 then self.PacketKeep+=1;self.PacketProbeAt=now() end
+                end
                 method=method.." + learned hit"
             else
                 -- At the normal distance a rejection usually means the click already landed and the
@@ -217,6 +244,7 @@ function MobFarm.new(ctx)
         if not ok or type(points)~="table" or #points==0 then return nil end
         local best,bestScore
         for _,point in ipairs(points) do
+            if not grounded(point) then continue end
             local clearance=math.huge
             for _,other in ipairs(others) do clearance=math.min(clearance,(other.Root.Position-point).Magnitude) end
             local score=math.min(clearance,12)-.15*(point-from).Magnitude
@@ -302,7 +330,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.SideApproaches=0;self.Tuned=0;self.Deaths=0;self.Stalls=0;self.LastCommand=nil;self.LastCommandAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.PacketProbeAt=nil;self.EdgeStops=0;self.SideApproaches=0;self.Tuned=0;self.Deaths=0;self.Stalls=0;self.LastCommand=nil;self.LastCommandAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
