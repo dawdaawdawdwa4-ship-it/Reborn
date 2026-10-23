@@ -555,6 +555,14 @@ do
  untilTrue(function() return qty>=30 end)
  assert(RemoteCatalog.ChestAutoEnabled,'a refill must be collected by the same run')
  RemoteCatalog.SetChestAuto(false);drain();RemoteCatalog.ContentsChestRecorder=nil
+ -- A request answered "empty" with no gain is a finished check for this pass, not a fatal stop.
+ prepare(0)
+ RemoteCatalog.WithdrawCarrots=function(amount,rec,binding) table.insert(trace,{Amount=amount,Slot=binding.Slot,At=clock});return true,{success=true,reason='chest is empty'} end
+ assert(RemoteCatalog.SetChestAuto(true))
+ for _=1,400 do if RemoteCatalog.ChestRepeatWaiting or not RemoteCatalog.ChestAutoWorker then break end;coroutine.resume(worker) end
+ assert(RemoteCatalog.ChestAutoEnabled and RemoteCatalog.ChestAutoWorker and #trace>=1,'an emptied chest must keep Repeat running instead of "Needs review"')
+ assert(not string.find(RemoteCatalog.ChestLastDetail or '','Needs review',1,true))
+ RemoteCatalog.SetChestAuto(false);drain()
  -- Repeat (0.5s) waits half a second between passes.
  prepare(30);RemoteCatalog.ChestRepeatFast=true
  assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)

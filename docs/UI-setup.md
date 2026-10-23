@@ -3578,3 +3578,21 @@ cursor points at. Auto Mobs now attacks the way a player does:
 - Copy result shows the last attack method and whether a learned hit exists here.
 
 Report headers now read `Reborn mob-click-136`.
+
+
+## Emptied-chest responses keep the run going · v137
+
+From the user's continuous-collect patch (an extract of this hub's chest section):
+
+- A withdrawal that was sent but gained nothing, where the server answers
+  empty / no items / nothing to collect / out of stock / insufficient / not enough,
+  or whose Contents stack has meanwhile disappeared, is a completed check for
+  this pass: the slot is marked done, the run pauses briefly and Repeat looks for
+  a refill. Previously it stopped the run as "Needs review".
+- Response codes `CHANGE`, `CHANGED` and `CHEST_CHANGED` are skipped like an
+  empty slot instead of blocking the run.
+- The rest of the patch (per-pass flag resets, fallback to the last targets) is
+  already covered: states are rebuilt each pass and empty readable chests wait
+  for a refill (v132).
+
+Report headers now read `Reborn chest-empty-137`.

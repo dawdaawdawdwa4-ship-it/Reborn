@@ -5028,7 +5028,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-click-136",
+    return table.concat({"Reborn chest-empty-137",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7058,7 +7058,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-click-136 · Propeller loot history (UTC)",
+    return table.concat({"Reborn chest-empty-137 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7162,7 +7162,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-click-136 · Propeller tracker",
+    return table.concat({"Reborn chest-empty-137 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7198,7 +7198,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-click-136", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-empty-137", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -9919,7 +9919,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-click-136\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-empty-137\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9981,7 +9981,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-click-136 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn chest-empty-137 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10010,7 +10010,7 @@ function RemoteCatalog.ChestFailureKind(response,origin)
             local code=value:match("^%s*(.-)%s*$"):upper():gsub("[%s%-]+","_")
             if code=="INVENTORY_FULL" or code=="BACKPACK_FULL" or code=="NO_SPACE" or code=="NOT_ENOUGH_SPACE" or code=="NOT_ENOUGH_INVENTORY_SPACE" then record("capacity")
             elseif code=="NO_PERMISSION" or code=="PERMISSION_DENIED" or code=="UNAUTHORIZED" or code=="FORBIDDEN" or code=="INVALID_CONTEXT" or code=="INVALID_SESSION" or code=="EXPIRED_SESSION" then record("context")
-            elseif code=="INVALID_SLOT" or code=="EMPTY_SLOT" or code=="SLOT_EMPTY" or code=="ITEM_MISMATCH" or code=="INVALID_ITEM" then record("skip")
+            elseif code=="INVALID_SLOT" or code=="EMPTY_SLOT" or code=="SLOT_EMPTY" or code=="ITEM_MISMATCH" or code=="INVALID_ITEM" or code=="CHANGE" or code=="CHANGED" or code=="CHEST_CHANGED" then record("skip")
             elseif code=="EMPTY" or code=="EMPTY_OR_INSUFFICIENT" or code=="AMOUNT_TOO_LARGE" or code=="BATCH_TOO_LARGE" or code=="INSUFFICIENT" or code=="INSUFFICIENT_ITEMS" or code=="INSUFFICIENT_STOCK" or code=="INSUFFICIENT_SALAD" or code:match("^NOT_ENOUGH_ITEMS") or code:match("^NOT_ENOUGH_CARROTS") then record("amount") end
         elseif type(value)=="table" and depth<=3 and not seen[value] then
             seen[value]=true
@@ -10488,6 +10488,22 @@ function RemoteCatalog.SetChestAuto(state)
                     return
                 end
                 if ran then RemoteCatalog.ObserveChestPace(sent,response,successPause,gap) else RemoteCatalog.ObserveChestPace(false,nil,successPause) end
+                if sent and after~=nil and after<=before then
+                    -- From the user's continuous-collect patch: a chest emptied between the scan and the
+                    -- request (another player, a conveyor) answers "empty"/"insufficient", or its stack is
+                    -- simply gone. That is a completed check for this pass, not a reason to stop the run.
+                    local resultText=string.lower(tostring(RemoteCatalog.ChestResultText(response)))
+                    local clearlyEmpty=string.find(resultText,"empty",1,true) or string.find(resultText,"no items",1,true)
+                        or string.find(resultText,"nothing to collect",1,true) or string.find(resultText,"out of stock",1,true)
+                        or string.find(resultText,"insufficient",1,true) or string.find(resultText,"not enough",1,true)
+                        or binding.Stack~=nil and binding.Stack.Parent==nil
+                    if clearlyEmpty then
+                        state.Done=true;state.Waiting=false;state.InventoryWaiting=false;preferredSlot=nil
+                        RemoteCatalog.ChestAutoMessage(target..": chest is empty right now · waiting for the next scan to find a refill.\n"..RemoteCatalog.ChestResultText(response))
+                        if not paced(emptyPause) then return end
+                        continue
+                    end
+                end
                 if sent and (after==nil or after<=before) then
                     stoppedOutcome="Needs review"
                     RemoteCatalog.ChestAutoMessage(target..": "..(afterState=="pending" and "Quantity did not become readable within 5 seconds." or after==nil and "Item quantity became invalid or unreadable." or "No inventory gain confirmed within 5 seconds.").." No further requests sent and batch not reduced. Check inventory before restarting.\n"..RemoteCatalog.ChestResultText(response))
@@ -10598,7 +10614,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-click-136\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-empty-137\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11716,7 +11732,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-click-136 · Craft diagnostics",
+    return table.concat({"Reborn chest-empty-137 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11795,7 +11811,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-click-136 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn chest-empty-137 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12442,7 +12458,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-click-136 · Mobs",
+    return table.concat({"Reborn chest-empty-137 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
