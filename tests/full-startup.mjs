@@ -1007,7 +1007,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn mob-weapon-108',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn mob-respawn-110',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1747,7 +1747,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn mob-weapon-108 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn mob-respawn-110 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2456,7 +2456,8 @@ end)()
  assert(r.Mobs.Radius==120 and not r.MobRadiusMenu.Menu.Visible)
  r.RefreshMobUI();r.MobRadius:GetPropertyChangedSignal('Text'):Fire()
  assert(r.MobRadius.Text:find('▼',1,true) and r.MobRadius:FindFirstChild('ChoiceChip').Visible,'board refresh must preserve the styled dropdown instead of replacing its arrow with an unsupported glyph')
- r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk);r.MobWalk.Activated:Fire();assert(r.Mobs.Walk)
+ r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Teleport' and r.MobWalk.Text=='AUTO MOVE: TP HOPS','second move mode must be short teleport hops')
+ r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk and r.MobWalk.Text=='AUTO MOVE: OFF');r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Walk')
  local weapon={Name='ironWarAxe'}
  local human={Health=100,MaxHealth=100}
  local root={Position={X=0,Y=0,Z=0}}

@@ -3028,3 +3028,27 @@ seconds and switch target instead of stopping the run. The run still stops after
 twelve consecutive unconfirmed swings across targets; any observed HP drop resets
 both budgets. Run `node scripts/embed-mobs.mjs` after editing `tools/MobFarm.lua`.
 Live hit detection still needs confirmation in the user's Roblox client.
+
+
+## Mob respawn, TP hops and run rate · v110
+
+**Auto Move** now cycles **Walk → TP hops → Off**. TP hops moves the character
+in straight steps of at most eight studs toward the chosen slime, one step per
+0.15-second tick, and loops until the slime is within the six-stud attack reach.
+The last hop stops three studs short and never ends below the slime's centre.
+Velocity is cleared on each hop. Hops are used only with a clear line to the
+slime; obstructed slimes still use the `Mobs` pathfinder, so a hop never passes
+through a wall. A hop that fails or makes no progress for two seconds (for
+example a server position reset) cools that slime down for three seconds.
+
+The learned attack now survives a respawn. Since v108 the worker activates the
+weapon natively and uses the binding only for the weapon name and session, so
+`MobBindingUsable` accepts a new character with the same account, place, server
+and live attack endpoint. Death pauses the run; it resumes after respawn without
+learning again. Older bindings without owner fields keep the strict check.
+
+Recently attacked slimes are observed for three seconds after a target switch,
+so late HP replication still counts and refills the no-damage budget. The run
+card shows run time and, after 30 seconds, observed defeats per minute; the time
+freezes on Stop. Copy result includes the move mode, hop size and run time.
+Report headers now read `Reborn mob-respawn-110`.

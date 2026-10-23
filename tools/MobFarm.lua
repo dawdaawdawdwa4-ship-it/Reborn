@@ -23,9 +23,13 @@ end
 function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Swings=0,Drops=0,Defeats=0,
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
-        ChaseRange=24,TargetBudget=4,RunBudget=12}
+        ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
+    local function usable(recorder)
+        if ctx.BindingUsable then return ctx.BindingUsable(recorder) end
+        return recorder:CanUseMobBinding()
+    end
     local function publish(text)
         self.Message=text
         if ctx.Update then ctx.Update(self) end
@@ -73,7 +77,12 @@ function MobFarm.new(ctx)
         if not active() then return false,"Swing cancelled" end
         return true,"Weapon activated · checking for HP changes"
     end
+    function self:RunTime()
+        if not self.StartedAt then return 0 end
+        return math.max(0,(self.EndedAt or now())-self.StartedAt)
+    end
     function self:Stop(reason)
+        if self.StartedAt and not self.EndedAt then self.EndedAt=now() end
         self.Enabled=false;self.Generation+=1;self.Target=nil
         halt()
         local released=self:ReleaseSwing()
@@ -109,11 +118,12 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0
-        self.LastResult=nil;self.LastTarget=nil
-        publish("Scanning for slimes · Auto Walk "..(self.Walk and "ON" or "OFF"))
+        self.LastResult=nil;self.LastTarget=nil;self.StartedAt=now();self.EndedAt=nil
+        publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
         scheduler.spawn(function()
             local healthSeen=setmetatable({},{__mode="k"})
             local cooldowns=setmetatable({},{__mode="k"})
+            local attackedAt=setmetatable({},{__mode="k"})
             local lastAttack=-math.huge
             local attempts=0
             local unconfirmed=0
@@ -135,12 +145,16 @@ function MobFarm.new(ctx)
             local ok,failure=pcall(function()
                 while active() do
                     if self.Target then observe(self.Target) end
+                    -- HP replication can trail a swing; keep watching recent targets after a switch.
+                    for model,at in pairs(attackedAt) do
+                        if now()-at>3 then attackedAt[model]=nil elseif model~=self.Target then observe(model) end
+                    end
                     local char=ctx.Player.Character
                     local human=char and char:FindFirstChildOfClass("Humanoid")
                     local root=char and char:FindFirstChild("HumanoidRootPart")
                     if not human or not root or human.Health<=0 then
                         halt();self.Target=nil;publish("Paused · waiting for your character")
-                    elseif not recorder:CanUseMobBinding() then
+                    elseif not usable(recorder) then
                         self:Stop("Character/session changed · learn one manual attack again");return
                     else
                         local fraction=human.MaxHealth>0 and human.Health/human.MaxHealth or 0
@@ -169,17 +183,30 @@ function MobFarm.new(ctx)
                                 end
                                 local chasing=false
                                 if chosen.Distance>self.Reach then
-                                    local close=chosen.Distance<=self.ChaseRange
-                                        and math.abs(chosen.Root.Position.Y-root.Position.Y)<6
-                                        and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
-                                    if self.Walk and close then
+                                    local clear=self.Walk and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
+                                    -- Teleport mode loops short hops, one per tick; walls still route through the pathfinder.
+                                    local teleport=clear and self.Travel=="Teleport" and ctx.Hop~=nil
+                                    local close=teleport or clear and chosen.Distance<=self.ChaseRange
+                                        -- Hops lift the slime; allow more height once a chase is underway.
+                                        and math.abs(chosen.Root.Position.Y-root.Position.Y)<(progress.Best and 12 or 6)
+                                    if close then
                                         chasing=true
                                         if not progress.Best or chosen.Distance<progress.Best-.5 then
                                             progress.Best=chosen.Distance;progress.At=now()
                                         end
                                         if now()-progress.At>2 then
                                             halt();cooldowns[chosen.Model]=now()+3;self.Target=nil
-                                            publish("Chase stalled · trying another slime shortly")
+                                            publish((teleport and "Teleport" or "Chase").." stalled · trying another slime shortly")
+                                        elseif teleport then
+                                            if self.Chase then halt() end
+                                            local offset=chosen.Root.Position-root.Position
+                                            local hop=math.min(self.HopDistance,offset.Magnitude-3)
+                                            if hop>.1 and pcall(ctx.Hop,root,root.Position+offset.Unit*hop,chosen.Root) then
+                                                publish("Teleporting · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
+                                            else
+                                                cooldowns[chosen.Model]=now()+3;self.Target=nil
+                                                publish("Teleport unavailable · trying another slime shortly")
+                                            end
                                         elseif chase(human,root,chosen.Root) then
                                             publish("Chasing · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
                                         else
@@ -198,7 +225,7 @@ function MobFarm.new(ctx)
                                             cooldowns[chosen.Model]=now()+3
                                             publish("Path blocked · trying another slime shortly")
                                         end
-                                    else publish("Waiting · move within 6 studs or enable Auto Walk") end
+                                    else publish("Waiting · move within 6 studs or enable Auto Move") end
                                 elseif now()-lastAttack>=.65 and valid() then
                                     if self.Chase then halt() end
                                     local tool=ctx.Weapon(recorder.MobBinding.WeaponName)
@@ -222,6 +249,7 @@ function MobFarm.new(ctx)
                                             self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                             if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
                                             self.Swings+=1;attempts+=1;unconfirmed+=1
+                                            attackedAt[chosen.Model]=now()
                                             observe(chosen.Model)
                                             publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
                                             if unconfirmed>=self.RunBudget then
@@ -248,7 +276,7 @@ function MobFarm.new(ctx)
             if self.Worker==token then
                 self.Worker=nil
                 if self.Generation==token then
-                    self.Enabled=false;self.Target=nil;halt()
+                    self.Enabled=false;self.Target=nil;self.EndedAt=self.EndedAt or now();halt()
                     publish(ok and "Stopped · another mode took control" or "Stopped · "..tostring(failure))
                 elseif ctx.Update then ctx.Update(self) end
             end

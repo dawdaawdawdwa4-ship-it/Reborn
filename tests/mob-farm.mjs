@@ -9,6 +9,7 @@ local mt={}
 local function v(x) return setmetatable({X=x,Y=0,Z=0},mt) end
 mt.__sub=function(a,b) return v(a.X-b.X) end
 mt.__mul=function(a,n) return v(a.X*n) end
+mt.__add=function(a,b) return v(a.X+b.X) end
 mt.__index=function(a,k) if k=='Magnitude' then return math.abs(a.X) elseif k=='Unit' then return v(math.sign(a.X)) end end
 local function node(name,kind,parent)
  local n={Name=name,ClassName=kind,Parent=parent,children={}}
@@ -31,7 +32,7 @@ local function actor(name,x,parent)
  return m,h,r
 end
 local char,human,root=actor('Character',0,world)
-local stuck,moves=false,0
+local stuck,moves,hops,hopError=false,0,0,false
 function human:MoveTo(point) moves+=1;if not stuck then root.Position=point end end
 local player={Character=char}
 local players={GetPlayerFromCharacter=function(_,model) return model.IsPlayer and {} or nil end}
@@ -79,6 +80,12 @@ local ctx={Player=player,Players=players,World=world,Now=function() return time 
  Recorder=function() return learned and recorder or nil end,Weapon=function() return tool end,
  Equip=function() if equipHook then equipHook() end;return true end,ClearLine=function() return not blocked end,
  DescribeResult=RemoteCatalog.ChestResultText,
+ Hop=function(r,destination,t)
+  assert(r==root and t==farm.Target:FindFirstChild('HumanoidRootPart'));hops+=1
+  if hopError then error('anchored') end
+  assert(math.abs((destination-root.Position).Magnitude)<=8.001,'each teleport must be a short hop')
+  if not stuck then root.Position=destination end
+ end,
  Face=function(r,t) assert(r==root);faced=t;if faceError then error('facing unavailable') end end,
  Navigation={Stop=function(owner) assert(owner=='Mobs');halts+=1 end,
  Approach=function(who,target,reach,active,positionOf,mode,owner)
@@ -103,7 +110,7 @@ local function reset()
  human.Health=100;human.MaxHealth=100;player.Character=char;bindingChar=char
  busy=nil;pause=nil;damage=true;blocked=false;transport=false;learned=true;alive=true
  equipHook=nil;walkHook=nil;attackHook=nil;sent=0;walks=0;tool.Parent=char
- stuck=false;moves=0;faced=nil;faceError=false
+ stuck=false;moves=0;faced=nil;faceError=false;hops=0;hopError=false
 end
 reset();ah.Health=10;farm:Start()
 assert(farm.Defeats==1 and farm.Drops==1,'zero HP must count once, and never infer a kill from dispatch alone')
@@ -163,8 +170,32 @@ reset();attackHook=function() scheduler.wait(.1) end;farm:Start()
 assert(sent==1 and farm.Worker and farm.Enabled)
 farm:Stop();step()
 assert(not farm.Worker and farm.Swings==0 and farm.Drops==0,'Stop while native activation is pending must discard its late completion')
+reset();ctx.BindingUsable=function() return learned end;human.Health=0;farm:Start();assert(sent==0 and farm.Enabled)
+local respawned={FindFirstChild=function() return root end,FindFirstChildOfClass=function() return human end}
+player.Character=respawned;tool.Parent=respawned;human.Health=100;step()
+assert(farm.Enabled and sent==1,'a respawn must resume when the learned session only supplies the native weapon')
+ctx.BindingUsable=nil;player.Character=char;tool.Parent=char
+reset();damage=false;farm.TargetBudget=1;farm:Start();assert(sent==1 and farm.Target==nil and farm.Drops==0)
+ah.Health-=10;step();assert(farm.Drops==1,'an HP drop replicated after a target switch must still be observed')
+reset();farm:Start();step(1);farm:Stop();local runTime=farm:RunTime();step(5)
+assert(runTime>=1 and farm:RunTime()==runTime and farm.EndedAt,'run time must freeze when the farm stops')
+reset();ar.Position=v(40);br.Position=v(32);farm.Travel='Teleport';farm:Start()
+assert(hops==1 and root.Position.X==8 and walks==0 and moves==0 and sent==0 and farm.Message:find('Teleporting',1,true),'TP mode must hop 8 studs toward the slime, not walk')
+step();step();assert(hops==3 and root.Position.X==24 and sent==0)
+step();assert(hops==4 and root.Position.X==29 and sent==0,'the last hop must stop short of the slime')
+step();assert(sent==1 and farm.Target==b,'TP hops must loop until the slime is in reach, then attack')
+reset();farm.Travel='Teleport';blocked=true;ar.Position=v(40);br.Position=v(60);farm:Start();step()
+assert(hops==0 and walks>=1,'obstructed slimes must be pathfound instead of teleported through walls')
+reset();farm.Travel='Teleport';stuck=true;ar.Position=v(40);br.Position=v(60);farm:Start()
+local tpStalled=false
+for i=1,20 do step();if farm.Message:find('Teleport stalled',1,true) then tpStalled=true;break end end
+assert(tpStalled and sent==0 and farm.Enabled,'rubber-banded teleports must back off instead of looping forever on one slime')
+reset();farm.Travel='Teleport';hopError=true;ar.Position=v(40);br.Position=v(60);farm:Start()
+assert(hops==1 and farm.Enabled and farm.Message:find('Teleport unavailable',1,true),'a failed hop must cool the slime down and keep farming')
+reset();farm.Travel='Teleport';farm.Walk=false;ar.Position=v(40);br.Position=v(60);farm:Start();step(2)
+assert(hops==0 and walks==0 and sent==0,'Auto Move OFF must never teleport')
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
-return 'Mob farm: targeting, facing, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
+return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'mob-farm',true)());}
