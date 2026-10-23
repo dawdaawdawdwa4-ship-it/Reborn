@@ -26,8 +26,20 @@ function MobFarm.Details(model,roots,players,kind)
     if not humanoid or not root or not root:IsA("BasePart") then return nil end
     return humanoid,root
 end
+-- Some games keep mob HP in an attribute or value and never replicate Humanoid.Health.
+function MobFarm.HealthOf(model,humanoid)
+    local value
+    pcall(function() value=model:GetAttribute("Health") end)
+    if type(value)~="number" then pcall(function() value=model:GetAttribute("HP") end) end
+    if type(value)~="number" then
+        local child=model:FindFirstChild("Health") or model:FindFirstChild("HP")
+        if child and type(child.Value)=="number" then value=child.Value end
+    end
+    if type(value)=="number" then return value end
+    return humanoid.Health
+end
 function MobFarm.new(ctx)
-    local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,
+    local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
         Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.35,ResumeAbove=.5,WalkSpeed=24}
@@ -83,6 +95,7 @@ function MobFarm.new(ctx)
     -- otherwise leave the character inside the mob's attacks.
     local function retreat(human,root,threat,distance)
         local away=root.Position-threat.Position
+        if ctx.Flatten then away=ctx.Flatten(away) end
         if away.Magnitude<.1 then return false end
         boost(human,true)
         local ok=pcall(function() human:MoveTo(root.Position+away.Unit*(distance or 12)) end)
@@ -198,16 +211,18 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.StartedAt=now();self.EndedAt=nil
         publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
         scheduler.spawn(function()
             local healthSeen=setmetatable({},{__mode="k"})
             local cooldowns=setmetatable({},{__mode="k"})
             local attackedAt=setmetatable({},{__mode="k"})
+            local attackedNear=setmetatable({},{__mode="k"})
             local maxHit=0
             local lastAttack=-math.huge
             local attempts=0
             local unconfirmed=0
+            local lastAttackAt=-math.huge
             local lastEat=-math.huge
             local lastDistance=setmetatable({},{__mode="k"})
             local progress={}
@@ -218,29 +233,53 @@ function MobFarm.new(ctx)
             local function observe(model)
                 local previous=healthSeen[model]
                 local health=MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players,self.Kind)
+                local current=health and MobFarm.HealthOf(model,health)
                 -- Streaming out is not proof of death; all counters describe observations.
-                if health and previous and health.Health<previous then
+                if current and previous and current<previous then
                     -- A late drop on an earlier target must not reset the current target's budget.
                     self.Drops+=1;unconfirmed=0
                     if model==self.Target then attempts=0 end
-                    maxHit=math.max(maxHit,previous-health.Health)
-                    if previous>0 and health.Health<=0 then
+                    maxHit=math.max(maxHit,previous-current)
+                    if previous>0 and current<=0 then
                         self.Defeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
                     end
                 end
-                if health then healthSeen[model]=health.Health end
+                if current then healthSeen[model]=current end
+            end
+            -- Loot is proof a hit landed even when mob HP never replicates (a live clip showed
+            -- "+2 Green Slime Ball" beside "0 HP drops"). Compared against the inventory at swing time.
+            local lootBaseline
+            local function checkLoot()
+                if not ctx.Inventory or not lootBaseline or now()-lastAttackAt>3 then return end
+                local ok,current=pcall(ctx.Inventory)
+                if not ok or type(current)~="table" then return end
+                local gained=0
+                for name,count in pairs(current) do
+                    local before=lootBaseline[name] or 0
+                    if count>before then gained+=count-before;self.LootByName[name]=(self.LootByName[name] or 0)+(count-before) end
+                end
+                lootBaseline=current
+                if gained>0 then
+                    self.Loot+=gained;unconfirmed=0;attempts=0
+                    publish("Loot · +"..gained.." items · hits are landing")
+                end
             end
             local ok,failure=pcall(function()
                 while active() do
                     if self.Target then observe(self.Target) end
                     -- HP replication can trail a swing; keep watching recent targets after a switch.
+                    checkLoot()
                     for model,at in pairs(attackedAt) do
                         if not MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players,self.Kind) then
-                            -- Slimes usually despawn at 0 HP before it replicates. Removal right after a hit
-                            -- that could finish it is counted separately as a likely defeat, never as observed.
+                            -- Mobs usually despawn at 0 HP before it replicates, if HP replicates at all. A
+                            -- mob that was within reach and vanishes within 3 s of a swing is a likely defeat.
                             local last=healthSeen[model]
-                            if last and last>0 and maxHit>0 and last<=maxHit then
+                            -- With replicated HP a mob seen well above the biggest hit streamed out; without
+                            -- any replicated drop this run, a vanish within reach is the only kill signal.
+                            local near=(attackedNear[model] or math.huge)<=self.Reach+2
+                            if near and now()-at<=3 and maxHit==0 or last and last>0 and maxHit>0 and last<=maxHit then
                                 self.LikelyDefeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
+                                unconfirmed=0;if model==self.Target then attempts=0 end
                             end
                             attackedAt[model]=nil
                             if self.Target==model then self.Target=nil end
@@ -411,11 +450,13 @@ function MobFarm.new(ctx)
                                             self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                             if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
                                             self.Swings+=1;attempts+=1;unconfirmed+=1
-                                            attackedAt[chosen.Model]=now()
+                                            attackedAt[chosen.Model]=now();lastAttackAt=now()
+                                            attackedNear[chosen.Model]=(chosen.Root.Position-root.Position).Magnitude
+                                            if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end
                                             observe(chosen.Model)
                                             publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
                                             if unconfirmed>=self.RunBudget then
-                                                self:Stop("No HP drop observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
+                                                self:Stop("No HP drop, loot or defeat observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
                                             elseif attempts>=self.TargetBudget then
                                                 if ctx.LearnedHit and not self.UseLearnedHit then
                                                     -- Try the stronger method on this same target before giving up on it.

@@ -301,6 +301,31 @@ do
  ar.Position.Y=0;step(.7);assert(sent==1,'the landed slime is attacked')
  reset();ar.Position=v(9);farm:Start();assert(faced==ar,'the character faces a nearby target before it is in reach')
 end
+-- Loot in the inventory confirms hits when mob HP never changes, and refills the budgets.
+do
+ reset();damage=false;local bag={greenSlimeBall=0}
+ ctx.Inventory=function() return {greenSlimeBall=bag.greenSlimeBall} end
+ farm:Start();for i=1,3 do step(.7) end
+ assert(farm.Swings==4 and farm.Loot==0,'no loot yet')
+ bag.greenSlimeBall=2;step(.7)
+ assert(farm.Loot==2 and farm.LootByName.greenSlimeBall==2,'loot gained after a swing must be counted')
+ for i=1,12 do step(.7) end
+ assert(farm.Enabled,'a run with loot must not stop on the no-damage budget')
+ bag.greenSlimeBall=5;step(.7);assert(farm.Loot==5,'later loot keeps counting')
+ ctx.Inventory=nil
+end
+-- Without any replicated HP drop, a target that vanishes within reach right after a swing is a likely defeat.
+do
+ reset();damage=false;farm:Start();assert(farm.Swings==1 and farm.Drops==0)
+ a.Parent=nil;step();a.Parent=nested
+ assert(farm.LikelyDefeats==1 and farm.KillsByName.slimeBlue==1,'vanish within reach after a swing counts when HP never replicates')
+end
+-- Health attributes are read when present.
+do
+ reset();a.attributes={Health=40};function a:GetAttribute(k) return self.attributes[k] end
+ damage=false;farm:Start();a.attributes.Health=30;step(.7)
+ assert(farm.Drops==1,'an HP attribute drop counts as a hit');a.attributes=nil;a.GetAttribute=nil
+end
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
 `;

@@ -3663,3 +3663,27 @@ hopped at the character, ending with the two overlapping. Three tracking rules:
   target every tick, not only before a swing.
 
 Report headers now read `Reborn mob-track-140`.
+
+
+## Hits confirmed by loot and despawn · v141
+
+A live clip showed "+2 Green Slime Ball → backpack" while the run read "0 HP
+drops" and then stopped on its no-damage budget: the game does not replicate
+mob HP to the client, so hits were landing unseen. Confirmation now has four
+signals, any of which refills the per-target and run budgets:
+
+- **HP drop** of the target's Humanoid, or of a `Health`/`HP` attribute or value
+  on the model when the game keeps HP there.
+- **Loot**: the inventory ({name=count} over owned tools) is snapshotted at the
+  first swing and compared on every tick for 3 s after each swing; any increase
+  counts as loot ("Loot · +N items · hits are landing"), listed by item.
+- **Despawn in reach**: a mob attacked within reach + 2 studs that vanishes within
+  3 s of the swing is a likely defeat when no HP drop has replicated this run.
+  With replicated HP the stricter finishing-size rule from v115 still applies.
+- The run stops only when none of these appear in 12 swings.
+
+The run card shows swings · HP drops · loot · defeats (+likely); Copy result
+lists loot by item. Retreats and standoff steps move horizontally, so a mob
+underneath the character is stepped away from too.
+
+Report headers now read `Reborn mob-loot-141`.
