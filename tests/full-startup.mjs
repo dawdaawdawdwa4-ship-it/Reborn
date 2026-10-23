@@ -1007,7 +1007,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn slime-farm-106',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn mob-status-107',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1747,7 +1747,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn slime-farm-106 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn mob-status-107 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2434,20 +2434,28 @@ end)()
 ;(function()
  local r=RemoteCatalog
  r.StopAllAutomation();stepWorkers()
- assert(#hub.Tabs==13 and pages.Mobs==r.MobPage and #r.MobPage:GetChildren()>=3,'Mobs must have its own populated tab')
+ assert(#hub.Tabs==13 and pages.Mobs==r.MobPage and #r.MobPage:GetChildren()>=2,'Mobs must have its own populated tab')
  assert(airflowTabs.Mobs._revealed,'native tab reveal must preserve closed mob dropdowns')
  local saved={Character=player.Character,Find=workspace.FindFirstChild,Recorder=r.Recorder,Start=r.StartCapture,Focus=UserInputService.GetFocusedTextBox}
  workspace.FindFirstChild=function() return nil end
  UserInputService.GetFocusedTextBox=function() return nil end
  r.Recorder=nil
+ assert(r.MobInfo.Parent==r.MobToggle.Parent and r.MobInfo.Position.Y.Offset+r.MobInfo.Size.Y.Offset<=r.MobToggle.Position.Y.Offset,'the actual start blocker must be visible above the Start control')
+ assert(r.MobCounters.Position.Y.Offset+r.MobCounters.Size.Y.Offset<=r.MobInfo.Parent.Size.Y.Offset,'run counters must fit in the same compact card')
+ enabled=true;r.MobPage.CanvasPosition=Vector2.new(0,300);r.MobToggle.Activated:Fire()
+ assert(not r.Mobs.Enabled and r.MobInfo.Text:find('Fishing is ON',1,true) and r.MobPage.CanvasPosition==Vector2.zero,'failed Start must reveal the precise blocking mode at the top of the page')
+ enabled=false
  r.MobToggle.Activated:Fire()
  assert(not r.Mobs.Enabled and r.MobInfo.Text:find('Learn attack first',1,true),'Start without a learned attack must send nothing and explain setup')
- r.MobScan.Activated:Fire()
+ r.MobPage.CanvasPosition=Vector2.new(0,300);r.MobScan.Activated:Fire()
+ assert(r.MobPage.CanvasPosition==Vector2.zero)
  assert(r.MobInfo.Text:find('0 living slimes',1,true) and not r.Mobs.Worker,'Scan must be read-only')
  r.MobRadius.Activated:Fire()
  assert(r.MobRadiusMenu.Menu.Visible and r.MobWalk.Position.Y.Offset>=r.MobRadiusMenu.Menu.Position.Y.Offset+r.MobRadiusMenu.Menu.Size.Y.Offset,'radius dropdown must push following controls down')
  r.MobRadiusMenu.Options[3].Activated:Fire()
  assert(r.Mobs.Radius==120 and not r.MobRadiusMenu.Menu.Visible)
+ r.RefreshMobUI();r.MobRadius:GetPropertyChangedSignal('Text'):Fire()
+ assert(r.MobRadius.Text:find('▼',1,true) and r.MobRadius:FindFirstChild('ChoiceChip').Visible,'board refresh must preserve the styled dropdown instead of replacing its arrow with an unsupported glyph')
  r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk);r.MobWalk.Activated:Fire();assert(r.Mobs.Walk)
  local weapon={Name='ironWarAxe'}
  local human={Health=100,MaxHealth=100}
@@ -2455,6 +2463,17 @@ end)()
  local character={Parent=true,FindFirstChild=function(_,name) if name=='HumanoidRootPart' then return root end end,
   FindFirstChildOfClass=function(_,kind) if kind=='Tool' then return weapon elseif kind=='Humanoid' then return human end end}
  weapon.Parent=character;player.Character=character
+ ;(function()
+  local clip,alternate,copied=setclipboard,toclipboard,nil
+  enabled=true
+  r.Mobs.LastResult='{error=TOO_FAST, success=false}';r.Mobs.LastTarget='slimeBlue'
+  setclipboard=function() return false end;toclipboard=function(value) copied=value end
+  r.MobCopy.Activated:Fire()
+  assert(copied and copied:find('Fishing is ON',1,true) and copied:find('TOO_FAST',1,true) and copied:find('slimeBlue',1,true) and not r.Mobs.Worker,'Copy result must include current blockers and the full error without starting a worker')
+  toclipboard=function() error('clipboard unavailable') end;r.MobCopy.Activated:Fire()
+  assert(status.Text:find('Mob result printed to console',1,true),'failed clipboard functions must fall back accurately to console')
+  setclipboard,toclipboard=clip,alternate;enabled=false
+ end)()
  local sends=0
  local learned={Records={},MaxCalls=100,RequestIds={},MobBinding={WeaponName='ironWarAxe',Remote={Parent=true}},CanUseMobBinding=function() return true end,
   MobHit=function() sends+=1;return true end,Stop=function(self) self.Stopped=true;self.LearnMobOnly=false end}
@@ -2479,7 +2498,7 @@ end)()
  r.Mobs.Radius=60;r.RefreshMobUI()
 end)()
 
-local cleanupOptions={MobToggle=RemoteCatalog.MobToggle,MobStop=RemoteCatalog.MobStop,Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause,BuildCopyAll=buildController.Buttons.CopyAllHistory,BuildRestock=buildController.Buttons.CopyMissing}
+local cleanupOptions={MobCopy=RemoteCatalog.MobCopy,MobToggle=RemoteCatalog.MobToggle,MobStop=RemoteCatalog.MobStop,Recipe=RemoteCatalog.CraftRecipeMenu.Options[1],Materials=RemoteCatalog.CraftMaterialsScopeMenu.Options[2],Import=RemoteCatalog.CraftImportButton,Export=RemoteCatalog.CraftExportButton,Repeat=buildController.Buttons.RepeatRight,QueueCheck=RemoteCatalog.CraftQueueCheckButton,RepeatUp=buildController.Buttons.RepeatUp,ChestImport=RemoteCatalog.ChestImportButton,ChestExport=RemoteCatalog.ChestExportButton,ChestCopy=RemoteCatalog.ChestCopySetupButton,Drop=RemoteCatalog.DropButton,DropStop=RemoteCatalog.DropStopButton,DropEvents={},SettingsQuick=RemoteCatalog.SettingsQuickButton,SettingsAdvanced=RemoteCatalog.SettingsAdvancedButton,DropTextBounds=RemoteCatalog.DropInfo:GetPropertyChangedSignal('TextBounds'),BuildFast=buildController.SpeedOptions[2],BuildPause=buildController.Buttons.Pause,BuildCopyAll=buildController.Buttons.CopyAllHistory,BuildRestock=buildController.Buttons.CopyMissing}
  ;(function()
  local oldPress,oldRelease,oldFocus,oldCharacter=keypress,keyrelease,UserInputService.GetFocusedTextBox,player.Character
  local events=cleanupOptions.DropEvents
@@ -2493,7 +2512,8 @@ RemoteCatalog.StopTimerButton.Activated:Fire()
 gui:Destroy();stepWorkers()
 RemoteCatalog.Mobs.Start=function() error('mob Start survived GUI removal') end
 RemoteCatalog.Mobs.Stop=function() error('mob Stop survived GUI removal') end
-cleanupOptions.MobToggle.Activated:Fire();cleanupOptions.MobStop.Activated:Fire()
+RemoteCatalog.CopyMobResult=function() error('mob Copy result survived GUI removal') end
+cleanupOptions.MobToggle.Activated:Fire();cleanupOptions.MobStop.Activated:Fire();cleanupOptions.MobCopy.Activated:Fire()
 assert(cleanupOptions.DropEvents[2]=='up' and not RemoteCatalog.DropEnabled and not RemoteCatalog.DropHeld and not RemoteCatalog.DropWorker,'destroying the hub must release Q and end the drop worker')
 RemoteCatalog.SetDropEnabled=function() error('Q drop callback survived GUI removal') end
 cleanupOptions.Drop.Activated:Fire();cleanupOptions.DropStop.Activated:Fire();UserInputService.WindowFocusReleased:Fire()

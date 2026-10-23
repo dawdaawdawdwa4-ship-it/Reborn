@@ -64,6 +64,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0
+        self.LastResult=nil;self.LastTarget=nil
         publish("Scanning for slimes · Auto Walk "..(self.Walk and "ON" or "OFF"))
         scheduler.spawn(function()
             local healthSeen=setmetatable({},{__mode="k"})
@@ -141,9 +142,11 @@ function MobFarm.new(ctx)
                                     if valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
                                         if ctx.ClearLine(root,chosen.Root,char,chosen.Model) then
                                             lastAttack=now()
+                                            self.LastTarget=chosen.Model.Name
                                             local sent,detail=recorder:MobHit(chosen.Model)
                                             if not active() then return end
-                                            if not sent then self:Stop("Attack stopped · "..tostring(detail));return end
+                                            self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
+                                            if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
                                             self.Swings+=1;attempts+=1
                                             observe(chosen.Model)
                                             publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))

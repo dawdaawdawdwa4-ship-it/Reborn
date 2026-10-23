@@ -2934,3 +2934,33 @@ low-health/chat pauses, empty scans, failed paths, cooldowns, bounded unconfirme
 attacks, character changes, dropdown layout, learning, Stop/Start and GUI cleanup.
 The full existing suite remains required. Roblox rendering, pathfinding and live
 server acceptance remain unverified here.
+
+
+## Visible mob start status · v107
+
+The user's follow-up clip shows Auto Mobs OFF with the run-status card below the
+visible portion of the tab; it does not show a start attempt or server error.
+The underlying live attack failure is therefore not established by this clip.
+The mob tab now places the status, learned weapon and counters in the same top
+card as Start/Stop and removes the separate bottom status card. Start, Stop,
+Learn and Scan return the tab to the top so a start blocker can be read. Blockers
+name the active mode (for example Fishing), rather than only saying another
+mode is busy. These checks do not turn off the other mode automatically.
+
+**Copy result** reports current mode/status, current start blocker, learning and
+binding readiness, weapon, character health, scan radius/count, last attempted
+target, full last response and observed counters. It performs no attacks or
+movement and omits request packets/session tokens. Clipboard exceptions or an
+explicit false use the alternate clipboard function, then console output if
+needed. Table-shaped server responses are formatted as readable fields in the
+worker's stop reason instead of an opaque table address. The compact UI shortens
+very long status messages; the copied result retains the full message.
+
+Periodic mob UI refresh now uses the dropdown's own Refresh method. The previous
+refresh replaced its styled triangle with a different, unsupported glyph, hiding
+the choice decoration. Inline menus still expand the following controls.
+Full-startup tests cover the visible named blocker, action-driven scroll reset,
+non-overlapping status/counters, dropdown refresh, read-only result copying and
+clipboard fallback/cleanup. The worker test covers a structured TOO_FAST response
+without treating it as success or sending a fallback attack. Live mob farming
+still needs the visible status/result from the user's Roblox client.

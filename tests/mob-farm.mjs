@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const module=fs.readFileSync(new URL('../tools/MobFarm.lua',import.meta.url),'utf8');
+const main=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8');
+const resultText=main.slice(main.indexOf('function RemoteCatalog.ChestResultText(value)'),main.indexOf('track(RemoteCatalog.ChestCopyButton.Activated'));
 const code=`
 local time=0
 local mt={}
@@ -38,6 +40,8 @@ local fake=actor('slime',1,nested);fake.IsPlayer=true
 local dead,dh=actor('slime',1,nested);dh.Health=0
 actor('buffalkor',1,nested);actor('slime',300,direct)
 local Module=(function() ${module} end)()
+local RemoteCatalog={}
+${resultText}
 local workers={}
 local scheduler={spawn=function(fn)
  local co=coroutine.create(fn);table.insert(workers,co)
@@ -59,7 +63,7 @@ function recorder:CanUseMobBinding() return bindingChar==player.Character and le
 function recorder:MobHit(target)
  sent+=1
  if attackHook then attackHook() end
- if transport then return false,'transport failed' end
+ if transport then return false,type(transport)=='table' and transport or 'transport failed' end
  if damage then target:FindFirstChildOfClass('Humanoid').Health-=10 end
  return true
 end
@@ -67,6 +71,7 @@ local ctx={Player=player,Players=players,World=world,Now=function() return time 
  Alive=function() return alive end,Busy=function() return busy end,PauseReason=function() return pause end,
  Recorder=function() return learned and recorder or nil end,Weapon=function() return tool end,
  Equip=function() if equipHook then equipHook() end;return true end,ClearLine=function() return not blocked end,
+ DescribeResult=RemoteCatalog.ChestResultText,
  Navigation={Stop=function(owner) assert(owner=='Mobs');halts+=1 end,
  Approach=function(who,target,reach,active,positionOf,mode,owner)
   walks+=1;assert(who==player and owner=='Mobs' and mode=='Walk' and reach==4)
@@ -112,6 +117,8 @@ ar.Position=v(30);farm:Start();step();assert(sent==0 and not farm.Worker,'Stop m
 reset();walkHook=function(active) busy='other mode';assert(not active());return false end
 ar.Position=v(30);farm:Start();step();assert(sent==0 and not farm.Worker and not farm.Enabled,'new automation must take control without a combat dispatch')
 reset();transport=true;farm:Start();assert(sent==1 and farm.Swings==0 and not farm.Enabled and not farm.Worker,'transport failure must stop without fallback or false counters')
+reset();transport={success=false,error='TOO_FAST'};farm:Start()
+assert(sent==1 and farm.Swings==0 and farm.Message:find('TOO_FAST',1,true) and not farm.Message:find('table:',1,true) and farm.LastTarget=='slimeBlue' and farm.LastResult:find('success=false',1,true),'structured server rejection must remain readable in the status and copied result')
 reset();damage=false;farm:Start();for i=1,8 do step(.7) end
 assert(sent==8 and farm.Swings==8 and farm.Drops==0 and not farm.Enabled and not farm.Worker,'unconfirmed attacks must stop at a bounded budget')
 reset();blocked=true;farm:Start();step();assert(sent==0,'obstructed targets cannot be attacked')
