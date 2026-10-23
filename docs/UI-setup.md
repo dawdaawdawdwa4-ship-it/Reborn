@@ -3743,3 +3743,21 @@ with the character dead at 0/100 HP, with no food in the inventory.
   then start again" instead of letting the character die quietly.
 
 Report headers now read `Reborn mob-retreat-144`.
+
+## Hit and run · v145
+
+A v143 report showed hits landing (14 damage numbers, 264 total, 2 kills in 45 s)
+while the character lost about 28 HP per slime from standing inside its reach.
+
+- **HIT & RUN** (Mobs → Setup, next to Keep distance; default ON, saved and in
+  profiles). In TP-hop mode the farm hops in to the kept distance, swings, and
+  hops straight back out to 10 studs. It rests there ("Resting · slime · 10
+  studs away") until the next swing is due, then hops in again. A mob that
+  lands on a resting character is hit from the kept distance at once. Walk
+  mode and HIT & RUN OFF keep the previous behaviour: attached at the kept
+  distance. Copy result shows the setting.
+- **Learned-hit escalation** is tried only when this server has a learned hit;
+  a rejected packet switches the escalation off instead of printing
+  "learned hit rejected" after every swing.
+
+Report headers now read `Reborn mob-hitrun-145`.

@@ -42,7 +42,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=10,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -147,7 +147,9 @@ function MobFarm.new(ctx)
         -- replay got NO_ANIMATION. Used only after clicks/activation produced no HP change.
         if self.UseLearnedHit and target and ctx.LearnedHit then
             local sent,detail=ctx.LearnedHit(target.Model)
-            method=method..(sent and " + learned hit" or " + learned hit rejected ("..(ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail))..")")
+            method=method..(sent and " + learned hit" or " + learned hit rejected ("..(ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail))..") · escalation off")
+            -- A rejected packet will be rejected again; clicks alone are quieter and just as good.
+            if not sent then self.UseLearnedHit=false end
         end
         self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
         return true,self.LastMethod.." · checking for HP changes"
@@ -448,8 +450,14 @@ function MobFarm.new(ctx)
                                     if pcall(ctx.Sidestep,human,root,chosen.Root.Position,5) then self.Chase={Humanoid=human,Root=root} end
                                     publish("Dodging · "..chosen.Model.Name.." is jumping at you")
                                 elseif self.Walk and (teleport or near) then
+                                    -- Hit and run (TP mode): between swings the character rests out of the mob's
+                                    -- reach and hops in only when the next swing is due.
+                                    local hitRun=teleport and self.HitAndRun and self.RestDistance>keep
+                                    if hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and now()-lastAttack<.5 then
+                                        if self.Chase then halt() end
+                                        publish("Resting · "..chosen.Model.Name.." · "..math.floor(gap).." studs away · next swing shortly")
                                     -- Attached to the mob: too far → close in, too close → back out, both to `keep` studs.
-                                    if math.abs(gap-keep)>.75 then
+                                    elseif math.abs(gap-keep)>.75 then
                                         chasing=gap>keep
                                         if chasing then
                                             if not progress.Best or gap<progress.Best-.5 then progress.Best=gap;progress.At=now() end
@@ -529,10 +537,19 @@ function MobFarm.new(ctx)
                                                 if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end
                                                 observe(chosen.Model)
                                                 publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
+                                                -- Hit and run: straight back out of the mob's reach after the swing.
+                                                if teleport and self.HitAndRun and self.RestDistance>keep and chosen.Root.Parent then
+                                                    local away=root.Position-chosen.Root.Position
+                                                    if ctx.Flatten then away=ctx.Flatten(away) end
+                                                    local step=math.min(self.HopDistance,self.RestDistance-(chosen.Root.Position-root.Position).Magnitude)
+                                                    if away.Magnitude>.1 and step>.5 and pcall(ctx.Hop,root,root.Position+away.Unit*step,chosen.Root) then
+                                                        publish("Attacking · "..chosen.Model.Name.." · backed off to "..math.floor((chosen.Root.Position-root.Position).Magnitude+.5).." studs")
+                                                    end
+                                                end
                                                 if unconfirmed>=self.RunBudget then
                                                     self:Stop("No HP drop, damage number, loot or defeat observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
                                                 elseif attempts>=self.TargetBudget then
-                                                    if ctx.LearnedHit and not self.UseLearnedHit then
+                                                    if ctx.LearnedHit and not self.UseLearnedHit and (not ctx.LearnedHitReady or ctx.LearnedHitReady()) then
                                                         -- Try the stronger method on this same target before giving up on it.
                                                         self.UseLearnedHit=true;attempts=0
                                                         publish("No HP drop from clicks · adding the learned hit packet")

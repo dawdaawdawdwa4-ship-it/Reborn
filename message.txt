@@ -1602,7 +1602,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=10,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -1707,7 +1707,9 @@ function MobFarm.new(ctx)
         -- replay got NO_ANIMATION. Used only after clicks/activation produced no HP change.
         if self.UseLearnedHit and target and ctx.LearnedHit then
             local sent,detail=ctx.LearnedHit(target.Model)
-            method=method..(sent and " + learned hit" or " + learned hit rejected ("..(ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail))..")")
+            method=method..(sent and " + learned hit" or " + learned hit rejected ("..(ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail))..") · escalation off")
+            -- A rejected packet will be rejected again; clicks alone are quieter and just as good.
+            if not sent then self.UseLearnedHit=false end
         end
         self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
         return true,self.LastMethod.." · checking for HP changes"
@@ -2008,8 +2010,14 @@ function MobFarm.new(ctx)
                                     if pcall(ctx.Sidestep,human,root,chosen.Root.Position,5) then self.Chase={Humanoid=human,Root=root} end
                                     publish("Dodging · "..chosen.Model.Name.." is jumping at you")
                                 elseif self.Walk and (teleport or near) then
+                                    -- Hit and run (TP mode): between swings the character rests out of the mob's
+                                    -- reach and hops in only when the next swing is due.
+                                    local hitRun=teleport and self.HitAndRun and self.RestDistance>keep
+                                    if hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and now()-lastAttack<.5 then
+                                        if self.Chase then halt() end
+                                        publish("Resting · "..chosen.Model.Name.." · "..math.floor(gap).." studs away · next swing shortly")
                                     -- Attached to the mob: too far → close in, too close → back out, both to `keep` studs.
-                                    if math.abs(gap-keep)>.75 then
+                                    elseif math.abs(gap-keep)>.75 then
                                         chasing=gap>keep
                                         if chasing then
                                             if not progress.Best or gap<progress.Best-.5 then progress.Best=gap;progress.At=now() end
@@ -2089,10 +2097,19 @@ function MobFarm.new(ctx)
                                                 if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end
                                                 observe(chosen.Model)
                                                 publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
+                                                -- Hit and run: straight back out of the mob's reach after the swing.
+                                                if teleport and self.HitAndRun and self.RestDistance>keep and chosen.Root.Parent then
+                                                    local away=root.Position-chosen.Root.Position
+                                                    if ctx.Flatten then away=ctx.Flatten(away) end
+                                                    local step=math.min(self.HopDistance,self.RestDistance-(chosen.Root.Position-root.Position).Magnitude)
+                                                    if away.Magnitude>.1 and step>.5 and pcall(ctx.Hop,root,root.Position+away.Unit*step,chosen.Root) then
+                                                        publish("Attacking · "..chosen.Model.Name.." · backed off to "..math.floor((chosen.Root.Position-root.Position).Magnitude+.5).." studs")
+                                                    end
+                                                end
                                                 if unconfirmed>=self.RunBudget then
                                                     self:Stop("No HP drop, damage number, loot or defeat observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
                                                 elseif attempts>=self.TargetBudget then
-                                                    if ctx.LearnedHit and not self.UseLearnedHit then
+                                                    if ctx.LearnedHit and not self.UseLearnedHit and (not ctx.LearnedHitReady or ctx.LearnedHitReady()) then
                                                         -- Try the stronger method on this same target before giving up on it.
                                                         self.UseLearnedHit=true;attempts=0
                                                         publish("No HP drop from clicks · adding the learned hit packet")
@@ -4249,7 +4266,7 @@ local function savePreferences(snapshotOnly)
         WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, WoodTrees = CONFIG.WoodTrees, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
-        MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, MobKind = CONFIG.MobKind, MobAutoEat = CONFIG.MobAutoEat, MobWalkSpeed = CONFIG.MobWalkSpeed, MobKeep = CONFIG.MobKeep, HopSize = CONFIG.HopSize,
+        MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, MobKind = CONFIG.MobKind, MobAutoEat = CONFIG.MobAutoEat, MobWalkSpeed = CONFIG.MobWalkSpeed, MobKeep = CONFIG.MobKeep, MobHitRun = CONFIG.MobHitRun, HopSize = CONFIG.HopSize,
         DepositCategory = CONFIG.DepositCategory, DepositInterval = CONFIG.DepositInterval,
         MobWeapon = CONFIG.MobWeapon, LearnedDefinitions = CONFIG.LearnedDefinitions, RememberedChests = CONFIG.RememberedChests,
         AutoRejoin = CONFIG.AutoRejoin,
@@ -4291,6 +4308,7 @@ local function loadPreferences(supplied)
     if data.DepositInterval==30 or data.DepositInterval==60 or data.DepositInterval==120 or data.DepositInterval==300 then CONFIG.DepositInterval=data.DepositInterval end
     if type(data.MobKind)=="string" and #data.MobKind>0 and #data.MobKind<=60 then CONFIG.MobKind=data.MobKind end
     if type(data.MobAutoEat)=="boolean" then CONFIG.MobAutoEat=data.MobAutoEat end
+    if type(data.MobHitRun)=="boolean" then CONFIG.MobHitRun=data.MobHitRun end
     if data.MobKeep=="Auto" or data.MobKeep==3 or data.MobKeep==4 or data.MobKeep==5 then CONFIG.MobKeep=data.MobKeep end
     if data.MobWalkSpeed==16 or data.MobWalkSpeed==20 or data.MobWalkSpeed==24 or data.MobWalkSpeed==32 or data.MobWalkSpeed==40 then CONFIG.MobWalkSpeed=data.MobWalkSpeed end
     if data.HopSize==4 or data.HopSize==6 or data.HopSize==8 or data.HopSize==12 then CONFIG.HopSize=data.HopSize end
@@ -5230,7 +5248,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-retreat-144",
+    return table.concat({"Reborn mob-hitrun-145",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7260,7 +7278,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-retreat-144 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-hitrun-145 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7364,7 +7382,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-retreat-144 · Propeller tracker",
+    return table.concat({"Reborn mob-hitrun-145 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7400,7 +7418,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-retreat-144", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-hitrun-145", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10121,7 +10139,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-retreat-144\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-hitrun-145\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10183,7 +10201,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-retreat-144 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-hitrun-145 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10816,7 +10834,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-retreat-144\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-hitrun-145\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11934,7 +11952,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-retreat-144 · Craft diagnostics",
+    return table.concat({"Reborn mob-hitrun-145 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12013,7 +12031,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-retreat-144 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-hitrun-145 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12650,6 +12668,8 @@ function RemoteCatalog.RefreshMobUI()
     RemoteCatalog.MobEat.BackgroundColor3=farm.AutoEat and COLORS.on or COLORS.off
     RemoteCatalog.MobSpeed.Text="Walk speed: "..tostring(farm.WalkSpeed).."  ↻"
     RemoteCatalog.MobKeep.Text="Keep distance: "..tostring(farm.KeepDistance)..(farm.KeepDistance~="Auto" and " studs" or "").."  ↻"
+    RemoteCatalog.MobHitRun.Text=farm.HitAndRun and "HIT & RUN: ON" or "HIT & RUN: OFF"
+    RemoteCatalog.MobHitRun.BackgroundColor3=farm.HitAndRun and COLORS.on or COLORS.off
     RemoteCatalog.MobTarget.Active=not farm.Worker
     RemoteCatalog.MobWalk.Text=not farm.Walk and "AUTO MOVE: OFF" or farm.Travel=="Teleport" and "AUTO MOVE: TP HOPS" or "AUTO MOVE: WALK"
     RemoteCatalog.MobInfo.Text=learning and "Learning · hide the hub and hit one slime manually with your melee weapon. Then press START FARMING."
@@ -12698,7 +12718,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-retreat-144 · Mobs",
+    return table.concat({"Reborn mob-hitrun-145 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12710,7 +12730,7 @@ function RemoteCatalog.MobResultReport()
         "Weapon: "..(recorder and recorder.MobBinding.WeaponName or "not learned for this server"),
         "Health: "..(health and tostring(health.Health).."/"..tostring(health.MaxHealth) or "character unavailable"),
         "Auto eat: "..(farm.AutoEat and "ON" or "OFF").." · food: "..(function() local food,count=RemoteCatalog.FoodTool();return food and (food.Name.." ×"..tostring(count)) or "none found" end)().." · meals this run: "..tostring(farm.Meals or 0)..(farm.LastEat and (" · last: "..farm.LastEat) or ""),
-        "Search: "..farm.Radius.." studs · Auto Move "..(not farm.Walk and "OFF" or farm.Travel=="Teleport" and "TP hops ("..farm.HopDistance.." studs)" or "Walk").." · walk speed "..tostring(farm.WalkSpeed)..(movementController.WalkEnabled and " (Movement tab custom walk overrides it)" or "").." · keep distance "..tostring(farm.KeepDistance),
+        "Search: "..farm.Radius.." studs · Auto Move "..(not farm.Walk and "OFF" or farm.Travel=="Teleport" and "TP hops ("..farm.HopDistance.." studs)" or "Walk").." · walk speed "..tostring(farm.WalkSpeed)..(movementController.WalkEnabled and " (Movement tab custom walk overrides it)" or "").." · keep distance "..tostring(farm.KeepDistance).." · hit and run "..(farm.HitAndRun and "ON" or "OFF")..(farm.HitAndRun and farm.Travel~="Teleport" and " (TP hops only)" or ""),
         "Damage numbers seen this run: "..tostring(farm.DamageNumbers or 0).." (total "..tostring(farm.DamageTotal or 0)..") · recent on screen: "..#RemoteCatalog.DamageNumbers,
         "Living "..(farm.Kind=="Slimes" and "slimes" or farm.Kind=="All mobs" and "mobs" or tostring(farm.Kind)).." in radius: "..(ok and tostring(#targets) or "scan unavailable"),
         "Target: "..tostring(farm.Kind),
@@ -12838,6 +12858,10 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
         return released
     end,
     -- The learned packet for this server, when one exists; used only as the escalation after clicks fail.
+    LearnedHitReady=function()
+        local recorder=RemoteCatalog.LiveRecorder("MobBinding")
+        return recorder~=nil and recorder.MobHit~=nil and recorder.CanUseMobBinding~=nil and recorder:CanUseMobBinding()==true
+    end,
     LearnedHit=(function()
         return function(model)
             local recorder=RemoteCatalog.LiveRecorder("MobBinding")
@@ -12937,10 +12961,11 @@ RemoteCatalog.Mobs.Kind=CONFIG.MobKind or RemoteCatalog.Mobs.Kind
 if CONFIG.MobAutoEat~=nil then RemoteCatalog.Mobs.AutoEat=CONFIG.MobAutoEat end
 RemoteCatalog.Mobs.WalkSpeed=CONFIG.MobWalkSpeed or RemoteCatalog.Mobs.WalkSpeed
 RemoteCatalog.Mobs.KeepDistance=CONFIG.MobKeep or RemoteCatalog.Mobs.KeepDistance
+if CONFIG.MobHitRun~=nil then RemoteCatalog.Mobs.HitAndRun=CONFIG.MobHitRun end
 RemoteCatalog.Mobs.HopDistance=CONFIG.HopSize or RemoteCatalog.Mobs.HopDistance
 function RemoteCatalog.SaveMobPreferences()
     local farm=RemoteCatalog.Mobs
-    CONFIG.MobRadius,CONFIG.MobWalk,CONFIG.MobTravel,CONFIG.MobKind,CONFIG.MobAutoEat,CONFIG.MobWalkSpeed,CONFIG.MobKeep=farm.Radius,farm.Walk,farm.Travel,farm.Kind,farm.AutoEat,farm.WalkSpeed,farm.KeepDistance
+    CONFIG.MobRadius,CONFIG.MobWalk,CONFIG.MobTravel,CONFIG.MobKind,CONFIG.MobAutoEat,CONFIG.MobWalkSpeed,CONFIG.MobKeep,CONFIG.MobHitRun=farm.Radius,farm.Walk,farm.Travel,farm.Kind,farm.AutoEat,farm.WalkSpeed,farm.KeepDistance,farm.HitAndRun
     savePreferences()
 end
 do
@@ -12972,7 +12997,13 @@ do
     RemoteCatalog.MobCopy=button({Parent=setup,Text="Copy result",TextSize=13,Size=UDim2.new(.4,-16,0,36),Position=UDim2.new(.6,6,0,120)})
     RemoteCatalog.MobEat=button({Parent=setup,Switch=true,Text="AUTO EAT: ON",TextSize=13,Size=UDim2.new(.5,-16,0,36),Position=UDim2.fromOffset(10,162)})
     RemoteCatalog.MobSpeed=button({Parent=setup,Text="Walk speed: 24  ↻",TextSize=13,Size=UDim2.new(.5,-16,0,36),Position=UDim2.new(.5,6,0,162)})
-    RemoteCatalog.MobKeep=button({Parent=setup,Text="Keep distance: Auto  ↻",TextSize=13,Size=UDim2.new(1,-20,0,36),Position=UDim2.fromOffset(10,204)})
+    RemoteCatalog.MobKeep=button({Parent=setup,Text="Keep distance: Auto  ↻",TextSize=13,Size=UDim2.new(.5,-16,0,36),Position=UDim2.fromOffset(10,204)})
+    RemoteCatalog.MobHitRun=button({Parent=setup,Switch=true,Text="HIT & RUN: ON",TextSize=13,Size=UDim2.new(.5,-16,0,36),Position=UDim2.new(.5,6,0,204)})
+    track(RemoteCatalog.MobHitRun.Activated:Connect(function()
+        local farm=RemoteCatalog.Mobs
+        farm.HitAndRun=not farm.HitAndRun
+        RemoteCatalog.SaveMobPreferences();RemoteCatalog.RefreshMobUI()
+    end))
     track(RemoteCatalog.MobKeep.Activated:Connect(function()
         local farm=RemoteCatalog.Mobs
         local options={"Auto",3,4,5}
@@ -12985,7 +13016,7 @@ do
         farm.WalkSpeed=options[(table.find(options,farm.WalkSpeed) or 3)%#options+1]
         RemoteCatalog.SaveMobPreferences();RemoteCatalog.RefreshMobUI()
     end))
-    local hint=label({Parent=setup,Text="Learn once → Start (F4 toggles). The farm stays attached to the mob at the kept distance (Auto = just outside its body).",TextSize=12,Color=COLORS.muted,
+    local hint=label({Parent=setup,Text="Learn once → Start (F4 toggles). Attached at the kept distance (Auto = just outside its body); HIT & RUN (TP hops) rests 10 studs away between swings.",TextSize=12,Color=COLORS.muted,
         Size=UDim2.new(1,-20,0,28),Position=UDim2.fromOffset(10,246)})
     local function layout()
         local menu=RemoteCatalog.MobRadiusMenu and RemoteCatalog.MobRadiusMenu.Menu
@@ -12996,6 +13027,7 @@ do
         RemoteCatalog.MobEat.Position=UDim2.fromOffset(10,162+extra)
         RemoteCatalog.MobSpeed.Position=UDim2.new(.5,6,0,162+extra)
         RemoteCatalog.MobKeep.Position=UDim2.fromOffset(10,204+extra)
+        RemoteCatalog.MobHitRun.Position=UDim2.new(.5,6,0,204+extra)
         hint.Position=UDim2.fromOffset(10,246+extra)
         setup.Size=UDim2.new(1,-12,0,282+extra)
     end
@@ -13417,7 +13449,7 @@ do
     end
     function RemoteCatalog.SaveHubProfile()
         local farm=RemoteCatalog.Mobs
-        if farm then CONFIG.MobRadius,CONFIG.MobWalk,CONFIG.MobTravel,CONFIG.MobKind,CONFIG.MobAutoEat,CONFIG.MobWalkSpeed,CONFIG.MobKeep=farm.Radius,farm.Walk,farm.Travel,farm.Kind,farm.AutoEat,farm.WalkSpeed,farm.KeepDistance end
+        if farm then CONFIG.MobRadius,CONFIG.MobWalk,CONFIG.MobTravel,CONFIG.MobKind,CONFIG.MobAutoEat,CONFIG.MobWalkSpeed,CONFIG.MobKeep,CONFIG.MobHitRun=farm.Radius,farm.Walk,farm.Travel,farm.Kind,farm.AutoEat,farm.WalkSpeed,farm.KeepDistance,farm.HitAndRun end
         local data=savePreferences(true)
         data.MobWeapon=nil;data.LearnedDefinitions=nil;data.RememberedChests=nil
         local stamp="saved"
@@ -13443,6 +13475,7 @@ do
             farm.Travel=CONFIG.MobTravel or farm.Travel;farm.HopDistance=CONFIG.HopSize or farm.HopDistance;farm.Kind=CONFIG.MobKind or farm.Kind
             if CONFIG.MobAutoEat~=nil then farm.AutoEat=CONFIG.MobAutoEat end
             farm.WalkSpeed=CONFIG.MobWalkSpeed or farm.WalkSpeed;farm.KeepDistance=CONFIG.MobKeep or farm.KeepDistance
+            if CONFIG.MobHitRun~=nil then farm.HitAndRun=CONFIG.MobHitRun end
         end
         RemoteCatalog.Navigation.HopSize=CONFIG.HopSize
         RemoteCatalog.HopSizeButton.Text="TP hop size: "..CONFIG.HopSize.." studs  ↻"

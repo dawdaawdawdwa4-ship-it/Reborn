@@ -209,8 +209,11 @@ assert(runTime>=1 and farm:RunTime()==runTime and farm.EndedAt,'run time must fr
 reset();ar.Position=v(40);br.Position=v(32);farm.Travel='Teleport';farm:Start()
 assert(hops==1 and root.Position.X==8 and walks==0 and moves==0 and sent==0 and farm.Message:find('Teleporting',1,true),'TP mode must hop 8 studs toward the slime, not walk')
 step();step();assert(hops==3 and root.Position.X==24 and sent==0)
-step();assert(hops==4 and root.Position.X>=29 and root.Position.X<=30 and sent==1 and farm.Target==b,'the last hop lands at the kept distance and the swing follows in the same tick')
-step();assert(sent==1,'TP hops keep the distance instead of hopping on')
+step();assert(hops==5 and root.Position.X>=21 and root.Position.X<=23 and sent==1 and farm.Target==b and farm.Message:find('backed off to 10 studs',1,true),'the last hop lands at the kept distance, the swing follows in the same tick, then a hop back out of reach')
+step();assert(hops==5 and sent==1 and farm.Message:find('Resting',1,true),'between swings the character rests out of reach instead of hopping on')
+step(.7);assert(hops==7 and sent==2 and root.Position.X>=21 and root.Position.X<=23,'when the next swing is due: hop in, swing, hop out again')
+farm.HitAndRun=false;step(.7);assert(hops==8 and sent==3 and root.Position.X>=29 and root.Position.X<=30,'hit and run OFF stays at the kept distance after the swing')
+step(.7);assert(hops==8 and sent==4,'TP hops keep the distance instead of hopping on')
 reset();farm.Travel='Teleport';blocked=true;ar.Position=v(40);br.Position=v(60);farm:Start();step()
 assert(hops==0 and walks>=1,'obstructed slimes must be pathfound instead of teleported through walls')
 reset();farm.Travel='Teleport';stuck=true;ar.Position=v(40);br.Position=v(60);farm:Start()
@@ -353,9 +356,11 @@ do
  ar.Position=v(26);step(.7);assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6,'when the mob moves away the farm follows at the same distance')
  ar.Position=root.Position;ar.Position=v(root.Position.X+1);step(.7)
  assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6,'when the mob closes in the farm backs out to the same distance')
- reset();farm.KeepDistance=4;farm.Travel='Teleport';ar.Position=v(40);br.Position=v(60);farm:Start();for i=1,6 do step() end
+ reset();farm.KeepDistance=4;farm.Travel='Teleport';farm.HitAndRun=false;ar.Position=v(40);br.Position=v(60);farm:Start();for i=1,6 do step() end
  assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6 and sent>=1,'TP hops attach at the kept distance too')
  ar.Position=v(root.Position.X+1);step(.7);assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6,'a hop backs out when the mob lands on the character')
+ farm.HitAndRun=true;step(.7);assert(math.abs(ar.Position.X-root.Position.X-10)<1e-6,'hit and run rests 10 studs away after the swing')
+ ar.Position=v(root.Position.X+1);step();assert(math.abs(ar.Position.X-root.Position.X-4)<1e-6 and sent>=3,'a mob landing on a resting character is hit from the kept distance at once')
 end
 -- Floating damage numbers confirm hits and refill the budgets.
 do
