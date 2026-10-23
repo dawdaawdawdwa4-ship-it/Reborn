@@ -4985,7 +4985,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-repeat-132",
+    return table.concat({"Reborn chest-fast-133",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5850,13 +5850,15 @@ RemoteCatalog.ChestStockMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.ChestPag
 })
 RemoteCatalog.ChestRepeatButton=button({Parent=RemoteCatalog.ChestPage,Text="Run: Repeat (2s)",TextSize=13,
     Size=UDim2.new(.5,-9,0,36),Position=UDim2.new(.5,3,0,446)})
-RemoteCatalog.ChestRepeatMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.ChestPage,RemoteCatalog.ChestRepeatButton,{"One pass","Repeat (2s)"},{
+RemoteCatalog.ChestRepeatMenu=RemoteCatalog.ChoiceDropdown(RemoteCatalog.ChestPage,RemoteCatalog.ChestRepeatButton,{"One pass","Repeat (2s)","Repeat (0.5s)"},{
     Name="ChestRepeatDropdown",Title="Run",
-    Get=function() return RemoteCatalog.ChestRepeat and "Repeat (2s)" or "One pass" end,
+    Get=function() return RemoteCatalog.ChestRepeat and (RemoteCatalog.ChestRepeatFast and "Repeat (0.5s)" or "Repeat (2s)") or "One pass" end,
     Set=function(value)
-        RemoteCatalog.ChestRepeat=value=="Repeat (2s)"
+        RemoteCatalog.ChestRepeat=value~="One pass"
+        -- 0.5 s matches a conveyor-fed chest; 2 s is gentler on the server.
+        RemoteCatalog.ChestRepeatFast=value=="Repeat (0.5s)"
         RemoteCatalog.PreviewChestSelection()
-        setStatus(RemoteCatalog.ChestRepeat and "Repeat enabled. Auto Take waits 2 seconds between passes; Stop cancels it." or "One pass selected. Auto Take stops after its selected slot checks.",COLORS.good)
+        setStatus(RemoteCatalog.ChestRepeat and ("Repeat enabled. Auto Take waits "..(RemoteCatalog.ChestRepeatFast and "0.5" or "2").." seconds between passes; Stop cancels it.") or "One pass selected. Auto Take stops after its selected slot checks.",COLORS.good)
     end,
     Locked=function()
         if RemoteCatalog.ChestAutoEnabled or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then setStatus("Stop collection and wait for cleanup before changing its run mode",COLORS.warn);return true end
@@ -7013,7 +7015,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn chest-repeat-132 · Propeller loot history (UTC)",
+    return table.concat({"Reborn chest-fast-133 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7117,7 +7119,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn chest-repeat-132 · Propeller tracker",
+    return table.concat({"Reborn chest-fast-133 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7153,7 +7155,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn chest-repeat-132", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-fast-133", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -9633,12 +9635,13 @@ function RemoteCatalog.ValidateChestProfile(data)
     local stock=data.StockTarget==nil and 0 or data.StockTarget
     assert(stock==0 or stock==25 or stock==50 or stock==100 or stock==250 or stock==500,"Invalid inventory top-up target")
     assert(data.Repeat==nil or type(data.Repeat)=="boolean","Invalid repeat preference")
+    assert(data.RepeatFast==nil or type(data.RepeatFast)=="boolean","Invalid repeat speed")
     local batch=data.AutoBatch==nil and 30 or data.AutoBatch
     assert(batch=="Max" or batch==30 or batch==60 or batch==100 or batch==250 or batch==500 or batch==1000,"Invalid auto batch")
     local order=data.Order==nil and "Same stack" or data.Order
     assert(order=="Same stack" or order=="Balance chests","Invalid chest order")
     return {Version=1,Name=data.Name,ItemMode=data.ItemMode,Items=items,Discover=data.Discover,Whole=data.Whole,
-        Speed=data.Speed,Travel=data.Travel,Range=data.Range,Goal=data.Goal,StockTarget=stock,Repeat=data.Repeat==true,AutoBatch=batch,Order=order}
+        Speed=data.Speed,Travel=data.Travel,Range=data.Range,Goal=data.Goal,StockTarget=stock,Repeat=data.Repeat==true,RepeatFast=data.RepeatFast==true,AutoBatch=batch,Order=order}
 end
 function RemoteCatalog.ValidateChestProfiles(data)
     assert(type(data)=="table" and data.Version==1 and type(data.Profiles)=="table","Invalid chest profiles file")
@@ -9655,7 +9658,7 @@ function RemoteCatalog.RefreshChestProfiles()
     RemoteCatalog.ChestProfileSlotButton.Text="Profile: "..slot.." / 3"
     if profile then
         local items=profile.ItemMode=="All" and "All learned items" or #profile.Items==0 and "No items selected" or #profile.Items.." selected items"
-        RemoteCatalog.ChestProfileSummary.Text=profile.Name.." · "..(RemoteCatalog.ChestProfilePersistence[slot] or "Session only").."\n"..items.." · "..profile.Speed.." · "..(profile.Travel=="Hop" and "TP hops" or profile.Travel).."\n"..(profile.Discover and "All matching" or "Learned only").." · "..(profile.Whole and "Whole chest" or "Learned slots").." · Goal "..(profile.Goal==0 and "Unlimited" or profile.Goal).." · Top-up/item "..((profile.StockTarget or 0)==0 and "OFF" or profile.StockTarget)..(profile.Repeat and " · Repeat 2s" or " · One pass")
+        RemoteCatalog.ChestProfileSummary.Text=profile.Name.." · "..(RemoteCatalog.ChestProfilePersistence[slot] or "Session only").."\n"..items.." · "..profile.Speed.." · "..(profile.Travel=="Hop" and "TP hops" or profile.Travel).."\n"..(profile.Discover and "All matching" or "Learned only").." · "..(profile.Whole and "Whole chest" or "Learned slots").." · Goal "..(profile.Goal==0 and "Unlimited" or profile.Goal).." · Top-up/item "..((profile.StockTarget or 0)==0 and "OFF" or profile.StockTarget)..(profile.Repeat and (profile.RepeatFast and " · Repeat 0.5s" or " · Repeat 2s") or " · One pass")
     else
         RemoteCatalog.ChestProfileSummary.Text="Empty profile "..slot..". "..(RemoteCatalog.ChestProfilesFileState or "Session only").."\nSave current settings here (overwrites this slot). Load never starts collecting."
     end
@@ -9699,7 +9702,7 @@ function RemoteCatalog.CurrentChestProfile()
     local name=RemoteCatalog.ChestProfileName.Text:match("^%s*(.-)%s*$")
     return RemoteCatalog.ValidateChestProfile({Version=1,Name=name,ItemMode=mode,Items=selected,
         Discover=RemoteCatalog.ChestDiscover,Whole=RemoteCatalog.ChestWhole,Speed=RemoteCatalog.ChestSpeed,
-        Travel=RemoteCatalog.ChestTravel,Range=RemoteCatalog.ChestScanRange,Goal=RemoteCatalog.ChestGoal or 0,StockTarget=RemoteCatalog.ChestStockTarget or 0,Repeat=RemoteCatalog.ChestRepeat==true,AutoBatch=RemoteCatalog.ChestAutoBatch,Order=RemoteCatalog.ChestOrder})
+        Travel=RemoteCatalog.ChestTravel,Range=RemoteCatalog.ChestScanRange,Goal=RemoteCatalog.ChestGoal or 0,StockTarget=RemoteCatalog.ChestStockTarget or 0,Repeat=RemoteCatalog.ChestRepeat==true,RepeatFast=RemoteCatalog.ChestRepeatFast==true,AutoBatch=RemoteCatalog.ChestAutoBatch,Order=RemoteCatalog.ChestOrder})
 end
 function RemoteCatalog.SaveChestProfile()
     if not RemoteCatalog.ChestProfileIdle() then return false end
@@ -9740,7 +9743,7 @@ function RemoteCatalog.ApplyChestProfile(data)
     if RemoteCatalog.ChestOrderMenu then RemoteCatalog.ChestOrderMenu:Refresh() end
     RemoteCatalog.ChestAutoBatch=profile.AutoBatch
     if RemoteCatalog.ChestBatchMenu then RemoteCatalog.ChestBatchMenu:Refresh() end
-    RemoteCatalog.ChestRepeat=profile.Repeat
+    RemoteCatalog.ChestRepeat=profile.Repeat;RemoteCatalog.ChestRepeatFast=profile.RepeatFast==true
     if RemoteCatalog.ChestRepeatMenu then RemoteCatalog.ChestRepeatMenu:Refresh() end
     RemoteCatalog.ChestProfileName.Text=profile.Name
     RemoteCatalog.ChestSpeedButton.Text="Pace: "..profile.Speed
@@ -9778,7 +9781,7 @@ function RemoteCatalog.SetChestTransferOpen(open)
     return true
 end
 RemoteCatalog.ChestTransferFields={"ChestProfileSlot","ChestItem","ChestItems","ChestSelection","ChestDiscover","ChestWhole",
-    "ChestSpeed","ChestTravel","ChestScanRange","ChestGoal","ChestStockTarget","ChestRepeat","ChestAutoBatch","ChestOrder"}
+    "ChestSpeed","ChestTravel","ChestScanRange","ChestGoal","ChestStockTarget","ChestRepeat","ChestRepeatFast","ChestAutoBatch","ChestOrder"}
 function RemoteCatalog.ChestTransferContext()
     local context={Name=RemoteCatalog.ChestProfileName.Text,Items={}}
     for _,key in ipairs(RemoteCatalog.ChestTransferFields) do context[key]=RemoteCatalog[key] end
@@ -9873,7 +9876,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-repeat-132\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-fast-133\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9935,7 +9938,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn chest-repeat-132 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn chest-fast-133 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10244,12 +10247,16 @@ function RemoteCatalog.SetChestAuto(state)
                     local atTarget=stockMet
                     completed=false;stockMet=false
                     RemoteCatalog.ChestRepeatWaiting=true
-                    for seconds=2,1,-1 do
+                    local steps=RemoteCatalog.ChestRepeatFast and 5 or 20
+                    for step=0,steps-1 do
                         if not ready() then return end
-                        RemoteCatalog.ChestNextScan=seconds
-                        RemoteCatalog.RefreshChestActions()
-                        RemoteCatalog.ChestAutoMessage((atTarget and "Inventory target met; watching for items you use." or "Waiting for chest refill.").."\nNext pass in "..seconds.."s · "..RemoteCatalog.ChestAutoTotal.." confirmed items · pass "..RemoteCatalog.ChestAutoPass..". Stop cancels.")
-                        for _=1,10 do if not ready() then return end;task.wait(.1) end
+                        if step%10==0 then
+                            local left=(steps-step)/10
+                            RemoteCatalog.ChestNextScan=math.ceil(left)
+                            RemoteCatalog.RefreshChestActions()
+                            RemoteCatalog.ChestAutoMessage((atTarget and "Inventory target met; watching for items you use." or "Waiting for chest refill.").."\nNext pass in "..(left>=1 and tostring(math.ceil(left)) or tostring(left)).."s · "..RemoteCatalog.ChestAutoTotal.." confirmed items · pass "..RemoteCatalog.ChestAutoPass..". Stop cancels.")
+                        end
+                        task.wait(.1)
                     end
                     if not ready() then return end
                     RemoteCatalog.ChestRepeatWaiting=false;RemoteCatalog.ChestReachWaiting=false
@@ -10268,7 +10275,7 @@ function RemoteCatalog.SetChestAuto(state)
                         RemoteCatalog.ChestRepeatWaiting=true
                         RemoteCatalog.ChestAutoMessage("Selected chests are empty · waiting for a refill.\n"..RemoteCatalog.ChestAutoTotal.." confirmed items · pass "..RemoteCatalog.ChestAutoPass..". Stop cancels.")
                         RemoteCatalog.RefreshChestActions()
-                        for _=1,20 do if not ready() then return end;task.wait(.1) end
+                        for _=1,RemoteCatalog.ChestRepeatFast and 5 or 20 do if not ready() then return end;task.wait(.1) end
                         RemoteCatalog.ChestRepeatWaiting=false
                         refresh()
                     end
@@ -10548,7 +10555,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-repeat-132\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-fast-133\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11666,7 +11673,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn chest-repeat-132 · Craft diagnostics",
+    return table.concat({"Reborn chest-fast-133 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11745,7 +11752,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn chest-repeat-132 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn chest-fast-133 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12358,7 +12365,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn chest-repeat-132 · Mobs",
+    return table.concat({"Reborn chest-fast-133 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

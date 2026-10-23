@@ -3515,3 +3515,13 @@ emptied the chest once and stopped again.
   still ends it at once.
 
 Report headers now read `Reborn chest-repeat-132`.
+
+
+## Faster chest repeat · v133
+
+Chests → Run now offers **Repeat (0.5s)** beside Repeat (2s) and One pass. The
+fast mode starts the next pass (and rechecks empty chests) after half a second,
+matching a conveyor-fed chest loop; 2 s stays the default. Chest profiles save
+the speed (`RepeatFast`) and older profiles load as 2 s.
+
+Report headers now read `Reborn chest-fast-133`.

@@ -555,6 +555,14 @@ do
  untilTrue(function() return qty>=30 end)
  assert(RemoteCatalog.ChestAutoEnabled,'a refill must be collected by the same run')
  RemoteCatalog.SetChestAuto(false);drain();RemoteCatalog.ContentsChestRecorder=nil
+ -- Repeat (0.5s) waits half a second between passes.
+ prepare(30);RemoteCatalog.ChestRepeatFast=true
+ assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
+ local fastStart,fastCalls=clock,#trace
+ stock[8]=30
+ untilTrue(function() return #trace>fastCalls end)
+ assert(trace[fastCalls+1].At-fastStart<=.6+1e-6,'fast repeat must start the next pass within half a second')
+ RemoteCatalog.SetChestAuto(false);drain();RemoteCatalog.ChestRepeatFast=nil
  -- GUI removal also cancels the repeat delay with no follow-up request.
  prepare(0)
  assert(RemoteCatalog.SetChestAuto(true));untilTrue(function() return RemoteCatalog.ChestRepeatWaiting end)
