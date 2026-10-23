@@ -8,7 +8,8 @@ local time=0
 local mt={}
 local function v(x) return setmetatable({X=x,Y=0,Z=0},mt) end
 mt.__sub=function(a,b) return v(a.X-b.X) end
-mt.__index=function(a,k) if k=='Magnitude' then return math.abs(a.X) end end
+mt.__mul=function(a,n) return v(a.X*n) end
+mt.__index=function(a,k) if k=='Magnitude' then return math.abs(a.X) elseif k=='Unit' then return v(math.sign(a.X)) end end
 local function node(name,kind,parent)
  local n={Name=name,ClassName=kind,Parent=parent,children={}}
  if parent then table.insert(parent.children,n) end
@@ -30,6 +31,8 @@ local function actor(name,x,parent)
  return m,h,r
 end
 local char,human,root=actor('Character',0,world)
+local stuck,moves=false,0
+function human:MoveTo(point) moves+=1;if not stuck then root.Position=point end end
 local player={Character=char}
 local players={GetPlayerFromCharacter=function(_,model) return model.IsPlayer and {} or nil end}
 local a,ah,ar=actor('slimeBlue',4,nested)
@@ -57,7 +60,7 @@ local busy,pause,damage,blocked,transport,learned,alive=nil,nil,true,false,false
 local bindingChar=char
 local sent,walks,halts=0,0,0
 local tool={Name='swordWood',Parent=char}
-local equipHook,walkHook,attackHook
+local equipHook,walkHook,attackHook,faced,faceError
 local farm
 local recorder={MobBinding={WeaponName='swordWood'}}
 function recorder:CanUseMobBinding() return bindingChar==player.Character and learned end
@@ -65,6 +68,7 @@ function recorder:MobHit() error("legacy replay must not be called by the mob wo
 function tool:Activate()
  local target=farm.Target
  sent+=1
+ assert(faced==target:FindFirstChild('HumanoidRootPart'),'character must face the chosen slime before every native swing')
  if attackHook then attackHook() end
  if transport then error(type(transport)=='table' and transport or 'activation failed',0) end
  if damage then target:FindFirstChildOfClass('Humanoid').Health-=10 end
@@ -75,6 +79,7 @@ local ctx={Player=player,Players=players,World=world,Now=function() return time 
  Recorder=function() return learned and recorder or nil end,Weapon=function() return tool end,
  Equip=function() if equipHook then equipHook() end;return true end,ClearLine=function() return not blocked end,
  DescribeResult=RemoteCatalog.ChestResultText,
+ Face=function(r,t) assert(r==root);faced=t;if faceError then error('facing unavailable') end end,
  Navigation={Stop=function(owner) assert(owner=='Mobs');halts+=1 end,
  Approach=function(who,target,reach,active,positionOf,mode,owner)
   walks+=1;assert(who==player and owner=='Mobs' and mode=='Walk' and reach==4)
@@ -98,13 +103,14 @@ local function reset()
  human.Health=100;human.MaxHealth=100;player.Character=char;bindingChar=char
  busy=nil;pause=nil;damage=true;blocked=false;transport=false;learned=true;alive=true
  equipHook=nil;walkHook=nil;attackHook=nil;sent=0;walks=0;tool.Parent=char
+ stuck=false;moves=0;faced=nil;faceError=false
 end
 reset();ah.Health=10;farm:Start()
 assert(farm.Defeats==1 and farm.Drops==1,'zero HP must count once, and never infer a kill from dispatch alone')
 step();step();assert(farm.Defeats==1)
 reset();farm:Start();local prior=farm.Drops;a.Parent=nil;step(.7)
 assert(farm.Defeats==0 and farm.Drops==prior,'streaming out must not count a defeat');a.Parent=nested
-reset();ar.Position=v(30);farm:Start();assert(walks==1 and sent==0);step();assert(sent==1 and farm.Target==b,'Auto Walk must approach nearest living target and attack only after rechecking reach')
+reset();ar.Position=v(30);farm.ChaseRange=0;farm:Start();assert(walks==1 and sent==0);step();assert(sent==1 and farm.Target==b,'Auto Walk must approach nearest living target and attack only after rechecking reach')
 reset();ar.Position=v(30);farm.Walk=false;farm:Start();step(2);assert(walks==0 and sent==0 and farm.Enabled)
 reset();human.Health=25;farm:Start();assert(sent==0 and farm.Enabled)
 human.Health=40;step(1);assert(sent==0,'health recovery must use hysteresis')
@@ -116,17 +122,37 @@ step();assert(sent==0 and not farm.Worker,'Stop during equip must prevent a late
 equipHook=nil;assert(farm:Start());assert(sent==1,'fresh restart must create one worker')
 reset();equipHook=function() ar.Position=v(80) end;farm:Start();assert(sent==0,'target moving outside radius during equip must not be attacked')
 reset();walkHook=function(active) farm:Stop();assert(not active());scheduler.wait(.1);return true end
-ar.Position=v(30);farm:Start();step();assert(sent==0 and not farm.Worker,'Stop mid-walk must invalidate follow-up attacks')
+ar.Position=v(30);farm.ChaseRange=0;farm:Start();step();assert(sent==0 and not farm.Worker,'Stop mid-walk must invalidate follow-up attacks')
 reset();walkHook=function(active) busy='other mode';assert(not active());return false end
-ar.Position=v(30);farm:Start();step();assert(sent==0 and not farm.Worker and not farm.Enabled,'new automation must take control without a combat dispatch')
+ar.Position=v(30);farm.ChaseRange=0;farm:Start();step();assert(sent==0 and not farm.Worker and not farm.Enabled,'new automation must take control without a combat dispatch')
 reset();transport=true;farm:Start();assert(sent==1 and farm.Swings==0 and not farm.Enabled and not farm.Worker,'activation failure must stop without legacy replay or false counters')
 reset();transport={success=false,error='TOO_FAST'};farm:Start()
 assert(sent==1 and farm.Swings==0 and farm.Message:find('TOO_FAST',1,true) and not farm.Message:find('table:',1,true) and farm.LastTarget=='slimeBlue' and farm.LastResult:find('success=false',1,true),'structured activation errors must remain readable in the status and copied result')
 reset();tool.Enabled=false;farm:Start();step(1);assert(sent==0 and farm.Enabled,'weapon cooldown must wait without stopping or dispatching');tool.Enabled=true;step();assert(sent==1)
-reset();damage=false;farm:Start();for i=1,8 do step(.7) end
-assert(sent==8 and farm.Swings==8 and farm.Drops==0 and not farm.Enabled and not farm.Worker,'unconfirmed attacks must stop at a bounded budget')
+reset();damage=false;local hitA,hitB=0,0
+attackHook=function() if farm.Target==a then hitA+=1 elseif farm.Target==b then hitB+=1 end end
+farm:Start();for i=1,40 do if not farm.Enabled then break end;step(.7) end
+assert(hitA>=4 and hitB==4,'one unhittable slime must be cooled down and the next slime tried')
+assert(sent==12 and farm.Swings==12 and farm.Drops==0 and not farm.Enabled and not farm.Worker and farm.Message:find('12 swings',1,true),'unconfirmed attacks across targets must stop at a bounded run budget')
+reset();damage=false
+attackHook=function() if farm.Swings==2 then damage=true end end
+farm:Start();for i=1,40 do if not farm.Enabled or farm.Swings>=14 then break end;step(.7) end
+assert(farm.Enabled and farm.Drops>0,'any observed HP drop must refill the run budget')
+reset();faceError=true;farm:Start();assert(sent==1 and farm.Enabled,'a facing failure must not block the native swing')
+reset();ar.Position=v(15);farm:Start()
+assert(walks==0 and moves==1 and sent==0 and farm.Message:find('Chasing',1,true),'nearby visible slimes must be chased directly without pathfinding')
+step();assert(sent==1 and farm.Target==a and walks==0,'a chased slime must be attacked once in reach')
+reset();ar.Position=v(15);farm:Start();farm:Stop()
+assert(moves==2 and not farm.Chase,'Stop must clear the direct chase destination')
+reset();stuck=true;ar.Position=v(15);br.Position=v(40);farm:Start()
+local stalled=false
+for i=1,20 do step();if farm.Message:find('Chase stalled',1,true) then stalled=true;break end end
+assert(stalled and sent==0 and walks==0 and farm.Enabled,'a chase without progress must back off instead of running in place')
+step();assert(farm.Target~=a,'a stalled chase target must cool down')
+reset();blocked=true;ar.Position=v(15);br.Position=v(40);farm:Start();step()
+assert(walks>=1 and moves==0,'obstructed slimes must use the pathfinder instead of a direct chase')
 reset();blocked=true;farm:Start();step();assert(sent==0,'obstructed targets cannot be attacked')
-reset();walkHook=function() return false end;ar.Position=v(30);farm:Start();step();step()
+reset();walkHook=function() return false end;ar.Position=v(30);farm.ChaseRange=0;farm:Start();step();step()
 assert(walks==2,'each unreachable target gets its own cooldown');step();assert(walks==2,'unreachable targets must not be repathed every tick')
 reset();ar.Position=v(300);br.Position=v(300);farm:Start();step(3)
 assert(farm.Enabled and sent==0 and farm.Message:find('scanning continues',1,true),'empty scans must keep the farm ON')
@@ -138,7 +164,7 @@ assert(sent==1 and farm.Worker and farm.Enabled)
 farm:Stop();step()
 assert(not farm.Worker and farm.Swings==0 and farm.Drops==0,'Stop while native activation is pending must discard its late completion')
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
-return 'Mob farm: targeting, walking, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
+return 'Mob farm: targeting, facing, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'mob-farm',true)());}

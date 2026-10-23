@@ -3006,3 +3006,25 @@ and cancellation. Full-startup checks cover the clearer Start/Relearn controls,
 ready binding without an equipped tool, and blocked handover after failed release.
 Run the full suite. Native weapon compatibility, hit detection and damage still
 require confirmation in the user's live Roblox client.
+
+
+## Smarter slime farming · v109
+
+Before every native swing the character now turns (yaw only) toward the chosen
+slime. The weapon's own client hits what the character faces, so a slime beside
+or behind the character previously received swings that could never land. A
+facing failure is ignored and does not block the swing.
+
+Visible slimes within 24 studs and roughly the same height are chased directly
+with `Humanoid:MoveTo` toward a point three studs short of their current position,
+updated every tick. Hopping slimes no longer cancel and recompute a full path on
+every hop. A chase that gains less than half a stud in two seconds stops, cools
+that slime down for three seconds and picks another. Obstructed, farther or
+higher/lower slimes still use the existing `Mobs` pathfinder. Stop, pauses, an
+empty scan and the attack itself clear the chase destination.
+
+Four swings without an observed HP drop now cool down only that slime for five
+seconds and switch target instead of stopping the run. The run still stops after
+twelve consecutive unconfirmed swings across targets; any observed HP drop resets
+both budgets. Run `node scripts/embed-mobs.mjs` after editing `tools/MobFarm.lua`.
+Live hit detection still needs confirmation in the user's Roblox client.

@@ -22,14 +22,29 @@ function MobFarm.Details(model,roots,players)
 end
 function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Swings=0,Drops=0,Defeats=0,
-        Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6}
+        Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
+        ChaseRange=24,TargetBudget=4,RunBudget=12}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function publish(text)
         self.Message=text
         if ctx.Update then ctx.Update(self) end
     end
-    local function halt() ctx.Navigation.Stop("Mobs") end
+    local function halt()
+        ctx.Navigation.Stop("Mobs")
+        -- Direct chasing bypasses the pathfinder, so clear its MoveTo destination here too.
+        local chase=self.Chase
+        self.Chase=nil
+        if chase then pcall(function() chase.Humanoid:MoveTo(chase.Root.Position) end) end
+    end
+    -- Hopping slimes invalidate computed paths; follow nearby visible ones directly.
+    local function chase(human,root,target)
+        local offset=target.Position-root.Position
+        if offset.Magnitude<.1 then return false end
+        local ok=pcall(function() human:MoveTo(target.Position-offset.Unit*3) end)
+        if ok then self.Chase={Humanoid=human,Root=root} end
+        return ok
+    end
     function self:ReleaseSwing(press)
         press=press or self.Press
         if not press or press.Released then return true end
@@ -101,6 +116,8 @@ function MobFarm.new(ctx)
             local cooldowns=setmetatable({},{__mode="k"})
             local lastAttack=-math.huge
             local attempts=0
+            local unconfirmed=0
+            local progress={}
             local recovering=false
             local function active()
                 return ctx.Alive() and self.Enabled and self.Generation==token and not ctx.Busy()
@@ -110,7 +127,7 @@ function MobFarm.new(ctx)
                 local health=MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players)
                 -- Streaming out is not proof of death; all counters describe observations.
                 if health and previous and health.Health<previous then
-                    self.Drops+=1;attempts=0
+                    self.Drops+=1;attempts=0;unconfirmed=0
                     if previous>0 and health.Health<=0 then self.Defeats+=1 end
                 end
                 if health then healthSeen[model]=health.Health end
@@ -141,7 +158,7 @@ function MobFarm.new(ctx)
                             if not chosen then
                                 halt();self.Target=nil;publish("Waiting · no living slimes within "..self.Radius.." studs; scanning continues")
                             else
-                                if self.Target~=chosen.Model then attempts=0 end
+                                if self.Target~=chosen.Model then attempts=0;progress={} end
                                 self.Target=chosen.Model;observe(self.Target)
                                 local function valid()
                                     if not active() or ctx.Player.Character~=char or human.Health<=human.MaxHealth*.25 or ctx.PauseReason() then return false end
@@ -150,8 +167,27 @@ function MobFarm.new(ctx)
                                     return h==chosen.Humanoid and p==chosen.Root and h.Health>0
                                         and (p.Position-root.Position).Magnitude<=self.Radius
                                 end
+                                local chasing=false
                                 if chosen.Distance>self.Reach then
-                                    if self.Walk then
+                                    local close=chosen.Distance<=self.ChaseRange
+                                        and math.abs(chosen.Root.Position.Y-root.Position.Y)<6
+                                        and ctx.ClearLine(root,chosen.Root,char,chosen.Model)
+                                    if self.Walk and close then
+                                        chasing=true
+                                        if not progress.Best or chosen.Distance<progress.Best-.5 then
+                                            progress.Best=chosen.Distance;progress.At=now()
+                                        end
+                                        if now()-progress.At>2 then
+                                            halt();cooldowns[chosen.Model]=now()+3;self.Target=nil
+                                            publish("Chase stalled · trying another slime shortly")
+                                        elseif chase(human,root,chosen.Root) then
+                                            publish("Chasing · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
+                                        else
+                                            halt();cooldowns[chosen.Model]=now()+3;self.Target=nil
+                                            publish("Movement unavailable · trying another slime shortly")
+                                        end
+                                    elseif self.Walk then
+                                        if self.Chase then halt() end
                                         publish("Walking · "..chosen.Model.Name.." · "..math.floor(chosen.Distance).." studs")
                                         local point=chosen.Root.Position
                                         local arrived=ctx.Navigation.Approach(ctx.Player,chosen.Model,4,function()
@@ -164,6 +200,7 @@ function MobFarm.new(ctx)
                                         end
                                     else publish("Waiting · move within 6 studs or enable Auto Walk") end
                                 elseif now()-lastAttack>=.65 and valid() then
+                                    if self.Chase then halt() end
                                     local tool=ctx.Weapon(recorder.MobBinding.WeaponName)
                                     if not tool or not ctx.Equip(tool) then
                                         self:Stop("Learned weapon unavailable · equip it and learn attack again");return
@@ -172,6 +209,8 @@ function MobFarm.new(ctx)
                                     if tool.Enabled==false then publish("Waiting · weapon cooldown")
                                     elseif valid() and tool.Parent==char and (chosen.Root.Position-root.Position).Magnitude<=self.Reach then
                                         if ctx.ClearLine(root,chosen.Root,char,chosen.Model) then
+                                            -- Native melee hits what the character faces, not what the hub selected.
+                                            if ctx.Face then pcall(ctx.Face,root,chosen.Root) end
                                             lastAttack=now()
                                             self.LastTarget=chosen.Model.Name
                                             local sent,detail=self:Swing(tool,valid,function()
@@ -182,17 +221,23 @@ function MobFarm.new(ctx)
                                             if not active() then return end
                                             self.LastResult=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
                                             if not sent then self:Stop("Attack stopped · "..self.LastResult);return end
-                                            self.Swings+=1;attempts+=1
+                                            self.Swings+=1;attempts+=1;unconfirmed+=1
                                             observe(chosen.Model)
                                             publish("Attacking · "..chosen.Model.Name.." · HP "..math.max(0,math.ceil(chosen.Humanoid.Health)))
-                                            if attempts>=8 then
-                                                self:Stop("No HP drop observed after 8 swings · check weapon activation, range and facing");return
+                                            if unconfirmed>=self.RunBudget then
+                                                self:Stop("No HP drop observed after "..self.RunBudget.." swings · check weapon activation, range and facing");return
+                                            elseif attempts>=self.TargetBudget then
+                                                -- One unhittable slime must not end the whole run.
+                                                cooldowns[chosen.Model]=now()+5;self.Target=nil;attempts=0
+                                                publish("No HP drop on "..chosen.Model.Name.." · trying another slime")
                                             end
                                         else
                                             cooldowns[chosen.Model]=now()+3;publish("Target obstructed · trying another slime")
                                         end
                                     end
                                 end
+                                -- Stall detection only measures one uninterrupted chase.
+                                if not chasing then progress={} end
                             end
                         end
                     end
