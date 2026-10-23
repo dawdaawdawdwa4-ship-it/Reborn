@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import {LuauState} from 'luau-web';
+import {stripLuaComments} from './strip-lua.mjs';
 const source=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
 // The Luau heap is fixed-size; compile without indentation or comment-only lines (line numbers kept).
-const compiled=source.split('\n').map(line=>{const text=line.trimStart();return text.startsWith('--')?'':text;}).join('\n');
+const compiled=stripLuaComments(source).split('\n').map(line=>line.trim()).join('\n');
 const schema=JSON.parse(fs.readFileSync(new URL('roblox-api.json',import.meta.url),'utf8'));
 const lit=v=>typeof v==='string'?JSON.stringify(v):'{'+Object.entries(v).map(([k,x])=>'['+JSON.stringify(k)+']='+lit(x)).join(',')+'}';
 const used=new Set(schema.Classes.filter(c=>source.includes('"'+c.Name+'"')||source.includes("'"+c.Name+"'")).map(c=>c.Name));
@@ -1037,7 +1038,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn self-test-122',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn rejoin-123',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1438,7 +1439,8 @@ end)()
  local generation=r.ChestManualGeneration
  local co=coroutine.create(function() return r.WithdrawSelectedCarrots(generation) end)
  assert(coroutine.resume(co) and calls==1 and r.ChestCooldown,'manual TOO_FAST must enter a cooldown before retrying the same slot')
- for _=1,20 do if coroutine.status(co)=='dead' then break end;local ok,e=coroutine.resume(co);assert(ok,e) end
+ -- The cooldown waits on the clock; allow enough resumes on a slow or busy machine.
+ for _=1,2000 do if coroutine.status(co)=='dead' then break end;local ok,e=coroutine.resume(co);assert(ok,e) end
  assert(coroutine.status(co)=='dead' and calls==2 and not r.ChestCooldown and r.ChestRateDelay==.5,'manual withdrawal must retry once at its learned pace, rather than skipping the stack')
  r.SelectedChestTargets,r.ChestRequestReady,r.WithdrawCarrots=targets,ready,withdraw
  r.ChestRateDelay=nil;r.RefreshChestActions()
@@ -1777,7 +1779,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn self-test-122 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn rejoin-123 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

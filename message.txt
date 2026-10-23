@@ -3985,6 +3985,7 @@ local function savePreferences()
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
         MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, HopSize = CONFIG.HopSize,
         MobWeapon = CONFIG.MobWeapon, LearnedDefinitions = CONFIG.LearnedDefinitions, RememberedChests = CONFIG.RememberedChests,
+        AutoRejoin = CONFIG.AutoRejoin,
         Keybinds = { StopAllKey = CONFIG.StopAllKey.Name, ToggleKey = CONFIG.ToggleKey.Name, HarvestKey = CONFIG.HarvestKey.Name, MobKey = CONFIG.MobKey.Name },
     }
     local ok = pcall(function() writefile(SETTINGS_FILE, HttpService:JSONEncode(data)) end)
@@ -4015,6 +4016,7 @@ local function loadPreferences()
     if type(data.MobWalk)=="boolean" then CONFIG.MobWalk=data.MobWalk end
     if data.HopSize==4 or data.HopSize==6 or data.HopSize==8 or data.HopSize==12 then CONFIG.HopSize=data.HopSize end
     if type(data.MobWeapon)=="string" and #data.MobWeapon>0 and #data.MobWeapon<=60 then CONFIG.MobWeapon=data.MobWeapon end
+    if type(data.AutoRejoin)=="boolean" then CONFIG.AutoRejoin=data.AutoRejoin end
     if type(data.Keybinds)=="table" then
         for _,key in ipairs({"StopAllKey","ToggleKey","HarvestKey","MobKey"}) do
             local name=data.Keybinds[key]
@@ -4945,7 +4947,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn self-test-122",
+    return table.concat({"Reborn rejoin-123",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6936,7 +6938,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn self-test-122 · Propeller loot history (UTC)",
+    return table.concat({"Reborn rejoin-123 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7040,7 +7042,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn self-test-122 · Propeller tracker",
+    return table.concat({"Reborn rejoin-123 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7076,7 +7078,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn self-test-122", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn rejoin-123", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -9617,7 +9619,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn self-test-122\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn rejoin-123\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9679,7 +9681,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn self-test-122 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn rejoin-123 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10278,7 +10280,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn self-test-122\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn rejoin-123\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11396,7 +11398,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn self-test-122 · Craft diagnostics",
+    return table.concat({"Reborn rejoin-123 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11475,7 +11477,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn self-test-122 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn rejoin-123 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12086,7 +12088,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn self-test-122 · Mobs",
+    return table.concat({"Reborn rejoin-123 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12483,7 +12485,7 @@ function RemoteCatalog.SetPerformanceMode(on)
     end
 end
 RemoteCatalog.PerformanceButton=button({Parent=RemoteCatalog.SettingsAdvancedBody,Switch=true,Text="Performance mode: OFF",TextSize=12,
-    Size=UDim2.new(1,-20,0,36),Position=UDim2.fromOffset(10,88),Bg=COLORS.off})
+    Size=UDim2.new(.5,-16,0,36),Position=UDim2.fromOffset(10,88),Bg=COLORS.off})
 track(RemoteCatalog.PerformanceButton.Activated:Connect(function() RemoteCatalog.SetPerformanceMode(not RemoteCatalog.Performance.On) end))
 -- PERFORMANCE MODE END
 -- KEYBINDS BEGIN
@@ -12527,6 +12529,109 @@ for index,entry in ipairs(RemoteCatalog.KeybindActions) do
 end
 RemoteCatalog.RefreshKeybinds()
 -- KEYBINDS END
+-- AUTO REJOIN BEGIN
+-- Rejoins only after connection-type errors, never after a deliberate kick or ban, at most 3 times an hour.
+-- Farms that were running resume when the hub loads again (autoexec) within 15 minutes.
+RemoteCatalog.RejoinFile="IslandsFarmingHub_"..tostring(player.UserId).."_rejoin.json"
+RemoteCatalog.RejoinReasons={"disconnect","connection","timed out","timeout","idle","shut down","shutdown","restart","no response","error code: 2"}
+RemoteCatalog.RejoinRefusals={"ban","exploit","cheat","hack","suspicious","moderat"}
+function RemoteCatalog.RejoinAllowed(message,history,now)
+    local text=string.lower(tostring(message or ""))
+    for _,word in ipairs(RemoteCatalog.RejoinRefusals) do
+        if string.find(text,word,1,true) then return false,"Not rejoining: the message mentions "..word end
+    end
+    local connection=false
+    for _,word in ipairs(RemoteCatalog.RejoinReasons) do if string.find(text,word,1,true) then connection=true;break end end
+    if not connection then return false,"Not rejoining: this was not a connection error" end
+    local recent=0
+    for _,at in ipairs(type(history)=="table" and history or {}) do if type(at)=="number" and now-at<3600 then recent+=1 end end
+    if recent>=3 then return false,"Not rejoining: already rejoined 3 times this hour" end
+    return true
+end
+function RemoteCatalog.ReadRejoinState()
+    if type(readfile)~="function" or type(isfile)~="function" then return {} end
+    local ok,data=pcall(function()
+        if not isfile(RemoteCatalog.RejoinFile) then return {} end
+        return HttpService:JSONDecode(readfile(RemoteCatalog.RejoinFile))
+    end)
+    return ok and type(data)=="table" and data or {}
+end
+function RemoteCatalog.WriteRejoinState(data)
+    if type(writefile)~="function" then return false end
+    return (pcall(function() writefile(RemoteCatalog.RejoinFile,HttpService:JSONEncode(data)) end))
+end
+function RemoteCatalog.RunningModes()
+    local modes={}
+    if enabled then table.insert(modes,"fishing") end
+    if baitEnabled then table.insert(modes,"bait") end
+    if harvestEnabled then table.insert(modes,"crop") end
+    if woodEnabled then table.insert(modes,"wood") end
+    if mineEnabled then table.insert(modes,"mine") end
+    if RemoteCatalog.Mobs and RemoteCatalog.Mobs.Enabled then table.insert(modes,"mobs") end
+    return modes
+end
+function RemoteCatalog.HandleDisconnect(message)
+    if not CONFIG.AutoRejoin or RemoteCatalog.Rejoining then return false end
+    local state=RemoteCatalog.ReadRejoinState()
+    local now=os.time()
+    local allowed,reason=RemoteCatalog.RejoinAllowed(message,state.History,now)
+    if not allowed then setStatus(reason,COLORS.warn);return false end
+    RemoteCatalog.Rejoining=true
+    local history={}
+    for _,at in ipairs(type(state.History)=="table" and state.History or {}) do if type(at)=="number" and now-at<3600 then table.insert(history,at) end end
+    table.insert(history,now)
+    RemoteCatalog.WriteRejoinState({History=history,Resume={At=now,Modes=RemoteCatalog.RunningModes()}})
+    setStatus("Connection lost · rejoining shortly",COLORS.warn)
+    task.spawn(function()
+        local teleport=game:GetService("TeleportService")
+        for attempt=1,3 do
+            task.wait(5*attempt)
+            -- A successful teleport ends this client; a failed one is retried with a longer wait.
+            pcall(function() teleport:Teleport(game.PlaceId,player) end)
+        end
+        RemoteCatalog.Rejoining=false
+    end)
+    return true
+end
+function RemoteCatalog.ResumeAfterRejoin()
+    local state=RemoteCatalog.ReadRejoinState()
+    local resume=state.Resume
+    if not CONFIG.AutoRejoin or type(resume)~="table" or type(resume.At)~="number" or os.time()-resume.At>900 then return {} end
+    -- One resume per rejoin, even if this load fails part way.
+    state.Resume=nil;RemoteCatalog.WriteRejoinState(state)
+    local started={}
+    for _,mode in ipairs(type(resume.Modes)=="table" and resume.Modes or {}) do
+        local ok=pcall(function()
+            if mode=="fishing" then setEnabled(true)
+            elseif mode=="bait" then setBaitEnabled(true)
+            elseif mode=="crop" or mode=="wood" or mode=="mine" then setFarmMode(mode,true)
+            elseif mode=="mobs" and RemoteCatalog.Mobs then RemoteCatalog.Mobs:Start()
+            else error("unknown mode") end
+        end)
+        if ok then table.insert(started,mode) end
+    end
+    if #started>0 then setStatus("Resumed after rejoin: "..table.concat(started,", "),COLORS.good) end
+    return started
+end
+function RemoteCatalog.RefreshRejoinButton()
+    RemoteCatalog.RejoinButton.Text=CONFIG.AutoRejoin and "Auto rejoin: ON" or "Auto rejoin: OFF"
+    RemoteCatalog.RejoinButton.BackgroundColor3=CONFIG.AutoRejoin and COLORS.on or COLORS.off
+end
+RemoteCatalog.RejoinButton=button({Parent=RemoteCatalog.SettingsAdvancedBody,Switch=true,Text="Auto rejoin: OFF",TextSize=12,
+    Size=UDim2.new(.5,-16,0,36),Position=UDim2.new(.5,6,0,88),Bg=COLORS.off})
+track(RemoteCatalog.RejoinButton.Activated:Connect(function()
+    CONFIG.AutoRejoin=not CONFIG.AutoRejoin
+    savePreferences();RemoteCatalog.RefreshRejoinButton()
+    setStatus(CONFIG.AutoRejoin and "Auto rejoin ON · keep the hub in your executor's autoexec folder so farms resume" or "Auto rejoin OFF",COLORS.muted)
+end))
+RemoteCatalog.RefreshRejoinButton()
+pcall(function()
+    track(game:GetService("GuiService").ErrorMessageChanged:Connect(function(message)
+        if type(message)=="string" and message~="" then RemoteCatalog.HandleDisconnect(message) end
+    end))
+end)
+task.delay(8,function() if gui.Parent then pcall(RemoteCatalog.ResumeAfterRejoin) end end)
+-- AUTO REJOIN END
 -- Clicks inside an expanded section must not collapse it before its buttons activate.
 RemoteCatalog.RegisterMenuRegion(RemoteCatalog.SettingsQuickButton,RemoteCatalog.SettingsQuickBody)
 RemoteCatalog.RegisterMenuRegion(RemoteCatalog.SettingsAdvancedButton,RemoteCatalog.SettingsAdvancedBody)

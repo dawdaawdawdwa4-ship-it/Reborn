@@ -3305,3 +3305,26 @@ Report headers now read `Reborn keys-121`.
   while nobody was watching.
 
 Report headers now read `Reborn self-test-122`.
+
+
+## Auto rejoin and resume · v123
+
+**Settings → Advanced → Auto rejoin** (OFF by default, saved).
+
+- When Roblox shows a disconnect prompt, the hub rejoins the same place only for
+  connection-type errors: lost connection, timeouts, idle disconnects, server
+  shutdowns/restarts and 2xx error codes. A deliberate kick and any message that
+  mentions a ban, exploit, cheat, hack, suspicion or moderation is never
+  rejoined. At most three rejoins are made per hour (history in
+  `IslandsFarmingHub_<UserId>_rejoin.json`), and a failed teleport is retried
+  after 5, 10 and 15 seconds.
+- Before teleporting it saves which farms were running (Fishing, Bait, Harvest,
+  Wood, Mining, Mobs). When the hub loads again within 15 minutes, it restarts
+  those farms once, with all their normal start checks, and reports
+  "Resumed after rejoin". Mobs can resume because the weapon is remembered.
+- The hub must be in the executor's **autoexec** folder to load again after the
+  rejoin; the rejoin itself works without it.
+- Tests: the suite now uses `luau-web` 1.5.0, whose heap can grow, so the full
+  hub keeps compiling in `full-startup.mjs` as it grows.
+
+Report headers now read `Reborn rejoin-123`.
