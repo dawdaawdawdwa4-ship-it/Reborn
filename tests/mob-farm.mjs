@@ -201,6 +201,11 @@ reset();br.Position=v(8);bh.Health=30;farm:Start()
 assert(sent==0 and farm.Target==b,'a damaged slime about as close as the nearest must be finished first')
 step();assert(sent==1 and farm.Target==b)
 reset();br.Position=v(20);bh.Health=30;farm:Start();assert(farm.Target==a,'a far damaged slime must not pull the farm past a near one')
+reset();ah.Health=15;farm:Start();assert(farm.Drops==1 and ah.Health==5)
+a.Parent=nil;step();a.Parent=nested
+assert(farm.Defeats==0 and farm.LikelyDefeats==1,'a slime that despawns right after a finishing-size hit is a likely defeat, never an observed one')
+reset();farm:Start();assert(farm.Drops==1 and ah.Health==90);a.Parent=nil;step();a.Parent=nested
+assert(farm.LikelyDefeats==0,'a healthy slime streaming out is not a likely defeat')
 reset();farm:Start();alive=false;step();assert(not farm.Enabled and not farm.Worker,'GUI removal must terminate worker')
 return 'Mob farm: targeting, facing, TP hop loop, respawn resume, late HP observation, run time, direct chase/stall backoff, walking, per-target no-damage switching, cooldowns, health/chat pauses, observations, no-damage budget, session/Stop/restart guards passed'
 `;

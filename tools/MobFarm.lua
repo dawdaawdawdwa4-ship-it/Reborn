@@ -21,7 +21,7 @@ function MobFarm.Details(model,roots,players)
     return humanoid,root
 end
 function MobFarm.new(ctx)
-    local self={Enabled=false,Generation=0,Radius=60,Walk=true,Swings=0,Drops=0,Defeats=0,
+    local self={Enabled=false,Generation=0,Radius=60,Walk=true,Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8}
     local now=ctx.Now or os.clock
@@ -125,13 +125,14 @@ function MobFarm.new(ctx)
         if not recorder then publish("Learn attack first · equip a melee weapon and hit one slime manually");return false end
         self.Generation+=1
         local token=self.Generation
-        self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0
+        self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0
         self.LastResult=nil;self.LastTarget=nil;self.StartedAt=now();self.EndedAt=nil
         publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
         scheduler.spawn(function()
             local healthSeen=setmetatable({},{__mode="k"})
             local cooldowns=setmetatable({},{__mode="k"})
             local attackedAt=setmetatable({},{__mode="k"})
+            local maxHit=0
             local lastAttack=-math.huge
             local attempts=0
             local unconfirmed=0
@@ -146,6 +147,7 @@ function MobFarm.new(ctx)
                 -- Streaming out is not proof of death; all counters describe observations.
                 if health and previous and health.Health<previous then
                     self.Drops+=1;attempts=0;unconfirmed=0
+                    maxHit=math.max(maxHit,previous-health.Health)
                     if previous>0 and health.Health<=0 then self.Defeats+=1 end
                 end
                 if health then healthSeen[model]=health.Health end
@@ -155,7 +157,15 @@ function MobFarm.new(ctx)
                     if self.Target then observe(self.Target) end
                     -- HP replication can trail a swing; keep watching recent targets after a switch.
                     for model,at in pairs(attackedAt) do
-                        if now()-at>3 then attackedAt[model]=nil elseif model~=self.Target then observe(model) end
+                        if not MobFarm.Details(model,MobFarm.Roots(ctx.World),ctx.Players) then
+                            -- Slimes usually despawn at 0 HP before it replicates. Removal right after a hit
+                            -- that could finish it is counted separately as a likely defeat, never as observed.
+                            local last=healthSeen[model]
+                            if last and last>0 and maxHit>0 and last<=maxHit then self.LikelyDefeats+=1 end
+                            attackedAt[model]=nil
+                            if self.Target==model then self.Target=nil end
+                        elseif now()-at>3 then attackedAt[model]=nil
+                        elseif model~=self.Target then observe(model) end
                     end
                     local char=ctx.Player.Character
                     local human=char and char:FindFirstChildOfClass("Humanoid")

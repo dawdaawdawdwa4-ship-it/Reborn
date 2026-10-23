@@ -1007,7 +1007,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn route-114',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn mob-keys-115',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1747,7 +1747,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn route-114 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn mob-keys-115 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2464,6 +2464,16 @@ end)()
   r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Teleport' and r.MobWalk.Text=='AUTO MOVE: TP HOPS','second move mode must be short teleport hops')
   assert(saved and saved.MobTravel=='Teleport' and saved.MobWalk==true and saved.MobRadius==r.Mobs.Radius,'mob move mode must be saved with preferences')
   writefile,HttpService.JSONEncode=previousWrite,previousEncode
+ end
+ do
+  local starts,stops=0,0
+  local start,stop=r.Mobs.Start,r.Mobs.Stop
+  r.Mobs.Start=function() starts+=1;return true end
+  r.Mobs.Stop=function() stops+=1 end
+  UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.F4},true);assert(starts==0,'F4 typed into chat must not toggle Auto Mobs')
+  UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.F4},false);assert(starts==1 and stops==0,'F4 must start Auto Mobs')
+  r.Mobs.Enabled=true;UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.F4},false);assert(stops==1,'F4 must stop a running mob farm')
+  r.Mobs.Enabled=false;r.Mobs.Start,r.Mobs.Stop=start,stop
  end
  r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk and r.MobWalk.Text=='AUTO MOVE: OFF');r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Walk')
  local weapon={Name='ironWarAxe'}

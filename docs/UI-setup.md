@@ -3150,3 +3150,18 @@ Report headers now read `Reborn mob-survive-113`.
   child (Rojo's `init.client.lua` layout) or as a sibling (manual copy).
 
 Report headers now read `Reborn route-114`.
+
+
+## Mob hotkey and likely defeats · v115
+
+- **F4** toggles Auto Mobs like F6 (Fishing) and F7 (Harvest). Keys typed into
+  chat or other processed input are ignored. Start keeps all its normal checks.
+- **Likely defeats.** Slimes usually despawn as they die, before 0 HP replicates,
+  so observed defeats undercount. A recently attacked slime (within 3 seconds)
+  that disappears while its last seen HP was no more than the largest HP drop
+  observed this run is counted separately as a *likely* defeat. Healthy slimes
+  streaming out are not counted, and observed defeats keep their strict meaning.
+  The run card shows `defeats observed (+likely)`, kills/min uses both, and Copy
+  result lists them separately.
+
+Report headers now read `Reborn mob-keys-115`.
