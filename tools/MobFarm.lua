@@ -42,7 +42,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=10,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -239,7 +239,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
@@ -263,6 +263,7 @@ function MobFarm.new(ctx)
             local progress={}
             local recovering=false
             local regenAt,regenBest,regenFrom,regenStart
+            local lastHealth,healthChar
             local function active()
                 return ctx.Alive() and self.Enabled and self.Generation==token and not ctx.Busy()
             end
@@ -339,6 +340,12 @@ function MobFarm.new(ctx)
                     elseif not usable(recorder) then
                         self:Stop("Character/session changed · learn one manual attack again");return
                     else
+                        -- Damage the character takes, and whether it came right after a swing (the hop in).
+                        if healthChar==char and lastHealth and human.Health<lastHealth-.5 then
+                            self.HitsTaken+=1;self.DamageTaken+=lastHealth-human.Health
+                            if now()-lastAttackAt<=1 then self.HitsAfterSwing+=1 end
+                        end
+                        healthChar=char;lastHealth=human.Health
                         local fraction=human.MaxHealth>0 and human.Health/human.MaxHealth or 0
                         -- Food first: eating is quicker than walking away and keeps the run going.
                         if self.AutoEat and ctx.Eat and fraction<=self.EatBelow and now()-lastEat>=4 then
@@ -450,6 +457,8 @@ function MobFarm.new(ctx)
                                 local previous=lastDistance[chosen.Model]
                                 lastDistance[chosen.Model]=chosen.Root.Position
                                 local closing=previous~=nil and (previous-root.Position).Magnitude-chosen.Distance>=1.5 and chosen.Distance<=self.Reach*2
+                                -- A slime that moved more than a stud since the last tick is mid-jump or mid-chase.
+                                local settled=previous==nil or (chosen.Root.Position-previous).Magnitude<1
                                 local function dy() return math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0)) end
                                 local airborne=dy()>self.Reach*.75
                                 if chosen.Distance<=self.Reach*2 and ctx.Face then pcall(ctx.Face,root,chosen.Root) end
@@ -469,6 +478,10 @@ function MobFarm.new(ctx)
                                     if hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and now()-lastAttack<.5 then
                                         if self.Chase then halt() end
                                         publish("Resting · "..chosen.Model.Name.." · "..math.floor(gap).." studs away · next swing shortly")
+                                    elseif hitRun and gap>keep+.75 and gap<=self.RestDistance+1.5 and (airborne or not settled) then
+                                        -- Hopping in while the slime jumps lands the character under it; wait for the landing.
+                                        if self.Chase then halt() end
+                                        publish("Waiting · "..chosen.Model.Name.." is "..(airborne and "in the air" or "moving").." · hopping in once it settles")
                                     -- Attached to the mob: too far → close in, too close → back out, both to `keep` studs.
                                     elseif math.abs(gap-keep)>.75 then
                                         chasing=gap>keep

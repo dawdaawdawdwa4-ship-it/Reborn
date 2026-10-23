@@ -3772,3 +3772,21 @@ and showed only "Paused · low health; resumes at 70% HP".
   does" so the 45 s watchdog never surprises anyone.
 
 Report headers now read `Reborn mob-regen-146`.
+
+## Land first, then hop in · v147
+
+A v145 run with hit and run on still lost more than half its HP in 38 s
+(15 swings, 7 damage numbers, 0 kills): the character was hopping in while the
+slime was mid-jump and landing under it.
+
+- **Settled gate.** In hit-and-run mode the hop in waits until the slime is on
+  the ground and has moved less than a stud since the last tick ("Waiting ·
+  slime is moving · hopping in once it settles"). The swing then lands in the
+  still window right after the slime's landing.
+- **Rest distance 12 studs** (was 10). A single 8-stud hop may leave the
+  character at 11; it rests there.
+- **Damage taken.** Copy result shows "Damage taken this run: N HP · k hits ·
+  j within 1 s after a swing", so the next report tells whether the hits come
+  on the hop in or while resting.
+
+Report headers now read `Reborn mob-settle-147`.
