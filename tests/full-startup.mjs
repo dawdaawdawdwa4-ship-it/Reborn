@@ -442,6 +442,18 @@ RemoteCatalog.HopSizeButton.Activated:Fire()
 assert(CONFIG.HopSize==12 and RemoteCatalog.Navigation.HopSize==12 and RemoteCatalog.Mobs.HopDistance==12 and string.find(RemoteCatalog.HopSizeButton.Text,'12 studs',1,true),'one hop size must drive navigation and mob hops')
 RemoteCatalog.HopSizeButton.Activated:Fire();assert(CONFIG.HopSize==4,'hop size must cycle back to the shortest step')
 RemoteCatalog.HopSizeButton.Activated:Fire();RemoteCatalog.HopSizeButton.Activated:Fire();assert(CONFIG.HopSize==8)
+do
+ local savedRecorder=RemoteCatalog.Recorder
+ RemoteCatalog.Recorder=nil;CONFIG.MobWeapon=nil
+ assert(RemoteCatalog.MobRecorder()==nil,'without a learned or remembered weapon Auto Mobs must ask for learning')
+ CONFIG.MobWeapon='ironWarAxe'
+ local savedCharacter=player.Character
+ if not savedCharacter then player.Character=Instance.new('Model') end
+ local remembered=RemoteCatalog.MobRecorder()
+ assert(remembered and remembered.MobBinding.WeaponName=='ironWarAxe' and RemoteCatalog.MobBindingUsable(remembered),'a remembered weapon must work on a new server without learning')
+ CONFIG.MobWeapon=nil;assert(not RemoteCatalog.MobBindingUsable(remembered),'forgetting the weapon must invalidate the remembered binding')
+ RemoteCatalog.Recorder=savedRecorder;player.Character=savedCharacter
+end
 for _,option in ipairs(woodPage:GetChildren()) do if option.Text=='Normal' then option.Activated:Fire() end end
 assert(CONFIG.WoodTravelMode=='Normal' and CONFIG.FarmTravelMode=='Walk','Normal must be selectable for wood without changing crop travel')
 
@@ -1023,7 +1035,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn hop-size-118',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn remember-119',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1763,7 +1775,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn hop-size-118 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn remember-119 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

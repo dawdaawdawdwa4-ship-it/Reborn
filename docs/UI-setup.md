@@ -3211,3 +3211,29 @@ Report headers now read `Reborn farm-hops-117`.
   Luau test heap fits the full hub.
 
 Report headers now read `Reborn hop-size-118`.
+
+
+## Remembered learning across servers · v119
+
+Remote instances, their group folders, envelope keys and session context are
+renamed on every server, so a learned packet cannot be replayed elsewhere. Two
+things survive a server change and are now remembered in the preferences file:
+
+- **Mob weapon.** Since v108 Auto Mobs activates the weapon natively and uses the
+  learned binding only for the weapon name. The last learned weapon name is saved
+  (`MobWeapon`), and on any later server Auto Mobs starts with it without Learn
+  attack. The weapon line shows `(remembered)`. Relearning replaces it.
+- **Stable request definitions.** The game's own `Requests.Client` reaches the
+  renamed remotes under fixed definition names (as the hub already does for food,
+  harvest, hotbar, placement and block hits). Once a second, each live learned
+  binding's remote is matched against those definitions and the stable name is
+  saved per kind (`LearnedDefinitions`, for example `ChestBinding=…`). Nothing is
+  sent during this lookup.
+
+**Copy session report** now lists the remembered weapon and definitions and every
+definition name the game exposes. Withdrawal, crafting and hoe actions still use
+their learned packets on the current server; switching them to the stable
+definitions needs those names from a live report first, because their bodies and
+envelopes cannot be confirmed offline.
+
+Report headers now read `Reborn remember-119`.

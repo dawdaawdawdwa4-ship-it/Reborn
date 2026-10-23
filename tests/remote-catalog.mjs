@@ -311,6 +311,19 @@ assert(table.find(RemoteCatalog.SeedNames('blueFlowers'),'blueFlowerSeeds'),'met
 assert(setHotbarLayout('stonePickaxe,,,,,,,'))
 assert(requestedName=='CLIENT_HOTBAR_LAYOUT_UPDATE' and gameBody.layout=='stonePickaxe,,,,,,,','game hotbar API not used')
 do
+ local lookup=RemoteCatalog.PlacementClient
+ local chestRemote,foodRemote={_testType='Instance',Name='kAnpiAlDrqMuEh'},{_testType='Instance',Name='wKCeyGAO4SqdMY'}
+ local endpoints={CLIENT_CHEST_WITHDRAW={instance=chestRemote},CLIENT_EAT_FOOD={instance=foodRemote}}
+ RemoteCatalog.PlacementClient=function() return {declarations={CLIENT_EAT_FOOD={},CLIENT_CHEST_WITHDRAW={},lowercase={}},Get=function(_,name) return endpoints[name] or error('unknown') end} end
+ local names=RemoteCatalog.RequestDefinitionNames()
+ assert(#names==2 and names[1]=='CLIENT_CHEST_WITHDRAW' and names[2]=='CLIENT_EAT_FOOD','request definition names must be listed from the game Requests client')
+ assert(RemoteCatalog.RequestDefinitionFor(chestRemote)=='CLIENT_CHEST_WITHDRAW','a renamed remote must map back to its stable definition name')
+ assert(RemoteCatalog.RequestDefinitionFor({_testType='Instance',Name='unknown'})==nil,'unknown remotes stay unmapped')
+ RemoteCatalog.PlacementClient=function() return nil end
+ assert(#RemoteCatalog.RequestDefinitionNames()==0)
+ RemoteCatalog.PlacementClient=lookup
+end
+do
  local lookup,previous=RemoteCatalog.PlacementClient,RemoteCatalog.Recorder
  local used
  RemoteCatalog.Recorder={HotbarBinding={Remote={Parent=true}},Hotbar=function(_,layout) used=layout;return true end}
