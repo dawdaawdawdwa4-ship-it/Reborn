@@ -41,7 +41,7 @@ end
 function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
-        ChaseRange=24,TargetBudget=4,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
+        ChaseRange=24,TargetBudget=6,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
         Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
@@ -423,6 +423,14 @@ function MobFarm.new(ctx)
                                 for _,entry in ipairs(targets) do
                                     if entry.Distance>targets[1].Distance+6 then break end
                                     if entry.Humanoid.Health<chosen.Humanoid.Health then chosen=entry end
+                                end
+                                -- A slime beside the character that is only cooling down beats a trip across the
+                                -- island: wait the few seconds instead of teleporting away from it.
+                                if chosen.Distance>self.ChaseRange then
+                                    for _,entry in ipairs(self:Scan(nil,12)) do
+                                        local until_=cooldowns[entry.Model]
+                                        if until_ and until_>now() and until_-now()<=6 then chosen=nil;break end
+                                    end
                                 end
                             end
                             if not chosen then

@@ -168,7 +168,7 @@ reset();tool.Enabled=false;farm:Start();step(1);assert(sent==0 and farm.Enabled,
 reset();damage=false;local hitA,hitB=0,0
 attackHook=function() if farm.Target==a then hitA+=1 elseif farm.Target==b then hitB+=1 end end
 farm:Start();for i=1,40 do if not farm.Enabled then break end;step(.7) end
-assert(hitA>=4 and hitB==4,'one unhittable slime must be cooled down and the next slime tried')
+assert(hitA>=6 and hitB==6,'one unhittable slime must be cooled down after six swings and the next slime tried')
 assert(sent==12 and farm.Swings==12 and farm.Drops==0 and not farm.Enabled and not farm.Worker and farm.Message:find('12 swings',1,true),'unconfirmed attacks across targets must stop at a bounded run budget')
 reset();damage=false
 attackHook=function() if farm.Swings==2 then damage=true end end
@@ -205,6 +205,13 @@ player.Character=respawned;tool.Parent=respawned;human.Health=100;step()
 assert(farm.Enabled and sent==1,'a respawn must resume when the learned session only supplies the native weapon')
 ctx.BindingUsable=nil;player.Character=char;tool.Parent=char
 reset();damage=false;farm.TargetBudget=1;farm:Start();assert(sent==1 and farm.Target==nil and farm.Drops==0)
+-- A slime beside the character that is only cooling down beats a trip to a far one.
+reset();damage=false;farm.TargetBudget=1;farm.Travel='Teleport';br.Position=v(40);farm:Start()
+assert(sent==1 and farm.Target==nil,'the first unconfirmed swing cools the near slime down')
+local h=hops;step();assert(hops==h and sent==1 and farm.Message:find('cooling down',1,true),'with the near slime cooling down the farm waits instead of teleporting to one 40 studs away')
+step(6);assert(sent==2,'after the cooldown the near slime is attacked again')
+reset();damage=false;farm.TargetBudget=1;farm.Travel='Teleport';br.Position=v(14);farm:Start();h=hops;step()
+assert(hops>h and farm.Target==b,'a slime within the chase range is still worth the hop')
 ah.Health-=10;step();assert(farm.Drops==1,'an HP drop replicated after a target switch must still be observed')
 reset();farm:Start();step(1);farm:Stop();local runTime=farm:RunTime();step(5)
 assert(runTime>=1 and farm:RunTime()==runTime and farm.EndedAt,'run time must freeze when the farm stops')

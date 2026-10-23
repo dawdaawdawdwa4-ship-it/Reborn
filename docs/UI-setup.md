@@ -3805,3 +3805,18 @@ Requested with a clip of mining a grey rock with green crystals and receiving
   rock ×3, ironOre ×2"), so a block name that does not match is visible at once.
 
 Report headers now read `Reborn mine-aqua-148`.
+
+## Stay with the near slimes · v149
+
+A clip showed "Teleporting · slime · 49 → 3 studs" while two slimes sat beside
+the character: the near ones were cooling down after unconfirmed swings and
+the farm set off across the island.
+
+- **Six swings per target** before a slime is cooled down (was four); a slime
+  that needs five hits is no longer abandoned one swing early.
+- **Wait instead of travelling.** When the only candidate is beyond the chase
+  range (24 studs) and a slime within 12 studs is cooling down for at most 6 s,
+  the farm waits for it ("Waiting · 1 slimes cooling down …") rather than
+  teleporting away.
+
+Report headers now read `Reborn mob-near-149`.
