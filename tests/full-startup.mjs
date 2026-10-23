@@ -7,7 +7,9 @@ const schema=JSON.parse(fs.readFileSync(new URL('roblox-api.json',import.meta.ur
 const lit=v=>typeof v==='string'?JSON.stringify(v):'{'+Object.entries(v).map(([k,x])=>'['+JSON.stringify(k)+']='+lit(x)).join(',')+'}';
 const used=new Set(schema.Classes.filter(c=>source.includes('"'+c.Name+'"')||source.includes("'"+c.Name+"'")).map(c=>c.Name));
 for(let changed=true;changed;){changed=false;for(const c of schema.Classes)if(used.has(c.Name)&&!used.has(c.Superclass)){used.add(c.Superclass);changed=true;}}
-const classes=Object.fromEntries(schema.Classes.filter(c=>used.has(c.Name)).map(c=>[c.Name,{super:c.Superclass,members:Object.fromEntries(c.Members.map(m=>[m.Name,m.MemberType]))}]));
+// Members the hub and these checks never mention cannot be touched, so they are left out of the heap.
+const memberText=source+fs.readFileSync(new URL('roblox-mock.luau',import.meta.url),'utf8')+fs.readFileSync(new URL(import.meta.url),'utf8');
+const classes=Object.fromEntries(schema.Classes.filter(c=>used.has(c.Name)).map(c=>[c.Name,{super:c.Superclass,members:Object.fromEntries(c.Members.filter(m=>memberText.includes(m.Name)).map(m=>[m.Name,m.MemberType]))}]));
 // The fixed-size Luau heap cannot hold every Roblox enum next to the full hub; keep the ones referenced.
 const enumText=source+fs.readFileSync(new URL('roblox-mock.luau',import.meta.url),'utf8')+fs.readFileSync(new URL(import.meta.url),'utf8');
 const usedEnums=new Set([...enumText.matchAll(/Enum\.(\w+)/g)].map(m=>m[1]));
@@ -1035,7 +1037,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn no-learn-120',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn keys-121',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1775,7 +1777,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn no-learn-120 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn keys-121 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2511,6 +2513,20 @@ end)()
   UserInputService.InputBegan:Fire({KeyCode=Enum.KeyCode.F3},false);assert(stops==1,'F3 must run Stop All')
   r.StopAllAutomation=stopAll
   assert(type(r.GameRequestHealth())=='string','game request health must always describe its state')
+ end
+ do
+  local saved=CONFIG.MobKey
+  r.KeybindButtons.MobKey.Activated:Fire();assert(string.find(r.KeybindButtons.MobKey.Text,'press a key',1,true),'a keybind row must wait for a key')
+  UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Keyboard,KeyCode=Enum.KeyCode.F6},false)
+  assert(CONFIG.MobKey==Enum.KeyCode.F6 and CONFIG.ToggleKey==saved and not r.BindingKey,'taking a used key must swap it with the other action')
+  assert(not enabled,'the key press that binds must not also trigger its action')
+  r.KeybindButtons.MobKey.Activated:Fire();UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Keyboard,KeyCode=Enum.KeyCode.Escape},false)
+  assert(CONFIG.MobKey==Enum.KeyCode.F6,'Escape must cancel without unbinding')
+  r.KeybindButtons.MobKey.Activated:Fire();UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Keyboard,KeyCode=Enum.KeyCode.F4},false)
+  r.KeybindButtons.ToggleKey.Activated:Fire();UserInputService.InputBegan:Fire({UserInputType=Enum.UserInputType.Keyboard,KeyCode=Enum.KeyCode.F6},false)
+  assert(CONFIG.MobKey==Enum.KeyCode.F4 and CONFIG.ToggleKey==Enum.KeyCode.F6,'keys must be restorable through the same rows')
+  r.PerformanceButton.Activated:Fire();assert(r.Performance.On and r.PerformanceButton.Text=='Performance mode: ON')
+  r.PerformanceButton.Activated:Fire();assert(not r.Performance.On and r.PerformanceButton.Text=='Performance mode: OFF','performance mode must switch back off')
  end
  r.MobWalk.Activated:Fire();assert(not r.Mobs.Walk and r.MobWalk.Text=='AUTO MOVE: OFF');r.MobWalk.Activated:Fire();assert(r.Mobs.Walk and r.Mobs.Travel=='Walk')
  local weapon={Name='ironWarAxe'}

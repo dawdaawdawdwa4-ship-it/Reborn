@@ -125,7 +125,7 @@ function MobFarm.new(ctx)
         if not recorder then publish("Learn attack first · equip a melee weapon and hit one slime manually");return false end
         self.Generation+=1
         local token=self.Generation
-        self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0
+        self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
         self.LastResult=nil;self.LastTarget=nil;self.StartedAt=now();self.EndedAt=nil
         publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
         scheduler.spawn(function()
@@ -148,7 +148,9 @@ function MobFarm.new(ctx)
                 if health and previous and health.Health<previous then
                     self.Drops+=1;attempts=0;unconfirmed=0
                     maxHit=math.max(maxHit,previous-health.Health)
-                    if previous>0 and health.Health<=0 then self.Defeats+=1 end
+                    if previous>0 and health.Health<=0 then
+                        self.Defeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
+                    end
                 end
                 if health then healthSeen[model]=health.Health end
             end
@@ -161,7 +163,9 @@ function MobFarm.new(ctx)
                             -- Slimes usually despawn at 0 HP before it replicates. Removal right after a hit
                             -- that could finish it is counted separately as a likely defeat, never as observed.
                             local last=healthSeen[model]
-                            if last and last>0 and maxHit>0 and last<=maxHit then self.LikelyDefeats+=1 end
+                            if last and last>0 and maxHit>0 and last<=maxHit then
+                                self.LikelyDefeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
+                            end
                             attackedAt[model]=nil
                             if self.Target==model then self.Target=nil end
                         elseif now()-at>3 then attackedAt[model]=nil

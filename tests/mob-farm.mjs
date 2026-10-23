@@ -114,6 +114,7 @@ local function reset()
 end
 reset();ah.Health=10;farm:Start()
 assert(farm.Defeats==1 and farm.Drops==1,'zero HP must count once, and never infer a kill from dispatch alone')
+assert(farm.KillsByName.slimeBlue==1,'kills must be broken down by mob name')
 step();step();assert(farm.Defeats==1)
 reset();farm:Start();local prior=farm.Drops;a.Parent=nil;step(.7)
 assert(farm.Defeats==0 and farm.Drops==prior,'streaming out must not count a defeat');a.Parent=nested
@@ -203,6 +204,7 @@ step();assert(sent==1 and farm.Target==b)
 reset();br.Position=v(20);bh.Health=30;farm:Start();assert(farm.Target==a,'a far damaged slime must not pull the farm past a near one')
 reset();ah.Health=15;farm:Start();assert(farm.Drops==1 and ah.Health==5)
 a.Parent=nil;step();a.Parent=nested
+assert(farm.KillsByName.slimeBlue==1,'likely defeats count in the per-mob report')
 assert(farm.Defeats==0 and farm.LikelyDefeats==1,'a slime that despawns right after a finishing-size hit is a likely defeat, never an observed one')
 reset();farm:Start();assert(farm.Drops==1 and ah.Health==90);a.Parent=nil;step();a.Parent=nested
 assert(farm.LikelyDefeats==0,'a healthy slime streaming out is not a likely defeat')

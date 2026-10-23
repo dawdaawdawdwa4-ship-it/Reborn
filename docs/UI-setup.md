@@ -3270,3 +3270,22 @@ the inventory is full, per-mob kill report, performance mode, totem upgrades
 (remote unverified) and the direct fishing protocol (comment-only in that file).
 
 Report headers now read `Reborn no-learn-120`.
+
+
+## Rebindable keys, performance mode and per-mob kills · v121
+
+- **Keybinds** (Settings → Advanced settings): Stop all, Fishing, Harvest and Mobs.
+  Click a row, then press a key; Escape cancels. Taking a key another action uses
+  swaps the two. The binding key press never triggers an action, RightControl
+  (hub toggle) cannot be bound, and the keys are saved with preferences. The
+  Fishing button label follows its key.
+- **Performance mode** (Advanced settings) turns global shadows off and disables
+  particle emitters, trails, beams, smoke, fire and sparkles, including ones that
+  appear later. Switching it off, or removing the hub, restores exactly what it
+  changed.
+- **Kills by mob.** Auto Mobs counts observed and likely defeats per mob name;
+  Copy result lists them, most first.
+- Tests: `full-startup.mjs` loads only the Roblox class members the hub and the
+  checks mention, keeping the fixed test heap within its limit.
+
+Report headers now read `Reborn keys-121`.

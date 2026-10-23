@@ -1677,7 +1677,7 @@ function MobFarm.new(ctx)
         if not recorder then publish("Learn attack first · equip a melee weapon and hit one slime manually");return false end
         self.Generation+=1
         local token=self.Generation
-        self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0
+        self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
         self.LastResult=nil;self.LastTarget=nil;self.StartedAt=now();self.EndedAt=nil
         publish("Scanning for slimes · Auto Move "..(not self.Walk and "OFF" or self.Travel=="Teleport" and "TP hops" or "Walk"))
         scheduler.spawn(function()
@@ -1700,7 +1700,9 @@ function MobFarm.new(ctx)
                 if health and previous and health.Health<previous then
                     self.Drops+=1;attempts=0;unconfirmed=0
                     maxHit=math.max(maxHit,previous-health.Health)
-                    if previous>0 and health.Health<=0 then self.Defeats+=1 end
+                    if previous>0 and health.Health<=0 then
+                        self.Defeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
+                    end
                 end
                 if health then healthSeen[model]=health.Health end
             end
@@ -1713,7 +1715,9 @@ function MobFarm.new(ctx)
                             -- Slimes usually despawn at 0 HP before it replicates. Removal right after a hit
                             -- that could finish it is counted separately as a likely defeat, never as observed.
                             local last=healthSeen[model]
-                            if last and last>0 and maxHit>0 and last<=maxHit then self.LikelyDefeats+=1 end
+                            if last and last>0 and maxHit>0 and last<=maxHit then
+                                self.LikelyDefeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
+                            end
                             attackedAt[model]=nil
                             if self.Target==model then self.Target=nil end
                         elseif now()-at>3 then attackedAt[model]=nil
@@ -3981,6 +3985,7 @@ local function savePreferences()
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
         MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, HopSize = CONFIG.HopSize,
         MobWeapon = CONFIG.MobWeapon, LearnedDefinitions = CONFIG.LearnedDefinitions, RememberedChests = CONFIG.RememberedChests,
+        Keybinds = { StopAllKey = CONFIG.StopAllKey.Name, ToggleKey = CONFIG.ToggleKey.Name, HarvestKey = CONFIG.HarvestKey.Name, MobKey = CONFIG.MobKey.Name },
     }
     local ok = pcall(function() writefile(SETTINGS_FILE, HttpService:JSONEncode(data)) end)
     return ok
@@ -4010,6 +4015,13 @@ local function loadPreferences()
     if type(data.MobWalk)=="boolean" then CONFIG.MobWalk=data.MobWalk end
     if data.HopSize==4 or data.HopSize==6 or data.HopSize==8 or data.HopSize==12 then CONFIG.HopSize=data.HopSize end
     if type(data.MobWeapon)=="string" and #data.MobWeapon>0 and #data.MobWeapon<=60 then CONFIG.MobWeapon=data.MobWeapon end
+    if type(data.Keybinds)=="table" then
+        for _,key in ipairs({"StopAllKey","ToggleKey","HarvestKey","MobKey"}) do
+            local name=data.Keybinds[key]
+            local ok,code=pcall(function() return type(name)=="string" and Enum.KeyCode[name] end)
+            if ok and code and code~=Enum.KeyCode.Escape and code~=Enum.KeyCode.RightControl then CONFIG[key]=code end
+        end
+    end
     if type(data.RememberedChests)=="table" then
         CONFIG.RememberedChests={}
         for _,entry in ipairs(data.RememberedChests) do
@@ -4923,7 +4935,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn no-learn-120",
+    return table.concat({"Reborn keys-121",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6911,7 +6923,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn no-learn-120 · Propeller loot history (UTC)",
+    return table.concat({"Reborn keys-121 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7015,7 +7027,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn no-learn-120 · Propeller tracker",
+    return table.concat({"Reborn keys-121 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7051,7 +7063,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn no-learn-120", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn keys-121", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -9535,7 +9547,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn no-learn-120\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn keys-121\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9597,7 +9609,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn no-learn-120 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn keys-121 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10196,7 +10208,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn no-learn-120\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn keys-121\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11314,7 +11326,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn no-learn-120 · Craft diagnostics",
+    return table.concat({"Reborn keys-121 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11393,7 +11405,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn no-learn-120 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn keys-121 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -11955,6 +11967,14 @@ function RemoteCatalog.MobRecorder()
         return remembered
     end
 end
+function RemoteCatalog.MobKillText(farm)
+    local list={}
+    for name,count in pairs(farm.KillsByName or {}) do table.insert(list,{name,count}) end
+    table.sort(list,function(a,b) return a[2]>b[2] or a[2]==b[2] and a[1]<b[1] end)
+    local parts={}
+    for _,entry in ipairs(list) do table.insert(parts,entry[1].." "..entry[2]) end
+    return #parts>0 and table.concat(parts,", ") or "none yet"
+end
 function RemoteCatalog.MobRunText(farm)
     local seconds=math.floor(farm:RunTime())
     local text=string.format("Run %d:%02d",math.floor(seconds/60),seconds%60)
@@ -11996,7 +12016,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn no-learn-120 · Mobs",
+    return table.concat({"Reborn keys-121 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -12011,7 +12031,8 @@ function RemoteCatalog.MobResultReport()
         "Last target: "..tostring(farm.LastTarget or "none"),
         "Last result: "..tostring(farm.LastResult or "none recorded"),
         "Observed run: "..farm.Swings.." swings · "..farm.Drops.." HP drops · "..farm.Defeats.." defeats · "..(farm.LikelyDefeats or 0).." likely defeats (despawned right after a finishing-size hit)",
-        "Run time: "..(farm.StartedAt and RemoteCatalog.MobRunText(farm) or "not started")},"\n")
+        "Run time: "..(farm.StartedAt and RemoteCatalog.MobRunText(farm) or "not started"),
+        "Kills by mob: "..RemoteCatalog.MobKillText(farm)},"\n")
 end
 function RemoteCatalog.CopyMobResult()
     local report=RemoteCatalog.MobResultReport()
@@ -12300,7 +12321,7 @@ do
     place(plantBtn,RemoteCatalog.SettingsQuickBody,UDim2.new(1,-20,0,36),UDim2.fromOffset(10,44))
     RemoteCatalog.SettingsAdvancedBody=Instance.new("Frame")
     RemoteCatalog.SettingsAdvancedBody.Name="AdvancedSettingsBody";RemoteCatalog.SettingsAdvancedBody.BackgroundTransparency=1
-    RemoteCatalog.SettingsAdvancedBody.Position=UDim2.fromOffset(0,44);RemoteCatalog.SettingsAdvancedBody.Size=UDim2.new(1,0,0,192)
+    RemoteCatalog.SettingsAdvancedBody.Position=UDim2.fromOffset(0,44);RemoteCatalog.SettingsAdvancedBody.Size=UDim2.new(1,0,0,322)
     RemoteCatalog.SettingsAdvancedBody.Visible=false;RemoteCatalog.SettingsAdvancedBody.Parent=RemoteCatalog.SettingsAdvancedCard
     place(delayButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(.5,-16,0,36),UDim2.fromOffset(10,0))
     place(scanButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(.5,-16,0,36),UDim2.new(.5,6,0,0))
@@ -12316,7 +12337,7 @@ do
         RemoteCatalog.HopSizeButton.Text="TP hop size: "..CONFIG.HopSize.." studs  ↻"
         savePreferences()
     end))
-    place(settingsText,RemoteCatalog.SettingsAdvancedBody,UDim2.new(1,-20,0,100),UDim2.fromOffset(10,90))
+    place(settingsText,RemoteCatalog.SettingsAdvancedBody,UDim2.new(1,-20,0,100),UDim2.fromOffset(10,222))
     settingsText.TextTruncate=Enum.TextTruncate.None
     for _,control in ipairs({reset,layoutBtn,plantBtn,smallerUI,largerUI,resetUI,delayButton,scanButton,saveButton}) do
         control.BackgroundColor3=COLORS.off
@@ -12342,7 +12363,7 @@ function RemoteCatalog.LayoutSettings()
     RemoteCatalog.SettingsQuickBody.Visible=RemoteCatalog.SettingsQuickOpen
     RemoteCatalog.SettingsAdvancedBody.Visible=RemoteCatalog.SettingsAdvancedOpen
     RemoteCatalog.SettingsQuickCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsQuickOpen and 140 or 42)
-    RemoteCatalog.SettingsAdvancedCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsAdvancedOpen and 244 or 42)
+    RemoteCatalog.SettingsAdvancedCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsAdvancedOpen and 374 or 42)
     RemoteCatalog.SettingsQuickButton.Text=RemoteCatalog.SettingsQuickOpen and "Quick actions  ▴" or "Quick actions  ▾"
     RemoteCatalog.SettingsAdvancedButton.Text=RemoteCatalog.SettingsAdvancedOpen and "Advanced settings  ▴" or "Advanced settings  ▾"
     local y=8
@@ -12363,6 +12384,79 @@ end))
 table.insert(RemoteCatalog.MenuClosers,function()
     RemoteCatalog.SettingsQuickOpen=false;RemoteCatalog.SettingsAdvancedOpen=false;RemoteCatalog.LayoutSettings()
 end)
+-- PERFORMANCE MODE BEGIN
+-- Shadows and particle-style effects off; only what this mode switched off is restored.
+RemoteCatalog.Performance={On=false,Disabled=setmetatable({},{__mode="k"})}
+function RemoteCatalog.SetPerformanceMode(on)
+    local state=RemoteCatalog.Performance
+    if on==state.On then return end
+    state.On=on
+    local lighting=game:GetService("Lighting")
+    local function quiet(object)
+        local effect=object:IsA("ParticleEmitter") or object:IsA("Trail") or object:IsA("Beam")
+            or object:IsA("Smoke") or object:IsA("Fire") or object:IsA("Sparkles")
+        if effect and object.Enabled then state.Disabled[object]=true;object.Enabled=false end
+    end
+    if on then
+        pcall(function() state.Shadows=lighting.GlobalShadows;lighting.GlobalShadows=false end)
+        pcall(function() for _,object in ipairs(workspace:GetDescendants()) do pcall(quiet,object) end end)
+        pcall(function() state.Connection=workspace.DescendantAdded:Connect(function(object) pcall(quiet,object) end) end)
+    else
+        if state.Connection then state.Connection:Disconnect();state.Connection=nil end
+        if state.Shadows~=nil then pcall(function() lighting.GlobalShadows=state.Shadows end);state.Shadows=nil end
+        for object in pairs(state.Disabled) do pcall(function() if object.Parent then object.Enabled=true end end) end
+        table.clear(state.Disabled)
+    end
+    if RemoteCatalog.PerformanceButton then
+        RemoteCatalog.PerformanceButton.Text=on and "Performance mode: ON" or "Performance mode: OFF"
+        RemoteCatalog.PerformanceButton.BackgroundColor3=on and COLORS.on or COLORS.off
+    end
+end
+RemoteCatalog.PerformanceButton=button({Parent=RemoteCatalog.SettingsAdvancedBody,Switch=true,Text="Performance mode: OFF",TextSize=12,
+    Size=UDim2.new(1,-20,0,36),Position=UDim2.fromOffset(10,88),Bg=COLORS.off})
+track(RemoteCatalog.PerformanceButton.Activated:Connect(function() RemoteCatalog.SetPerformanceMode(not RemoteCatalog.Performance.On) end))
+-- PERFORMANCE MODE END
+-- KEYBINDS BEGIN
+-- Click a row, then press a key; Escape cancels. A key used elsewhere moves to this action.
+RemoteCatalog.KeybindActions={{"StopAllKey","Stop all"},{"ToggleKey","Fishing"},{"HarvestKey","Harvest"},{"MobKey","Mobs"}}
+RemoteCatalog.KeybindButtons={}
+function RemoteCatalog.RefreshKeybinds()
+    for _,entry in ipairs(RemoteCatalog.KeybindActions) do
+        local key,name=entry[1],entry[2]
+        local control=RemoteCatalog.KeybindButtons[key]
+        if control then control.Text=name..": "..(RemoteCatalog.BindingKey==key and "press a key…" or CONFIG[key].Name) end
+    end
+    toggle.Text=(enabled and "FISH ON  [" or "FISH OFF  [")..CONFIG.ToggleKey.Name.."]"
+end
+function RemoteCatalog.CaptureKeybind(input)
+    local key=RemoteCatalog.BindingKey
+    if not key or input.UserInputType~=Enum.UserInputType.Keyboard then return false end
+    RemoteCatalog.BindingKey=nil
+    local code=input.KeyCode
+    -- Escape cancels; the hub toggle key and Unknown cannot be bound.
+    if code~=Enum.KeyCode.Escape and code~=Enum.KeyCode.Unknown and code~=Enum.KeyCode.RightControl then
+        for _,entry in ipairs(RemoteCatalog.KeybindActions) do
+            if entry[1]~=key and CONFIG[entry[1]]==code then CONFIG[entry[1]]=CONFIG[key] end
+        end
+        CONFIG[key]=code
+        savePreferences()
+    end
+    RemoteCatalog.RefreshKeybinds()
+    return true
+end
+for index,entry in ipairs(RemoteCatalog.KeybindActions) do
+    local key=entry[1]
+    local column,row=(index-1)%2,math.floor((index-1)/2)
+    local control=button({Parent=RemoteCatalog.SettingsAdvancedBody,Text="",TextSize=12,
+        Size=UDim2.new(.5,-16,0,36),Position=UDim2.new(column*.5,column==0 and 10 or 6,0,132+row*44)})
+    RemoteCatalog.KeybindButtons[key]=control
+    track(control.Activated:Connect(function()
+        RemoteCatalog.BindingKey=RemoteCatalog.BindingKey~=key and key or nil
+        RemoteCatalog.RefreshKeybinds()
+    end))
+end
+RemoteCatalog.RefreshKeybinds()
+-- KEYBINDS END
 -- Clicks inside an expanded section must not collapse it before its buttons activate.
 RemoteCatalog.RegisterMenuRegion(RemoteCatalog.SettingsQuickButton,RemoteCatalog.SettingsQuickBody)
 RemoteCatalog.RegisterMenuRegion(RemoteCatalog.SettingsAdvancedButton,RemoteCatalog.SettingsAdvancedBody)
@@ -12666,6 +12760,7 @@ track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then
 		return
 	end
+	if RemoteCatalog.CaptureKeybind and RemoteCatalog.CaptureKeybind(input) then return end
 	if input.KeyCode == CONFIG.ToggleKey then
 		setEnabled(not enabled)
 	elseif input.KeyCode == CONFIG.HarvestKey then
@@ -12787,6 +12882,7 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
+    pcall(RemoteCatalog.SetPerformanceMode,false)
     RemoteCatalog.StopMobLearning()
     RemoteCatalog.Mobs:Stop()
     RemoteCatalog.SetDropEnabled(false)
