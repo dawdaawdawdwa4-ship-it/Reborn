@@ -42,7 +42,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=6,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,RestDistanceTP=16,PacketReach=9,Smart=true,KeepBias=0,JumpIntervals={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,RestDistanceTP=16,PacketReach=9,Smart=true,KeepBias=0,JumpIntervals={},JumpByName={},HitsToKill={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -231,7 +231,12 @@ function MobFarm.new(ctx)
         end
         local damaged=entry.Humanoid.MaxHealth>0 and entry.Humanoid.Health<entry.Humanoid.MaxHealth
         entry.Crowd=crowd
-        return entry.Distance+5*crowd-(damaged and 4 or 0)
+        -- Known kinds cost one stud per hit still expected (hits already landed on this one count);
+        -- unknown kinds keep the flat "damaged first" bonus.
+        local expected=self.HitsToKill[entry.Model.Name]
+        local remaining=expected and math.max(0,expected-(self.HitsOn and self.HitsOn(entry.Model) or 0))
+        local cost=remaining and math.min(20,remaining) or (damaged and -4 or 0)
+        return entry.Distance+5*crowd+cost
     end
     -- The point `keep` studs from the mob that is farthest from every other mob, so the hop in
     -- comes from the free side of the crowd. Candidates come from ctx.Around; nil → straight line.
@@ -359,6 +364,10 @@ function MobFarm.new(ctx)
             local jumpStart=setmetatable({},{__mode="k"})
             local tuneHits,tuneLanded=0,0
             local deadSeen=setmetatable({},{__mode="k"})
+            local hitsOn=setmetatable({},{__mode="k"})
+            self.HitsOn=function(model) return hitsOn[model] or 0 end
+            local lastAttackRoot,lastAttackModel
+            local learnKill
             local farRetreat=false
             local jumpedFor=setmetatable({},{__mode="k"})
             local idleAt,idlePos=now(),nil
@@ -372,11 +381,12 @@ function MobFarm.new(ctx)
                 -- Streaming out is not proof of death; all counters describe observations.
                 if current and previous and current<previous then
                     -- A late drop on an earlier target must not reset the current target's budget.
-                    self.Drops+=1;unconfirmed=0
+                    self.Drops+=1;unconfirmed=0;hitsOn[model]=(hitsOn[model] or 0)+1
                     if model==self.Target then attempts=0 end
                     maxHit=math.max(maxHit,previous-current)
                     if previous>0 and current<=0 then
                         self.Defeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
+                        learnKill(model)
                     end
                 end
                 if current then healthSeen[model]=current end
@@ -384,6 +394,16 @@ function MobFarm.new(ctx)
             -- Loot is proof a hit landed even when mob HP never replicates (a live clip showed
             -- "+2 Green Slime Ball" beside "0 HP drops"). Compared against the inventory at swing time.
             local lootBaseline
+            -- Hits it took to drop this mob, folded into a running average per mob name (saved), so
+            -- targeting can prefer the kind that dies fastest and the one already nearly dead.
+            function learnKill(model)
+                local hits=hitsOn[model]
+                if not hits or hits<1 then return end
+                local known=self.HitsToKill[model.Name]
+                self.HitsToKill[model.Name]=known and (known*3+hits)/4 or hits
+                hitsOn[model]=nil
+                if ctx.Remember then pcall(ctx.Remember,"HitsToKill",self.HitsToKill) end
+            end
             local function checkLoot()
                 if not ctx.Inventory or not lootBaseline or now()-lastAttackAt>3 then return end
                 local ok,current=pcall(ctx.Inventory)
@@ -406,10 +426,11 @@ function MobFarm.new(ctx)
                     checkLoot()
                     -- The game's floating damage numbers are a direct hit signal when mob HP never replicates.
                     if ctx.DamageSeen and now()-lastAttackAt<=1.5 then
-                        local ok,count,total=pcall(ctx.DamageSeen,lastAttackAt)
+                        local ok,count,total=pcall(ctx.DamageSeen,lastAttackAt,lastAttackRoot)
                         if ok and type(count)=="number" and count>0 then
                             self.DamageNumbers+=count;self.DamageTotal+=(total or 0)
                             unconfirmed=0;attempts=0
+                            if lastAttackModel then hitsOn[lastAttackModel]=(hitsOn[lastAttackModel] or 0)+count end
                             publish("Hit · damage number "..tostring(total or "?").." · hits are landing")
                         end
                     end
@@ -423,6 +444,7 @@ function MobFarm.new(ctx)
                             local near=(attackedNear[model] or math.huge)<=math.max(self.Reach,self.AttackRange or 0)+2
                             if near and now()-at<=3 and maxHit==0 or last and last>0 and maxHit>0 and last<=maxHit then
                                 self.LikelyDefeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
+                                learnKill(model)
                                 unconfirmed=0;if model==self.Target then attempts=0 end
                             end
                             attackedAt[model]=nil
@@ -601,22 +623,25 @@ function MobFarm.new(ctx)
                                 -- last ten, tells when the next one is due; the hop in waits out that moment.
                                 local wasSettled=settledSeen[chosen.Model]
                                 settledSeen[chosen.Model]=settled
+                                local intervals=self.JumpByName[chosen.Model.Name]
+                                if not intervals then intervals={};self.JumpByName[chosen.Model.Name]=intervals end
                                 if wasSettled and not settled then
                                     local last=jumpStart[chosen.Model]
                                     if last and now()-last>.3 and now()-last<8 then
-                                        table.insert(self.JumpIntervals,now()-last)
-                                        if #self.JumpIntervals>10 then table.remove(self.JumpIntervals,1) end
+                                        table.insert(intervals,now()-last)
+                                        if #intervals>10 then table.remove(intervals,1) end
+                                        self.JumpIntervals=intervals
                                     end
                                     jumpStart[chosen.Model]=now()
                                 end
                                 local jumpDue=false
-                                if self.Smart and #self.JumpIntervals>=2 and jumpStart[chosen.Model] then
+                                if self.Smart and #intervals>=2 and jumpStart[chosen.Model] then
                                     local sum=0
-                                    for _,v in ipairs(self.JumpIntervals) do sum+=v end
-                                    local period=sum/#self.JumpIntervals
+                                    for _,v in ipairs(intervals) do sum+=v end
+                                    local period=sum/#intervals
                                     local since=now()-jumpStart[chosen.Model]
                                     jumpDue=since>period-.5 and since<period+1
-                                    self.JumpPeriod=period
+                                    self.JumpPeriod=period;self.JumpPeriods=self.JumpPeriods or {};self.JumpPeriods[chosen.Model.Name]=period
                                 end
                                 local function dy() return math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0)) end
                                 local airborne=dy()>self.Reach*.75
@@ -739,7 +764,7 @@ function MobFarm.new(ctx)
                                                     elseif landed<3 and (self.KeepBias or 0)>0 then self.KeepBias=self.KeepBias-1;self.Tuned=(self.Tuned or 0)+1 end
                                                     if ctx.Remember then pcall(ctx.Remember,"KeepBias",self.KeepBias) end
                                                 end
-                                                attackedAt[chosen.Model]=now();lastAttackAt=now()
+                                                attackedAt[chosen.Model]=now();lastAttackAt=now();lastAttackRoot=chosen.Root;lastAttackModel=chosen.Model
                                                 attackedNear[chosen.Model]=(chosen.Root.Position-root.Position).Magnitude
                                                 if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end
                                                 observe(chosen.Model)

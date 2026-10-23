@@ -371,6 +371,31 @@ do
  assert(sent>=2 and farm.ExitSide==1,'the next exit takes the other side')
  ctx.Side=nil
 end
+-- Hits to kill are learned per mob name from the hits a dropped mob took, saved, and used in targeting.
+do
+ reset();damage=false;local numbers={};local remembered
+ ctx.DamageSeen=function(since,targetRoot) assert(targetRoot==ar or targetRoot==br,'the damage query names the attacked mob');local c,t=0,0 for _,n in ipairs(numbers) do if n.At>=since and not n.Counted then n.Counted=true;c+=1;t+=n.Value end end return c,t end
+ ctx.Remember=function(key,value) if key=='HitsToKill' then remembered=value end end
+ farm.TargetBudget=100;farm.RunBudget=100;ar.Position=v(4);br.Position=v(60);farm:Start()
+ for i=1,4 do table.insert(numbers,{At=time,Value=16});step(.7) end
+ a.Parent=nil;step(.7)
+ assert(farm.LikelyDefeats==1 and farm.HitsToKill.slimeBlue==4 and remembered and remembered.slimeBlue==4,'four numbered hits before the mob vanished are learned as its hits to kill')
+ a.Parent=nested;ctx.DamageSeen=nil;ctx.Remember=nil
+ -- Targeting: a kind known to die in 3 hits beats one known to need 20, even 8 studs farther away.
+ reset();farm.Smart=true;farm.HitsToKill={slimeBlue=20,greenSlime=3};ar.Position=v(7);br.Position=v(-15);farm:Start()
+ assert(farm.Target==b,'the kind that dies fastest is chosen')
+ reset();farm.Smart=true;farm.HitsToKill={slimeBlue=20,greenSlime=3};ar.Position=v(7);br.Position=v(-40);farm:Start()
+ assert(farm.Target==a,'but never more than 12 studs past the nearest')
+end
+-- Jump rhythm is kept per mob name.
+do
+ reset();farm.Smart=true;farm.Travel='Teleport';farm.HitAndRun=true;ar.Position=v(30);br.Position=v(60);ah.Health=1000;ah.MaxHealth=1000
+ farm:Start();step();step();step()
+ local function jump() ar.Position=v(ar.Position.X+2);step();ar.Position=v(ar.Position.X-2);step();step() end
+ jump();step(1.5);jump();step(1.5);jump()
+ assert(farm.JumpByName.slimeBlue and #farm.JumpByName.slimeBlue>=2 and farm.JumpPeriods.slimeBlue,'intervals are stored under the mob name')
+ assert(farm.JumpByName.greenSlime==nil or #farm.JumpByName.greenSlime==0,'other kinds are untouched')
+end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do
  reset();damage=false;br.Position=v(300);farm:Start();for i=1,5 do step(.7) end

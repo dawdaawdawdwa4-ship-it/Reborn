@@ -1620,7 +1620,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=6,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,RestDistanceTP=16,PacketReach=9,Smart=true,KeepBias=0,JumpIntervals={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,RestDistanceTP=16,PacketReach=9,Smart=true,KeepBias=0,JumpIntervals={},JumpByName={},HitsToKill={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -1809,7 +1809,12 @@ function MobFarm.new(ctx)
         end
         local damaged=entry.Humanoid.MaxHealth>0 and entry.Humanoid.Health<entry.Humanoid.MaxHealth
         entry.Crowd=crowd
-        return entry.Distance+5*crowd-(damaged and 4 or 0)
+        -- Known kinds cost one stud per hit still expected (hits already landed on this one count);
+        -- unknown kinds keep the flat "damaged first" bonus.
+        local expected=self.HitsToKill[entry.Model.Name]
+        local remaining=expected and math.max(0,expected-(self.HitsOn and self.HitsOn(entry.Model) or 0))
+        local cost=remaining and math.min(20,remaining) or (damaged and -4 or 0)
+        return entry.Distance+5*crowd+cost
     end
     -- The point `keep` studs from the mob that is farthest from every other mob, so the hop in
     -- comes from the free side of the crowd. Candidates come from ctx.Around; nil → straight line.
@@ -1937,6 +1942,10 @@ function MobFarm.new(ctx)
             local jumpStart=setmetatable({},{__mode="k"})
             local tuneHits,tuneLanded=0,0
             local deadSeen=setmetatable({},{__mode="k"})
+            local hitsOn=setmetatable({},{__mode="k"})
+            self.HitsOn=function(model) return hitsOn[model] or 0 end
+            local lastAttackRoot,lastAttackModel
+            local learnKill
             local farRetreat=false
             local jumpedFor=setmetatable({},{__mode="k"})
             local idleAt,idlePos=now(),nil
@@ -1950,11 +1959,12 @@ function MobFarm.new(ctx)
                 -- Streaming out is not proof of death; all counters describe observations.
                 if current and previous and current<previous then
                     -- A late drop on an earlier target must not reset the current target's budget.
-                    self.Drops+=1;unconfirmed=0
+                    self.Drops+=1;unconfirmed=0;hitsOn[model]=(hitsOn[model] or 0)+1
                     if model==self.Target then attempts=0 end
                     maxHit=math.max(maxHit,previous-current)
                     if previous>0 and current<=0 then
                         self.Defeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
+                        learnKill(model)
                     end
                 end
                 if current then healthSeen[model]=current end
@@ -1962,6 +1972,16 @@ function MobFarm.new(ctx)
             -- Loot is proof a hit landed even when mob HP never replicates (a live clip showed
             -- "+2 Green Slime Ball" beside "0 HP drops"). Compared against the inventory at swing time.
             local lootBaseline
+            -- Hits it took to drop this mob, folded into a running average per mob name (saved), so
+            -- targeting can prefer the kind that dies fastest and the one already nearly dead.
+            function learnKill(model)
+                local hits=hitsOn[model]
+                if not hits or hits<1 then return end
+                local known=self.HitsToKill[model.Name]
+                self.HitsToKill[model.Name]=known and (known*3+hits)/4 or hits
+                hitsOn[model]=nil
+                if ctx.Remember then pcall(ctx.Remember,"HitsToKill",self.HitsToKill) end
+            end
             local function checkLoot()
                 if not ctx.Inventory or not lootBaseline or now()-lastAttackAt>3 then return end
                 local ok,current=pcall(ctx.Inventory)
@@ -1984,10 +2004,11 @@ function MobFarm.new(ctx)
                     checkLoot()
                     -- The game's floating damage numbers are a direct hit signal when mob HP never replicates.
                     if ctx.DamageSeen and now()-lastAttackAt<=1.5 then
-                        local ok,count,total=pcall(ctx.DamageSeen,lastAttackAt)
+                        local ok,count,total=pcall(ctx.DamageSeen,lastAttackAt,lastAttackRoot)
                         if ok and type(count)=="number" and count>0 then
                             self.DamageNumbers+=count;self.DamageTotal+=(total or 0)
                             unconfirmed=0;attempts=0
+                            if lastAttackModel then hitsOn[lastAttackModel]=(hitsOn[lastAttackModel] or 0)+count end
                             publish("Hit · damage number "..tostring(total or "?").." · hits are landing")
                         end
                     end
@@ -2001,6 +2022,7 @@ function MobFarm.new(ctx)
                             local near=(attackedNear[model] or math.huge)<=math.max(self.Reach,self.AttackRange or 0)+2
                             if near and now()-at<=3 and maxHit==0 or last and last>0 and maxHit>0 and last<=maxHit then
                                 self.LikelyDefeats+=1;self.KillsByName[model.Name]=(self.KillsByName[model.Name] or 0)+1
+                                learnKill(model)
                                 unconfirmed=0;if model==self.Target then attempts=0 end
                             end
                             attackedAt[model]=nil
@@ -2179,22 +2201,25 @@ function MobFarm.new(ctx)
                                 -- last ten, tells when the next one is due; the hop in waits out that moment.
                                 local wasSettled=settledSeen[chosen.Model]
                                 settledSeen[chosen.Model]=settled
+                                local intervals=self.JumpByName[chosen.Model.Name]
+                                if not intervals then intervals={};self.JumpByName[chosen.Model.Name]=intervals end
                                 if wasSettled and not settled then
                                     local last=jumpStart[chosen.Model]
                                     if last and now()-last>.3 and now()-last<8 then
-                                        table.insert(self.JumpIntervals,now()-last)
-                                        if #self.JumpIntervals>10 then table.remove(self.JumpIntervals,1) end
+                                        table.insert(intervals,now()-last)
+                                        if #intervals>10 then table.remove(intervals,1) end
+                                        self.JumpIntervals=intervals
                                     end
                                     jumpStart[chosen.Model]=now()
                                 end
                                 local jumpDue=false
-                                if self.Smart and #self.JumpIntervals>=2 and jumpStart[chosen.Model] then
+                                if self.Smart and #intervals>=2 and jumpStart[chosen.Model] then
                                     local sum=0
-                                    for _,v in ipairs(self.JumpIntervals) do sum+=v end
-                                    local period=sum/#self.JumpIntervals
+                                    for _,v in ipairs(intervals) do sum+=v end
+                                    local period=sum/#intervals
                                     local since=now()-jumpStart[chosen.Model]
                                     jumpDue=since>period-.5 and since<period+1
-                                    self.JumpPeriod=period
+                                    self.JumpPeriod=period;self.JumpPeriods=self.JumpPeriods or {};self.JumpPeriods[chosen.Model.Name]=period
                                 end
                                 local function dy() return math.abs((chosen.Root.Position.Y or 0)-(root.Position.Y or 0)) end
                                 local airborne=dy()>self.Reach*.75
@@ -2317,7 +2342,7 @@ function MobFarm.new(ctx)
                                                     elseif landed<3 and (self.KeepBias or 0)>0 then self.KeepBias=self.KeepBias-1;self.Tuned=(self.Tuned or 0)+1 end
                                                     if ctx.Remember then pcall(ctx.Remember,"KeepBias",self.KeepBias) end
                                                 end
-                                                attackedAt[chosen.Model]=now();lastAttackAt=now()
+                                                attackedAt[chosen.Model]=now();lastAttackAt=now();lastAttackRoot=chosen.Root;lastAttackModel=chosen.Model
                                                 attackedNear[chosen.Model]=(chosen.Root.Position-root.Position).Magnitude
                                                 if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end
                                                 observe(chosen.Model)
@@ -4507,7 +4532,7 @@ local function savePreferences(snapshotOnly)
         WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, WoodTrees = CONFIG.WoodTrees, MineRocks = CONFIG.MineRocks, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
-        MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, MobKind = CONFIG.MobKind, MobAutoEat = CONFIG.MobAutoEat, MobWalkSpeed = CONFIG.MobWalkSpeed, MobKeep = CONFIG.MobKeep, MobHitRun = CONFIG.MobHitRun, MobKeepBias = CONFIG.MobKeepBias, MobScore = CONFIG.MobScore, HopSize = CONFIG.HopSize,
+        MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, MobKind = CONFIG.MobKind, MobAutoEat = CONFIG.MobAutoEat, MobWalkSpeed = CONFIG.MobWalkSpeed, MobKeep = CONFIG.MobKeep, MobHitRun = CONFIG.MobHitRun, MobKeepBias = CONFIG.MobKeepBias, MobHitsToKill = CONFIG.MobHitsToKill, MobScore = CONFIG.MobScore, HopSize = CONFIG.HopSize,
         DepositCategory = CONFIG.DepositCategory, DepositInterval = CONFIG.DepositInterval,
         MobWeapon = CONFIG.MobWeapon, LearnedDefinitions = CONFIG.LearnedDefinitions, MobHitBody = CONFIG.MobHitBody, RememberedChests = CONFIG.RememberedChests,
         AutoRejoin = CONFIG.AutoRejoin,
@@ -4552,6 +4577,10 @@ local function loadPreferences(supplied)
     if type(data.MobAutoEat)=="boolean" then CONFIG.MobAutoEat=data.MobAutoEat end
     if type(data.MobHitRun)=="boolean" then CONFIG.MobHitRun=data.MobHitRun end
     if type(data.MobKeepBias)=="number" then CONFIG.MobKeepBias=math.clamp(math.floor(data.MobKeepBias),0,3) end
+    if type(data.MobHitsToKill)=="table" then
+        CONFIG.MobHitsToKill={}
+        for name,hits in pairs(data.MobHitsToKill) do if type(name)=="string" and #name<=64 and type(hits)=="number" and hits>0 and hits<1000 then CONFIG.MobHitsToKill[name]=hits end end
+    end
     -- Validated on first use: the scoreboard helpers are defined after the preferences load.
     if type(data.MobScore)=="table" then CONFIG.MobScore=data.MobScore;CONFIG.MobScoreUnchecked=true end
     if data.MobKeep=="Auto" or data.MobKeep==3 or data.MobKeep==4 or data.MobKeep==5 then CONFIG.MobKeep=data.MobKeep end
@@ -5502,7 +5531,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-terrain-159",
+    return table.concat({"Reborn mob-kinds-160",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7564,7 +7593,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-terrain-159 · Propeller loot history (UTC)",
+    return table.concat({"Reborn mob-kinds-160 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7668,7 +7697,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-terrain-159 · Propeller tracker",
+    return table.concat({"Reborn mob-kinds-160 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7704,7 +7733,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-terrain-159", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn mob-kinds-160", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10439,7 +10468,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-terrain-159\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn mob-kinds-160\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10501,7 +10530,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-terrain-159 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn mob-kinds-160 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11134,7 +11163,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-terrain-159\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn mob-kinds-160\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12252,7 +12281,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-terrain-159 · Craft diagnostics",
+    return table.concat({"Reborn mob-kinds-160 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12331,7 +12360,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-terrain-159 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn mob-kinds-160 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12858,8 +12887,17 @@ function RemoteCatalog.NoteDamageLabel(object)
         if not object.Parent then return end
         local value=tonumber(string.match(tostring(object.Text),"^%s*%-?(%d+)%s*$"))
         if not value or value<=0 or value>100000 then return end
+        -- Where the number floats: the billboard's adornee (the mob hit) when there is one, so a
+        -- number over another mob, or over the character, is not taken for our hit.
+        local position
+        pcall(function()
+            local billboard=object:FindFirstAncestorWhichIsA("BillboardGui")
+            local anchor=billboard and (billboard.Adornee or billboard.Parent)
+            if anchor and anchor:IsA("Model") then anchor=anchor.PrimaryPart or anchor:FindFirstChildWhichIsA("BasePart") end
+            if anchor and anchor:IsA("BasePart") then position=anchor.Position end
+        end)
         local list=RemoteCatalog.DamageNumbers
-        table.insert(list,{At=os.clock(),Value=value})
+        table.insert(list,{At=os.clock(),Value=value,Position=position})
         if #list>50 then table.remove(list,1) end
     end)
 end
@@ -12992,7 +13030,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn mob-terrain-159 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn mob-kinds-160 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13194,7 +13232,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-terrain-159 · Mobs",
+    return table.concat({"Reborn mob-kinds-160 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -13229,7 +13267,11 @@ function RemoteCatalog.MobResultReport()
         "Run time: "..(farm.StartedAt and RemoteCatalog.MobRunText(farm) or "not started"),
         "Kills by mob: "..RemoteCatalog.MobKillText(farm),
         "Movement: edge stops "..tostring(farm.EdgeStops or 0).." · last command "..tostring(farm.LastCommand or "none")..(farm.LastCommandAt and string.format(" %.1f s ago",os.clock()-farm.LastCommandAt) or "").." · idle "..string.format("%.1f",farm.IdleFor or 0).." s · stalls "..tostring(farm.Stalls or 0).." · pathfinder "..(RemoteCatalog.Navigation and RemoteCatalog.Navigation.Owner and ("busy for "..tostring(RemoteCatalog.Navigation.Owner)) or "idle"),
-        "Smart: "..(farm.Smart and ("ON · keep bias +"..tostring(farm.KeepBias or 0).." (tuned "..tostring(farm.Tuned or 0).."×) · free-side approaches "..tostring(farm.SideApproaches or 0)..(farm.JumpPeriod and string.format(" · jump period %.1f s",farm.JumpPeriod) or " · jump period not learned yet")) or "OFF"),
+        "Smart: "..(farm.Smart and ("ON · keep bias +"..tostring(farm.KeepBias or 0).." (tuned "..tostring(farm.Tuned or 0).."×) · free-side approaches "..tostring(farm.SideApproaches or 0)..(farm.JumpPeriod and string.format(" · jump period %.1f s",farm.JumpPeriod) or " · jump period not learned yet").." · hits to kill: "..(function()
+            local parts={}
+            for name,hits in pairs(farm.HitsToKill or {}) do table.insert(parts,name.." "..string.format("%.1f",hits)) end
+            table.sort(parts);return #parts>0 and table.concat(parts,", ") or "not learned yet"
+        end)()) or "OFF"),
         "Scoreboard (all runs): "..RemoteCatalog.MobScoreText():gsub("\n"," | ")},"\n")
 end
 function RemoteCatalog.CopyMobResult()
@@ -13414,14 +13456,22 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
     Jump=function(human) human.Jump=true end,
     Remember=function(key,value)
         if key=="KeepBias" and CONFIG.MobKeepBias~=value then CONFIG.MobKeepBias=value;savePreferences() end
+        if key=="HitsToKill" and type(value)=="table" then
+            local copy={}
+            for name,hits in pairs(value) do if type(name)=="string" and type(hits)=="number" then copy[name]=math.floor(hits*10+.5)/10 end end
+            CONFIG.MobHitsToKill=copy;savePreferences()
+        end
     end,
     -- Count the game's floating damage numbers (numeric TextLabels created after a swing).
-    DamageSeen=function(since)
+    DamageSeen=function(since,targetRoot)
         local count,total=0,0
         for i=#RemoteCatalog.DamageNumbers,1,-1 do
             local entry=RemoteCatalog.DamageNumbers[i]
             if entry.At<since then break end
-            if not entry.Counted then entry.Counted=true;count+=1;total+=entry.Value end
+            -- A number anchored more than 10 studs from the target belongs to someone else's hit.
+            local foreign=entry.Position~=nil and targetRoot~=nil and (entry.Position-targetRoot.Position).Magnitude>10
+            if foreign then entry.Foreign=true
+            elseif not entry.Counted then entry.Counted=true;count+=1;total+=entry.Value end
         end
         return count,total
     end,
@@ -13488,6 +13538,7 @@ RemoteCatalog.Mobs.WalkSpeed=CONFIG.MobWalkSpeed or RemoteCatalog.Mobs.WalkSpeed
 RemoteCatalog.Mobs.KeepDistance=CONFIG.MobKeep or RemoteCatalog.Mobs.KeepDistance
 if CONFIG.MobHitRun~=nil then RemoteCatalog.Mobs.HitAndRun=CONFIG.MobHitRun end
 RemoteCatalog.Mobs.KeepBias=CONFIG.MobKeepBias or 0
+if type(CONFIG.MobHitsToKill)=="table" then for name,hits in pairs(CONFIG.MobHitsToKill) do RemoteCatalog.Mobs.HitsToKill[name]=hits end end
 RemoteCatalog.Mobs.HopDistance=CONFIG.HopSize or RemoteCatalog.Mobs.HopDistance
 function RemoteCatalog.SaveMobPreferences()
     local farm=RemoteCatalog.Mobs

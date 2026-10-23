@@ -4031,3 +4031,26 @@ taken while resting 12 studs out.
   to 16 studs (hops are free); Walk mode keeps 12.
 
 Report headers now read `Reborn mob-terrain-159`.
+
+## Learned kinds · v160
+
+Requested as "keep improving", from the run data: 29 numbers counted while 33
+were on screen, slimeBlue taking about 30 hits per kill against about 6 for
+slime, and one shared jump period for both kinds.
+
+- **Damage numbers belong to the target.** A floating number is noted with the
+  position of the billboard it floats on; numbers anchored more than 10 studs
+  from the attacked mob (another mob, or the character's own damage) no
+  longer count as hits.
+- **Hits to kill per mob name.** The hits (damage numbers and HP drops) a mob
+  took before it dropped are folded into a running average per name, saved
+  across runs (`MobHitsToKill`) and shown in Copy result's Smart line.
+  Targeting costs a known kind one stud per hit still expected (hits already
+  landed on that mob are subtracted), capped at 20, so the farm prefers the
+  kind it kills fastest and the mob already nearly dead; unknown kinds keep
+  the flat "damaged first" bonus.
+- **Jump rhythm per mob name.** Intervals are kept per kind (slime and
+  slimeBlue differ), and the Smart line shows the learned period of the current
+  target.
+
+Report headers now read `Reborn mob-kinds-160`.
