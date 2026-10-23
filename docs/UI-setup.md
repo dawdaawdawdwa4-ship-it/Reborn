@@ -3430,3 +3430,17 @@ withdraws a stack.
   conveyor option includes them, as before.
 
 Report headers now read `Reborn chest-contents-128`.
+
+
+## Whole-island harvest and tree types · v129
+
+- **Harvest → Scan range** now cycles 15 … 120 studs and then **whole island**:
+  every selected ready crop on your own island, whatever the distance (crops are
+  only ever scanned on the owned island). Pair it with Travel: TP hops or Walk and
+  nearest-next routing. Saved with preferences.
+- **Wood Farm → Trees** cycles All → oak → pine → birch → palm; only trees whose
+  name contains the chosen kind are cut. Fruit-tree protection is unchanged.
+  Saved with preferences and profiles. The wood range button now reads
+  "Range: N studs ±" to share its row.
+
+Report headers now read `Reborn island-trees-129`.

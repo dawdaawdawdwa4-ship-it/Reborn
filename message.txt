@@ -1503,8 +1503,15 @@ function FarmLogic.TakeNearest(targets, origin)
 end
 function FarmLogic.Range(category, config)
     if category == "wood" then return config.WoodRange end
-    if category == "crop" then return config.CropRange end
+    -- CropRange 0 means the whole owned island (crops are only ever scanned there).
+    if category == "crop" then return (config.CropRange or 0) <= 0 and math.huge or config.CropRange end
     return config.MineRange
+end
+-- kind "All" (or nil) accepts every tree; otherwise the tree name must contain it, e.g. "oak".
+FarmLogic.TreeOptions = {"All", "oak", "pine", "birch", "palm"}
+function FarmLogic.TreeMatches(name, kind)
+    if kind == nil or kind == "All" then return true end
+    return string.find(string.lower(name), string.lower(kind), 1, true) ~= nil
 end
 function FarmLogic.Snapshot(target)
     local values = {}
@@ -3997,7 +4004,7 @@ local function savePreferences(snapshotOnly)
     local data = {
         WoodTravelMode = CONFIG.WoodTravelMode, FarmTravelMode = CONFIG.FarmTravelMode, HarvestWalk = CONFIG.HarvestWalk, HarvestCrops = CONFIG.HarvestCrops, HarvestCrop = CONFIG.HarvestCrop, PlantType = CONFIG.PlantType,
         FruitEnabled = CONFIG.FruitEnabled, AutoReplant = CONFIG.AutoReplant, MineRange = CONFIG.MineRange,
-        WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, MineDelay = CONFIG.MineDelay,
+        WoodRange = CONFIG.WoodRange, CropRange = CONFIG.CropRange, WoodTrees = CONFIG.WoodTrees, MineDelay = CONFIG.MineDelay,
         MineScanInterval = CONFIG.MineScanInterval, PlantDelay = CONFIG.PlantDelay,
         WoodToolPreference = woodToolPreference, MineToolPreference = mineToolPreference,
         MobRadius = CONFIG.MobRadius, MobWalk = CONFIG.MobWalk, MobTravel = CONFIG.MobTravel, MobKind = CONFIG.MobKind, HopSize = CONFIG.HopSize,
@@ -4029,7 +4036,8 @@ local function loadPreferences(supplied)
     if type(data.AutoReplant) == "boolean" then CONFIG.AutoReplant = data.AutoReplant end
     if type(data.FruitEnabled) == "boolean" then CONFIG.FruitEnabled = data.FruitEnabled end
     if type(data.MineRange) == "number" then CONFIG.MineRange = math.clamp(data.MineRange, 15, 150) end
-    if type(data.CropRange) == "number" then CONFIG.CropRange = math.clamp(data.CropRange, 10, 120) end
+    if type(data.CropRange) == "number" then CONFIG.CropRange = data.CropRange == 0 and 0 or math.clamp(data.CropRange, 10, 120) end
+    if type(data.WoodTrees) == "string" and table.find(FarmLogic.TreeOptions, data.WoodTrees) then CONFIG.WoodTrees = data.WoodTrees end
     if type(data.WoodRange) == "number" then CONFIG.WoodRange = math.clamp(data.WoodRange, 15, 150) end
     if type(data.MineDelay) == "number" then CONFIG.MineDelay = math.clamp(data.MineDelay, 0.08, 1) end
     if type(data.MineScanInterval) == "number" then CONFIG.MineScanInterval = math.clamp(data.MineScanInterval, 0.15, 2) end
@@ -4973,7 +4981,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn chest-contents-128",
+    return table.concat({"Reborn island-trees-129",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -5558,11 +5566,13 @@ local cropHint = label({ Parent = harvestPage, Text = "Select several crops abov
     Color = COLORS.muted, TextSize = 10, Size = UDim2.new(1, -16, 0, 36), Position = UDim2.fromOffset(8, 198) })
 cropHint.TextWrapped = true
 
-RemoteCatalog.CropRangeButton = button({ Parent = harvestPage, Text = "Scan range: " .. CONFIG.CropRange .. " studs",
+function RemoteCatalog.CropRangeText() return CONFIG.CropRange <= 0 and "Scan range: whole island" or "Scan range: " .. CONFIG.CropRange .. " studs" end
+RemoteCatalog.CropRangeButton = button({ Parent = harvestPage, Text = RemoteCatalog.CropRangeText(),
     TextSize = 12, Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 328) })
 track(RemoteCatalog.CropRangeButton.Activated:Connect(function()
-    CONFIG.CropRange = CONFIG.CropRange >= 120 and 15 or CONFIG.CropRange + 15
-    RemoteCatalog.CropRangeButton.Text = "Scan range: " .. CONFIG.CropRange .. " studs"
+    -- 15 … 120 studs, then the whole island (best with Travel: TP hops), then back to 15.
+    CONFIG.CropRange = CONFIG.CropRange <= 0 and 15 or CONFIG.CropRange >= 120 and 0 or CONFIG.CropRange + 15
+    RemoteCatalog.CropRangeButton.Text = RemoteCatalog.CropRangeText()
     savePreferences()
 end))
 
@@ -6119,7 +6129,15 @@ local woodInfo = label({ Parent = woodPage, Text = "Normal cuts nearby trees wit
 woodInfo.TextWrapped = true
 pageHeading(woodPage, "WOOD FARM CONTROLS", 100)
 local woodRangeBtn = button({ Parent = woodPage, Text = "Range: 90 studs  (+ / −)", TextSize = 12,
-    Size = UDim2.new(1, -12, 0, 34), Position = UDim2.fromOffset(6, 122) })
+    Size = UDim2.new(.5, -9, 0, 34), Position = UDim2.fromOffset(6, 122) })
+RemoteCatalog.WoodTreesButton = button({ Parent = woodPage, Text = "Trees: " .. (CONFIG.WoodTrees or "All") .. "  ↻", TextSize = 12,
+    Size = UDim2.new(.5, -9, 0, 34), Position = UDim2.new(.5, 3, 0, 122) })
+track(RemoteCatalog.WoodTreesButton.Activated:Connect(function()
+    local options = FarmLogic.TreeOptions
+    CONFIG.WoodTrees = options[(table.find(options, CONFIG.WoodTrees or "All") or 1) % #options + 1]
+    RemoteCatalog.WoodTreesButton.Text = "Trees: " .. CONFIG.WoodTrees .. "  ↻"
+    savePreferences()
+end))
 local woodStatus = label({ Parent = woodPage, Text = "Target types: trees, oak, pine, birch, palm, logs", Color = COLORS.muted,
     TextSize = 11, Size = UDim2.new(1, -16, 0, 42), Position = UDim2.fromOffset(8, 164) })
 woodStatus.TextWrapped = true
@@ -6817,11 +6835,12 @@ RemoteCatalog.RefreshUI()
 function RemoteCatalog.ReflectPreferences()
     replantToggle.Text = CONFIG.AutoReplant and "AUTO-REPLANT: ON" or "AUTO-REPLANT: OFF"
     replantToggle.BackgroundColor3 = CONFIG.AutoReplant and COLORS.on or COLORS.off
-    woodRangeBtn.Text = "Wood range: " .. CONFIG.WoodRange .. " studs  (+ / −)"
+    woodRangeBtn.Text = "Range: " .. CONFIG.WoodRange .. " studs  ±"
     mineRangeBtn.Text = "Mining range: " .. CONFIG.MineRange .. " studs  (+ / −)"
     delayButton.Text = "Mine delay: " .. string.format("%.2fs", CONFIG.MineDelay) .. "  ↻"
     scanButton.Text = "Scan interval: " .. string.format("%.2fs", CONFIG.MineScanInterval) .. "  ↻"
-    if RemoteCatalog.CropRangeButton then RemoteCatalog.CropRangeButton.Text = "Scan range: " .. CONFIG.CropRange .. " studs" end
+    if RemoteCatalog.CropRangeButton then RemoteCatalog.CropRangeButton.Text = RemoteCatalog.CropRangeText() end
+    if RemoteCatalog.WoodTreesButton then RemoteCatalog.WoodTreesButton.Text = "Trees: " .. (CONFIG.WoodTrees or "All") .. "  ↻" end
     if RemoteCatalog.HarvestWalkButton then
         RemoteCatalog.HarvestWalkButton.Text = CONFIG.HarvestWalk and "AUTO MOVE: ON" or "AUTO MOVE: OFF"
         RemoteCatalog.HarvestWalkButton.BackgroundColor3 = CONFIG.HarvestWalk and COLORS.on or COLORS.off
@@ -6990,7 +7009,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn chest-contents-128 · Propeller loot history (UTC)",
+    return table.concat({"Reborn island-trees-129 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7094,7 +7113,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn chest-contents-128 · Propeller tracker",
+    return table.concat({"Reborn island-trees-129 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7130,7 +7149,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn chest-contents-128", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn island-trees-129", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -7958,7 +7977,7 @@ local function targetCategory(name) return FarmLogic.Category(name) end
 local function modeAllows(name)
     local category = targetCategory(name)
     if category == "crop" then return harvestEnabled and FarmLogic.CropsMatch(name, CONFIG.HarvestCrops, CONFIG.HarvestCrop) end
-    if category == "wood" then return woodEnabled end
+    if category == "wood" then return woodEnabled and FarmLogic.TreeMatches(name, CONFIG.WoodTrees) end
     return category == "mine" and mineEnabled
 end
 local FarmState = { Cooldowns = setmetatable({}, { __mode = "k" }), FruitTrees = setmetatable({}, { __mode = "k" }) }
@@ -8050,7 +8069,7 @@ local function getMineTargets()
                 local position=getPartPosition(fruit)
                 if position and not seen[fruit] and (FarmState.Cooldowns[fruit] or 0)<=os.clock() then
                     local distance=(position-hrp.Position).Magnitude
-                    if distance<=CONFIG.CropRange then
+                    if distance<=FarmLogic.Range("crop",CONFIG) then
                         seen[fruit]=true;FarmState.FruitTrees[tree]=true
                         table.insert(targets,{kind="fruit",instance=fruit,model=tree,name=tree.Name.." fruit",distance=distance,position=position,category="crop"})
                     end
@@ -9824,7 +9843,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn chest-contents-128\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn island-trees-129\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -9886,7 +9905,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn chest-contents-128 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn island-trees-129 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10485,7 +10504,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn chest-contents-128\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn island-trees-129\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11603,7 +11622,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn chest-contents-128 · Craft diagnostics",
+    return table.concat({"Reborn island-trees-129 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -11682,7 +11701,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn chest-contents-128 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn island-trees-129 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12295,7 +12314,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn chest-contents-128 · Mobs",
+    return table.concat({"Reborn island-trees-129 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -13099,7 +13118,7 @@ track(fruitToggle.Activated:Connect(function()
 end))
 track(woodRangeBtn.Activated:Connect(function()
     CONFIG.WoodRange = CONFIG.WoodRange >= 120 and 30 or CONFIG.WoodRange + 15
-    woodRangeBtn.Text = "Wood range: " .. CONFIG.WoodRange .. " studs  (+ / −)"
+    woodRangeBtn.Text = "Range: " .. CONFIG.WoodRange .. " studs  ±"
     woodStatus.Text = string.format("Tree targeting range: %d studs. Targets trees, oak, pine, birch, palm and logs.", CONFIG.WoodRange)
     savePreferences()
 end))

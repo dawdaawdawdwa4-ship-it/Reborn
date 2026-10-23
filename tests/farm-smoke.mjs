@@ -61,6 +61,13 @@ FarmState.Cooldowns[wheat]=nil
 woodEnabled=false;mineEnabled=false
 assert(#getMineTargets()==1 and getMineTargets()[1].instance==wheat,'mode isolation failed')
 assert(targets[5].instance==publicTree,'public resource tree not discovered')
+woodEnabled=true;mineEnabled=false;harvestEnabled=false;CONFIG.WoodTrees='palm'
+local trees=getMineTargets()
+assert(#trees==1 and trees[1].instance==publicTree,'a tree type filter must keep only that kind of tree')
+CONFIG.WoodTrees='All';assert(#getMineTargets()==2,'All trees returns every tree in range')
+CONFIG.WoodTrees=nil;woodEnabled=false;harvestEnabled=true
+assert(FarmLogic.TreeMatches('treeOak','oak') and not FarmLogic.TreeMatches('treePine','oak') and FarmLogic.TreeMatches('treePine',nil))
+CONFIG.CropRange=0;assert(FarmLogic.Range('crop',CONFIG)==math.huge,'crop range 0 means the whole island');CONFIG.CropRange=15
 CONFIG.HarvestCrops=FarmLogic.NormalizeCrops({wheat=true,carrot=true,invalid=true},'wheat')
 woodEnabled=false;mineEnabled=false
 assert(FarmLogic.CropsMatch('carrot',CONFIG.HarvestCrops,'wheat') and not FarmLogic.CropsMatch('potato',CONFIG.HarvestCrops,'wheat'),'multi-crop matching must include all and only selected crops')

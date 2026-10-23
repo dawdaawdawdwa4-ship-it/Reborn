@@ -77,8 +77,15 @@ function FarmLogic.TakeNearest(targets, origin)
 end
 function FarmLogic.Range(category, config)
     if category == "wood" then return config.WoodRange end
-    if category == "crop" then return config.CropRange end
+    -- CropRange 0 means the whole owned island (crops are only ever scanned there).
+    if category == "crop" then return (config.CropRange or 0) <= 0 and math.huge or config.CropRange end
     return config.MineRange
+end
+-- kind "All" (or nil) accepts every tree; otherwise the tree name must contain it, e.g. "oak".
+FarmLogic.TreeOptions = {"All", "oak", "pine", "birch", "palm"}
+function FarmLogic.TreeMatches(name, kind)
+    if kind == nil or kind == "All" then return true end
+    return string.find(string.lower(name), string.lower(kind), 1, true) ~= nil
 end
 function FarmLogic.Snapshot(target)
     local values = {}
