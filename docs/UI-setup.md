@@ -4095,3 +4095,40 @@ default, so the ground check accepted water and a hop could land in it.
   Hops and walks toward such points are refused, as over the void.
 
 Report headers now read `Reborn mob-water-163`.
+
+## Review fixes and click beside the hub · v164
+
+An independent review of the mob code found eight defects; a v163 report
+added one more (swings fell back to weapon activation with "hub covers the
+target", and the hit packet was then rejected with NO_ANIMATION).
+
+- **Auto-learn no longer pauses the farm.** The learning flag set by auto-learn
+  was the same one that pauses attacks during manual Learn attack, so the
+  first run on a new server stopped swinging after its first tick. Only manual
+  learning pauses now.
+- **Dead runs are not armed or recorded.** A run that ends inside its first
+  tick (weapon missing, swing failure) no longer arms auto-learn or lands in
+  the scoreboard as "0 kills · 0:05"; a run that ends on its own (another mode
+  took over, hub closed) is now recorded and disarmed like a stopped one.
+- **Walk-mode retreat runs to its end.** The rest and wait gates halted any
+  movement, cutting the walk out after about 3 studs; they now halt only a
+  chase in.
+- **Damage numbers over the character never count** as hits on the mob, and
+  a number closer to the character than to the target is ignored.
+- **One hit per swing.** With both HP drops and damage numbers visible a hit
+  was counted twice (hits to kill, cadence, scoreboard); the larger of the
+  two signals is used.
+- **Crowd retreat never points through the nearest mob.** When the weighted
+  away-vector would, plain away-from-nearest is used.
+- **Stall cooldowns are not "worth waiting for":** a slime cooled down after a
+  stalled chase or blocked path no longer keeps the farm from a farther one.
+- **Hits to kill need loot.** A likely defeat teaches hits to kill only when
+  loot arrived within 3 s; a mob that streamed out teaches nothing.
+- **Click beside the hub.** When the hub or a control covers the target on
+  screen, the swing clicks a free spot of the game view instead of falling
+  back to weapon activation (which plays no animation). Attack method reads
+  "mouse click beside the hub (it covers the target)".
+- Damage taken now also shows hits within 0.25 s of a swing (on the swing
+  itself) to tell instant retaliation from a lunge.
+
+Report headers now read `Reborn mob-review-164`.

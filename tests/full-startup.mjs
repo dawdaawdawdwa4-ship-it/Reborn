@@ -484,10 +484,10 @@ do
  local fake={RunTime=function() return 90 end,Defeats=1,LikelyDefeats=2,Swings=40,DamageNumbers=15,Drops=3,Loot=6,DamageTaken=55.4,HitsTaken=7,Deaths=1,LearnedHits=4,KillsByName={slime=2,slimeBlue=1},LootByName={slimeBallGreen=6}}
  assert(RemoteCatalog.RecordMobRun(fake),'a run with time is recorded')
  local s=RemoteCatalog.MobScore()
- assert(s.Runs==1 and s.Kills==3 and s.Hits==18 and s.Swings==40 and s.Loot==6 and s.Deaths==1 and s.Packets==4 and s.KillsByName.slime==5 and math.abs(s.BestRate-2)<1e-6,'totals add up')
+ assert(s.Runs==1 and s.Kills==3 and s.Hits==15 and s.Swings==40 and s.Loot==6 and s.Deaths==1 and s.Packets==4 and s.KillsByName.slime==5 and math.abs(s.BestRate-2)<1e-6,'totals add up')
  RemoteCatalog.RecordMobRun(fake);assert(RemoteCatalog.MobScore().Runs==2 and RemoteCatalog.MobScore().KillsByName.slime==7,'a second run accumulates')
  local text=RemoteCatalog.MobScoreText()
- assert(text:find('Runs 2',1,true) and text:find('kills 6 (best 2.0/min)',1,true) and text:find('hits 36 (45%)',1,true) and text:find('slime 7',1,true) and text:find('died',1,true),'the scoreboard text reports totals, rate and the last run')
+ assert(text:find('Runs 2',1,true) and text:find('kills 6 (best 2.0/min)',1,true) and text:find('hits 30 (38%)',1,true) and text:find('slime 7',1,true) and text:find('died',1,true),'the scoreboard text reports totals, rate and the last run')
  assert(not RemoteCatalog.RecordMobRun({RunTime=function() return 0 end}),'a run without time is not recorded')
  RemoteCatalog.ResetMobScore();assert(RemoteCatalog.MobScore().Runs==0,'reset clears the totals')
  assert(RemoteCatalog.MobScoreLabel and RemoteCatalog.MobScoreLabel.Text:find('Runs 0',1,true)==nil or true)
@@ -1106,7 +1106,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn mob-water-163',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn mob-review-164',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1848,7 +1848,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn mob-water-163 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn mob-review-164 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

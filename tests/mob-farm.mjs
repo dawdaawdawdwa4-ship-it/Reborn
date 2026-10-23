@@ -376,11 +376,16 @@ do
  reset();damage=false;local numbers={};local remembered
  ctx.DamageSeen=function(since,targetRoot) assert(targetRoot==ar or targetRoot==br,'the damage query names the attacked mob');local c,t=0,0 for _,n in ipairs(numbers) do if n.At>=since and not n.Counted then n.Counted=true;c+=1;t+=n.Value end end return c,t end
  ctx.Remember=function(key,value) if key=='HitsToKill' then remembered=value end end
+ local bag=0;ctx.Inventory=function() return {slimeBallGreen=bag} end
  farm.TargetBudget=100;farm.RunBudget=100;ar.Position=v(4);br.Position=v(60);farm:Start()
  for i=1,4 do table.insert(numbers,{At=time,Value=16});step(.7) end
  a.Parent=nil;step(.7)
- assert(farm.LikelyDefeats==1 and farm.HitsToKill.slimeBlue==4 and remembered and remembered.slimeBlue==4,'four numbered hits before the mob vanished are learned as its hits to kill')
- a.Parent=nested;ctx.DamageSeen=nil;ctx.Remember=nil
+ assert(farm.LikelyDefeats==1 and farm.HitsToKill.slimeBlue==nil,'a vanish without loot teaches nothing (it may have streamed out)')
+ a.Parent=nested;reset();damage=false;numbers={};bag=0;farm.TargetBudget=100;farm.RunBudget=100;ar.Position=v(4);br.Position=v(60);farm:Start()
+ for i=1,4 do table.insert(numbers,{At=time,Value=16});step(.7) end
+ bag=2;a.Parent=nil;step(.7)
+ assert(farm.LikelyDefeats==1 and farm.Loot==2 and farm.HitsToKill.slimeBlue==4 and remembered and remembered.slimeBlue==4,'four numbered hits before a loot-confirmed vanish are learned as its hits to kill')
+ a.Parent=nested;ctx.DamageSeen=nil;ctx.Remember=nil;ctx.Inventory=nil
  -- Targeting: a kind known to die in 3 hits beats one known to need 20, even 8 studs farther away.
  reset();farm.Smart=true;farm.HitsToKill={slimeBlue=20,greenSlime=3};ar.Position=v(7);br.Position=v(-15);farm:Start()
  assert(farm.Target==b,'the kind that dies fastest is chosen')
@@ -421,6 +426,15 @@ do
  farm:Start();human.Health=0;step();step()
  assert(farm.Deaths==1 and math.abs(farm.RetreatBelow-.5)<1e-6 and math.abs(remembered.RetreatBelow-.5)<1e-6,'a death raises the retreat threshold to 50% and saves it')
  human.Health=100;ctx.Remember=nil
+end
+-- Review fixes: the rest gate never cuts a retreat short; the crowd away-vector never points through the nearest mob.
+do
+ reset();farm.HitAndRun=true;ar.Position=v(20);br.Position=v(60);farm:Start()
+ assert(sent==1 and farm.LastCommand=='retreat','the walk out after the swing is a retreat')
+ local before=moves;step();assert(moves==before and farm.Message:find('Resting',1,true),'resting does not halt a retreat still under way')
+ reset();ar.Position=v(-5);br.Position=v(-5)
+ local threat=farm:Threat(10)
+ assert(threat and threat.Model.Name=='buffalkor' and threat.Away and threat.Away.X<0,'with two mobs behind, the away vector still leads away from the nearest mob in front')
 end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do
