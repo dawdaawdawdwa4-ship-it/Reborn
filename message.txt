@@ -235,10 +235,15 @@ local RemoteCatalog = (function()
     end
     catalog.ModuleCache = {}
     catalog.ModuleErrors = {}
+    catalog.ModuleFailedAt = {}
     function catalog.GameModule(path, export)
         if catalog.ModuleCache[path] then return catalog.ModuleCache[path][export] end
+        -- A path that just failed is not walked again for 3 s: the dashboard asks every second.
+        -- A replaced require (test harness, executor reload) invalidates the memo.
+        local failed = catalog.ModuleFailedAt[path]
+        if failed and failed.Require == require and os.clock() - failed.At < 3 then return nil end
         local module = catalog.FindPath(path, "ModuleScript")
-        if not module then catalog.ModuleErrors[path]="Module path not found";return nil end
+        if not module then catalog.ModuleErrors[path]="Module path not found";catalog.ModuleFailedAt[path]={At=os.clock(),Require=require};return nil end
         local ok, result = pcall(require, module)
         if (not ok or type(result) ~= "table") and type(getrenv) == "function" then
             local gotEnvironment, environment = pcall(getrenv)
@@ -246,8 +251,8 @@ local RemoteCatalog = (function()
                 ok, result = pcall(environment.require, module)
             end
         end
-        if not ok or type(result) ~= "table" then catalog.ModuleErrors[path]="Module could not be loaded";return nil end
-        catalog.ModuleErrors[path]=nil
+        if not ok or type(result) ~= "table" then catalog.ModuleErrors[path]="Module could not be loaded";catalog.ModuleFailedAt[path]={At=os.clock(),Require=require};return nil end
+        catalog.ModuleErrors[path]=nil;catalog.ModuleFailedAt[path]=nil
         catalog.ModuleCache[path] = result
         return result[export]
     end
@@ -3347,7 +3352,11 @@ function AutoBuild.new(ctx)
             local waited=false
             while active() do
                 if not awaitResume() then return false end
-                if occupied(cell.CFrame,self.BlockSize) then self.WaitingMaterial=nil;return true end
+                if occupied(cell.CFrame,self.BlockSize) then
+                    self.WaitingMaterial=nil
+                    if waited then progress.State="Building";progress.WaitReason=nil end
+                    return true
+                end
                 local epoch=self.PauseEpoch
                 local ok,quantity=false,nil
                 if type(ctx.ItemCount)=="function" then ok,quantity=pcall(ctx.ItemCount,cell.Material) end
@@ -3596,7 +3605,8 @@ function AutoBuild.new(ctx)
         if self.Running or self.WorkerToken then status("Wait for the build worker before changing materials.");return false end
         if self.SavedPlan then status("Choose a generated blueprint to use favorites; loaded layouts use Replace material.");return false end
         if #self.Favorites==0 then status("Save a material with its star before cycling favorites.");return false end
-        local index=table.find(self.Favorites,inputs[key].Text) or 0
+        local current=tostring(inputs[key].Text or ""):match("^%s*(.-)%s*$")
+        local index=table.find(self.Favorites,current) or 0
         inputs[key].Text=self.Favorites[index%#self.Favorites+1]
         commits[key]()
         status("Selected favorite "..inputs[key].Text..". Preview the updated generated plan.")
@@ -5370,6 +5380,8 @@ local buildController = AutoBuild.new({
 })
 
 local function showTab(name)
+    -- Block picking is a tab-local mode: leaving the tab ends it so other modes are not blocked by it.
+    if name~="Auto Build" and buildController and buildController.Picking and buildController.SetPicking then pcall(buildController.SetPicking,buildController,false) end
     if RemoteCatalog.ChestSelectMenu then RemoteCatalog.ChestSelectMenu.Visible=false end
     if RemoteCatalog.ChestAmountMenu then RemoteCatalog.ChestAmountMenu.Visible=false end
     if RemoteCatalog.LayoutChestControls then RemoteCatalog.LayoutChestControls() end
@@ -5662,7 +5674,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn review-172",
+    return table.concat({"Reborn polish-173",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7759,7 +7771,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn review-172 · Propeller loot history (UTC)",
+    return table.concat({"Reborn polish-173 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7863,7 +7875,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn review-172 · Propeller tracker",
+    return table.concat({"Reborn polish-173 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7899,7 +7911,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn review-172", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn polish-173", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -8079,7 +8091,7 @@ end
 local function updateBoard()
     if RemoteCatalog.RefreshPropellers then RemoteCatalog.RefreshPropellers() end
     -- The craft refresh reads other scripts' recorders; one bad entry must not end the dashboard loop.
-    if RemoteCatalog.RefreshCraftMaterials then pcall(RemoteCatalog.RefreshCraftMaterials) end
+    if RemoteCatalog.RefreshCraftMaterials and (activeTab=="Crafting" or RemoteCatalog.CraftWorker or RemoteCatalog.CraftEnabled) then pcall(RemoteCatalog.RefreshCraftMaterials) end
     if RemoteCatalog.CraftQueueCheckResult and not RemoteCatalog.CraftQueueCheckCurrent(RemoteCatalog.CraftQueueCheckResult) then
         RemoteCatalog.CraftQueueCheckResult=nil;RemoteCatalog.RefreshCraftQueue()
         if not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftEnabled and RemoteCatalog.CraftInfo and tostring(RemoteCatalog.CraftInfo.Text):match("^Queue check") then
@@ -8532,7 +8544,7 @@ RemoteCatalog.RecoverFishingCast=function(myCycle,bobber)
     end
     local current=character:FindFirstChildOfClass("Tool")
     if current~=rod then return false end
-    setStatus("Resetting stuck cast: putting the rod away...",COLORS.warn)
+    if RemoteCatalog.SetFishingStatus then RemoteCatalog.SetFishingStatus(myCycle,"Resetting stuck cast: putting the rod away...",COLORS.warn) else setStatus("Resetting stuck cast: putting the rod away...",COLORS.warn) end
     local service=RemoteCatalog.GameModule("Players."..player.Name..".PlayerScripts.TS.inventory.client-inventory-service","ClientInventoryService")
     if not active() or character:FindFirstChildOfClass("Tool")~=rod then return false end
     local toggled=false
@@ -9587,6 +9599,7 @@ local function setFarmMode(mode, state)
         if RemoteCatalog.Mobs.Press then setStatus("Weapon release pending · press STOP in Mobs",COLORS.warn);return false end
     end
     if state and RemoteCatalog.PlowWorker then RemoteCatalog.SetPlowEnabled(false);setStatus("Wait for Auto Plow input cleanup, then start this mode",COLORS.warn);return end
+    if state and (RemoteCatalog.FishingMouseInput or RemoteCatalog.BaitMouseInput or RemoteCatalog.MobMouseInput) then setStatus("Another tool input is finishing · start this mode in a moment",COLORS.warn);return false end
     -- Resolve the requested mode explicitly. The old chained `and/or`
     -- expression could read another mode's state when this mode was off.
     local current
@@ -10714,7 +10727,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn review-172\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn polish-173\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10776,7 +10789,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn review-172 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn polish-173 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11410,7 +11423,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn review-172\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn polish-173\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12531,7 +12544,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn review-172 · Craft diagnostics",
+    return table.concat({"Reborn polish-173 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12610,7 +12623,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn review-172 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn polish-173 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13293,7 +13306,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn review-172 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn polish-173 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13501,7 +13514,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn review-172 · Mobs",
+    return table.concat({"Reborn polish-173 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

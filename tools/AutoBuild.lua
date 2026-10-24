@@ -815,7 +815,11 @@ function AutoBuild.new(ctx)
             local waited=false
             while active() do
                 if not awaitResume() then return false end
-                if occupied(cell.CFrame,self.BlockSize) then self.WaitingMaterial=nil;return true end
+                if occupied(cell.CFrame,self.BlockSize) then
+                    self.WaitingMaterial=nil
+                    if waited then progress.State="Building";progress.WaitReason=nil end
+                    return true
+                end
                 local epoch=self.PauseEpoch
                 local ok,quantity=false,nil
                 if type(ctx.ItemCount)=="function" then ok,quantity=pcall(ctx.ItemCount,cell.Material) end
@@ -1064,7 +1068,8 @@ function AutoBuild.new(ctx)
         if self.Running or self.WorkerToken then status("Wait for the build worker before changing materials.");return false end
         if self.SavedPlan then status("Choose a generated blueprint to use favorites; loaded layouts use Replace material.");return false end
         if #self.Favorites==0 then status("Save a material with its star before cycling favorites.");return false end
-        local index=table.find(self.Favorites,inputs[key].Text) or 0
+        local current=tostring(inputs[key].Text or ""):match("^%s*(.-)%s*$")
+        local index=table.find(self.Favorites,current) or 0
         inputs[key].Text=self.Favorites[index%#self.Favorites+1]
         commits[key]()
         status("Selected favorite "..inputs[key].Text..". Preview the updated generated plan.")

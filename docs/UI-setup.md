@@ -4312,3 +4312,25 @@ Independent review of Auto Build, with fixes and tests.
   building no longer marks a valid Setup-marker or material check as stale.
 
 Report headers now read `Reborn review-172`.
+
+## Polish · v173
+
+The reviewers' minor notes, plus two performance items.
+
+- **Failed module lookups are memoised for 3 s.** The dashboard asked for
+  missing game modules every second, walking the whole instance tree each
+  time; a path that just failed is now skipped for 3 s (a replaced `require`
+  retries at once).
+- **Crafting refresh only while it matters:** the material and recipe refresh
+  runs when the Crafting tab is shown or a craft worker runs, not twice a
+  second regardless.
+- **Fishing panel shows the recovery** ("Resetting stuck cast…") instead of a
+  stale "[45s] Waiting for fish…" timer.
+- **Leaving the Auto Build tab ends block picking**, so Auto Plow and other
+  modes are no longer blocked by a forgotten picker.
+- **Restock label clears** when a waited-for cell is filled by someone else.
+- **Favorites cycle from the trimmed field text.**
+- **Farm modes do not start while a tool input is finishing** (fishing, bait
+  or mob mouse input), matching the other toggles.
+
+Report headers now read `Reborn polish-173`.

@@ -390,6 +390,18 @@ do
  assert(RemoteCatalog.LiveRecorder('PlowBinding')==globalPlow,'valid standalone plow binding must remain available when the local sample is stale')
  RemoteCatalog.Recorder,context.RebornCapture=oldLocal,oldGlobal
 end
+-- A failed module lookup is memoised for 3 s (the dashboard asks every second); a replaced require retries at once.
+do
+ local walks=0
+ local originalFind=RemoteCatalog.FindPath
+ RemoteCatalog.FindPath=function(path,cls) if path=='ReplicatedStorage.Missing.module' then walks+=1;return nil end;return originalFind(path,cls) end
+ RemoteCatalog.ModuleCache['ReplicatedStorage.Missing.module']=nil
+ assert(RemoteCatalog.GameModule('ReplicatedStorage.Missing.module','Export')==nil and walks==1)
+ assert(RemoteCatalog.GameModule('ReplicatedStorage.Missing.module','Export')==nil and walks==1,'a path that just failed is not walked again')
+ local keep=require;require=function(...) return keep(...) end
+ assert(RemoteCatalog.GameModule('ReplicatedStorage.Missing.module','Export')==nil and walks==2,'a replaced require retries the lookup')
+ require=keep;RemoteCatalog.FindPath=originalFind
+end
 return '148 remote entries: missing roots/groups, exact/alternate paths, class checks, legacy lookup, removal and four captured request bindings passed'
 `;
 const state=await LuauState.createAsync();
