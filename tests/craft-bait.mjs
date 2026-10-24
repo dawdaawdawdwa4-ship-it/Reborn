@@ -116,6 +116,20 @@ assert(RemoteCatalog.SetCraftEnabled(true) and #calls==1)
 RemoteCatalog.SetCraftEnabled(false)
 assert(not RemoteCatalog.SetCraftEnabled(true),'in-flight stop/restart cannot overlap requests')
 drain();assert(#calls==1 and not RemoteCatalog.CraftWorker and not RemoteCatalog.CraftEnabled and string.find(RemoteCatalog.CraftInfo.Text,'cleanup complete',1,true),'cancelled request must finish with a clear OFF status')
+-- The single-recipe Start path must also refresh a stock count after a fast pause cycle.
+reset()
+do
+ local wait=RemoteCatalog.WaitChestInventory
+ local blocked=false
+ RemoteCatalog.WaitChestInventory=function(item,active,before)
+  if not blocked and before==nil then blocked=true;local old=inventory;coroutine.yield('reading stock');return old end
+  return wait(item,active,before)
+ end
+ assert(RemoteCatalog.SetCraftEnabled(true) and blocked and #calls==0)
+ assert(RemoteCatalog.SetCraftPaused(true));inventory=95;assert(RemoteCatalog.SetCraftPaused(false));drain()
+ assert(#calls==1 and calls[1]==5 and inventory==100,'single-recipe Resume must top up from fresh stock instead of repeating an old deficit')
+ RemoteCatalog.WaitChestInventory=wait
+end
 -- Generic recipes keep inventory, observed bench and request envelope isolated.
 reset()
 local oldBait=recorder.CraftBinding

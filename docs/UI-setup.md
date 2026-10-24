@@ -4498,3 +4498,35 @@ failed on v179. Full-startup tests also exercise the actual adapter with two
 unreadable chests. Run the full suite; live Roblox behavior remains unverified.
 
 Report headers now read `Reborn build-restock-180`.
+
+
+## Fresh crafting quantities after a rapid Pause/Resume · v181
+
+A rapid Pause → Resume could complete while an inventory read was still waiting.
+The old boolean-only check saw crafting unpaused and used the stale quantity. For
+example, a Top up job targeting 100 could read 0, then find 95 items added during
+the pause, yet still craft 100 instead of 5. The reverse stale read could skip an
+unfinished job. Make amount could also count items added during the pause toward
+its confirmed output and finish before it had made the requested extra amount.
+
+The worker now tracks pause transitions and discards the old step's quantity
+after any pause, even if Resume was pressed before the pending operation returns.
+It reads again before checking whether the target is met or computing the next
+batch. The checks also cover the final workbench reach check and the crafting
+message/material refresh, which may yield. Stop is rechecked after these callbacks
+and immediately before dispatch, so a late callback cannot launch a new request.
+
+The same job, worker and previously confirmed progress continue after Resume;
+the queue is not restarted. Requests already in flight may still be confirmed
+under the existing rules. Repeating Pause while already paused is idempotent.
+Request limits, bounded cooldown retries, explicit Run Queue restart behavior,
+recipe/session validation and inventory-gain confirmation remain as before.
+The pause counter is transient and is not part of saved presets or queue exports.
+
+Regressions cover old-low/new-high and old-high/new-low Top up stock, Make amount,
+Pause during the final reach/message callbacks, and Stop during those callbacks.
+The single-recipe path and actual Run Queue/Pause/Resume buttons are covered too.
+The stale Top up case failed on v180 before this change. Run the full suite;
+live Roblox behavior remains unverified here.
+
+Report headers now read `Reborn craft-resume-181`.

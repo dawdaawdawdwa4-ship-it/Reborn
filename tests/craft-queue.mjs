@@ -120,6 +120,63 @@ for _=1,10 do step() end
 assert(#trace==1 and RemoteCatalog.CraftQueueTotal==100 and RemoteCatalog.CraftPaused,'Pause must permit confirmation of the in-flight batch while holding the next request')
 RemoteCatalog.SetCraftEnabled(false);drain()
 assert(#trace==1 and not RemoteCatalog.CraftPaused and not RemoteCatalog.CraftWorker,'Stop from Pause must cancel the rest of the queue')
+-- Fast Pause/Resume must discard every pre-dispatch stock snapshot, even if Pause
+-- has already been switched OFF when a yielding read/check/UI refresh returns.
+do
+ local savedWait,savedReach,savedMessage=RemoteCatalog.WaitChestInventory,RemoteCatalog.CraftReachable,RemoteCatalog.CraftMessage
+ for _,case in ipairs({
+  {Stage='inventory',Before=0,After=95,Mode='Top up stock',Target=100,Requests=1,Last=5,Final=100},
+  {Stage='inventory',Before=100,After=0,Mode='Top up stock',Target=100,Requests=1,Last=100,Final=100},
+  {Stage='inventory',Before=0,After=50,Mode='Make amount',Target=250,Requests=3,Last=50,Final=300},
+  {Stage='reach',Before=0,After=95,Mode='Top up stock',Target=100,Requests=1,Last=5,Final=100},
+  {Stage='message',Before=0,After=95,Mode='Top up stock',Target=100,Requests=1,Last=5,Final=100},
+ }) do
+  reset();assert(add('bait',case.Target,case.Mode) and add('testRecipe'))
+  inventory.bait=case.Before
+  local blocked,checks=false,0
+  RemoteCatalog.WaitChestInventory=function(item,active,before)
+   if case.Stage=='inventory' and not blocked and before==nil then
+    blocked=true;local old=inventory[item] or 0;coroutine.yield('reading');return old
+   end
+   return savedWait(item,active,before)
+  end
+  RemoteCatalog.CraftReachable=function(bench)
+   checks+=1
+   if case.Stage=='reach' and checks==2 then blocked=true;coroutine.yield('checking reach') end
+   return savedReach(bench)
+  end
+  RemoteCatalog.CraftMessage=function(text)
+   savedMessage(text)
+   if case.Stage=='message' and not blocked and text:find('Crafting ',1,true)==1 then blocked=true;coroutine.yield('refreshing UI') end
+  end
+  assert(RemoteCatalog.SetCraftEnabled(true,true) and blocked and #trace==0)
+  local owner=RemoteCatalog.CraftWorker
+  assert(RemoteCatalog.SetCraftPaused(true));local epoch=RemoteCatalog.CraftPauseEpoch
+  assert(RemoteCatalog.SetCraftPaused(true) and RemoteCatalog.CraftPauseEpoch==epoch,'repeating Pause must not restart its epoch')
+  inventory.bait=case.After
+  assert(RemoteCatalog.SetCraftPaused(false) and RemoteCatalog.CraftWorker==owner)
+  drain()
+  assert(#trace==case.Requests+1 and trace[case.Requests].Item=='bait' and trace[case.Requests].Amount==case.Last and inventory.bait==case.Final,'Resume must refresh stock instead of duplicating/skipping quantities: '..case.Stage..' / '..case.Mode)
+  assert(RemoteCatalog.CraftQueueDone==2 and inventory.testRecipe==100,'the same queue must complete its next job once')
+  RemoteCatalog.WaitChestInventory,RemoteCatalog.CraftReachable,RemoteCatalog.CraftMessage=savedWait,savedReach,savedMessage
+ end
+ -- Stop while the last reach check or message refresh is pending must prevent dispatch.
+ for _,stage in ipairs({'reach','message'}) do
+  reset();assert(add('bait'));local checks,blocked=0,false
+  RemoteCatalog.CraftReachable=function(bench)
+   checks+=1;if stage=='reach' and checks==2 then blocked=true;coroutine.yield() end
+   return savedReach(bench)
+  end
+  RemoteCatalog.CraftMessage=function(text)
+   savedMessage(text)
+   if stage=='message' and not blocked and text:find('Crafting ',1,true)==1 then blocked=true;coroutine.yield() end
+  end
+  assert(RemoteCatalog.SetCraftEnabled(true,true) and blocked and #trace==0)
+  RemoteCatalog.SetCraftEnabled(false);drain()
+  assert(#trace==0 and RemoteCatalog.CraftQueueDone==0 and not RemoteCatalog.CraftWorker,'Stop must prevent the first request after a pending '..stage)
+  RemoteCatalog.CraftReachable,RemoteCatalog.CraftMessage=savedReach,savedMessage
+ end
+end
 -- Editing is descriptor-only, explicit and blocked through every active/IO state.
 reset();assert(add('bait',250) and add('testRecipe',100))
 assert(RemoteCatalog.SelectCraftQueueJob(1) and RemoteCatalog.CraftTarget==250 and RemoteCatalog.CraftItem=='bait' and #trace==0)

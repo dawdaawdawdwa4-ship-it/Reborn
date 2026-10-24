@@ -5875,7 +5875,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-restock-180",
+    return table.concat({"Reborn craft-resume-181",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -8019,7 +8019,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn build-restock-180 · Propeller loot history (UTC)",
+    return table.concat({"Reborn craft-resume-181 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -8123,7 +8123,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn build-restock-180 · Propeller tracker",
+    return table.concat({"Reborn craft-resume-181 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -8159,7 +8159,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-restock-180", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn craft-resume-181", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10980,7 +10980,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-restock-180\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn craft-resume-181\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -11042,7 +11042,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn build-restock-180 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn craft-resume-181 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11676,7 +11676,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-restock-180\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn craft-resume-181\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -11691,6 +11691,7 @@ RemoteCatalog.CraftBatch=100
 RemoteCatalog.CraftTarget=100
 RemoteCatalog.CraftQueue={}
 RemoteCatalog.CraftQueueRunning=false
+RemoteCatalog.CraftPauseEpoch=0
 function RemoteCatalog.CraftMessage(text)
     if RemoteCatalog.CraftPaused and RemoteCatalog.CraftWorker then text="Paused · "..text end
     if RemoteCatalog.CraftQueueRunning and RemoteCatalog.CraftQueueIndex then text="Queue "..RemoteCatalog.CraftQueueIndex.." / "..RemoteCatalog.CraftQueueRunSize.." · "..text end
@@ -12631,6 +12632,7 @@ end
 
 function RemoteCatalog.SetCraftPaused(state)
     if type(state)~="boolean" or not gui.Parent or not RemoteCatalog.CraftEnabled or not RemoteCatalog.CraftWorker then return false end
+    if state and not RemoteCatalog.CraftPaused then RemoteCatalog.CraftPauseEpoch+=1 end
     RemoteCatalog.CraftPaused=state
     RemoteCatalog.RefreshCraftUI()
     RemoteCatalog.CraftMessage(state and "Crafting held. Any in-flight confirmation may finish; no next request is sent." or "Resumed the current job and its confirmed progress.")
@@ -12704,6 +12706,7 @@ function RemoteCatalog.SetCraftEnabled(state,queued)
                 local function runRecipe()
                     while active() do
                         if not ready() then return end
+                        local pauseEpoch=RemoteCatalog.CraftPauseEpoch
                         local recorder,binding=runRecorder,runBinding
                         if not recorder:CanUseCraftBinding(binding) then outcome="Craft context changed · learn this recipe again.";return end
                         if RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy then
@@ -12712,23 +12715,29 @@ function RemoteCatalog.SetCraftEnabled(state,queued)
                             continue
                         end
                         local reachable,reason=RemoteCatalog.CraftReachable(binding.Workbench)
+                        if not active() then return end
+                        if RemoteCatalog.CraftPaused or RemoteCatalog.CraftPauseEpoch~=pauseEpoch then continue end
                         if not reachable then RemoteCatalog.CraftMessage(reason);if not waitFor(1) then return end;continue end
                         local before=RemoteCatalog.WaitChestInventory(item,active)
                         if not active() then return end
+                        if RemoteCatalog.CraftPaused or RemoteCatalog.CraftPauseEpoch~=pauseEpoch then continue end
                         if before==nil then outcome="Item quantity is unreadable · no craft sent.";return end
                         if not continuous and ((makeAmount and confirmed>=target) or (not makeAmount and before>=target)) then
                             outcome=makeAmount and ("Made +"..confirmed.." "..item.." this run · inventory "..before) or ("Stock target reached · "..before.." / "..target.." "..item..". Choose Make amount to craft extra items.")
                             completed=true;return
                         end
-                        -- Quantity replication or Pause may yield; check readiness, actor and reach again.
-                        -- A Pause here leaves `before` stale: start the step over with a fresh count.
-                        if RemoteCatalog.CraftPaused then if not ready() then return end;continue end
+                        -- A completed Pause/Resume cycle also invalidates `before`, even
+                        -- when the pause flag is already false as a pending callback returns.
                         if not ready() then return end
                         if not recorder:CanUseCraftBinding(binding) then outcome="Craft context changed · learn this recipe again.";return end
                         reachable,reason=RemoteCatalog.CraftReachable(binding.Workbench)
+                        if not active() then return end
+                        if RemoteCatalog.CraftPaused or RemoteCatalog.CraftPauseEpoch~=pauseEpoch then continue end
                         if not reachable then RemoteCatalog.CraftMessage(reason);if not waitFor(1) then return end;continue end
                         local amount=math.min(100,batch,continuous and batch or makeAmount and target-confirmed or target-before)
                         RemoteCatalog.CraftMessage("Crafting "..amount.." "..item.." · "..mode.." · +"..confirmed.." confirmed"..(continuous and " · until Stop" or makeAmount and (" / "..target.." extra") or (" · stock "..before.." / "..target)))
+                        if not active() then return end
+                        if RemoteCatalog.CraftPaused or RemoteCatalog.CraftPauseEpoch~=pauseEpoch then continue end
                         local sent,response
                         if RemoteCatalog.PropellerWindow then RemoteCatalog.PropellerWindow.Blocked=true end
                         if RemoteCatalog.PropellerPendingWindow then RemoteCatalog.PropellerPendingWindow.Blocked=true end
@@ -12797,7 +12806,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn build-restock-180 · Craft diagnostics",
+    return table.concat({"Reborn craft-resume-181 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12876,7 +12885,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn build-restock-180 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn craft-resume-181 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13613,7 +13622,7 @@ function RemoteCatalog.MobTrendText(score)
     return table.concat(spark).." "..table.concat(numbers," · ")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn build-restock-180 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn craft-resume-181 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13857,7 +13866,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn build-restock-180 · Mobs",
+    return table.concat({"Reborn craft-resume-181 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

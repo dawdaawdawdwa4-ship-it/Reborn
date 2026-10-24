@@ -1220,7 +1220,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-restock-180',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn craft-resume-181',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1921,6 +1921,26 @@ end)()
  assert(r.CraftQueueEditHint.Position.Y.Offset+r.CraftQueueEditHint.Size.Y.Offset<=r.CraftPresetSlotButton.Position.Y.Offset,'queue editing controls must fit above presets')
  r.CraftQueueRemoveButton.Activated:Fire();assert(#r.CraftQueue==1 and r.CraftQueue[1].Item=='testRecipe')
  r.CraftQueueClearButton.Activated:Fire();assert(#r.CraftQueue==0 and string.find(r.CraftQueueLabel.Text,'0 / 8',1,true))
+ ;(function()
+  local wait=r.WaitChestInventory
+  local blocked=false
+  stock.bait=0;trace={}
+  r.CraftQueue={{Item='bait',Mode='Top up stock',Batch=100,Target=100}}
+  r.CraftQueueChanged();r.RefreshCraftUI()
+  r.WaitChestInventory=function(name,active,before)
+   if not blocked and before==nil then blocked=true;local old=stock[name] or 0;coroutine.yield();return old end
+   return wait(name,active,before)
+  end
+  r.CraftQueueRunButton.Activated:Fire()
+  assert(blocked and #trace==0 and r.CraftWorker,'real Run Queue must be suspended before dispatch')
+  local owner=r.CraftWorker
+  r.CraftPauseButton.Activated:Fire();assert(r.CraftPaused and r.CraftPauseButton.Text=='RESUME CRAFTING')
+  stock.bait=95
+  r.CraftPauseButton.Activated:Fire();assert(not r.CraftPaused and r.CraftWorker==owner)
+  for _=1,20 do if not r.CraftWorker then break end;stepWorkers() end
+  assert(not r.CraftWorker and #trace==1 and stock.bait==100 and r.CraftQueueTotal==5 and r.CraftQueueDone==1,'real Pause/Resume controls must refresh the top-up deficit and keep exactly one job/worker')
+  r.WaitChestInventory=wait;r.CraftQueue={};r.CraftQueueChanged();r.RefreshCraftUI()
+ end)()
  r.CraftRecorder,r.CarrotCount,r.CraftReachable=lookup,count,reach
  r.CraftItem,r.CraftMode,r.CraftBatch,r.CraftTarget=item,mode,batch,target;r.RefreshCraftUI()
  end)()
@@ -1962,7 +1982,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-restock-180 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn craft-resume-181 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
