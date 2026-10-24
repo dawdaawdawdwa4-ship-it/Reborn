@@ -230,7 +230,7 @@ function player.Character:GetChildren() return {} end
 function player.Character:FindFirstChildOfClass(cls) if cls=='Humanoid' then return {} end end
 local requestedName, gameBody, response
 require=function(module)
- if module==inventoryDataModule then return {InventoryService={getPlayerInventory=function() return {allTools={hiddenAxe,hiddenSeed,hiddenAxe}} end}} end
+ if module==inventoryDataModule then return {InventoryService={getPlayerInventory=function(self,who) assert(who==player or self==player,'the inventory service is called with the player as a plain or method argument');return {allTools={hiddenAxe,hiddenSeed,hiddenAxe}} end}} end
  if module==inventoryModule then return {ClientInventoryService=inventory} end
  if module==toolModule then return {ToolMeta={blueFlowerSeeds={cropSeed={cropName='blueFlowers'}}}} end
  return {Requests={Client={Get=function(_,name)

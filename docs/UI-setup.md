@@ -4273,3 +4273,21 @@ Keybinds, Rejoin, Anti-AFK, profiles and cleanup, with fixes and tests.
 - **A plow click whose release failed** is retried on Stop and on hub close.
 
 Report headers now read `Reborn review-170`.
+
+## Crafting review · v171
+
+Independent review of the Crafting code: no severe defect; four small ones
+fixed with tests.
+
+- **An explicit recipe choice wins.** Picking a recipe right after learning
+  another could be overwritten by the learned one within a second; the recipe
+  dropdown now settles learning before applying the choice.
+- **Pause during the quantity wait** restarts the step with a fresh count
+  instead of confirming against a stale one.
+- **Foreign recorders are data.** Another script's recorder with junk craft
+  bindings no longer ends the dashboard loop; the craft refresh is protected
+  and only string names with table bindings are listed.
+- **Inventory service call** tries the instance-method form when the plain
+  call fails, so service-held stacks are counted.
+
+Report headers now read `Reborn review-171`.

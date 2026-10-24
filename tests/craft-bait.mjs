@@ -143,6 +143,11 @@ RemoteCatalog.CraftItem='testRecipe'
 local found,selected=RemoteCatalog.CraftRecorder()
 assert(found==external and selected==externalBinding,'valid independent recipe must remain discoverable when another recipe remote has expired')
 assert(table.find(RemoteCatalog.CraftRecipes(),'testRecipe'),'dynamic recipe list must include usable external recordings')
+-- A foreign recorder with junk bindings is data, never a crash of the recipe list.
+external.CraftBindings[7]={Valid=true};external.CraftBindings.broken='not a table'
+local junkOk,junkList=pcall(RemoteCatalog.CraftRecipes)
+assert(junkOk and table.find(junkList,'testRecipe') and not table.find(junkList,7) and not table.find(junkList,'broken'),'non-string names and non-table bindings from another script are ignored')
+external.CraftBindings[7]=nil;external.CraftBindings.broken=nil
 getgenv=nil
 reset();RemoteCatalog.CraftMode='Continuous';inventory=3770
 assert(RemoteCatalog.SetCraftEnabled(true))
