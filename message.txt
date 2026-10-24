@@ -3432,6 +3432,7 @@ function AutoBuild.new(ctx)
         local minimumGap=self.BuildSpeed=="Fast" and .05 or .2
         local gap,successes=minimumGap,0
         self.CurrentBuildGap=gap;self.BuildCooldowns=0;self.WaitingMaterial=nil;self.Paused=false;self.RequestPending=false
+        self.StockHint=nil;self.StockCheckedAt=nil;self.StockMaterial=nil
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
@@ -3480,13 +3481,27 @@ function AutoBuild.new(ctx)
                 progress.State="Waiting for materials"
                 progress.WaitReason="Material: "..cell.Material
                 -- Where to restock: the island's chests are read every two seconds while waiting.
-                if type(ctx.MaterialStock)=="function" and (not self.StockCheckedAt or now()-self.StockCheckedAt>=2) then
+                if type(ctx.MaterialStock)=="function" and (self.StockMaterial~=cell.Material or not self.StockCheckedAt or now()-self.StockCheckedAt>=2) then
+                    local ok,total,nearest,unreadable=pcall(ctx.MaterialStock,cell.Material)
+                    if not active() then return false end
+                    if self.PauseEpoch~=epoch then continue end
+                    self.StockMaterial=cell.Material
                     self.StockCheckedAt=now()
-                    local ok,total,nearest=pcall(ctx.MaterialStock,cell.Material)
-                    if ok and type(total)=="number" then
-                        self.StockHint=total>0 and string.format(" · chests hold %d%s",total,type(nearest)=="number" and string.format(" (nearest %d studs away)",math.floor(nearest+.5)) or "") or " · no chest on the island holds it"
-                    else self.StockHint=nil end
+                    local function whole(value)
+                        return type(value)=="number" and value>=0 and value%1==0 and value<=9007199254740991
+                    end
+                    unreadable=unreadable==nil and 0 or unreadable
+                    if not ok or not whole(total) or not whole(unreadable) then self.StockHint=" · chest stock unavailable"
+                    elseif total>0 then
+                        local distance=type(nearest)=="number" and nearest>=0 and nearest<=9007199254740991
+                            and string.format(" (nearest %d studs away)",math.floor(nearest+.5)) or ""
+                        self.StockHint=unreadable>0
+                            and string.format(" · readable chests hold at least %d%s · %d unreadable",total,distance,unreadable)
+                            or string.format(" · chests hold %d%s",total,distance)
+                    elseif unreadable>0 then self.StockHint=string.format(" · chest stock unknown (%d unreadable); check chests manually",unreadable)
+                    else self.StockHint=" · no chest on the island holds it" end
                 end
+                progress.WaitReason="Material: "..cell.Material..(self.StockHint or "")
                 status("Waiting for "..cell.Material.." · block "..index.."/"..#cells
                     ..(valid and " · inventory is empty. Restock to continue, or press Stop." or " · waiting for a readable quantity after empty stock. Stop cancels.")..(self.StockHint or ""))
                 scheduler.wait(.25)
@@ -5496,9 +5511,10 @@ local buildController = AutoBuild.new({
     ItemCount = function(item) return RemoteCatalog.CarrotCount and RemoteCatalog.CarrotCount(item) end,
     -- How much of a material the island's chests hold, and how far the nearest such chest is.
     MaterialStock = function(material)
-        local items=RemoteCatalog.ChestContents()
+        if not RemoteCatalog.BuildIslandBlocks() then return nil end
+        local items,_,unreadable=RemoteCatalog.ChestContents()
         local entry=items[material]
-        if not entry then return 0 end
+        if not entry then return 0,nil,unreadable end
         local char=player.Character
         local root=char and char:FindFirstChild("HumanoidRootPart")
         local nearest
@@ -5508,7 +5524,7 @@ local buildController = AutoBuild.new({
                 if ok and type(distance)=="number" and (not nearest or distance<nearest) then nearest=distance end
             end
         end
-        return entry.Total,nearest
+        return entry.Total,nearest,unreadable
     end,
     OnPlaced = function(count) RemoteCatalog.LifetimeAdd("Blocks",count) end,
     CopyReport = function(report) return RemoteCatalog.CopyBuildReport(report) end,
@@ -5859,7 +5875,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn build-time-179",
+    return table.concat({"Reborn build-restock-180",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -8003,7 +8019,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn build-time-179 · Propeller loot history (UTC)",
+    return table.concat({"Reborn build-restock-180 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -8107,7 +8123,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn build-time-179 · Propeller tracker",
+    return table.concat({"Reborn build-restock-180 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -8143,7 +8159,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn build-time-179", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn build-restock-180", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10964,7 +10980,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn build-time-179\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn build-restock-180\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -11026,7 +11042,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn build-time-179 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn build-restock-180 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11660,7 +11676,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn build-time-179\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn build-restock-180\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12781,7 +12797,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn build-time-179 · Craft diagnostics",
+    return table.concat({"Reborn build-restock-180 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12860,7 +12876,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn build-time-179 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn build-restock-180 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13597,7 +13613,7 @@ function RemoteCatalog.MobTrendText(score)
     return table.concat(spark).." "..table.concat(numbers," · ")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn build-time-179 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn build-restock-180 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13841,7 +13857,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn build-time-179 · Mobs",
+    return table.concat({"Reborn build-restock-180 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

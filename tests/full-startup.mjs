@@ -1220,7 +1220,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn build-time-179',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-restock-180',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1962,7 +1962,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn build-time-179 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-restock-180 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2549,10 +2549,12 @@ end)()
 
 ;(function()
  local b,r=buildController,RemoteCatalog
- local saved={Count=r.CarrotCount,Cache=r.ModuleCache,Cells=b.Cells,Layer=b.LayerIndex,Character=player.Character,Failures=b.Failures,Progress=b.Progress,History=b.History,Speed=b.BuildSpeed}
+ local saved={Count=r.CarrotCount,Cache=r.ModuleCache,Cells=b.Cells,Layer=b.LayerIndex,Character=player.Character,Failures=b.Failures,Progress=b.Progress,History=b.History,Speed=b.BuildSpeed,ChestContents=r.ChestContents,IslandBlocks=r.BuildIslandBlocks}
  local world,stock,requests={},0,0
  local function pos(x) return setmetatable({X=x,Y=0,Z=0},{__sub=function(a,c) return {Magnitude=math.abs(a.X-c.X)} end}) end
  r.CarrotCount=function(item) assert(item=='grass');return stock end
+ r.BuildIslandBlocks=function() return {GetChildren=function() return {} end} end
+ r.ChestContents=function() return {},{},2 end
  r.ModuleCache={
   ['ReplicatedStorage.TS.network.requests']={Requests={Client={Get=function() return {CallServer=function(_,body)
    assert(stock>0,'known empty stock must never reach the game endpoint')
@@ -2567,6 +2569,7 @@ end)()
  showTab('Auto Build');flush();b.Buttons.Start.Activated:Fire()
  local owner=b.WorkerToken
  assert(b.Running and owner and requests==0 and b.Buttons.Start.Text=='Restock · 0/3' and b.WaitingMaterial=='grass','native Start must stay ON at empty stock and display restock in the primary button')
+ assert(b.Status.Text:find('stock unknown',1,true) and b.Status.Text:find('2 unreadable',1,true) and not b.Status.Text:find('no chest on',1,true),'native stock adapter must retain unreadable-chest metadata instead of claiming no material exists')
  assert(not b.Buttons.Start.Active and b.Buttons.Stop.Active and b.Buttons.Pause.Active and not b.ProgressSegments.Placed.Visible,'native live buttons and empty progress must match the restock state')
  for _=1,3 do stepWorkers() end
  assert(requests==0 and b.Progress.Failed==0 and b.WorkerToken==owner,'waiting cannot generate failures or replacement workers')
@@ -2589,6 +2592,7 @@ end)()
  stock=10;stepWorkers()
  assert(requests==3 and not b.WorkerToken and not b.WaitingMaterial and not b.Paused and not b.Buttons.Pause.Active,'actual Stop must cancel a paused restock wait before late stock arrives')
  r.CarrotCount,r.ModuleCache,b.Cells,b.LayerIndex,player.Character,b.Failures,b.Progress,b.History=saved.Count,saved.Cache,saved.Cells,saved.Layer,saved.Character,saved.Failures,saved.Progress,saved.History
+ r.ChestContents=saved.ChestContents;r.BuildIslandBlocks=saved.IslandBlocks
  b:SetBuildSpeed(saved.Speed)
 end)()
 

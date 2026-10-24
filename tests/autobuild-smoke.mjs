@@ -1322,6 +1322,57 @@ end)()
  b:Start();owner=b.WorkerToken;assert(f.Walks==1 and f.Calls==0)
  b:SetPaused(true);b:SetPaused(false);f:Drain()
  assert(f.Walks==2 and f.Calls==2 and b.Progress.Placed==2 and #b.History==1,'Resume must recheck a cancelled old path in the same run')
+ -- Chest hints belong to one material and run, never to the previous restock.
+ f,options=fixture(0);b=f.Value
+ local inventory={grass=0,stone=0};local queries={}
+ b.Cells[2].Material='stone'
+ options.ItemCount=function(material) return inventory[material] end
+ options.MaterialStock=function(material) table.insert(queries,material);return material=='grass' and 40 or 0,12 end
+ options.Place=function(body) f.Calls+=1;f.World[body.cframe.Position]=true;inventory[body.blockType]-=1;return true end
+ b:Start();assert(b.Status.Text:find('chests hold 40',1,true))
+ inventory.grass=1;f:Step();f:Step()
+ assert(f.Clock<2 and queries[1]=='grass' and queries[2]=='stone' and #queries==2,'a material change must refresh immediately even inside the two-second cache window')
+ assert(b.Status.Text:find('Waiting for stone',1,true) and not b.Status.Text:find('chests hold 40',1,true),'stone cannot reuse the grass stock hint')
+ b:Stop();f:Drain()
+ f,options=fixture(0);b=f.Value;local total,calls=40,0
+ options.MaterialStock=function() calls+=1;return total,12 end
+ b:Start();b:Stop();f:Drain();total=9
+ b:Start();assert(calls==2 and b.Status.Text:find('chests hold 9',1,true),'a fresh run must not reuse an old chest snapshot for the same material')
+ b:Stop();f:Drain()
+ for _,case in ipairs({{0,2,'stock unknown'},{40,2,'at least 40'},{0,0,'no chest on the island holds it'}}) do
+  f,options=fixture(0);b=f.Value
+  options.MaterialStock=function() return case[1],12,case[2] end
+  b:Start();assert(b.Running and f.Calls==0 and b.Status.Text:find(case[3],1,true),'partial and complete chest reads must be distinguished')
+  if case[2]>0 then assert(b.Status.Text:find('unreadable',1,true) and not b.Status.Text:find('no chest on',1,true)) end
+  b:Stop();f:Drain()
+ end
+ for _,bad in ipairs({-1,math.huge,0/0,1.5,'40'}) do
+  f,options=fixture(0);b=f.Value;options.MaterialStock=function() return bad end
+  b:Start();assert(b.Running and f.Calls==0 and b.Status.Text:find('stock unavailable',1,true),'invalid chest totals cannot crash the wait or imply empty stock')
+  b:Stop();f:Drain()
+ end
+ for _,distance in ipairs({math.huge,1e300,0/0,-1}) do
+  f,options=fixture(0);b=f.Value;options.MaterialStock=function() return 40,distance end
+  b:Start();assert(b.Status.Text:find('chests hold 40',1,true) and not b.Status.Text:find('nearest',1,true),'unreadable distances must not invalidate readable item totals')
+  b:Stop();f:Drain()
+ end
+ -- A slow read is cached from completion and cannot publish after Stop or across Pause.
+ f,options=fixture(0);b=f.Value;calls=0
+ options.MaterialStock=function() calls+=1;if calls==1 then coroutine.yield() end;return 40,12 end
+ b:Start();f.Clock+=5;f:Step();f:Step();f:Step()
+ assert(calls==1,'slow reads must get a full two-second cache window after completion')
+ f.Clock+=2;f:Step();assert(calls==2);b:Stop();f:Drain()
+ f,options=fixture(0);b=f.Value
+ options.MaterialStock=function() coroutine.yield();return 40,12 end
+ b:Start();b:Stop();f:Drain()
+ assert(not b.StockHint and not b.StockCheckedAt and f.Calls==0 and b.Status.Text:find('Stopped',1,true),'a late read cannot replace the stopped status or publish a cache entry')
+ f,options=fixture(0);b=f.Value;calls=0
+ options.MaterialStock=function() calls+=1;if calls==1 then coroutine.yield();return 40,12 end;return 9,4 end
+ b:Start();b:SetPaused(true);f:Step()
+ assert(not b.StockHint and calls==1 and f.Calls==0,'Pause during a read must discard the old result')
+ b:SetPaused(false);f:Step()
+ assert(calls==2 and b.Status.Text:find('chests hold 9',1,true),'Resume must obtain a new chest snapshot')
+ b:Stop();f:Drain()
 end)()
 ;(function()
  local fields={'Place','ItemCount','CopyReport','Alive'}

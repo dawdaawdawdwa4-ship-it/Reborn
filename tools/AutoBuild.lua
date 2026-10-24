@@ -888,6 +888,7 @@ function AutoBuild.new(ctx)
         local minimumGap=self.BuildSpeed=="Fast" and .05 or .2
         local gap,successes=minimumGap,0
         self.CurrentBuildGap=gap;self.BuildCooldowns=0;self.WaitingMaterial=nil;self.Paused=false;self.RequestPending=false
+        self.StockHint=nil;self.StockCheckedAt=nil;self.StockMaterial=nil
         self.Token+=1
         local token=self.Token
         self.WorkerToken=token
@@ -936,13 +937,27 @@ function AutoBuild.new(ctx)
                 progress.State="Waiting for materials"
                 progress.WaitReason="Material: "..cell.Material
                 -- Where to restock: the island's chests are read every two seconds while waiting.
-                if type(ctx.MaterialStock)=="function" and (not self.StockCheckedAt or now()-self.StockCheckedAt>=2) then
+                if type(ctx.MaterialStock)=="function" and (self.StockMaterial~=cell.Material or not self.StockCheckedAt or now()-self.StockCheckedAt>=2) then
+                    local ok,total,nearest,unreadable=pcall(ctx.MaterialStock,cell.Material)
+                    if not active() then return false end
+                    if self.PauseEpoch~=epoch then continue end
+                    self.StockMaterial=cell.Material
                     self.StockCheckedAt=now()
-                    local ok,total,nearest=pcall(ctx.MaterialStock,cell.Material)
-                    if ok and type(total)=="number" then
-                        self.StockHint=total>0 and string.format(" · chests hold %d%s",total,type(nearest)=="number" and string.format(" (nearest %d studs away)",math.floor(nearest+.5)) or "") or " · no chest on the island holds it"
-                    else self.StockHint=nil end
+                    local function whole(value)
+                        return type(value)=="number" and value>=0 and value%1==0 and value<=9007199254740991
+                    end
+                    unreadable=unreadable==nil and 0 or unreadable
+                    if not ok or not whole(total) or not whole(unreadable) then self.StockHint=" · chest stock unavailable"
+                    elseif total>0 then
+                        local distance=type(nearest)=="number" and nearest>=0 and nearest<=9007199254740991
+                            and string.format(" (nearest %d studs away)",math.floor(nearest+.5)) or ""
+                        self.StockHint=unreadable>0
+                            and string.format(" · readable chests hold at least %d%s · %d unreadable",total,distance,unreadable)
+                            or string.format(" · chests hold %d%s",total,distance)
+                    elseif unreadable>0 then self.StockHint=string.format(" · chest stock unknown (%d unreadable); check chests manually",unreadable)
+                    else self.StockHint=" · no chest on the island holds it" end
                 end
+                progress.WaitReason="Material: "..cell.Material..(self.StockHint or "")
                 status("Waiting for "..cell.Material.." · block "..index.."/"..#cells
                     ..(valid and " · inventory is empty. Restock to continue, or press Stop." or " · waiting for a readable quantity after empty stock. Stop cancels.")..(self.StockHint or ""))
                 scheduler.wait(.25)

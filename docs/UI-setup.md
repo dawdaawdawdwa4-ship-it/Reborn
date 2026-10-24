@@ -4465,3 +4465,36 @@ request. Live and historical timing must agree. The full suite remains required;
 Roblox behavior has not been verified live here.
 
 Report headers now read `Reborn build-time-179`.
+
+
+## Auto Build restock hints follow the current material · v180
+
+When a build quickly changed from waiting for grass to waiting for stone, the
+shared two-second cache could still show the grass chest quantity beside the
+stone wait. The hint is now keyed by material, reset for every new run, and
+refreshed immediately on a material change. Repeated reads for the same current
+material stay limited to one every two seconds, measured from completion of the
+last read so a slow read cannot immediately trigger another one.
+
+The native stock adapter now retains the chest reader's unreadable-folder count.
+A positive partial result says readable chests hold **at least** the observed
+amount; zero observed stock with unreadable chests is **unknown**, not proof that
+no chest holds the item. An unavailable island or failed/invalid stock read is
+reported as unavailable. Invalid distances are omitted without discarding a valid
+item quantity. History retains the wait detail and its hint; live diagnostics
+include the hint in the current waiting status.
+These are read-only hints: chest stock never authorizes a placement or starts a
+withdrawal. Existing inventory and placement checks still govern the worker.
+
+An asynchronous stock result is discarded after Stop or a changed Pause epoch.
+It cannot replace the stopped/paused status or publish a cache entry for the old
+wait. Resume gets a new snapshot. No additional placement or inventory transfer
+is sent by these checks.
+
+Regression tests cover different materials inside the cache window, a new run on
+the same material, partial/complete/unavailable reads, invalid amounts/distances,
+slow-read throttling and Stop/Pause during a read. The material-change regression
+failed on v179. Full-startup tests also exercise the actual adapter with two
+unreadable chests. Run the full suite; live Roblox behavior remains unverified.
+
+Report headers now read `Reborn build-restock-180`.
