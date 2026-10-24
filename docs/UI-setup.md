@@ -4410,3 +4410,27 @@ Report headers now read `Reborn rates-176`.
   stopped or done). **Lifetime totals** count confirmed blocks.
 
 Report headers now read `Reborn build-177`.
+
+
+## Mob Stop across pending callbacks and requests · v178
+
+Continues `claude/modest-edison-udoc13` from v177. The existing mouse aiming,
+learned hits, multi-hit, movement, tuning, scoreboard and Auto Build features are
+retained.
+
+A Stop during a yielding aim callback could still be followed by a click. A Stop
+while the learned-hit readiness probe or a hit request was waiting could also
+allow the old swing to enable packet mode, update packet counters or send more
+multi-hit requests after it resumed. The swing now rechecks its owning run after
+aiming, after readiness, after the primary request, and before/after each extra
+request. If cancelled, it returns without further dispatch or late progress.
+The already-issued request cannot be recalled; the fix prevents subsequent calls
+and prevents its late completion from changing the stopped run's counters.
+
+The regression covers cancellation during aim, readiness, the primary hit and
+an extra hit, using the real mob worker and suspended callbacks. It verifies no
+post-Stop click or packet, no late hit-counter updates and worker/input cleanup.
+The aim case failed on v177 before the fix. Run the full suite, including the
+existing v177 feature tests. Live Roblox behavior remains unverified here.
+
+Report headers now read `Reborn mob-stop-178`.

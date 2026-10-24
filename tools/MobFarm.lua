@@ -152,6 +152,7 @@ function MobFarm.new(ctx)
             local aimed,ax,ay,note=pcall(ctx.Aim,target)
             if aimed and ax and ay then x,y,aimNote=ax,ay,note else aimReason=aimed and ay or ax end
         end
+        if not active() then return false,"Swing cancelled" end
         local press={Tool=tool}
         if x then press.Release=function() return ctx.Click(x,y,false) end end
         self.Press=press
@@ -174,13 +175,17 @@ function MobFarm.new(ctx)
         -- A packet known to be ready (learned on this server, auto-learned from our own swing or
         -- remembered by its stable definition) follows every click; otherwise it is the escalation
         -- after clicks produced no confirmed hit.
-        if not self.UseLearnedHit and not self.LearnedHitRejected and target and ctx.LearnedHit and ctx.LearnedHitReady and ctx.LearnedHitReady() then
+        if not self.UseLearnedHit and not self.LearnedHitRejected and target and ctx.LearnedHit and ctx.LearnedHitReady then
+            local ready=ctx.LearnedHitReady()
+            if not active() then return false,"Swing cancelled" end
             -- Start the packet from the far end of its probe: out there a click cannot land, so an
             -- accepted packet is the only hit and the character is outside the mob's contact range.
-            self.UseLearnedHit=true;self.PacketKeep=self.PacketReach;self.PacketMisses=0
+            if ready then self.UseLearnedHit=true;self.PacketKeep=self.PacketReach;self.PacketMisses=0 end
         end
         if self.UseLearnedHit and target and ctx.LearnedHit then
+            if not active() then return false,"Swing cancelled" end
             local sent,detail=ctx.LearnedHit(target.Model)
+            if not active() then return false,"Swing cancelled" end
             local text=ctx.DescribeResult and ctx.DescribeResult(detail) or tostring(detail)
             if sent then
                 self.LearnedHits=(self.LearnedHits or 0)+1;self.PacketMisses=0
@@ -213,10 +218,12 @@ function MobFarm.new(ctx)
                 local range=math.max(self.Reach,self.AttackRange or 0)
                 local extras=0
                 for _,other in ipairs(root and self:Scan(nil,range) or {}) do
+                    if not active() then return false,"Swing cancelled" end
                     if extras>=3 then break end
                     if other.Model~=target.Model and math.abs((other.Root.Position.Y or 0)-(root.Position.Y or 0))<=2 then
                         extras+=1
                         local ok2=ctx.LearnedHit(other.Model)
+                        if not active() then return false,"Swing cancelled" end
                         if ok2 then self.MultiHits=(self.MultiHits or 0)+1 else self.MultiHitRejections=(self.MultiHitRejections or 0)+1 end
                     end
                 end

@@ -312,6 +312,41 @@ do
  step(.7);step(.7);assert(farm.PacketKeep==8 and farm.PacketAcceptedAt==8 and math.abs(ar.Position.X-root.Position.X-8)<1e-6,'an accepted packet holds the new distance')
  ctx.LearnedHitReady=nil;ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
 end
+-- Stop is checked after callbacks that can yield, before any further input or hit packet.
+do
+ for _,stage in ipairs({'aim','ready','primary','extra'}) do
+  reset();damage=false;farm.Walk=false;farm.HitAndRun=false
+  local packets,clicks={},{}
+  local extra=actor('slimeYellow',5.5,nested);br.Position=v(5)
+  ctx.Aim=function()
+   if stage=='aim' then scheduler.wait(.1) end
+   return 50,50
+  end
+  ctx.Click=function(_,_,down) table.insert(clicks,down and 'down' or 'up');return true end
+  ctx.LearnedHitReady=function()
+   if stage=='ready' then scheduler.wait(.1) end
+   return true
+  end
+  ctx.LearnedHit=function(model)
+   table.insert(packets,model)
+   if stage=='primary' or stage=='extra' and #packets==2 then scheduler.wait(.1) end
+   return true
+  end
+  farm:Start()
+  local before=#packets
+  if stage=='aim' or stage=='ready' then assert(before==0)
+  elseif stage=='primary' then assert(before==1)
+  else assert(before==2) end
+  farm:Stop();step()
+  assert(not farm.Worker and not farm.Press and farm.Swings==0,'cancelled swing must release ownership without recording late progress: '..stage)
+  assert(#packets==before,'Stop must prevent every subsequent learned hit: '..stage)
+  if stage=='aim' then assert(#clicks==0,'Stop during aiming must prevent the initial click') end
+  if stage=='ready' then assert(not farm.UseLearnedHit,'an old readiness result must not enable packet mode after Stop') end
+  assert((farm.LearnedHits or 0)==(stage=='extra' and 1 or 0) and (farm.MultiHits or 0)==0,'post-Stop request completions cannot update hit counters: '..stage)
+  extra.Parent=nil
+  ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHitReady=nil;ctx.LearnedHit=nil
+ end
+end
 -- Smart mode: isolated targets, the free side of the crowd, the mob's jump rhythm and a self-tuned distance.
 do
  -- Target scoring: a slime with a mob beside it costs 5 studs per neighbour; a lone one 9 studs away wins over a crowded one 4 studs away.
