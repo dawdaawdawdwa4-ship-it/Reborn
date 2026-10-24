@@ -4366,3 +4366,22 @@ Report headers now read `Reborn guard-174`.
   down so the Chest-contents button no longer sits on top of Copy all reports.
 
 Report headers now read `Reborn goals-175`.
+
+## Rates, corner stats, craft food · v176
+
+- **Scoreboard rates.** The Mobs scoreboard adds "Per hour (all runs)" (kills,
+  loot, HP taken, once a minute has been farmed) and a kills/min trend over
+  the last eight finished runs of at least 30 s, drawn as a sparkline with the
+  numbers (oldest → newest). The recent runs are saved with the scoreboard
+  (`MobScore.Recent`) and validated on load; Reset clears them.
+- **Corner stats.** The small stats overlay gains "Mobs" (kills, kills/min
+  after 30 s, "stopped" when the run ended, "off" before any run) and "Mobs HP
+  / goal" (character HP in percent and the kill goal progress). The overlay
+  grew to fit the two rows.
+- **Craft food for Auto eat.** When Auto eat finds no food, the farm crafts
+  one portion from a learned food recipe (Crafting tab, any recipe whose name
+  matches the food words, bait excluded) if its workbench is in reach, then
+  eats it. The Auto eat status names why nothing was crafted (workbench out of
+  reach, craft rejected, no learned food recipe).
+
+Report headers now read `Reborn rates-176`.

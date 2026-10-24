@@ -5522,7 +5522,7 @@ local statsOverlay = Instance.new("Frame")
 statsOverlay.Name = "CornerStats"
 statsOverlay.AnchorPoint = Vector2.new(1, 0)
 statsOverlay.Position = UDim2.new(1, -14, 0, 14)
-statsOverlay.Size = UDim2.fromOffset(300, 286)
+statsOverlay.Size = UDim2.fromOffset(300, 334)
 statsOverlay.BackgroundColor3 = COLORS.bg
 statsOverlay.BackgroundTransparency = 0.08
 statsOverlay.BorderSizePixel = 0
@@ -5576,7 +5576,7 @@ end))
 local statsOverlayText = Instance.new("Frame")
 statsOverlayText.Name = "StatsContent"
 statsOverlayText.BackgroundTransparency = 1
-statsOverlayText.Size = UDim2.new(1, -24, 0, 242)
+statsOverlayText.Size = UDim2.new(1, -24, 0, 290)
 statsOverlayText.Position = UDim2.fromOffset(12, 34)
 statsOverlayText.Parent = statsOverlay
 local overlayValues, overlayTitles, overlayLabels = {}, {}, {}
@@ -5610,6 +5610,8 @@ overlayRow("harvests", "Harvests", 142)
 overlayRow("bait", "Bait", 166)
 overlayRow("propellers", "Propellers found", 190)
 overlayRow("propellerLast", "Last propeller", 214)
+overlayRow("mobs", "Mobs", 238)
+overlayRow("mobsHp", "Mobs HP / goal", 262)
 
 local overlayToggle = Instance.new("TextButton")
 overlayToggle.Name = "HideStats"
@@ -5625,7 +5627,7 @@ local overlayExpanded = true
 overlayToggle.Activated:Connect(function()
     overlayExpanded = not overlayExpanded
     statsOverlayText.Visible = overlayExpanded
-    statsOverlay.Size = overlayExpanded and UDim2.fromOffset(300, 286) or UDim2.fromOffset(300, 32)
+    statsOverlay.Size = overlayExpanded and UDim2.fromOffset(300, 334) or UDim2.fromOffset(300, 32)
     overlayToggle.Text = overlayExpanded and "−" or "+"
 end)
 
@@ -5689,7 +5691,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn goals-175",
+    return table.concat({"Reborn rates-176",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7120,6 +7122,18 @@ function RemoteCatalog.UpdateDashboard()
     if seen~=nil and activeNow>seen then RemoteCatalog.LifetimeAdd("Seconds",activeNow-seen) end
     RemoteCatalog.LifetimeActiveSeen=activeNow
     if RemoteCatalog.LifetimeLabel then RemoteCatalog.LifetimeLabel.Text=RemoteCatalog.LifetimeText() end
+    -- Corner stats: the mob farm's kills, rate, HP and goal at a glance.
+    if overlayValues.mobs and RemoteCatalog.Mobs then
+        local farm=RemoteCatalog.Mobs
+        local kills=(farm.Defeats or 0)+(farm.LikelyDefeats or 0)
+        local seconds=tonumber(farm:RunTime()) or 0
+        overlayValues.mobs.Text=not farm.StartedAt and "off" or (kills.." kills"..(seconds>=30 and string.format(" · %.1f/min",kills*60/seconds) or "")..(farm.Enabled and "" or " · stopped"))
+        local char=player.Character
+        local okHuman,human=pcall(function() return char and char:FindFirstChildOfClass("Humanoid") end)
+        if not okHuman then human=nil end
+        local goal=RemoteCatalog.ModeGoals and RemoteCatalog.ModeGoals.mobs
+        overlayValues.mobsHp.Text=(human and (tonumber(human.MaxHealth) or 0)>0 and ("HP "..math.floor((tonumber(human.Health) or 0)/human.MaxHealth*100+.5).."%") or "HP –")..(goal and goal.Limit and (" · goal "..goal.Progress.."/"..goal.Limit) or "")
+    end
     RemoteCatalog.StopTimerButton.Text=remaining and "Cancel stop timer" or "Start stop timer"
     RemoteCatalog.StopTimerButton.BackgroundColor3=remaining and COLORS.on or COLORS.off
     RemoteCatalog.StopTimerHint.Text=remaining and ("Stops all automation in "..math.floor(remaining/60)..":"..string.format("%02d",remaining%60)..". Cancel to keep playing.")
@@ -7810,7 +7824,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn goals-175 · Propeller loot history (UTC)",
+    return table.concat({"Reborn rates-176 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7914,7 +7928,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn goals-175 · Propeller tracker",
+    return table.concat({"Reborn rates-176 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7950,7 +7964,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn goals-175", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn rates-176", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10771,7 +10785,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn goals-175\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn rates-176\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10833,7 +10847,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn goals-175 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn rates-176 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11467,7 +11481,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn goals-175\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn rates-176\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12588,7 +12602,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn goals-175 · Craft diagnostics",
+    return table.concat({"Reborn rates-176 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12667,7 +12681,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn goals-175 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn rates-176 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13305,6 +13319,17 @@ function RemoteCatalog.ValidMobScore(data)
     score.LootByName=RemoteCatalog.CountTable(type(data)=="table" and data.LootByName)
     local last=type(data)=="table" and type(data.Last)=="string" and data.Last
     score.Last=last and last:sub(1,200) or nil
+    -- The last eight runs, newest first, for the trend line.
+    score.Recent={}
+    local recent=type(data)=="table" and data.Recent
+    if type(recent)=="table" then
+        for _,entry in ipairs(recent) do
+            if #score.Recent>=8 then break end
+            if type(entry)=="table" and type(entry.Kills)=="number" and type(entry.Loot)=="number" and type(entry.Seconds)=="number" and entry.Seconds>=30 and entry.Seconds<1e7 then
+                table.insert(score.Recent,{Kills=math.max(0,math.floor(entry.Kills)),Loot=math.max(0,math.floor(entry.Loot)),Seconds=entry.Seconds})
+            end
+        end
+    end
     return score
 end
 function RemoteCatalog.MobScore()
@@ -13338,6 +13363,11 @@ function RemoteCatalog.RecordMobRun(farm)
     for name,count in pairs(farm.KillsByName or {}) do score.KillsByName[name]=(score.KillsByName[name] or 0)+count end
     for name,count in pairs(farm.LootByName or {}) do score.LootByName[name]=(score.LootByName[name] or 0)+count end
     score.Last=string.format("%d kills · %d loot · %d swings · %d:%02d · %d HP taken%s",kills,farm.Loot or 0,farm.Swings or 0,math.floor(seconds/60),math.floor(seconds%60),math.floor((farm.DamageTaken or 0)+.5),(farm.Deaths or 0)>0 and " · died" or "")
+    score.Recent=score.Recent or {}
+    if seconds>=30 then
+        table.insert(score.Recent,1,{Kills=kills,Loot=farm.Loot or 0,Seconds=seconds})
+        while #score.Recent>8 do table.remove(score.Recent) end
+    end
     savePreferences()
     return true
 end
@@ -13365,12 +13395,30 @@ function RemoteCatalog.MobScoreText()
         string.format("Swings %d · hits %d (%d%%) · packets %d · damage taken %d HP in %d hits · deaths %d",s.Swings,s.Hits,s.Swings>0 and math.floor(s.Hits*100/s.Swings+.5) or 0,s.Packets,math.floor(s.Damage+.5),s.HitsTaken,s.Deaths),
         "Top mobs: "..RemoteCatalog.TopText(s.KillsByName),
         "Top loot: "..RemoteCatalog.TopText(s.LootByName),
+        s.Seconds>=60 and string.format("Per hour (all runs): %.0f kills · %.0f loot · %.0f HP taken",s.Kills*3600/s.Seconds,s.Loot*3600/s.Seconds,s.Damage*3600/s.Seconds) or "Per hour: needs a minute of farming",
+        "Kills/min trend (oldest → newest): "..RemoteCatalog.MobTrendText(s),
         "Last run: "..(s.Last or "none yet"),
     }
     return table.concat(lines,"\n")
 end
+-- Block-character sparkline of kills per minute over the recent runs, with the numbers.
+function RemoteCatalog.MobTrendText(score)
+    local recent=score and score.Recent or {}
+    if #recent==0 then return "no finished run of 30 s yet" end
+    local rates={}
+    for i=#recent,1,-1 do table.insert(rates,recent[i].Kills*60/recent[i].Seconds) end
+    local top=0
+    for _,rate in ipairs(rates) do top=math.max(top,rate) end
+    local bars={"▁","▂","▃","▄","▅","▆","▇","█"}
+    local spark,numbers={},{}
+    for _,rate in ipairs(rates) do
+        local level=top>0 and math.max(1,math.min(8,math.ceil(rate/top*8))) or 1
+        table.insert(spark,bars[level]);table.insert(numbers,string.format("%.1f",rate))
+    end
+    return table.concat(spark).." "..table.concat(numbers," · ")
+end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn goals-175 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn rates-176 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13440,6 +13488,31 @@ function RemoteCatalog.MobHop(root,destination,target)
     root.AssemblyLinearVelocity=Vector3.zero
     root.CFrame=(flat-point).Magnitude>.1 and CFrame.lookAt(point,flat) or root.CFrame+(point-root.Position)
     return point
+end
+-- One portion of food from a learned craft recipe whose item name is a food word, sent through the
+-- same craft binding Crafting uses; only when the learned workbench is on the island and in reach.
+function RemoteCatalog.MobCraftFood()
+    local names={}
+    pcall(function() names=RemoteCatalog.CraftRecipes() end)
+    for _,name in ipairs(names) do
+        local lower=string.lower(tostring(name))
+        local isFood=false
+        if not string.find(lower,"bait",1,true) then
+            for _,word in ipairs(RemoteCatalog.FoodWords) do if string.find(lower,word,1,true) then isFood=true;break end end
+        end
+        if isFood then
+            local recorder,binding=RemoteCatalog.CraftRecorder(name)
+            if recorder and binding and type(recorder.CraftItem)=="function" then
+                local reachable,reason=RemoteCatalog.CraftReachable(binding.Workbench)
+                if not reachable then return false,name..": "..tostring(reason) end
+                local ok,result=recorder:CraftItem(1,binding)
+                if not ok then return false,name.." craft rejected: "..tostring(RemoteCatalog.ChestResultText(result)) end
+                for _=1,30 do if RemoteCatalog.FoodTool() then return true,name end;task.wait(.1) end
+                return false,name.." crafted but no food appeared"
+            end
+        end
+    end
+    return false,"no learned food recipe (learn one in Crafting while at your workbench)"
 end
 function RemoteCatalog.MobHitSource()
     local recorder=RemoteCatalog.LiveRecorder("MobBinding")
@@ -13589,7 +13662,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn goals-175 · Mobs",
+    return table.concat({"Reborn rates-176 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -13801,7 +13874,12 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
         local human=char and char:FindFirstChildOfClass("Humanoid")
         if not human then return false,"character unavailable" end
         local food=RemoteCatalog.FoodTool()
-        if not food then return false,"no food in the inventory (salad, bread, cooked, pie, soup, stew …)" end
+        if not food then
+            -- No food: craft one portion from a learned food recipe when the workbench is in reach.
+            local crafted,detail=RemoteCatalog.MobCraftFood()
+            if crafted then food=RemoteCatalog.FoodTool() end
+            if not food then return false,"no food in the inventory · "..tostring(detail) end
+        end
         local endpoint=RemoteCatalog.GameEndpoint("CLIENT_EAT_FOOD")
         if not endpoint then return false,"game food request unavailable" end
         local previous=char:FindFirstChildOfClass("Tool")

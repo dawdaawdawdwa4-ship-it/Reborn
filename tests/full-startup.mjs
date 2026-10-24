@@ -495,6 +495,60 @@ do
  RemoteCatalog.RefreshMobScore();assert(RemoteCatalog.MobScoreLabel.Text:find('Runs 0',1,true),'the Mobs tab card shows the totals')
  CONFIG.MobScore=savedScore
 end
+-- Rates: the scoreboard keeps the last runs for a kills/min trend, the corner stats show the mob farm,
+-- and Auto eat crafts a meal from a learned food recipe when the inventory holds none.
+-- (One table local: this chunk shares the main chunk's 200-local budget.)
+do
+ local t={saved=CONFIG.MobScore,r=RemoteCatalog,crafted={},reachable=true,bench={}}
+ CONFIG.MobScore=t.r.ValidMobScore({Recent={{Kills=2,Loot=4,Seconds=60},{Kills='x'},{Kills=1,Loot=0,Seconds=10}}})
+ assert(#CONFIG.MobScore.Recent==1 and CONFIG.MobScore.Recent[1].Kills==2,'saved recent runs are validated (whole numbers, at least 30 s)')
+ assert(t.r.MobScoreText():find('Per hour: needs a minute',1,true),'per-hour rates wait for a minute of farming')
+ t.fake={RunTime=function() return 120 end,Defeats=8,LikelyDefeats=0,Swings=10,DamageNumbers=8,Drops=1,Loot=5,DamageTaken=30,HitsTaken=3,Deaths=0,LearnedHits=0,KillsByName={slime=8},LootByName={}}
+ t.r.RecordMobRun(t.fake)
+ t.s=t.r.MobScore()
+ assert(#t.s.Recent==2 and t.s.Recent[1].Kills==8 and t.s.Recent[2].Kills==2,'the newest run is kept first')
+ t.trend=t.r.MobTrendText(t.s)
+ assert(t.trend:find('2.0 · 4.0',1,true) and t.trend:find('▄█',1,true),'the trend lists oldest to newest with a sparkline: '..t.trend)
+ t.text=t.r.MobScoreText()
+ assert(t.text:find('Per hour (all runs): 240 kills · 150 loot · 900 HP taken',1,true) and t.text:find('Kills/min trend',1,true),'the scoreboard shows per-hour rates and the trend: '..t.text)
+ for _=1,9 do t.r.RecordMobRun(t.fake) end
+ assert(#t.r.MobScore().Recent==8,'only the last eight runs are kept')
+ assert(t.r.MobTrendText({}):find('no finished run',1,true),'an empty trend says so')
+ CONFIG.MobScore=t.saved
+ -- Corner stats rows.
+ t.farm=t.r.Mobs
+ t.state={t.farm.StartedAt,t.farm.EndedAt,t.farm.Defeats,t.farm.LikelyDefeats,t.farm.Enabled}
+ assert(overlayValues.mobs and overlayValues.mobsHp,'the corner overlay has Mobs rows')
+ t.farm.StartedAt=nil;t.r.UpdateDashboard()
+ assert(overlayValues.mobs.Text=='off','without a run the Mobs row reads off')
+ t.farm.StartedAt=os.clock()-120;t.farm.EndedAt=nil;t.farm.Defeats=3;t.farm.LikelyDefeats=1;t.farm.Enabled=false
+ t.character=player.Character
+ player.Character={FindFirstChildOfClass=function(_,c) return c=='Humanoid' and {Health=42,MaxHealth=100} or nil end,FindFirstChild=function() return nil end}
+ t.r.UpdateDashboard()
+ assert(overlayValues.mobs.Text:find('4 kills · 2.0/min · stopped',1,true),'the Mobs row shows kills, rate and the stopped state: '..overlayValues.mobs.Text)
+ assert(overlayValues.mobsHp.Text:find('HP 42%',1,true),'the HP row shows the character health: '..overlayValues.mobsHp.Text)
+ player.Character={FindFirstChild=function() return nil end}
+ t.r.UpdateDashboard()
+ assert(overlayValues.mobsHp.Text:find('HP –',1,true),'a character without a humanoid lookup does not break the dashboard')
+ player.Character=t.character
+ t.farm.StartedAt,t.farm.EndedAt,t.farm.Defeats,t.farm.LikelyDefeats,t.farm.Enabled=t.state[1],t.state[2],t.state[3],t.state[4],t.state[5]
+ -- Craft food when none is in the inventory.
+ t.hooks={t.r.CraftRecipes,t.r.CraftRecorder,t.r.CraftReachable,t.r.FoodTool}
+ t.recorder={CraftItem=function(_,amount,binding) table.insert(t.crafted,binding.Item..'x'..amount);if binding.Item=='mushroomSoup' then t.food={Name='mushroomSoup',Parent=t.bench} end;return true end}
+ t.r.CraftRecipes=function() return {'bait','woodPlank','mushroomSoup'} end
+ t.r.CraftRecorder=function(name) return t.recorder,{Item=name,Workbench=t.bench} end
+ t.r.CraftReachable=function() return t.reachable,'Stand within 20 studs of your learned workbench' end
+ t.r.FoodTool=function() return t.food end
+ t.ok,t.detail=t.r.MobCraftFood()
+ assert(t.ok and t.detail=='mushroomSoup' and #t.crafted==1 and t.crafted[1]=='mushroomSoupx1','one portion of the learned food recipe is crafted: '..tostring(t.detail))
+ t.food=nil;t.reachable=false;t.crafted={}
+ t.ok,t.detail=t.r.MobCraftFood()
+ assert(not t.ok and t.detail:find('mushroomSoup: Stand within',1,true) and #t.crafted==0,'an unreachable workbench is reported instead of crafting: '..tostring(t.detail))
+ t.reachable=true;t.r.CraftRecipes=function() return {'bait','woodPlank'} end
+ t.ok,t.detail=t.r.MobCraftFood()
+ assert(not t.ok and t.detail:find('no learned food recipe',1,true) and #t.crafted==0,'without a food recipe nothing is crafted: '..tostring(t.detail))
+ t.r.CraftRecipes,t.r.CraftRecorder,t.r.CraftReachable,t.r.FoodTool=t.hooks[1],t.hooks[2],t.hooks[3],t.hooks[4]
+end
 -- Ground under a point is found from well above it, so slopes count, and TP hops land on that ground.
 -- (One table local: this chunk shares the main chunk's 200-local budget.)
 do
@@ -1150,7 +1204,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn goals-175',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn rates-176',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1892,7 +1946,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn goals-175 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn rates-176 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
