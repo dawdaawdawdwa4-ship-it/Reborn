@@ -4530,3 +4530,37 @@ The stale Top up case failed on v180 before this change. Run the full suite;
 live Roblox behavior remains unverified here.
 
 Report headers now read `Reborn craft-resume-181`.
+
+
+## Auto Take resumes with fresh stock and retains its batch · v182
+
+A rapid Pause → Resume could hide a pause from the collector while a stock read,
+approach or final readiness callback was pending. It could then skip an unfinished
+Top up job using an old high count, or withdraw too much using an old low count.
+The collector now tracks pause transitions, discards that preparation and checks
+live inventory again before deciding whether the target is met or sending the
+next request. It retains the worker, selected stack and confirmed run totals.
+Repeated Pause while already paused does not invalidate preparation again.
+
+Stop is checked again after preparation callbacks, including the Taking message
+and pending-request UI refresh. Abandoned preparation releases its busy state and
+is not counted as a dispatched request. The existing in-flight confirmation rules
+are retained: Pause may finish confirming an already-sent transfer; Stop discards
+late confirmation and holds ownership until the original call returns.
+
+A request clipped to a small remaining goal or Top up deficit no longer overwrites
+the stack's chosen batch. For example, after a five-item deficit receives TOO_FAST,
+using the inventory during cooldown can produce a fresh 30-item request instead
+of leaving every subsequent request at five. Max mode also retains a reduced batch
+trial when a successful top-up request was smaller than that trial. An explicit
+amount rejection still reduces the actual request size, and genuine partial gains
+still limit Max mode. Server cooldowns and uncertain-transfer handling are unchanged.
+
+Regression tests suspend stock, approach, readiness and UI callbacks across rapid
+Pause/Resume and Stop. They cover both stale-count directions, unchanged worker
+identity, no false request counts or busy-lock leaks, fixed/Max batches after a
+clipped rate-limit retry, a clipped adaptive trial, and real amount rejections.
+The batch regression failed on v181 before the fix. Run the full suite; live
+Roblox behavior remains unverified here.
+
+Report headers now read `Reborn chest-resume-182`.

@@ -5875,7 +5875,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn craft-resume-181",
+    return table.concat({"Reborn chest-resume-182",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -8019,7 +8019,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn craft-resume-181 · Propeller loot history (UTC)",
+    return table.concat({"Reborn chest-resume-182 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -8123,7 +8123,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn craft-resume-181 · Propeller tracker",
+    return table.concat({"Reborn chest-resume-182 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -8159,7 +8159,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn craft-resume-181", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn chest-resume-182", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10952,6 +10952,7 @@ RemoteCatalog.RefreshChestProfiles()
 -- CHEST PROFILES END
 
 -- CHEST AUTO BEGIN
+RemoteCatalog.ChestPauseEpoch=0
 function RemoteCatalog.CarrotCount(item)
     local total=0
     for _,tool in ipairs(RemoteCatalog.OwnedTools()) do
@@ -10980,7 +10981,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn craft-resume-181\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn chest-resume-182\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -11042,7 +11043,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn craft-resume-181 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn chest-resume-182 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11201,6 +11202,7 @@ end
 function RemoteCatalog.SetChestPaused(state)
     if type(state)~="boolean" or not gui.Parent or not RemoteCatalog.ChestAutoEnabled or not RemoteCatalog.ChestAutoWorker then return false end
     if RemoteCatalog.ChestAutoPaused==state then return true end
+    if state then RemoteCatalog.ChestPauseEpoch+=1 end
     RemoteCatalog.TrackChestPause(state)
     RemoteCatalog.ChestAutoPaused=state
     if state then RemoteCatalog.Navigation.Stop("Chest") end
@@ -11300,6 +11302,13 @@ function RemoteCatalog.SetChestAuto(state)
             return active()
         end
         local function moving() return active() and not RemoteCatalog.ChestAutoPaused end
+        local function preparationChanged(epoch)
+            return RemoteCatalog.ChestAutoPaused or RemoteCatalog.ChestPauseEpoch~=epoch
+        end
+        local function releasePreparation()
+            RemoteCatalog.ChestBusy=false;ownsBusy=false
+            RemoteCatalog.ChestRequestPending=nil
+        end
         local function inventoryUnavailable(state,reason)
             if reason~="pending" then stoppedOutcome="Inventory unreadable";RemoteCatalog.ChestAutoMessage("Cannot read item inventory count. No new withdrawal sent.");return false end
             state.InventoryRetries=(state.InventoryRetries or 0)+1
@@ -11329,6 +11338,7 @@ function RemoteCatalog.SetChestAuto(state)
             while active() do
                 if goal and RemoteCatalog.ChestAutoTotal>=goal then goalReached=true;break end
                 if not ready() then return end
+                local pauseEpoch=RemoteCatalog.ChestPauseEpoch
                 local finished,waiting=0,0
                 for _,state in ipairs(states) do if state.Done then finished+=1 elseif state.Waiting then waiting+=1 end end
                 RemoteCatalog.ChestAutoProgress=RemoteCatalog.ChestAutoTotal.." items · "..finished.."/"..#states.." slots finished"
@@ -11454,6 +11464,8 @@ function RemoteCatalog.SetChestAuto(state)
                         RemoteCatalog.ChestInventoryWaiting=nil
                         if not active() then break end
                     end
+                    if not active() then break end
+                    if preparationChanged(pauseEpoch) then preferredSlot=index;continue end
                     if current==nil then if inventoryUnavailable(state,quantityState) then continue else break end end
                     if current>=stockTarget then
                         state.Done=true
@@ -11463,12 +11475,12 @@ function RemoteCatalog.SetChestAuto(state)
                 end
                 local reached,reason=RemoteCatalog.ApproachChest(recorder,moving,binding)
                 if not active() then break end
-                if RemoteCatalog.ChestAutoPaused then preferredSlot=index;continue end
+                if preparationChanged(pauseEpoch) then preferredSlot=index;continue end
                 if reached and RemoteCatalog.ChestRequestAt and (RemoteCatalog.ChestRateDelay or 0)>successPause then
                     if not RemoteCatalog.WaitChestInterval(RemoteCatalog.ChestRateDelay,active,ready,"pace") then return end
                     reached,reason=RemoteCatalog.ApproachChest(recorder,moving,binding)
                     if not active() then break end
-                    if RemoteCatalog.ChestAutoPaused then preferredSlot=index;continue end
+                    if preparationChanged(pauseEpoch) then preferredSlot=index;continue end
                 end
                 if not reached then
                     currentChest=nil;preferredSlot=nil
@@ -11485,12 +11497,12 @@ function RemoteCatalog.SetChestAuto(state)
                     RemoteCatalog.ChestInventoryWaiting=nil
                     if not active() then break end
                 end
+                if not active() then break end
+                if preparationChanged(pauseEpoch) then preferredSlot=index;continue end
                 if before==nil then
                     if inventoryUnavailable(state,quantityState) then continue else break end
                 end
                 state.InventoryRetries=0;state.InventoryWaiting=false
-                -- Resume rechecks reach and live inventory, rather than using a pre-pause count.
-                if RemoteCatalog.ChestAutoPaused then preferredSlot=index;continue end
                 -- Approach can yield while another action changes inventory. Recheck now.
                 if stockTarget and before>=stockTarget then state.Done=true;continue end
                 -- Inventory replication can yield after approach. Recheck the live
@@ -11499,19 +11511,27 @@ function RemoteCatalog.SetChestAuto(state)
                 if RemoteCatalog.ChestTargetProtected(binding) then state.Done=true;continue end
                 if RemoteCatalog.ChestRequestReady then
                     local allowed,why=RemoteCatalog.ChestRequestReady(binding)
+                    if not active() then break end
+                    if preparationChanged(pauseEpoch) then preferredSlot=index;continue end
                     if not allowed then
                         state.Waiting=true;state.InventoryWaiting=false;preferredSlot=nil
                         RemoteCatalog.ChestAutoMessage(target.." waiting: "..tostring(why))
                         continue
                     end
                 end
+                if not active() then break end
+                if preparationChanged(pauseEpoch) then preferredSlot=index;continue end
                 RemoteCatalog.ChestBusy=true;ownsBusy=true
+                -- Clip this request only; retain the stack batch for the next live deficit.
                 local amount=goal and math.min(state.Amount,goal-RemoteCatalog.ChestAutoTotal) or state.Amount
                 if stockTarget then amount=math.min(amount,stockTarget-before) end
-                state.Amount=amount
                 RemoteCatalog.ChestAutoMessage("Taking "..amount.." × "..tostring(binding.Item or "carrotHarvested").."\n"..target.."\nWaiting for inventory confirmation…")
-                local gap=RemoteCatalog.MarkChestRequest()
+                if not active() then break end
+                if preparationChanged(pauseEpoch) then releasePreparation();preferredSlot=index;continue end
                 RemoteCatalog.ChestRequestPending=tostring(binding.Item or "carrotHarvested");RemoteCatalog.RefreshChestActions()
+                if not active() then break end
+                if preparationChanged(pauseEpoch) then releasePreparation();preferredSlot=index;continue end
+                local gap=RemoteCatalog.MarkChestRequest()
                 run.Requests+=1
                 local ran,sent,response,origin=pcall(RemoteCatalog.WithdrawCarrots,amount,recorder,binding)
                 RemoteCatalog.ChestRequestPending=nil
@@ -11532,7 +11552,7 @@ function RemoteCatalog.SetChestAuto(state)
                     state.RateRetries+=1
                     if state.RateRetries>=5 then stoppedOutcome="Rate limited";RemoteCatalog.ChestAutoMessage("Server keeps returning TOO_FAST. Stopped after five attempts; the batch was not reduced. Wait before restarting.");return end
                     local cooldown=RemoteCatalog.ChestBackoff(gap)
-                    RemoteCatalog.ChestAutoMessage(target..": TOO_FAST; waiting "..cooldown.."s, then retrying the same "..amount.."-item batch.")
+                    RemoteCatalog.ChestAutoMessage(target..": TOO_FAST; waiting "..cooldown.."s, then rechecking inventory before retrying. Batch limit kept.")
                     if not RemoteCatalog.WaitChestInterval(cooldown,active,ready) then return end
                     continue
                 end
@@ -11580,10 +11600,10 @@ function RemoteCatalog.SetChestAuto(state)
                     if RemoteCatalog.ChestStats then RemoteCatalog.ChestStats["AUTO COLLECTED"].Text=tostring(RemoteCatalog.ChestAutoTotal) end
                     RemoteCatalog.ChestAutoMessage("Collected "..RemoteCatalog.ChestAutoTotal.." items · "..finished.."/"..#states.." checks finished\n"..target,COLORS.good)
                     if state.Adaptive then
-                        if state.Reduced or gained<amount then
+                        if gained<amount or state.Reduced and amount==state.Amount then
                             state.Maximum=math.min(state.Maximum,gained)
                             state.Adaptive=false;state.Amount=state.Maximum
-                        else state.Amount=state.Probe and math.min(state.Maximum,30) or math.min(state.Maximum,amount*2) end
+                        else state.Amount=state.Probe and math.min(state.Maximum,30) or math.min(state.Maximum,math.max(state.Amount,amount*2)) end
                     else
                         if not state.Probe then state.Maximum=math.min(state.Maximum,state.Amount) end
                         state.Amount=state.Maximum
@@ -11599,9 +11619,9 @@ function RemoteCatalog.SetChestAuto(state)
                     if state.Probe then
                         state.Done=true
                         if not paced(fast and .1 or .2) then return end
-                    elseif state.Amount>1 then
-                        if state.Adaptive then state.Maximum=math.min(state.Maximum,state.Amount-1);state.Reduced=true end
-                        state.Amount=math.max(1,math.floor(state.Amount/2))
+                    elseif amount>1 then
+                        if state.Adaptive then state.Maximum=math.min(state.Maximum,amount-1);state.Reduced=true end
+                        state.Amount=math.max(1,math.floor(amount/2))
                         if not paced(retryPause) then return end
                     else
                         state.NoProgress+=1
@@ -11676,7 +11696,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn craft-resume-181\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn chest-resume-182\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12806,7 +12826,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn craft-resume-181 · Craft diagnostics",
+    return table.concat({"Reborn chest-resume-182 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12885,7 +12905,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn craft-resume-181 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn chest-resume-182 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13622,7 +13642,7 @@ function RemoteCatalog.MobTrendText(score)
     return table.concat(spark).." "..table.concat(numbers," · ")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn craft-resume-181 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn chest-resume-182 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13866,7 +13886,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn craft-resume-181 · Mobs",
+    return table.concat({"Reborn chest-resume-182 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

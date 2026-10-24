@@ -117,6 +117,84 @@ RemoteCatalog.SetChestAuto(false)
 assert(not RemoteCatalog.SetChestAuto(true) and RemoteCatalog.ChestRequestPending,'Stop must retain the in-flight lock until the server call returns')
 drain()
 assert(#calls==1 and not RemoteCatalog.ChestRequestPending and not RemoteCatalog.ChestBusy,'late server return must clear pending state without dispatching again')
+-- A goal-clipped request is not evidence of a lower chest/transport batch limit.
+for _,batch in ipairs({30,'Max'}) do
+ reset();quantity=95;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=100;RemoteCatalog.ChestAutoBatch=batch
+ request=function(amount)
+  if #calls==1 then return false,{error='TOO_FAST',success=false} end
+  RemoteCatalog.SetChestAuto(false);quantity+=amount;return true
+ end
+ onWait=function() if #calls==1 then quantity=0 end end
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(#calls==2 and calls[1].Amount==5 and calls[2].Amount==30,'recalculated top-up deficits must use the chosen batch, not the old clipped amount: '..tostring(batch))
+end
+reset();RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=100;RemoteCatalog.ChestAutoBatch='Max'
+request=function(amount)
+ if #calls==1 then return false,{error='AMOUNT_TOO_LARGE',success=false} end
+ if #calls==3 then RemoteCatalog.SetChestAuto(false) end
+ quantity+=amount;return true
+end
+onWait=function() if #calls==1 then quantity=95 elseif #calls==2 then quantity=0 end end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(#calls==3 and calls[1].Amount==30 and calls[2].Amount==5 and calls[3].Amount==15,'a clipped success must not replace the reduced batch currently being tested')
+reset();quantity=95;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=100
+request=function(amount) if amount>2 then return false,{error='AMOUNT_TOO_LARGE',success=false} end;quantity+=amount;return true end
+assert(RemoteCatalog.SetChestAuto(true));drain()
+assert(#calls==4 and calls[1].Amount==5 and calls[2].Amount==2 and calls[3].Amount==2 and calls[4].Amount==1 and quantity==100,'real amount rejections must reduce the actual request size, including a clipped request')
+-- Pre-dispatch snapshots must be discarded after any pause transition or Stop.
+do
+ local count,ready,approach,message,refresh=RemoteCatalog.CarrotCount,RemoteCatalog.ChestRequestReady,RemoteCatalog.ApproachChest,RemoteCatalog.ChestAutoMessage,RemoteCatalog.RefreshChestActions
+ local function hooks(stage)
+  local blocked,reads=false,0
+  RemoteCatalog.CarrotCount=function(item)
+   reads+=1;local old=count(item)
+   if not blocked and (stage=='target' and reads==1 or stage=='inventory' and reads==2) then blocked=true;coroutine.yield();return old end
+   return old
+  end
+  RemoteCatalog.ChestRequestReady=function(binding)
+   if stage=='ready' and not blocked then blocked=true;coroutine.yield() end
+   return ready(binding)
+  end
+  RemoteCatalog.ApproachChest=function(...)
+   if stage=='approach' and not blocked then blocked=true;coroutine.yield() end
+   return approach(...)
+  end
+  RemoteCatalog.ChestAutoMessage=function(text,color)
+   message(text,color)
+   if stage=='message' and not blocked and text:find('Taking ',1,true)==1 then blocked=true;coroutine.yield() end
+  end
+  RemoteCatalog.RefreshChestActions=function()
+   refresh()
+   if stage=='ui' and not blocked and RemoteCatalog.ChestRequestPending then blocked=true;coroutine.yield() end
+  end
+  return function() return blocked end
+ end
+ local function restore()
+  RemoteCatalog.CarrotCount,RemoteCatalog.ChestRequestReady,RemoteCatalog.ApproachChest,RemoteCatalog.ChestAutoMessage,RemoteCatalog.RefreshChestActions=count,ready,approach,message,refresh
+ end
+ for _,stage in ipairs({'target','inventory','approach','ready','message','ui'}) do
+  reset();quantity=stage=='target' and 100 or 95;RemoteCatalog.ChestGoal=nil;RemoteCatalog.ChestStockTarget=100
+  local blocked=hooks(stage)
+  assert(RemoteCatalog.SetChestAuto(true) and blocked() and #calls==0)
+  local current=worker
+  assert(RemoteCatalog.SetChestPaused(true));local epoch=RemoteCatalog.ChestPauseEpoch
+  assert(RemoteCatalog.SetChestPaused(true) and RemoteCatalog.ChestPauseEpoch==epoch)
+  quantity=stage=='inventory' and 100 or 0
+  assert(RemoteCatalog.SetChestPaused(false) and worker==current);drain()
+  local expected=stage=='inventory' and 0 or 4
+  assert(#calls==expected and quantity==100 and RemoteCatalog.ChestAutoTotal==(stage=='inventory' and 0 or 100),'Resume must use fresh stock without skipping an unfinished top-up or taking extra: '..stage)
+  if expected>0 then assert(calls[1].Amount==30 and calls[4].Amount==10,'an abandoned small request must not tune the batch down') end
+  assert(RemoteCatalog.ChestHistory[1].Requests==expected and not RemoteCatalog.ChestBusy and not RemoteCatalog.ChestRequestPending,'discarded preparation must not count as a request or retain the busy lock')
+  restore()
+ end
+ for _,stage in ipairs({'target','inventory','approach','ready','message','ui'}) do
+  reset();RemoteCatalog.ChestStockTarget=100;local blocked=hooks(stage)
+  assert(RemoteCatalog.SetChestAuto(true) and blocked() and #calls==0)
+  RemoteCatalog.SetChestAuto(false);drain()
+  assert(#calls==0 and RemoteCatalog.ChestHistory[1].Requests==0 and not RemoteCatalog.ChestBusy and not RemoteCatalog.ChestRequestPending,'Stop must prevent dispatch after a pending '..stage)
+  restore()
+ end
+end
 -- Manual sweep uses the same failure classification and does not advance to
 -- another slot after a transport error that may already have moved items.
 reset();targets={{Recorder=owner,Binding=a},{Recorder=owner,Binding=b}}
@@ -127,7 +205,7 @@ assert(not manualResult[1] and #calls==1 and has(string.lower(manualResult[2]),'
 local cycle={error='AMOUNT_TOO_LARGE'};cycle.value=cycle
 assert(RemoteCatalog.ChestFailureKind(cycle)=='amount' and RemoteCatalog.ChestFailureKind({value={error='INVENTORY_FULL'},reason='insufficient items'})=='capacity','error classification must handle cycles and prioritize capacity over amount hints')
 assert(RemoteCatalog.ChestFailureKind({error='SERVER_RESTARTING'})=='unknown','unknown server errors must not be guessed to mean empty')
-return 'Chest resilience: uncertain transport, capacity/context failures, slot skip, late confirmation, bounded metadata recovery, range/session rechecks, Pause/Stop and manual cleanup passed'
+return 'Chest resilience: uncertain transport, capacity/context failures, slot skip, late confirmation, bounded metadata recovery, fresh Pause/Resume snapshots, Stop before dispatch, unclipped batch tuning and manual cleanup passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-resilience',true)());}
