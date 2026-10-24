@@ -4132,3 +4132,20 @@ target", and the hit packet was then rejected with NO_ANIMATION).
   itself) to tell instant retaliation from a lunge.
 
 Report headers now read `Reborn mob-review-164`.
+
+## Multi-hit and free-spot clicks · v165
+
+Requested as "keep improving".
+
+- **Any free spot clicks.** A target off screen or hidden behind something no
+  longer falls back to weapon activation (no animation, so the packet is
+  rejected): the swing clicks a free spot of the game view, as it already did
+  when the hub covered the target. Attack method reads "mouse click on a free
+  spot (target off screen)".
+- **Multi-hit packets.** With a hit packet ready, one swing also sends a
+  packet for up to three other grounded matching mobs within attack range.
+  Ten rejected extras with fewer than three accepted switch it off for the
+  run. The Learned hit line counts extras accepted and rejected.
+- **Cadence floor 0.40 s** (was 0.45).
+
+Report headers now read `Reborn mob-multi-165`.

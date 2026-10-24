@@ -42,7 +42,7 @@ function MobFarm.new(ctx)
     local self={Enabled=false,Generation=0,Radius=60,Walk=true,Kind="Slimes",Swings=0,Drops=0,Defeats=0,LikelyDefeats=0,Loot=0,LootByName={},DamageNumbers=0,DamageTotal=0,KeepDistance="Auto",
         Message="Equip a melee weapon, then Learn attack and hit one slime manually.",Reach=6,
         ChaseRange=24,TargetBudget=6,RunBudget=12,Travel="Walk",HopDistance=8,SeekRange=300,
-        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,RestDistanceTP=16,PacketReach=9,Smart=true,KeepBias=0,Cadence=.65,JumpIntervals={},JumpByName={},HitsToKill={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
+        Standoff=2.5,AutoEat=true,EatBelow=.5,RetreatBelow=.45,ResumeAbove=.7,SafeDistance=20,RegenTimeout=45,HitAndRun=true,RestDistance=12,RestDistanceTP=16,PacketReach=9,Smart=true,KeepBias=0,Cadence=.65,MultiHit=true,JumpIntervals={},JumpByName={},HitsToKill={},DamageTaken=0,HitsTaken=0,HitsAfterSwing=0,WalkSpeed=24}
     local now=ctx.Now or os.clock
     local scheduler=ctx.Scheduler or task
     local function usable(recorder)
@@ -204,6 +204,25 @@ function MobFarm.new(ctx)
                 end
                 method=method.." + learned hit rejected ("..text..")"
             end
+            -- Multi-hit: one swing animation, one packet per other grounded matching mob within
+            -- attack range (three at most). Switched off for the run once ten extra packets were
+            -- rejected with fewer than three accepted.
+            if sent and self.MultiHit and not self.MultiHitOff then
+                local char=ctx.Player and ctx.Player.Character
+                local root=char and char:FindFirstChild("HumanoidRootPart")
+                local range=math.max(self.Reach,self.AttackRange or 0)
+                local extras=0
+                for _,other in ipairs(root and self:Scan(nil,range) or {}) do
+                    if extras>=3 then break end
+                    if other.Model~=target.Model and math.abs((other.Root.Position.Y or 0)-(root.Position.Y or 0))<=2 then
+                        extras+=1
+                        local ok2=ctx.LearnedHit(other.Model)
+                        if ok2 then self.MultiHits=(self.MultiHits or 0)+1 else self.MultiHitRejections=(self.MultiHitRejections or 0)+1 end
+                    end
+                end
+                if extras>0 then method=method.." + "..extras.." extra" end
+                if (self.MultiHitRejections or 0)>=10 and (self.MultiHits or 0)<3 then self.MultiHitOff=true end
+            end
         end
         self.LastMethod=method..(aimReason and x==nil and " (aim: "..tostring(aimReason)..")" or "")
         return true,self.LastMethod.." · checking for HP changes"
@@ -351,7 +370,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.PacketProbeAt=nil;self.EdgeStops=0;self.SideApproaches=0;self.Tuned=0;self.CadenceTuned=0;self.HitsInstant=0;self.Deaths=0;self.Stalls=0;self.LastCommand=nil;self.LastCommandAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.PacketProbeAt=nil;self.EdgeStops=0;self.SideApproaches=0;self.Tuned=0;self.CadenceTuned=0;self.HitsInstant=0;self.MultiHits=0;self.MultiHitRejections=0;self.MultiHitOff=false;self.Deaths=0;self.Stalls=0;self.LastCommand=nil;self.LastCommandAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
@@ -800,7 +819,7 @@ function MobFarm.new(ctx)
                                                     -- five confirmed → 0.1 s slower (up to 0.9 s).
                                                     local accepted=(self.LearnedHits or 0)-(tunePackets or 0);tunePackets=self.LearnedHits or 0
                                                     local confirmed=math.max(landed,accepted)
-                                                    if confirmed>=8 and self.Cadence>.45 then self.Cadence=math.max(.45,self.Cadence-.05);self.CadenceTuned=(self.CadenceTuned or 0)+1
+                                                    if confirmed>=8 and self.Cadence>.4 then self.Cadence=math.max(.4,self.Cadence-.05);self.CadenceTuned=(self.CadenceTuned or 0)+1
                                                     elseif confirmed<5 and self.Cadence<.9 then self.Cadence=math.min(.9,self.Cadence+.1);self.CadenceTuned=(self.CadenceTuned or 0)+1 end
                                                     if ctx.Remember then pcall(ctx.Remember,"Cadence",self.Cadence) end
                                                 end

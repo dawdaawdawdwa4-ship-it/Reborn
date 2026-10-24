@@ -436,6 +436,19 @@ do
  local threat=farm:Threat(10)
  assert(threat and threat.Model.Name=='buffalkor' and threat.Away and threat.Away.X<0,'with two mobs behind, the away vector still leads away from the nearest mob in front')
 end
+-- Multi-hit: one swing, one packet per other grounded matching mob in range; auto-off when the server rejects them.
+do
+ reset();damage=false;local hits={};local acceptExtra=true
+ ctx.Aim=function() return 50,50 end;ctx.Click=function() return true end
+ ctx.LearnedHitReady=function() return true end
+ ctx.LearnedHit=function(model) table.insert(hits,model);if model==farm.Target then return true end;return acceptExtra end
+ ar.Position=v(4);br.Position=v(4);farm.TargetBudget=100;farm.RunBudget=100;ah.Health=1000;ah.MaxHealth=1000;bh.Health=1000;bh.MaxHealth=1000;farm:Start()
+ assert(#hits==2 and hits[1]==farm.Target and hits[2]~=farm.Target and farm.MultiHits==1 and farm.LastMethod:find('+ 1 extra',1,true),'the slime beside the target gets a packet from the same swing')
+ acceptExtra=false;for i=1,10 do step(.7) end
+ assert(farm.MultiHitRejections>=10 and farm.MultiHitOff,'ten rejected extras with fewer than three accepted switch multi-hit off')
+ local n=#hits;step(.7);assert(#hits==n+1,'after that only the target gets a packet')
+ ctx.LearnedHitReady=nil;ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
+end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do
  reset();damage=false;br.Position=v(300);farm:Start();for i=1,5 do step(.7) end
