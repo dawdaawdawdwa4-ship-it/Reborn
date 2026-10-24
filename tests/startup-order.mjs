@@ -21,4 +21,6 @@ for(let i=start;i<=end;i++){
   }
 }
 if(problems.length) throw new Error('Startup calls functions that do not exist yet:\n'+problems.join('\n'));
+// The startup preference load must be protected: a damaged settings file may not keep the hub from opening.
+if(!/pcall\(loadPreferences\)/.test(source)) throw new Error('The startup loadPreferences() call is not wrapped in pcall');
 console.log(['Startup order: the preferences load only calls RemoteCatalog functions defined before it'] );

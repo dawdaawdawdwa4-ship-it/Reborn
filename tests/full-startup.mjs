@@ -489,7 +489,8 @@ do
  local text=RemoteCatalog.MobScoreText()
  assert(text:find('Runs 2',1,true) and text:find('kills 6 (best 2.0/min)',1,true) and text:find('hits 30 (38%)',1,true) and text:find('slime 7',1,true) and text:find('died',1,true),'the scoreboard text reports totals, rate and the last run')
  assert(not RemoteCatalog.RecordMobRun({RunTime=function() return 0 end}),'a run without time is not recorded')
- RemoteCatalog.ResetMobScore();assert(RemoteCatalog.MobScore().Runs==0,'reset clears the totals')
+ CONFIG.MobKeepBias=2;RemoteCatalog.Mobs.KeepBias=2;RemoteCatalog.Mobs.Cadence=.5;RemoteCatalog.Mobs.HitsToKill={slime=4}
+ RemoteCatalog.ResetMobScore();assert(RemoteCatalog.MobScore().Runs==0 and CONFIG.MobKeepBias==nil and RemoteCatalog.Mobs.KeepBias==0 and RemoteCatalog.Mobs.Cadence==.65 and next(RemoteCatalog.Mobs.HitsToKill)==nil,'reset clears the totals and the learned tuning')
  assert(RemoteCatalog.MobScoreLabel and RemoteCatalog.MobScoreLabel.Text:find('Runs 0',1,true)==nil or true)
  RemoteCatalog.RefreshMobScore();assert(RemoteCatalog.MobScoreLabel.Text:find('Runs 0',1,true),'the Mobs tab card shows the totals')
  CONFIG.MobScore=savedScore
@@ -1129,7 +1130,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn polish-173',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn guard-174',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1871,7 +1872,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn polish-173 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn guard-174 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
@@ -2572,6 +2573,7 @@ end)()
  r.MobToggle.Activated:Fire()
  assert(not r.Mobs.Enabled and r.MobInfo.Text:find('Learn attack first',1,true),'Start without a learned attack must send nothing and explain setup')
  r.MobPage.CanvasPosition=Vector2.new(0,300);r.MobScan.Activated:Fire()
+ assert(r.Mobs.Message:find('ground under you',1,true),'the scan reports what the ground check sees at the character: '..tostring(r.Mobs.Message))
  assert(r.MobPage.CanvasPosition==Vector2.zero)
  assert(r.MobInfo.Text:find('0 living slimes',1,true) and not r.Mobs.Worker,'Scan must be read-only')
  r.MobRadius.Activated:Fire()

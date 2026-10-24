@@ -4334,3 +4334,17 @@ The reviewers' minor notes, plus two performance items.
   or mob mouse input), matching the other toggles.
 
 Report headers now read `Reborn polish-173`.
+
+## Startup guard, ground diagnostics, tuning reset · v174
+
+- **A damaged settings file never blocks the hub.** The startup preference
+  load is protected; on failure the defaults are kept and the Settings button
+  reads "Settings file ignored (damaged) · Save preferences". The startup test
+  fails if that protection is ever removed.
+- **Ground under you.** Mobs → Scan targets and Copy result show what the hop
+  and walk ground check sees at the character's feet and 8 studs ahead, for
+  reports of hops ending in water or off the island.
+- **Reset scoreboard also resets the learned tuning**: keep-distance bias,
+  cadence, retreat threshold, hits per kill and jump rhythm.
+
+Report headers now read `Reborn guard-174`.

@@ -4766,7 +4766,13 @@ local function loadPreferences(supplied)
     if type(data.MineToolPreference) == "string" then mineToolPreference = data.MineToolPreference == "Wood pickaxe" and "Wooden pickaxe" or data.MineToolPreference end
     return true
 end
-local preferencesLoaded = loadPreferences()
+-- A damaged or unexpected settings file must never keep the hub from opening: defaults are kept
+-- and the Settings tab says so.
+local preferencesLoaded
+do
+    local ok, result = pcall(loadPreferences)
+    if ok then preferencesLoaded = result else preferencesLoaded = false; RemoteCatalog.PreferencesError = tostring(result) end
+end
 CONFIG.HarvestCrops = FarmLogic.NormalizeCrops(CONFIG.HarvestCrops, CONFIG.HarvestCrop)
 if not CONFIG.HarvestCrops[CONFIG.PlantType] then CONFIG.PlantType = FarmLogic.SelectedCrops(CONFIG.HarvestCrops, CONFIG.HarvestCrop)[1] end
 
@@ -5674,7 +5680,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn polish-173",
+    return table.concat({"Reborn guard-174",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7622,7 +7628,7 @@ function RemoteCatalog.RefreshSettingsText()
     settingsText.Text = string.format("Fish toggle: %s\nHarvest toggle: %s\nMine range: %d studs\nPlant type: %s\nHarvest crop: %s\nPlant radius: %d studs", CONFIG.ToggleKey.Name, CONFIG.HarvestKey.Name, CONFIG.MineRange, CONFIG.PlantType, CONFIG.HarvestCrop, CONFIG.PlantRadius)
 end
 RemoteCatalog.ReflectPreferences()
-saveButton.Text = preferencesLoaded and "Preferences loaded" or "Save preferences"
+saveButton.Text = preferencesLoaded and "Preferences loaded" or RemoteCatalog.PreferencesError and "Settings file ignored (damaged) · Save preferences" or "Save preferences"
 showTab("Fishing")
 
 --------------------------------------------------------------------
@@ -7771,7 +7777,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn polish-173 · Propeller loot history (UTC)",
+    return table.concat({"Reborn guard-174 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7875,7 +7881,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn polish-173 · Propeller tracker",
+    return table.concat({"Reborn guard-174 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7911,7 +7917,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn polish-173", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn guard-174", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10727,7 +10733,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn polish-173\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn guard-174\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10789,7 +10795,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn polish-173 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn guard-174 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11423,7 +11429,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn polish-173\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn guard-174\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12544,7 +12550,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn polish-173 · Craft diagnostics",
+    return table.concat({"Reborn guard-174 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12623,7 +12629,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn polish-173 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn guard-174 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13283,7 +13289,12 @@ function RemoteCatalog.RecordMobRun(farm)
     return true
 end
 function RemoteCatalog.ResetMobScore()
-    CONFIG.MobScore=RemoteCatalog.ValidMobScore(nil);savePreferences()
+    CONFIG.MobScore=RemoteCatalog.ValidMobScore(nil)
+    -- The learned tuning goes with the totals: distance bias, cadence, retreat threshold, hits per kill.
+    CONFIG.MobKeepBias=nil;CONFIG.MobCadence=nil;CONFIG.MobRetreatBelow=nil;CONFIG.MobHitsToKill=nil
+    local farm=RemoteCatalog.Mobs
+    if farm then farm.KeepBias=0;farm.Cadence=.65;farm.RetreatBelow=.45;farm.HitsToKill={};farm.HPPerKill=nil;farm.JumpByName={};farm.JumpIntervals={};farm.JumpPeriod=nil;farm.JumpPeriods=nil end
+    savePreferences()
 end
 function RemoteCatalog.TopText(counts,limit)
     local list={}
@@ -13306,7 +13317,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn polish-173 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn guard-174 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13354,6 +13365,16 @@ function RemoteCatalog.MobGroundAt(point)
     return hit.Position
 end
 function RemoteCatalog.MobGround(point) return RemoteCatalog.MobGroundAt(point)~=nil end
+-- What the hop and walk ground check sees at the character's feet and 8 studs ahead; for the reports.
+function RemoteCatalog.MobGroundText(root)
+    local ok,text=pcall(function()
+        local here=RemoteCatalog.MobGroundAt(root.Position)
+        local ahead=RemoteCatalog.MobGroundAt(root.Position+root.CFrame.LookVector*8)
+        return (here and ("yes (%.1f studs below)"):format(root.Position.Y-here.Y) or "none (water, void or a slope the check cannot see)")
+            ..(" · 8 studs ahead: "..(ahead and "ground" or "none"))
+    end)
+    return ok and text or ("unavailable: "..tostring(text))
+end
 -- One TP hop that follows the terrain: the character lands standing on the ground under the
 -- destination, uphill or downhill, never inside a slope or in the air, facing the target.
 function RemoteCatalog.MobHop(root,destination,target)
@@ -13506,6 +13527,7 @@ function RemoteCatalog.MobWorldReport()
     end
     table.insert(lines,"Living mobs loaded (any distance): "..(#parts>0 and table.concat(parts,", ") or "none loaded near you"))
     table.insert(lines,"Nearest matching target: "..(matchingDistance and (matchingDistance.." studs"..(matchingDistance>RemoteCatalog.Mobs.Radius and " · outside the search radius" or "")) or "none loaded"))
+    table.insert(lines,"Ground under you: "..RemoteCatalog.MobGroundText(root))
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.MobResultReport()
@@ -13514,7 +13536,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn polish-173 · Mobs",
+    return table.concat({"Reborn guard-174 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -13895,7 +13917,7 @@ do
         if RemoteCatalog.MobScoreLabel and RemoteCatalog.MobScoreLabel.Parent then RemoteCatalog.MobScoreLabel.Text=RemoteCatalog.MobScoreText() end
     end
     track(RemoteCatalog.MobScoreCopy.Activated:Connect(function() RemoteCatalog.CopyMobScore() end))
-    track(RemoteCatalog.MobScoreReset.Activated:Connect(function() RemoteCatalog.ResetMobScore();RemoteCatalog.RefreshMobScore();setStatus("Scoreboard reset",COLORS.muted) end))
+    track(RemoteCatalog.MobScoreReset.Activated:Connect(function() RemoteCatalog.ResetMobScore();RemoteCatalog.RefreshMobScore();setStatus("Scoreboard and learned tuning reset",COLORS.muted) end))
     RemoteCatalog.RefreshMobScore()
     pageHeading(main,"AUTO FARM SLIMES",10).Position=UDim2.fromOffset(10,10)
     RemoteCatalog.MobWeapon=label({Parent=main,Text="",TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-20,0,26),Position=UDim2.fromOffset(10,34)})
@@ -13971,7 +13993,8 @@ do
         if RemoteCatalog.Mobs.Worker then return end
         local targets=RemoteCatalog.Mobs:Scan()
         local kind=RemoteCatalog.Mobs.Kind
-        RemoteCatalog.Mobs.Message="Scan · "..#targets.." living "..(kind=="Slimes" and "slimes" or kind=="All mobs" and "mobs" or kind).." within "..RemoteCatalog.Mobs.Radius.." studs. No attacks sent."
+        local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        RemoteCatalog.Mobs.Message="Scan · "..#targets.." living "..(kind=="Slimes" and "slimes" or kind=="All mobs" and "mobs" or kind).." within "..RemoteCatalog.Mobs.Radius.." studs · ground under you: "..(root and RemoteCatalog.MobGroundText(root) or "character unavailable")..". No attacks sent."
         RemoteCatalog.RefreshMobUI()
     end))
     -- Slimes → All mobs → each mob name currently nearby → Slimes.
