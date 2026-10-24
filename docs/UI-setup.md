@@ -4291,3 +4291,24 @@ fixed with tests.
   call fails, so service-held stacks are counted.
 
 Report headers now read `Reborn review-171`.
+
+## Auto Build review · v172
+
+Independent review of Auto Build, with fixes and tests.
+
+- **No second request for a stopped cell.** Stop pressed while a placement
+  was being accepted ended the worker before the server's block had
+  replicated, and Resume sent the same cell again. The worker now holds Start
+  locked until the block is observed or 5 s pass, and never places or counts
+  during that wait.
+- **Mouse picks use the right ray.** The mouse position comes from the
+  viewport (top-bar inset included) but the pick ray was built as a GUI-space
+  point, so a click could select the ghost one row below; mouse picks now use
+  the viewport ray and touch picks keep the screen ray.
+- **Fresh install reads cleanly.** Favorites and blueprint slots are checked
+  with `isfile` before reading, so a never-saved slot reads as empty instead
+  of "Unavailable file".
+- **An idle Stop keeps snapshots.** Stop All or a teleport while nothing is
+  building no longer marks a valid Setup-marker or material check as stale.
+
+Report headers now read `Reborn review-172`.

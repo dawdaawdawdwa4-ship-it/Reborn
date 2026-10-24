@@ -246,7 +246,9 @@ function AutoBuild.new(ctx)
     end
     function self:Stop()
         local live=self.Running or self.WorkerToken
-        self.Token+=1;self.Running=false;self.Paused=false
+        -- An idle Stop (Stop All, a teleport) must not invalidate a valid marker/material snapshot.
+        if live then self.Token+=1 end
+        self.Running=false;self.Paused=false
         stopTravel()
         -- Teleports and Stop All also call this; a finished run must keep its result.
         if not live then return end
@@ -833,6 +835,16 @@ function AutoBuild.new(ctx)
             end
             return false
         end
+        -- After Stop, wait (without placing or counting) until an accepted cell's block is
+        -- observed or 5 s pass; the finalizer then releases the worker token and unlocks Start.
+        local function settle(cell)
+            local deadline=now()+5
+            status("Stopped · waiting for the last accepted block to appear before Start unlocks")
+            repeat
+                if not ctx.Alive() or occupied(cell.CFrame,self.BlockSize) then return end
+                scheduler.wait(.05)
+            until now()>=deadline
+        end
         -- Both the initial request and cooldown retries use fresh reach/occupancy
         -- observations. A path result alone never authorizes a placement.
         local function ensureReach(cell,reach,index)
@@ -924,7 +936,9 @@ function AutoBuild.new(ctx)
                                 local resultLabel=sent and "Accepted: " or origin=="transport" and "Transport error: " or origin=="unavailable" and "Unavailable: " or "Rejected: "
                                 self.LastPlacementResult=resultLabel..resultText(reason)
                                 meta.LastResult=reportText(self.LastPlacementResult)
-                                if not active() then return end
+                                -- Stop during an accepted request: hold the worker (Start stays locked) until the
+                                -- server's block replicates or 5 s pass, so a Resume cannot send this cell again.
+                                if not active() then if sent then settle(cell) end;return end
                                 local cooldown=not sent and origin~="transport" and origin~="unavailable" and type(reason)=="table" and (reason.error=="TOO_FAST" or reason.code=="TOO_FAST")
                                 if not sent then
                                     local rejected=origin=="rejected" or type(reason)=="table" and reason.success==false or cooldown
@@ -967,12 +981,12 @@ function AutoBuild.new(ctx)
                                 status("Confirming block "..index.." / "..#cells.." · waiting for island replication")
                                 local deadline=now()+5
                                 repeat
-                                    if not active() then return end
+                                    if not active() then settle(cell);return end
                                     confirmed=occupied(cell.CFrame,self.BlockSize)
                                     if confirmed then break end
                                     scheduler.wait(.05)
                                 until now()>=deadline
-                                if not active() then return end
+                                if not active() then settle(cell);return end
                             end
                             if existing then skipped+=1;streak=0
                             elseif confirmed then

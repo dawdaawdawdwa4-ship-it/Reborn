@@ -2778,7 +2778,9 @@ function AutoBuild.new(ctx)
     end
     function self:Stop()
         local live=self.Running or self.WorkerToken
-        self.Token+=1;self.Running=false;self.Paused=false
+        -- An idle Stop (Stop All, a teleport) must not invalidate a valid marker/material snapshot.
+        if live then self.Token+=1 end
+        self.Running=false;self.Paused=false
         stopTravel()
         -- Teleports and Stop All also call this; a finished run must keep its result.
         if not live then return end
@@ -3365,6 +3367,16 @@ function AutoBuild.new(ctx)
             end
             return false
         end
+        -- After Stop, wait (without placing or counting) until an accepted cell's block is
+        -- observed or 5 s pass; the finalizer then releases the worker token and unlocks Start.
+        local function settle(cell)
+            local deadline=now()+5
+            status("Stopped · waiting for the last accepted block to appear before Start unlocks")
+            repeat
+                if not ctx.Alive() or occupied(cell.CFrame,self.BlockSize) then return end
+                scheduler.wait(.05)
+            until now()>=deadline
+        end
         -- Both the initial request and cooldown retries use fresh reach/occupancy
         -- observations. A path result alone never authorizes a placement.
         local function ensureReach(cell,reach,index)
@@ -3456,7 +3468,9 @@ function AutoBuild.new(ctx)
                                 local resultLabel=sent and "Accepted: " or origin=="transport" and "Transport error: " or origin=="unavailable" and "Unavailable: " or "Rejected: "
                                 self.LastPlacementResult=resultLabel..resultText(reason)
                                 meta.LastResult=reportText(self.LastPlacementResult)
-                                if not active() then return end
+                                -- Stop during an accepted request: hold the worker (Start stays locked) until the
+                                -- server's block replicates or 5 s pass, so a Resume cannot send this cell again.
+                                if not active() then if sent then settle(cell) end;return end
                                 local cooldown=not sent and origin~="transport" and origin~="unavailable" and type(reason)=="table" and (reason.error=="TOO_FAST" or reason.code=="TOO_FAST")
                                 if not sent then
                                     local rejected=origin=="rejected" or type(reason)=="table" and reason.success==false or cooldown
@@ -3499,12 +3513,12 @@ function AutoBuild.new(ctx)
                                 status("Confirming block "..index.." / "..#cells.." · waiting for island replication")
                                 local deadline=now()+5
                                 repeat
-                                    if not active() then return end
+                                    if not active() then settle(cell);return end
                                     confirmed=occupied(cell.CFrame,self.BlockSize)
                                     if confirmed then break end
                                     scheduler.wait(.05)
                                 until now()>=deadline
-                                if not active() then return end
+                                if not active() then settle(cell);return end
                             end
                             if existing then skipped+=1;streak=0
                             elseif confirmed then
@@ -5310,6 +5324,7 @@ local buildController = AutoBuild.new({
     BlockDefinitions = function() return ReplicatedStorage:FindFirstChild("Blocks") end,
     ReadFavorites = function()
         if type(readfile)~="function" then return nil end
+        if type(isfile)=="function" and not isfile("RebornBuildFavorites_"..tostring(player.UserId)..".json") then return nil end
         local encoded=readfile("RebornBuildFavorites_"..tostring(player.UserId)..".json")
         if type(encoded)~="string" or #encoded>4096 then error("Invalid favorites file size") end
         return HttpService:JSONDecode(encoded)
@@ -5321,12 +5336,14 @@ local buildController = AutoBuild.new({
     end,
     ReadBlueprint = function(slot)
         if type(readfile)~="function" then return nil end
+        if type(isfile)=="function" and not isfile("RebornBlueprint_"..tostring(player.UserId).."_"..slot..".json") then return nil end
         local encoded=readfile("RebornBlueprint_"..tostring(player.UserId).."_"..slot..".json")
         if type(encoded)~="string" or #encoded>1000000 then error("Invalid blueprint file size") end
         return HttpService:JSONDecode(encoded)
     end,
     ReadBlueprintBackup = function(slot)
         if type(readfile)~="function" then return nil end
+        if type(isfile)=="function" and not isfile("RebornBlueprint_"..tostring(player.UserId).."_"..slot.."_backup.json") then return nil end
         local encoded=readfile("RebornBlueprint_"..tostring(player.UserId).."_"..slot.."_backup.json")
         if type(encoded)~="string" or #encoded>1000000 then error("Invalid blueprint backup file size") end
         return HttpService:JSONDecode(encoded)
@@ -5645,7 +5662,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn review-171",
+    return table.concat({"Reborn review-172",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7742,7 +7759,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn review-171 · Propeller loot history (UTC)",
+    return table.concat({"Reborn review-172 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7846,7 +7863,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn review-171 · Propeller tracker",
+    return table.concat({"Reborn review-172 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7882,7 +7899,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn review-171", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn review-172", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10697,7 +10714,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn review-171\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn review-172\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10759,7 +10776,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn review-171 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn review-172 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11393,7 +11410,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn review-171\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn review-172\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12514,7 +12531,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn review-171 · Craft diagnostics",
+    return table.concat({"Reborn review-172 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12593,7 +12610,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn review-171 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn review-172 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13276,7 +13293,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn review-171 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn review-172 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13484,7 +13501,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn review-171 · Mobs",
+    return table.concat({"Reborn review-172 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -14941,7 +14958,9 @@ function RemoteCatalog.TryPickBuildInput(input,processed)
     for _,object in ipairs(objects) do if object:IsA("GuiButton") or object:IsA("TextBox") then return false end end
     local camera=workspace.CurrentCamera
     if not camera or not RemoteCatalog.BuildPicker then return false end
-    local ray=camera:ScreenPointToRay(x,y)
+    -- GetMouseLocation is viewport space (top-bar inset included); a touch position is GUI space.
+    -- Each needs its own ray builder or the pick lands one block row off.
+    local ray=input.UserInputType==Enum.UserInputType.Touch and camera:ScreenPointToRay(x,y) or camera:ViewportPointToRay(x,y)
     local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude
     local ignore={}
     if player.Character then table.insert(ignore,player.Character) end

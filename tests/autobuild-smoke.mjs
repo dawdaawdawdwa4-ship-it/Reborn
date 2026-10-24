@@ -970,6 +970,22 @@ do
  assert(#h.History==1 and not h:Start(),'in-flight cancellation must not publish a result before cleanup or overlap workers')
  step()
  assert(#h.History==2 and h.History[1].State=='Stopped' and h.History[1].Placed==0,'late placement returns after Stop must remain unconfirmed in history')
+ -- An accepted request interrupted by Stop is settled before Start unlocks: the block that
+ -- replicates later must not be requested again on Resume.
+ do
+  local sentPositions={}
+  ctx.Place=function(body) table.insert(sentPositions,body.cframe.Position);coroutine.yield();return true end
+  h.Cells=cells(2);occupied={};h:Start();h:Stop()
+  step() -- the request returns accepted; the block has not replicated yet
+  assert(h.WorkerToken and not h:Start(),'Start stays locked while the accepted block is unconfirmed')
+  occupied[1]=true;step()
+  while coroutine.status(worker)~='dead' do step() end
+  assert(not h.WorkerToken,'the worker ends once the block is observed')
+  ctx.Place=function(body) table.insert(sentPositions,body.cframe.Position);occupied[body.cframe.Position]=true;return true end
+  h:Start();while coroutine.status(worker)~='dead' do step() end
+  local firstCell=0;for _,p in ipairs(sentPositions) do if p==1 then firstCell+=1 end end
+  assert(firstCell==1 and occupied[2],'cell 1 was requested exactly once across Stop and Resume')
+ end
  ctx.Place=function() requests+=1;return true end
  h.Cells=cells(4);occupied={};h:Start();while coroutine.status(worker)~='dead' do step() end
  assert(h.History[1].State=='Paused after failures' and h.History[1].Failed==3 and h.History[1].Placed==0,'accepted but unobserved placements must be failures in history')

@@ -22,7 +22,8 @@ local player={Character={}}
 local RaycastParams={new=function() return {} end}
 local origin,direction=vector(0,0,0),vector(0,0,-1)
 local raycasts,occluded=0,false
-local camera={ScreenPointToRay=function(_,x,y) assert(x>=500 and y==250);return {Origin=origin,Direction=direction} end}
+local rays={screen=0,viewport=0}
+local camera={ScreenPointToRay=function(_,x,y) rays.screen+=1;assert(x>=500 and y==250);return {Origin=origin,Direction=direction} end,ViewportPointToRay=function(_,x,y) rays.viewport+=1;assert(x>=500 and y==250);return {Origin=origin,Direction=direction} end}
 local workspace={CurrentCamera=camera,Raycast=function(_,o,d,params)
  raycasts+=1;assert(o==origin and d.Z==-1000 and params.FilterType==1 and params.FilterDescendantsInstances[1]==player.Character)
  return occluded and {Position=vector(0,0,-4)} or nil
@@ -49,6 +50,7 @@ buildController.PreviewFolder={}
 assert(RemoteCatalog.TryPickBuildInput(mouse,false) and calls==1 and limit==1000,'unblocked mouse input must reach the registered picker')
 occluded=true
 assert(RemoteCatalog.TryPickBuildInput({UserInputType=2,Position={X=600,Y=250}},false) and calls==2 and limit==4,'touch selection must carry world-obstruction distance to the picker')
+assert(rays.viewport>=1 and rays.screen==1,'mouse picks use the viewport ray (GetMouseLocation space); touch picks use the screen ray (GUI space)')
 listener(mouse,false);assert(calls==3,'the actual tracked input listener must dispatch selection')
 buildController.Picking=false;listener(mouse,false);assert(calls==3,'OFF must suppress the listener')
 return 'Build picking: mouse/touch dispatch, tab/window/chat/UI guards, world obstruction and OFF passed'
