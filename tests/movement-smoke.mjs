@@ -108,7 +108,18 @@ local closedHum,closedWrites=newHumanoid(21,50,7,true)
 local closedChar=character(closedHum);player.Character=closedChar;player.CharacterAdded:Fire(closedChar)
 gui.Parent=nil;flush()
 assert(next(closedWrites)==nil,'destroying the UI must suppress queued respawn application')
-return 'Movement: independent overrides, fresh baselines, owned-only Reset, jump mode switches and guarded respawn passed'
+-- Another owner (the Mobs boost) handing back the true original while custom walk is ON.
+do
+ local boostHum,boostWrites=newHumanoid(16,50,7,true)
+ local boostChar=character(boostHum);player.Character=boostChar;player.CharacterAdded:Fire(boostChar)
+ boostHum.WalkSpeed=24 -- a boost raised 16 → 24 before custom walk was enabled
+ movementController.WalkEnabled=false;movementController.WalkButton.Activated:Fire()
+ assert(boostHum.WalkSpeed==movementController.Speed,'custom walk applies its speed')
+ movementController:SetBaseline(boostHum,'WalkSpeed',16)
+ movementController.WalkButton.Activated:Fire()
+ assert(boostHum.WalkSpeed==16,'custom walk OFF restores the original handed over by the boost, not the boosted 24')
+end
+return 'Movement: independent overrides, fresh baselines, owned-only Reset, jump mode switches, boost baseline hand-off and guarded respawn passed'
 `;
 const state=await LuauState.createAsync();
 try{console.log(await state.loadstring(code,'movement',true)());}finally{state.destroy();}

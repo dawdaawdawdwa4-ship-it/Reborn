@@ -5644,7 +5644,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn review-169",
+    return table.concat({"Reborn review-170",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7243,6 +7243,12 @@ local movementController = (function()
         end
         self.Status.Text="Movement updated. Reset restores only settings changed here."
     end
+    -- Another owner (the Mobs boost) restoring a speed while Custom walk is ON: its original
+    -- becomes the value Custom walk restores later, instead of the boosted one it captured.
+    function self:SetBaseline(hum,property,value)
+        local original=originals[hum]
+        if original and original[property]~=nil then original[property]=value end
+    end
     function self:Reset()
         self.WalkEnabled,self.JumpEnabled=false,false
         local hum=humanoid()
@@ -7735,7 +7741,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn review-169 · Propeller loot history (UTC)",
+    return table.concat({"Reborn review-170 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7839,7 +7845,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn review-169 · Propeller tracker",
+    return table.concat({"Reborn review-170 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7875,7 +7881,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn review-169", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn review-170", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10689,7 +10695,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn review-169\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn review-170\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10751,7 +10757,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn review-169 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn review-170 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11385,7 +11391,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn review-169\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn review-170\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12503,7 +12509,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn review-169 · Craft diagnostics",
+    return table.concat({"Reborn review-170 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12582,7 +12588,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn review-169 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn review-170 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -12962,9 +12968,11 @@ function RemoteCatalog.PlowClick(block,blocks,tool,active)
         else VirtualInputManager:SendMouseButtonEvent(point.X,point.Y,0,down,game,0) end
     end
     local pressed=pcall(input,true)
+    if pressed then RemoteCatalog.PlowMouseHeld=function() return pcall(input,false) end end
     local held=pcall(function() if pressed then task.wait(.06) end end)
     local released=pcall(input,false)
-    if not pressed or not held or not released then return false,"Hoe input failed" end
+    if released then RemoteCatalog.PlowMouseHeld=nil end
+    if not pressed or not held or not released then return false,"Hoe input failed"..(not released and " · mouse release retried on Stop" or "") end
     return active(),"Hoe click sent"
 end
 function RemoteCatalog.PlowAction(block,blocks,tool,active,recorder)
@@ -12982,9 +12990,17 @@ function RemoteCatalog.PlowAction(block,blocks,tool,active,recorder)
     if not ran then return false,sent end
     return sent==true,result
 end
+function RemoteCatalog.ReleasePlowMouse()
+    -- A running worker releases its own click; this retry is for a release that failed after the
+    -- worker ended, so the button never stays down.
+    if RemoteCatalog.PlowWorker then return end
+    local release=RemoteCatalog.PlowMouseHeld
+    if type(release)=="function" and release() then RemoteCatalog.PlowMouseHeld=nil end
+end
 function RemoteCatalog.SetPlowEnabled(state)
     if not state then
         RemoteCatalog.PlowEnabled=false;RemoteCatalog.PlowPendingStart=false;RemoteCatalog.PlowGeneration+=1
+        RemoteCatalog.ReleasePlowMouse()
         RemoteCatalog.UpdatePlowControls()
         RemoteCatalog.PlowMessage(RemoteCatalog.PlowWorker and "Stopping: no further blocks will be attempted. Waiting for the current request/input to finish." or "Auto Plow is OFF. Press ON to start again.")
         return true
@@ -13255,7 +13271,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn review-169 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn review-170 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13463,7 +13479,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn review-169 · Mobs",
+    return table.concat({"Reborn review-170 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -13654,14 +13670,19 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
     -- uses), confirmed by HP rising or the stack shrinking, then re-equips the weapon.
     -- Faster walking only while the farm moves; nil restores. The Movement tab's custom walk wins.
     Boost=function(human,speed)
-        if movementController.WalkEnabled then return end
         RemoteCatalog.MobSpeedOriginal=RemoteCatalog.MobSpeedOriginal or setmetatable({},{__mode="k"})
         local originals=RemoteCatalog.MobSpeedOriginal
         if speed then
+            -- The Movement tab's custom walk owns the speed; never boost over it.
+            if movementController.WalkEnabled then return end
             if originals[human]==nil then originals[human]=human.WalkSpeed end
             human.WalkSpeed=speed
         elseif originals[human]~=nil then
-            human.WalkSpeed=originals[human];originals[human]=nil
+            -- Always consume the saved original: if custom walk took over meanwhile it captured the
+            -- boosted value as its baseline, so hand it the real one instead of writing the humanoid.
+            local original=originals[human];originals[human]=nil
+            if movementController.WalkEnabled then movementController:SetBaseline(human,"WalkSpeed",original)
+            else human.WalkSpeed=original end
         end
     end,
     Eat=function()
@@ -14007,7 +14028,9 @@ function RemoteCatalog.DepositItems()
         -- The held tool is left alone so a running farm keeps its equipment.
         if not seen[tool] and tool~=held and tool.Parent and RemoteCatalog.DepositWanted(kind) then
             seen[tool]=true
-            table.insert(items,{Tool=tool,Kind=kind,Amount=RemoteCatalog.DepositAmount(tool)})
+            local amount=RemoteCatalog.DepositAmount(tool)
+            -- A stack that reads 0 (or unreadable) would be a request for nothing, every cycle.
+            if type(amount)=="number" and amount>0 then table.insert(items,{Tool=tool,Kind=kind,Amount=amount}) end
         end
     end
     table.sort(items,function(a,b) return a.Tool.Name<b.Tool.Name end)
@@ -14201,6 +14224,13 @@ function RemoteCatalog.DropPauseReason()
     if RemoteCatalog.FishingMouseInput or RemoteCatalog.BaitMouseInput or RemoteCatalog.ResourceInputBusy or RemoteCatalog.MobMouseInput or RemoteCatalog.PlowWorker then
         return "Paused · another input action is active"
     end
+    -- Q drops the held tool: never while a farm or worker is holding its rod, axe, pickaxe, hoe or weapon.
+    if enabled or baitEnabled or baitBusy or harvestEnabled or woodEnabled or mineEnabled or RemoteCatalog.Planting
+        or type(buildController)=="table" and (buildController.Running or buildController.WorkerToken or buildController.Picking)
+        or RemoteCatalog.CraftWorker or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy or RemoteCatalog.DepositBusy
+        or RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Worker or RemoteCatalog.Mobs.Press) then
+        return "Paused · a farm or worker is holding its tool"
+    end
 end
 function RemoteCatalog.SetDropEnabled(on)
     if not on then
@@ -14314,7 +14344,8 @@ do
         local farm=RemoteCatalog.Mobs
         if farm then CONFIG.MobRadius,CONFIG.MobWalk,CONFIG.MobTravel,CONFIG.MobKind,CONFIG.MobAutoEat,CONFIG.MobWalkSpeed,CONFIG.MobKeep,CONFIG.MobHitRun=farm.Radius,farm.Walk,farm.Travel,farm.Kind,farm.AutoEat,farm.WalkSpeed,farm.KeepDistance,farm.HitAndRun end
         local data=savePreferences(true)
-        data.MobWeapon=nil;data.LearnedDefinitions=nil;data.RememberedChests=nil
+        -- Settings only: learned/remembered data and lifetime statistics belong to the account, not a profile.
+        data.MobWeapon=nil;data.LearnedDefinitions=nil;data.RememberedChests=nil;data.MobScore=nil;data.MobHitBody=nil;data.MobHitsToKill=nil
         local stamp="saved"
         pcall(function() stamp=os.date("%d/%m %H:%M") end)
         local profiles=RemoteCatalog.ReadProfiles()
@@ -14325,10 +14356,15 @@ do
         return true
     end
     function RemoteCatalog.LoadHubProfile()
-        if enabled or baitEnabled or harvestEnabled or woodEnabled or mineEnabled or RemoteCatalog.Mobs and RemoteCatalog.Mobs.Enabled then
-            setStatus("Stop running farms before loading a profile",COLORS.warn);return false
+        if enabled or baitEnabled or baitBusy or harvestEnabled or woodEnabled or mineEnabled or RemoteCatalog.Planting or RemoteCatalog.PlowWorker
+            or RemoteCatalog.CraftWorker or RemoteCatalog.ChestAutoWorker or RemoteCatalog.ChestBusy or RemoteCatalog.DepositBusy
+            or buildController.Running or buildController.WorkerToken
+            or RemoteCatalog.Mobs and (RemoteCatalog.Mobs.Enabled or RemoteCatalog.Mobs.Worker) then
+            setStatus("Stop running farms and workers before loading a profile",COLORS.warn);return false
         end
         local profile=RemoteCatalog.ReadProfiles()[tostring(RemoteCatalog.ProfileSlot)]
+        -- A profile written by an older build may still carry account memory; never load it from there.
+        if type(profile)=="table" and type(profile.Data)=="table" then profile.Data.MobScore=nil;profile.Data.MobHitBody=nil;profile.Data.MobHitsToKill=nil;profile.Data.MobWeapon=nil;profile.Data.LearnedDefinitions=nil;profile.Data.RememberedChests=nil end
         if type(profile)~="table" or type(profile.Data)~="table" then setStatus("Profile "..RemoteCatalog.ProfileSlot.." is empty",COLORS.warn);return false end
         if not loadPreferences(profile.Data) then setStatus("Profile could not be read",COLORS.bad);return false end
         CONFIG.HarvestCrops=FarmLogic.NormalizeCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)
@@ -15047,6 +15083,7 @@ gui.Destroying:Connect(function()
     RemoteCatalog.StopMobLearning()
     RemoteCatalog.Mobs:Stop()
     RemoteCatalog.SetDropEnabled(false)
+    pcall(RemoteCatalog.ReleasePlowMouse)
     RemoteCatalog.PropellerWindow=nil;RemoteCatalog.PropellerPendingWindow=nil
     RemoteCatalog.SetCraftEnabled(false)
     RemoteCatalog.StopCraftLearning()

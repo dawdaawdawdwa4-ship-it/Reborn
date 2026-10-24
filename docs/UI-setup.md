@@ -4251,3 +4251,25 @@ Harvest:
   a normal stop.
 
 Report headers now read `Reborn review-169`.
+
+## Small features review · v170
+
+Independent review of Deposit, Drop, Plow, Movement, Teleport, Performance,
+Keybinds, Rejoin, Anti-AFK, profiles and cleanup, with fixes and tests.
+
+- **Walk speed restored correctly.** The Mobs boost skipped its restore while
+  the Movement tab's custom walk was on, and custom walk had captured the
+  boosted speed as its baseline, so the character kept the boosted speed after
+  everything stopped. The boost now hands its real original to the Movement
+  tab as the value to restore.
+- **Auto Drop never drops a farm's tool.** Q is paused while Fishing, Bait,
+  Crop/Wood/Mining, planting, Auto Build, crafting, chest collection, deposit
+  or a finishing Mobs worker holds its tool.
+- **Profiles are settings only.** A hub profile no longer snapshots the
+  lifetime scoreboard, learned hits per mob or the hit packet, and an older
+  profile that carries them is ignored on load; loading is refused while any
+  worker runs, not only while a farm flag is on.
+- **Deposit never requests 0 items** for a stack that reads 0 or unreadable.
+- **A plow click whose release failed** is retried on Stop and on hub close.
+
+Report headers now read `Reborn review-170`.

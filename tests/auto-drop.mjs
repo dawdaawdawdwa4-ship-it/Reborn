@@ -35,6 +35,9 @@ local function reset()
  failDown=false;failUp=false;explicitFalse=false;keypress=nil;keyrelease=nil;RemoteCatalog.DropInterval=.15
 end
 assert(not RemoteCatalog.DropEnabled and not RemoteCatalog.DropWorker and #events==0,'startup must be OFF and send nothing')
+woodEnabled=true;assert(RemoteCatalog.DropPauseReason():find('holding its tool',1,true),'Q must not fire while Wood Farm holds the axe');woodEnabled=nil
+RemoteCatalog.Mobs={Worker=true};assert(RemoteCatalog.DropPauseReason():find('holding its tool',1,true),'a finishing mob worker still holds the weapon');RemoteCatalog.Mobs=nil
+assert(RemoteCatalog.DropPauseReason()==nil,'with nothing running Q may fire')
 assert(RemoteCatalog.SetDropEnabled(true) and events[1]=='down' and #events==1 and waits[1]==.03)
 assert(RemoteCatalog.SetDropEnabled(true) and #events==1 and #workers==1,'repeated ON must not duplicate the worker')
 step();assert(events[2]=='up' and RemoteCatalog.DropCount==1 and math.abs(waits[2]-.12)<.0001,'a full press must release before waiting the remaining interval')

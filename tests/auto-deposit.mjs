@@ -61,8 +61,10 @@ for _,name in ipairs({'ironAxe','stonePickaxe','ironWarAxe','bait','wheatSeeds',
 end
 local plantStock=tool('potato',6)
 table.insert(owned,plantStock)
+local emptyStack=tool('berry',0);table.insert(owned,emptyStack)
 local items=RemoteCatalog.DepositItems()
-assert(#items==2 and items[1].Tool==carrots and items[2].Tool==wheat,'Crops mode takes crops only, never the held tool or the replant stock')
+assert(#items==2 and items[1].Tool==carrots and items[2].Tool==wheat,'Crops mode takes crops only, never the held tool, the replant stock or a stack that reads 0')
+table.remove(owned,table.find(owned,emptyStack))
 for _,name in ipairs({'ironShears','woodShield','goldHelmet'}) do assert(RemoteCatalog.DepositKind(name)==nil,name..' is gear, not farm produce') end
 RemoteCatalog.DepositBusy=true
 assert(select(2,RemoteCatalog.DepositOnce()):find('already running',1,true),'two deposits must never overlap')
