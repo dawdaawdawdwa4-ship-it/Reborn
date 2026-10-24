@@ -1211,18 +1211,23 @@ local function learnChest(remote,method,args)
     for _,value in pairs(body) do
         if type(value)=="table" and value.action=="withdraw" then body=value;break end
     end
-    if body.action~="withdraw" or (type(body.item)~="string" or #body.item==0 or #body.item>128) or typeof(body.chest)~="Instance"
+    -- Two body shapes: the older {item, slot} form and the field-confirmed form
+    -- {chest, amount, tool=<stack Instance in chest.Contents>, action="withdraw"}.
+    local toolShaped=typeof(body.tool)=="Instance"
+    local item=toolShaped and body.tool.Name or body.item
+    if body.action~="withdraw" or (type(item)~="string" or #item==0 or #item>128) or typeof(body.chest)~="Instance"
         or not (body.chest:IsA("Model") or body.chest:IsA("BasePart")) then return false end
-    if type(body.slot)~="number" or body.slot<0 or body.slot%1~=0
-        or type(body.amount)~="number" or body.amount<=0 or body.amount%1~=0 then return false end
+    if not toolShaped and (type(body.slot)~="number" or body.slot<0 or body.slot%1~=0) then return false end
+    if type(body.amount)~="number" or body.amount<=0 or body.amount%1~=0 then return false end
     local owner=game:GetService("Players").LocalPlayer
     if not owner or not owner.Character then return false end
     local binding={Remote=remote,Method=method,Args=cloneArguments(args),Chest=body.chest,
-        Slot=body.slot,Amount=body.amount,Item=body.item,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
+        Slot=toolShaped and 0 or body.slot,Amount=body.amount,Item=item,FromTool=toolShaped or nil,
+        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
     capture.ChestBinding=binding
     local replaced=false
     for i,old in ipairs(capture.ChestBindings) do
-        if old.Chest==binding.Chest and old.Slot==binding.Slot then capture.ChestBindings[i]=binding;replaced=true;break end
+        if old.Chest==binding.Chest and (toolShaped and old.FromTool and old.Item==binding.Item or not toolShaped and old.Slot==binding.Slot) then capture.ChestBindings[i]=binding;replaced=true;break end
     end
     if not replaced then table.insert(capture.ChestBindings,binding) end
     return true
@@ -1267,10 +1272,24 @@ function capture:WithdrawCarrots(amount,binding)
             if type(value)=="table" and value.chest==b.Chest and value.action=="withdraw" then body=value;break end
         end
     end
-    if body.chest~=b.Chest or body.action~="withdraw" or body.item~=(b.Item or "carrotHarvested") then return false,"Learn this chest withdrawal again","context" end
-    -- Apply the selected slot and count to the cloned body; retain the learned session envelope.
-    body.amount=amount
-    body.slot=b.Slot
+    if body.chest~=b.Chest or body.action~="withdraw" then return false,"Learn this chest withdrawal again","context" end
+    if b.FromTool then
+        -- The tool field names a stack Instance that changes with every refill: resolve the current
+        -- stack of the learned item in the chest's Contents; an absent or empty stack is a skip.
+        local contents=b.Chest:FindFirstChild("Contents")
+        local stack
+        for _,child in ipairs(contents and contents:GetChildren() or {}) do if child.Name==b.Item then stack=child;break end end
+        local value=stack and stack:FindFirstChild("Amount")
+        local available=stack and (value and math.floor(tonumber(value.Value) or 0) or 1) or 0
+        if available<=0 then return false,{success=false,error="EMPTY_SLOT"},"skip" end
+        body.tool=stack
+        body.amount=math.min(amount,available)
+    else
+        if body.item~=(b.Item or "carrotHarvested") then return false,"Learn this chest withdrawal again","context" end
+        -- Apply the selected slot and count to the cloned body; retain the learned session envelope.
+        body.amount=amount
+        body.slot=b.Slot
+    end
     local ok,result=pcall(function() return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n)) end)
     if not ok then return false,result,"transport" end
     if result==false or type(result)=="table" and result.success==false then return false,result,"rejected" end
@@ -5612,7 +5631,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-return-167",
+    return table.concat({"Reborn review-168",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6029,8 +6048,8 @@ local function setBaitEnabled(state)
                 continue
             end
             if applied and detail=="bait consumption confirmed" and RemoteCatalog.StartFishingOnBait then
-                RemoteCatalog.StartFishingOnBait=false
-                if not enabled then setEnabled(true) end
+                -- setEnabled clears the one-shot flag only when it accepts; a refusal keeps it for the next refresh.
+                if not enabled then setEnabled(true) else RemoteCatalog.StartFishingOnBait=false end
             end
             if applied then setStatus(detail == "tool activation attempted" and "Bait tool activated; next attempt in 60s" or "Auto Bait applied; refresh in 60s", COLORS.good) end
             baitToggle.BackgroundColor3 = applied and COLORS.on or COLORS.off
@@ -7703,7 +7722,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-return-167 · Propeller loot history (UTC)",
+    return table.concat({"Reborn review-168 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7807,7 +7826,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-return-167 · Propeller tracker",
+    return table.concat({"Reborn review-168 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7843,7 +7862,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-return-167", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn review-168", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -8483,6 +8502,12 @@ RemoteCatalog.RecoverFishingCast=function(myCycle,bobber)
         local slot=service.selectedHotbarIndex
         if slot~=nil and service.hotbar and service.hotbar[slot]==rod then
             toggled=pcall(function() service:setSelectedHotbarIndex(slot) end)
+            -- A call that does nothing still "succeeds": confirm the rod actually left the character.
+            if toggled then
+                task.wait(math.max(CONFIG.FishingPollInterval or .1,.1))
+                if not active() then return false end
+                toggled=character:FindFirstChildOfClass("Tool")~=rod
+            end
         end
     end
     if not toggled then
@@ -9273,6 +9298,11 @@ local function run(myCycle)
         else setStatus(message,color) end
     end
 
+    -- The game may reuse one bobber instance per player; state keyed by it must not survive a cast.
+    local function forgetBobber(b)
+        if b==nil then return end
+        readyBites[b]=nil;countedBites[b]=nil;countedMisses[b]=nil;reelAttempts[b]=nil;mouseReels[b]=nil
+    end
 	while running(myCycle) do
         if baitBusy then status("Applying bait; fishing resumes automatically.",COLORS.muted);task.wait(.05);continue end
 		local bobber = getBobber()
@@ -9280,7 +9310,7 @@ local function run(myCycle)
 		if bobber then
             if (reelAttempts[bobber] or 0)>=3 then
                 RemoteCatalog.RecoverFishingCast(myCycle,bobber)
-                reelAttempts[bobber]=0
+                forgetBobber(bobber)
                 task.wait(1)
                 continue
             end
@@ -9292,11 +9322,12 @@ local function run(myCycle)
                 if tugged then readyBites[bobber]=true end
             end
 			if not running(myCycle) then break end
-            if getBobber()~=bobber then task.wait(.01);continue end
+            if getBobber()~=bobber then forgetBobber(bobber);task.wait(.01);continue end
 
 			if timedOut then
                 status("No bite yet — resetting the cast and continuing without requiring bait.", COLORS.warn)
                 RemoteCatalog.RecoverFishingCast(myCycle,bobber)
+                forgetBobber(bobber)
                 task.wait(1)
                 continue
             elseif not tugged then
@@ -9327,6 +9358,7 @@ local function run(myCycle)
 				end)
 				if not running(myCycle) then break end
 				if gone then
+					forgetBobber(bobber)
 					task.wait(0.05)
                     if not running(myCycle) then break end
 					local fishName
@@ -9360,9 +9392,11 @@ local function run(myCycle)
 			if os.clock() - lastAction >= CONFIG.ActionCooldown then
 				lastAction = os.clock()
 				status("Casting...")
-                local cast,inputReason=clickOnce("cast",myCycle)
-				if cast then
-					stats.casts += 1
+                local cast,inputReason,castSent=clickOnce("cast",myCycle)
+				if cast or castSent then
+					-- castSent: press, hold and release all went out but the post-release check failed;
+					-- the server may still spawn a bobber, so never cast again on top of it.
+					if cast then stats.casts += 1 end
 					updateBoard()
 					-- Only wait for a bobber after an actual cast input; this avoids
 					-- burning the full timeout on frames where the cooldown is active.
@@ -9644,6 +9678,8 @@ function RemoteCatalog.SendChestWithdraw(chest,item,amount,slot,stack)
     local remote=RemoteCatalog.ChestTransactionRemote()
     if stack and remote then
         amount=math.min(amount,RemoteCatalog.StackAmount(stack))
+        -- A present but empty stack: a skip decided here, never a request for 0 items.
+        if amount<=0 then return false,{success=false,error="EMPTY_SLOT"},"skip" end
         -- Plain index call so the capture hook does not record the hub's own request.
         local ok,result=pcall(function()
             return remote.InvokeServer(remote,{chest=chest,player_tracking_category="join_from_web",amount=amount,tool=stack,action="withdraw"})
@@ -9652,7 +9688,8 @@ function RemoteCatalog.SendChestWithdraw(chest,item,amount,slot,stack)
         if result==false or type(result)=="table" and result.success==false then return false,result,"rejected" end
         return true,result
     end
-    if remote and chest and chest:FindFirstChild("Contents") then return false,{success=false,error="EMPTY_SLOT"},"rejected" end
+    -- Decided locally (no stack left): origin "skip" keeps it out of the pacing statistics.
+    if remote and chest and chest:FindFirstChild("Contents") then return false,{success=false,error="EMPTY_SLOT"},"skip" end
     local endpoint=RemoteCatalog.ChestEndpoint()
     if not endpoint then return false,"Game chest request unavailable · learn one withdrawal on this server","unavailable" end
     local ok,result=RemoteCatalog.SendEndpoint(endpoint,{chest=chest,slot=slot,item=item,amount=amount,action="withdraw"})
@@ -9855,7 +9892,9 @@ function RemoteCatalog.SelectedChestTargets(includeProtected)
         local binding=entry.Binding
         local selected=RemoteCatalog.ChestSelection
         local item=binding.Item or "carrotHarvested"
-        if (includeProtected==true or not RemoteCatalog.ChestTargetProtected(binding)) and (not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[item]) and (not RemoteCatalog.ChestItem or RemoteCatalog.ChestItem==item) and (not selected or selected.Chest==binding.Chest and (RemoteCatalog.ChestWhole or selected.Slot==binding.Slot)) then
+        -- A Contents stack gets a new slot id every refill, so a selected stack is matched by item.
+        local chosen=not selected or selected.Chest==binding.Chest and (RemoteCatalog.ChestWhole or selected.Slot==binding.Slot or (binding.FromContents or selected.FromContents) and selected.Item~=nil and selected.Item==item)
+        if (includeProtected==true or not RemoteCatalog.ChestTargetProtected(binding)) and (not RemoteCatalog.ChestItems or RemoteCatalog.ChestItems[item]) and (not RemoteCatalog.ChestItem or RemoteCatalog.ChestItem==item) and chosen then
             if RemoteCatalog.ChestWhole and entry.Recorder.MakeChestTarget and string.lower(binding.Chest.Name)=="chestmediumindustrialio" then
                 seen[binding.Chest]=seen[binding.Chest] or {}
                 if newest[binding.Chest][item]==entry and not seen[binding.Chest][item] then
@@ -10215,7 +10254,7 @@ function RemoteCatalog.UpdateChestSelectionUI()
     if selected then
         text="Choose a chest again"
         for _,entry in ipairs(all) do
-            if entry.Binding.Chest==selected.Chest and entry.Binding.Slot==selected.Slot then text=RemoteCatalog.ChestTargetLabel(entry.Binding,all);break end
+            if entry.Binding.Chest==selected.Chest and (entry.Binding.Slot==selected.Slot or (entry.Binding.FromContents or selected.FromContents) and selected.Item~=nil and selected.Item==entry.Binding.Item) then text=RemoteCatalog.ChestTargetLabel(entry.Binding,all);break end
         end
     end
     RemoteCatalog.ChestSelectButton.Text=text.."  ▾"
@@ -10258,7 +10297,7 @@ track(RemoteCatalog.ChestSelectButton.Activated:Connect(function()
         table.insert(RemoteCatalog.ChestMenuConnections,option.Activated:Connect(function()
             RemoteCatalog.SetChestAuto(false)
             RemoteCatalog.ChestManualGeneration=(RemoteCatalog.ChestManualGeneration or 0)+1
-            RemoteCatalog.ChestSelection=entry and {Chest=entry.Binding.Chest,Slot=entry.Binding.Slot} or nil
+            RemoteCatalog.ChestSelection=entry and {Chest=entry.Binding.Chest,Slot=entry.Binding.Slot,Item=entry.Binding.Item,FromContents=entry.Binding.FromContents} or nil
             menu.Visible=false;RemoteCatalog.LayoutChestControls();RemoteCatalog.UpdateChestSelectionUI()
         end))
     end
@@ -10298,7 +10337,7 @@ function RemoteCatalog.WithdrawSelectedCarrots(generation)
                     return false,"Withdrawal stopped at check "..i.."/"..#targets.."; "..sent.." earlier requests sent. Check inventory/result before restarting. "..RemoteCatalog.ChestResultText(result)
                 end
                 if ok or not RemoteCatalog.ChestTooFast(result) then
-                    if ran then RemoteCatalog.ObserveChestPace(ok,result,pause,gap) else RemoteCatalog.ObserveChestPace(false,nil,pause) end
+                    if ran then RemoteCatalog.ObserveChestPace(ok,result,pause,gap,origin) else RemoteCatalog.ObserveChestPace(false,nil,pause) end
                     break
                 end
                 if attempt==5 then return false,"Server keeps returning TOO_FAST; stopped after five attempts without reducing the batch" end
@@ -10593,7 +10632,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-return-167\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn review-168\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10655,7 +10694,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-return-167 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn review-168 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -10673,7 +10712,7 @@ function RemoteCatalog.ChestTooFast(response)
 end
 -- Distinguish retryable batch rejection from an unknown transfer outcome.
 function RemoteCatalog.ChestFailureKind(response,origin)
-    if origin=="transport" or origin=="context" or origin=="invalid" or origin=="blocked" then return origin end
+    if origin=="transport" or origin=="context" or origin=="invalid" or origin=="blocked" or origin=="skip" then return origin end
     if RemoteCatalog.ChestTooFast(response) then return "rate" end
     local seen={}
     local priority={amount=1,skip=2,context=3,capacity=4}
@@ -10715,7 +10754,8 @@ function RemoteCatalog.ChestBackoff(gap)
     RemoteCatalog.ChestRateDelay=ceiling and ceiling<=4 and ceiling or math.min(4,math.max(.5,previous*2))
     return RemoteCatalog.ChestRateDelay
 end
-function RemoteCatalog.ObserveChestPace(sent,response,base,gap)
+function RemoteCatalog.ObserveChestPace(sent,response,base,gap,origin)
+    if origin=="skip" then return end
     if RemoteCatalog.ChestTooFast(response) or not (sent or type(response)=="table" and type(response.success)=="boolean") then
         RemoteCatalog.ChestRateSuccesses=0
         -- No trustworthy timing observation follows a local/transport failure.
@@ -11161,7 +11201,7 @@ function RemoteCatalog.SetChestAuto(state)
                     RemoteCatalog.ChestAutoMessage(target..": "..(kind=="transport" and "Transfer outcome unknown; request will not be replayed. Check inventory before restarting." or kind=="capacity" and "Inventory has no space; clear space before restarting. Batch was not reduced." or kind=="context" and "Chest permission/session changed; learn a fresh withdrawal before restarting." or "Withdrawal rejected; batch kept and run stopped. Check the result before restarting.").."\n"..RemoteCatalog.ChestResultText(response))
                     return
                 end
-                if ran then RemoteCatalog.ObserveChestPace(sent,response,successPause,gap) else RemoteCatalog.ObserveChestPace(false,nil,successPause) end
+                if ran then RemoteCatalog.ObserveChestPace(sent,response,successPause,gap,origin) else RemoteCatalog.ObserveChestPace(false,nil,successPause) end
                 if sent and after~=nil and after<=before then
                     -- From the user's continuous-collect patch: a chest emptied between the scan and the
                     -- request (another player, a conveyor) answers "empty"/"insufficient", or its stack is
@@ -11288,7 +11328,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-return-167\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn review-168\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12406,7 +12446,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-return-167 · Craft diagnostics",
+    return table.concat({"Reborn review-168 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12485,7 +12525,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-return-167 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn review-168 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13158,7 +13198,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn mob-return-167 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn review-168 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13366,7 +13406,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-return-167 · Mobs",
+    return table.concat({"Reborn review-168 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

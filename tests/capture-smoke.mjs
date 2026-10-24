@@ -498,8 +498,28 @@ end)()
  assert(#capture:GetChestBindings()==2 and capture.ChestBinding.Args[1].context=='updated-A','relearning one chest/slot must replace, not duplicate it')
  installedHook(endpoint,{context='another-slot',body={chest=a,action='withdraw',slot=2,item='carrotHarvested',amount=8}})
  assert(#capture:GetChestBindings()==3,'different carrot slots in one chest must remain distinct')
+ -- The field-confirmed body names the stack Instance instead of item/slot; it is learned by item and
+ -- replayed against whatever stack of that item the chest holds now.
+ local amountValue={Value=20}
+ local stack={_type='Instance',Name='potatoSalad',FindFirstChild=function(_,child) return child=='Amount' and amountValue or nil end}
+ local refilled={_type='Instance',Name='potatoSalad',FindFirstChild=function(_,child) return child=='Amount' and {Value=7} or nil end}
+ local stacks={stack}
+ local contents={GetChildren=function() return stacks end}
+ local c=chest('Chest C');c.FindFirstChild=function(_,child) return child=='Contents' and contents or nil end
+ installedHook(endpoint,{context='account-C',body={chest=c,player_tracking_category='join_from_web',amount=10,tool=stack,action='withdraw'}})
+ local bindingC=capture.ChestBinding
+ assert(bindingC and bindingC.Chest==c and bindingC.Item=='potatoSalad' and bindingC.FromTool and bindingC.Slot==0 and #capture:GetChestBindings()==4,'the confirmed tool-shaped withdrawal is learned by item')
+ installedHook(endpoint,{context='account-C2',body={chest=c,player_tracking_category='join_from_web',amount=3,tool=stack,action='withdraw'}})
+ assert(#capture:GetChestBindings()==4,'relearning the same chest item replaces the binding')
+ local n=#packets
+ assert(capture:WithdrawCarrots(12,bindingC) and packets[n+1].body.tool==stack and packets[n+1].body.amount==12 and packets[n+1].body.slot==nil,'replay keeps the tool-shaped body and the current stack')
+ stacks={refilled}
+ assert(capture:WithdrawCarrots(12,bindingC) and packets[n+2].body.tool==refilled and packets[n+2].body.amount==7,'after a refill the new stack is used and the amount is clamped to it')
+ stacks={}
+ local sent,result,origin=capture:WithdrawCarrots(12,bindingC)
+ assert(not sent and type(result)=='table' and result.error=='EMPTY_SLOT' and origin=='skip' and #packets==n+2,'no stack of the item means a local skip, never a request')
  b.Parent=nil
- assert(#capture:GetChestBindings()==2 and not capture:WithdrawCarrots(1,bindingB),'removed chest must be excluded without losing other bindings')
+ assert(#capture:GetChestBindings()==3 and not capture:WithdrawCarrots(1,bindingB),'removed chest must be excluded without losing other bindings')
  capture:Stop();assert(not capture.LearnChestOnly and not capture.LearnChestMany,'Stop must end multi learning')
 end)()
 ;(function()

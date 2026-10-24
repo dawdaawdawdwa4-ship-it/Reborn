@@ -633,18 +633,23 @@ local function learnChest(remote,method,args)
     for _,value in pairs(body) do
         if type(value)=="table" and value.action=="withdraw" then body=value;break end
     end
-    if body.action~="withdraw" or (type(body.item)~="string" or #body.item==0 or #body.item>128) or typeof(body.chest)~="Instance"
+    -- Two body shapes: the older {item, slot} form and the field-confirmed form
+    -- {chest, amount, tool=<stack Instance in chest.Contents>, action="withdraw"}.
+    local toolShaped=typeof(body.tool)=="Instance"
+    local item=toolShaped and body.tool.Name or body.item
+    if body.action~="withdraw" or (type(item)~="string" or #item==0 or #item>128) or typeof(body.chest)~="Instance"
         or not (body.chest:IsA("Model") or body.chest:IsA("BasePart")) then return false end
-    if type(body.slot)~="number" or body.slot<0 or body.slot%1~=0
-        or type(body.amount)~="number" or body.amount<=0 or body.amount%1~=0 then return false end
+    if not toolShaped and (type(body.slot)~="number" or body.slot<0 or body.slot%1~=0) then return false end
+    if type(body.amount)~="number" or body.amount<=0 or body.amount%1~=0 then return false end
     local owner=game:GetService("Players").LocalPlayer
     if not owner or not owner.Character then return false end
     local binding={Remote=remote,Method=method,Args=cloneArguments(args),Chest=body.chest,
-        Slot=body.slot,Amount=body.amount,Item=body.item,OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
+        Slot=toolShaped and 0 or body.slot,Amount=body.amount,Item=item,FromTool=toolShaped or nil,
+        OwnerUserId=owner.UserId,OwnerCharacter=owner.Character,JobId=game.JobId,ObservedAt=os.clock()}
     capture.ChestBinding=binding
     local replaced=false
     for i,old in ipairs(capture.ChestBindings) do
-        if old.Chest==binding.Chest and old.Slot==binding.Slot then capture.ChestBindings[i]=binding;replaced=true;break end
+        if old.Chest==binding.Chest and (toolShaped and old.FromTool and old.Item==binding.Item or not toolShaped and old.Slot==binding.Slot) then capture.ChestBindings[i]=binding;replaced=true;break end
     end
     if not replaced then table.insert(capture.ChestBindings,binding) end
     return true
@@ -689,10 +694,24 @@ function capture:WithdrawCarrots(amount,binding)
             if type(value)=="table" and value.chest==b.Chest and value.action=="withdraw" then body=value;break end
         end
     end
-    if body.chest~=b.Chest or body.action~="withdraw" or body.item~=(b.Item or "carrotHarvested") then return false,"Learn this chest withdrawal again","context" end
-    -- Apply the selected slot and count to the cloned body; retain the learned session envelope.
-    body.amount=amount
-    body.slot=b.Slot
+    if body.chest~=b.Chest or body.action~="withdraw" then return false,"Learn this chest withdrawal again","context" end
+    if b.FromTool then
+        -- The tool field names a stack Instance that changes with every refill: resolve the current
+        -- stack of the learned item in the chest's Contents; an absent or empty stack is a skip.
+        local contents=b.Chest:FindFirstChild("Contents")
+        local stack
+        for _,child in ipairs(contents and contents:GetChildren() or {}) do if child.Name==b.Item then stack=child;break end end
+        local value=stack and stack:FindFirstChild("Amount")
+        local available=stack and (value and math.floor(tonumber(value.Value) or 0) or 1) or 0
+        if available<=0 then return false,{success=false,error="EMPTY_SLOT"},"skip" end
+        body.tool=stack
+        body.amount=math.min(amount,available)
+    else
+        if body.item~=(b.Item or "carrotHarvested") then return false,"Learn this chest withdrawal again","context" end
+        -- Apply the selected slot and count to the cloned body; retain the learned session envelope.
+        body.amount=amount
+        body.slot=b.Slot
+    end
     local ok,result=pcall(function() return b.Remote[b.Method](b.Remote,table.unpack(args,1,args.n)) end)
     if not ok then return false,result,"transport" end
     if result==false or type(result)=="table" and result.success==false then return false,result,"rejected" end

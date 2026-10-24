@@ -4176,3 +4176,37 @@ Report headers now read `Reborn scan-166`.
   studs of the spot and keeps scanning.
 
 Report headers now read `Reborn mob-return-167`.
+
+## Fishing and Chests review · v168
+
+Independent reviews of the Fishing and Chests code, with fixes and tests.
+
+Fishing:
+- **Stuck-cast reset is verified.** The hotbar "toggle off" call was trusted;
+  if it changed nothing the rod stayed equipped and the reset looped forever.
+  The rod's absence is now checked after the call; otherwise the humanoid
+  unequip fallback runs.
+- **Per-bobber state is forgotten** when a bobber vanishes, is replaced or is
+  reset. The game may reuse one bobber instance, which made the next cast reel
+  immediately and count false catches.
+- **A cast that went out but failed the post-release check** (right mouse,
+  text box) now still waits for its bobber with CastInFlight set, instead of
+  casting again on top of it; it is not counted as a cast.
+- **Bait → fishing auto-start** keeps its one-shot flag when fishing refuses
+  to start (weapon release pending, plow cleanup), so the next refresh retries.
+
+Chests:
+- **Selected Contents stacks survive refills.** A stack gets a new slot id
+  every refill; the selection now stores the item and matches by chest and
+  item for Contents stacks, so Repeat no longer waits forever on a selected
+  stack.
+- **Learning accepts the real protocol.** The confirmed withdrawal body names
+  the stack Instance (`tool`), not item/slot; learning now accepts it (by
+  item) and replays against the chest's current stack of that item, clamped to
+  its amount; an absent or empty stack is a skip.
+- **Empty stacks are skips.** A present but empty stack no longer sends a
+  withdrawal for 0 items (which stopped the run as "rejected").
+- **Local skips never pace.** A locally decided EMPTY_SLOT no longer feeds the
+  rate-limit statistics as a server timing sample.
+
+Report headers now read `Reborn review-168`.

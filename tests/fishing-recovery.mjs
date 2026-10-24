@@ -34,9 +34,9 @@ local function scenario(mode)
   if mode~='stuck' and mode~='stop' and mode~='respawn' and time>=.15 then bobber.Parent=nil end
  end}
  local native={selectedHotbarIndex=0,hotbar={[0]=rod},setSelectedHotbarIndex=function(_,slot)
-  assert(slot==0);slotToggles+=1;selected=nil
+  assert(slot==0);slotToggles+=1;if mode~='native-noop' then selected=nil end
  end}
- local RemoteCatalog={BaitPending=mode~='no-bait',GameModule=function() return mode=='native' and native or nil end,
+ local RemoteCatalog={BaitPending=mode~='no-bait',GameModule=function() return (mode=='native' or mode=='native-noop') and native or nil end,
   EquipTool=function(tool) equips+=1;selected=tool;return true end,
   EquipFishingRod=function() error('unexpected selection') end}
  ${wait}
@@ -48,9 +48,77 @@ local function scenario(mode)
  elseif mode=='manual' then assert(cleared and selected==other and equips==0,'manual selection must not be overwritten')
  else assert(cleared and not bobber.Parent,'recovery must observe bobber disappearance') end
  if mode=='native' then assert(slotToggles==1 and unequips==0 and equips==0 and selected==nil,'slot zero reset must leave queued bait a tool-free handoff') end
+ if mode=='native-noop' then assert(slotToggles==1 and unequips==1 and cleared and selected==nil,'a hotbar toggle that changes nothing must fall back to UnequipTools instead of trusting the call') end
  if mode=='no-bait' then assert(equips==1 and selected==rod,'fishing without queued bait must restore the rod') end
 end
-for _,mode in ipairs({'native','fallback','no-bait','stuck','stop','respawn','manual','locked','loading','chat'}) do scenario(mode) end
+for _,mode in ipairs({'native','native-noop','fallback','no-bait','stuck','stop','respawn','manual','locked','loading','chat'}) do scenario(mode) end
+-- One bobber instance reused across casts: per-bobber state must not survive a catch.
+do
+ local time,enabled=0,true
+ local os={clock=function() return time end}
+ local CONFIG={ActionCooldown=0,ReelSettleDelay=.01,ReelTimeout=.7,CastTimeout=.5,MaxFailedCasts=3}
+ local gui={Parent=true}
+ local baitBusy,baitEnabled=false,false
+ local harvestEnabled,woodEnabled,mineEnabled=false,false,false
+ local lastAction=-100
+ local bobber={Parent=true}
+ local stats={bites=0,casts=0}
+ local waits,reels,casts,catches=0,0,0,0
+ local function running(token) return enabled and token==1 end
+ local function getBobber() return bobber.Parent and bobber or nil end
+ local function waitForTug() waits+=1;return true,false end
+ local function clickOnce(action)
+  if action=='cast' then casts+=1;bobber.Parent=true;return true end
+  reels+=1;bobber.Parent=nil;return true
+ end
+ local function waitUntil(_,_,predicate) return running(1) and predicate() end
+ local function updateBoard() end
+ local function setStatus() end
+ local COLORS={warn=1,gold=2,good=3,muted=4}
+ local function registerMiss() error('no miss expected') end
+ local function registerCatch() catches+=1;if catches>=2 then enabled=false end end
+ local function hasRodEquipped() return true end
+ local lastNewItem,reelTime
+ local RemoteCatalog={CompleteModeGoal=function() end,BeginPropellerCatch=function() end,EquipFishingRod=function() return true end,RecoverFishingCast=function() error('no recovery expected') end}
+ local steps=0
+ local task={wait=function(dt) time+=dt;steps+=1;assert(steps<60,'worker did not settle') end}
+ ${run}
+ run(1)
+ assert(catches==2 and waits==2 and reels==2 and casts==1,'the second cast with the same bobber instance must wait for its own bite instead of reeling at once')
+end
+-- A cast whose input went out but failed the post-release check still waits for the bobber instead of casting again.
+do
+ local time,enabled=0,true
+ local os={clock=function() return time end}
+ local CONFIG={ActionCooldown=0,ReelSettleDelay=.01,ReelTimeout=.7,CastTimeout=.5,MaxFailedCasts=3}
+ local gui={Parent=true}
+ local baitBusy,baitEnabled=false,false
+ local harvestEnabled,woodEnabled,mineEnabled=false,false,false
+ local lastAction=-100
+ local bobber={Parent=false}
+ local stats={bites=0,casts=0}
+ local casts,inFlightSeen=0,false
+ local function running(token) return enabled and token==1 end
+ local function getBobber() return bobber.Parent and bobber or nil end
+ local function waitForTug() enabled=false;return false,false end
+ local function clickOnce(action) assert(action=='cast');casts+=1;return false,'right mouse held after release',true end
+ local function hasRodEquipped() return true end
+ local lastNewItem,reelTime
+ local RemoteCatalog={CompleteModeGoal=function() end,BeginPropellerCatch=function() end,EquipFishingRod=function() return true end,RecoverFishingCast=function() end}
+ local function waitUntil(_,timeout,predicate)
+  assert(timeout==CONFIG.CastTimeout,'a dispatched cast must wait the cast timeout for its bobber')
+  inFlightSeen=RemoteCatalog.CastInFlight==true;bobber.Parent=true;enabled=false;return predicate()
+ end
+ local function updateBoard() end
+ local function setStatus() end
+ local COLORS={warn=1,gold=2,good=3,muted=4}
+ local function registerMiss() end
+ local function registerCatch() end
+ local task={wait=function(dt) time+=dt end}
+ ${run}
+ run(1)
+ assert(casts==1 and inFlightSeen and stats.casts==0,'a sent-but-unconfirmed cast is not counted, keeps CastInFlight for bait and is never doubled')
+end
 -- Exercise the real worker until a persistent bobber triggers recovery.
 do
  local enabled=true

@@ -129,6 +129,22 @@ do
  assert(found[fresh],'Contents stacks need no learning and stay available in Learned only scope')
  RemoteCatalog.ContentsChestRecorder=nil;RemoteCatalog.ChestDiscover=true
 end
+-- A selected Contents stack keeps matching after a refill gives the stack a new slot id.
+do
+ local first={Chest=a,Slot=1005,Item='potatoSalad',FromContents=true}
+ local contents={GetChestBindings=function() return {first} end,CanUseChestBinding=function() return true end}
+ RemoteCatalog.ContentsChestRecorder=function() return contents end
+ valid=true;learned={};RemoteCatalog.ChestDiscover=false;RemoteCatalog.ChestWhole=false;RemoteCatalog.ChestItems=nil;RemoteCatalog.ChestItem=nil;local savedConveyor=RemoteCatalog.ChestIncludeConveyor;RemoteCatalog.ChestIncludeConveyor=true
+ RemoteCatalog.ChestSelection={Chest=a,Slot=first.Slot,Item=first.Item,FromContents=true}
+ assert(#RemoteCatalog.SelectedChestTargets()==1,'the selected stack is collected')
+ local refilled={Chest=a,Slot=1006,Item='potatoSalad',FromContents=true}
+ contents.GetChestBindings=function() return {refilled} end
+ assert(#RemoteCatalog.SelectedChestTargets()==1 and RemoteCatalog.SelectedChestTargets()[1].Binding==refilled,'the refilled stack of the same item still matches the selection')
+ local other={Chest=a,Slot=1007,Item='wood',FromContents=true}
+ contents.GetChestBindings=function() return {other} end
+ assert(#RemoteCatalog.SelectedChestTargets()==0,'another item in the same chest is not the selection')
+ RemoteCatalog.ChestSelection=nil;RemoteCatalog.ContentsChestRecorder=nil;RemoteCatalog.ChestDiscover=true;RemoteCatalog.ChestWhole=true;RemoteCatalog.ChestIncludeConveyor=savedConveyor
+end
 return 'Chest targets: conveyor Skip/Include, matching owned discovery, range/type filtering, complete slot coverage, deduplication, individual/scope controls and expired-session guards passed'
 `;
 const state=await LuauState.createAsync();

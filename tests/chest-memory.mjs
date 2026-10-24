@@ -33,6 +33,16 @@ local RemoteCatalog={GameEndpoint=function(name) assert(name=='CLIENT_CHEST_TRAN
  SendEndpoint=function(e,body) local ok,result=pcall(function() return e:CallServer(body) end);return ok and result~=false,result end}
 local function typeof(value) return type(value)=='table' and 'Instance' or type(value) end
 ${source}
+-- A present but empty Contents stack is a local skip, never a request for 0 items.
+do
+ local emptyChest=chest('chestMediumIndustrialIO',0,{stack('potatoSalad',0)})
+ local remote={InvokeServer=function() error('a zero-amount withdrawal must never be sent') end}
+ local originalRemote=RemoteCatalog.ChestTransactionRemote
+ RemoteCatalog.ChestTransactionRemote=function() return remote end
+ local sent,result,origin=RemoteCatalog.SendChestWithdraw(emptyChest,'potatoSalad',5,0)
+ assert(not sent and result.error=='EMPTY_SLOT' and origin=='skip','an empty stack is skipped locally')
+ RemoteCatalog.ChestTransactionRemote=originalRemote
+end
 -- Learn on server A: the island sits at the origin.
 local salad=chest('chestMediumIndustrialIO',10)
 local snapshot=RemoteCatalog.SnapshotChestMemory({{Chest=salad,Slot=3,Item='potatoSalad',Amount=25}})
