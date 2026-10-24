@@ -81,7 +81,7 @@ local ctx={Player=player,Players=players,World=world,Now=function() return time 
  Equip=function() if equipHook then equipHook() end;return true end,ClearLine=function() return not blocked end,
  DescribeResult=RemoteCatalog.ChestResultText,
  Hop=function(r,destination,t)
-  assert(r==root and (farm.Target==nil and t.Name=='HumanoidRootPart' or t==farm.Target:FindFirstChild('HumanoidRootPart')));hops+=1
+  assert(r==root and (farm.Target==nil and (t.Name=='HumanoidRootPart' or t.Name=='FarmSpot') or t==farm.Target:FindFirstChild('HumanoidRootPart')));hops+=1
   if hopError then error('anchored') end
   assert(math.abs((destination-root.Position).Magnitude)<=8.001,'each teleport must be a short hop')
   if not stuck then root.Position=destination end
@@ -448,6 +448,18 @@ do
  assert(farm.MultiHitRejections>=10 and farm.MultiHitOff,'ten rejected extras with fewer than three accepted switch multi-hit off')
  local n=#hits;step(.7);assert(#hits==n+1,'after that only the target gets a packet')
  ctx.LearnedHitReady=nil;ctx.Aim=nil;ctx.Click=nil;ctx.LearnedHit=nil
+end
+-- After the slimes are gone (death, drift), the farm returns to where it last swung, by ground-checked hops.
+do
+ reset();farm.Travel='Teleport';farm.HitAndRun=false;ar.Position=v(40);br.Position=v(60);farm:Start();for i=1,6 do step() end
+ assert(sent>=1 and farm.FarmSpot and farm.FarmSpot.X>30,'the farm spot is where the last swing was made')
+ ar.Position=v(500);br.Position=v(500);root.Position=v(0);local h=hops;step()
+ assert(hops==h+1 and root.Position.X==8 and farm.Returns==1 and farm.Message:find('Returning to the farm spot',1,true),'with no slime in range the farm hops back toward the spot')
+ for i=1,8 do step() end
+ assert(root.Position.X>=farm.FarmSpot.X-12 and farm.Message:find('no living slimes',1,true),'it stops within 12 studs of the spot and keeps scanning')
+ root.Position=v(0);hopError=true;step();assert(farm.Message:find('no ground for the way back',1,true),'water or void between here and there is reported')
+ local before=hops;step();assert(hops==before,'and not retried every tick')
+ hopError=false
 end
 -- A mob hidden only by its no-damage cooldown is reported as cooling down, not missing.
 do

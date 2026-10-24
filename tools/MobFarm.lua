@@ -370,7 +370,7 @@ function MobFarm.new(ctx)
         self.Generation+=1
         local token=self.Generation
         self.Enabled=true;self.Worker=token;self.Swings=0;self.Drops=0;self.Defeats=0;self.LikelyDefeats=0;self.KillsByName={}
-        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.PacketProbeAt=nil;self.EdgeStops=0;self.SideApproaches=0;self.Tuned=0;self.CadenceTuned=0;self.HitsInstant=0;self.MultiHits=0;self.MultiHitRejections=0;self.MultiHitOff=false;self.Deaths=0;self.Stalls=0;self.LastCommand=nil;self.LastCommandAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
+        self.LastResult=nil;self.LastTarget=nil;self.LastMethod=nil;self.UseLearnedHit=false;self.LearnedHitRejected=false;self.LearnedHits=0;self.LearnedHitRejections=0;self.LastRejection=nil;self.PacketKeep=nil;self.PacketMisses=0;self.PacketAcceptedAt=nil;self.PacketProbeAt=nil;self.EdgeStops=0;self.SideApproaches=0;self.Tuned=0;self.CadenceTuned=0;self.HitsInstant=0;self.Returns=0;self.MultiHits=0;self.MultiHitRejections=0;self.MultiHitOff=false;self.Deaths=0;self.Stalls=0;self.LastCommand=nil;self.LastCommandAt=nil;self.Meals=0;self.LastEat=nil;self.Loot=0;self.LootByName={};self.DamageNumbers=0;self.DamageTotal=0;self.DamageTaken=0;self.HitsTaken=0;self.HitsAfterSwing=0;self.StartedAt=now();self.EndedAt=nil
         local char=ctx.Player.Character
         local human=char and char:FindFirstChildOfClass("Humanoid")
         local fraction=human and human.MaxHealth>0 and human.Health/human.MaxHealth or 1
@@ -644,6 +644,24 @@ function MobFarm.new(ctx)
                                     local close=self.Walk and self:Scan(nil,self.Standoff*2)[1]
                                     if close then retreat(human,root,close.Root,8) end
                                     publish("Waiting · "..cooling.." "..label.." cooling down after no HP drop · retry in "..math.max(1,math.ceil(soonest-now())).."s")
+                                elseif self.Walk and self.FarmSpot and (self.FarmSpot-root.Position).Magnitude>12 and now()-(self.ReturnBlockedAt or -math.huge)>10 then
+                                    -- After a death or a drift away, head back to where the last swing was made;
+                                    -- hops are ground checked, so water or void between here and there stops it.
+                                    local away=self.FarmSpot-root.Position
+                                    local moved=false
+                                    if self.Travel=="Teleport" and ctx.Hop then
+                                        local step=math.min(self.HopDistance,away.Magnitude-8)
+                                        moved=step>.5 and pcall(ctx.Hop,root,root.Position+away.Unit*step,{Position=self.FarmSpot,Name="FarmSpot"})
+                                    else
+                                        moved=chase(human,root,{Position=self.FarmSpot},8)
+                                    end
+                                    if moved then
+                                        self.Returns=(self.Returns or 0)+1
+                                        publish("Returning to the farm spot · "..math.floor(away.Magnitude).." studs · no living "..label.." nearby")
+                                    else
+                                        self.ReturnBlockedAt=now()
+                                        publish("Farm spot "..math.floor(away.Magnitude).." studs away · no ground for the way back (water or void) · travel back by hand")
+                                    end
                                 else publish("Waiting · no living "..label.." within "..(self.Walk and math.max(self.Radius,self.SeekRange) or self.Radius).." studs; scanning continues") end
                             else
                                 if self.Target~=chosen.Model then attempts=0;progress={} end
@@ -824,6 +842,7 @@ function MobFarm.new(ctx)
                                                     if ctx.Remember then pcall(ctx.Remember,"Cadence",self.Cadence) end
                                                 end
                                                 attackedAt[chosen.Model]=now();lastAttackAt=now();lastAttackRoot=chosen.Root;lastAttackModel=chosen.Model
+                                                self.FarmSpot=root.Position
                                                 attackedNear[chosen.Model]=(chosen.Root.Position-root.Position).Magnitude
                                                 if ctx.Inventory and not lootBaseline then local ok,current=pcall(ctx.Inventory);lootBaseline=ok and type(current)=="table" and current or nil end
                                                 observe(chosen.Model)

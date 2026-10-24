@@ -4165,3 +4165,14 @@ Asked "what else can we improve".
   covers it) instead of "body not remembered".
 
 Report headers now read `Reborn scan-166`.
+
+## Back to the farm spot · v167
+
+- **Return after death or drift.** The farm remembers where its last swing was
+  made. When no matching mob is within the search range (after a respawn, or
+  after a long retreat), Auto Move heads back there: TP hops with the ground
+  check, or a walk. Water or void on the way stops it with "no ground for the
+  way back · travel back by hand", retried every 10 s. It stops within 12
+  studs of the spot and keeps scanning.
+
+Report headers now read `Reborn mob-return-167`.
