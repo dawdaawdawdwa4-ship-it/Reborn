@@ -248,7 +248,7 @@ local COLORS={bad=1,warn=2}
 ${equipFunction}
 assert(equipBestResourceTool('wood') and hiddenAxe.Parent==player.Character,'auto wood must equip axe from InventoryService, not just Backpack')
 woodToolPreference='Stone axe'
-assert(equipBestResourceTool('wood') and woodToolPreference=='Auto best axe' and hiddenAxe.Parent==player.Character,'missing saved axe must recover to an available axe')
+assert(equipBestResourceTool('wood') and woodToolPreference=='Stone axe' and hiddenAxe.Parent==player.Character,'a missing saved axe uses an available axe for this hit without rewriting the saved preference')
 woodToolPreference='Iron axe'
 assert(equipBestResourceTool('wood') and woodToolPreference=='Iron axe','owned preferred axe should remain selected')
 local allOwned=RemoteCatalog.OwnedTools

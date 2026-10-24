@@ -4210,3 +4210,44 @@ Chests:
   rate-limit statistics as a server timing sample.
 
 Report headers now read `Reborn review-168`.
+
+## Wood Farm and Harvest review · v169
+
+Independent reviews of the Wood Farm and Harvest code, with fixes and tests.
+
+Wood Farm (and Mining, which shares the loop):
+- **Same tree until it drops.** A tree got one swing per scan and the
+  character walked to the next tree and back; a hit that is accepted but not
+  yet confirmed now re-queues the same tree (up to 30 hits in a row, then a
+  5 s cooldown with a message).
+- **Equip failures stay visible.** "No axe found" / "Tool equip failed" is
+  kept as the mode's blocker across cooldown scans instead of flashing once;
+  locked tools are named.
+- **Fishing guard first.** "Pause Fishing to use the axe" is checked before
+  any travel, so it no longer surfaces as "Travel stopped".
+- **The mob weapon is never a chopping tool**, by exact saved name as well as
+  by the war/battle axe patterns, in the chooser, the input path and the wood
+  hotbar layout.
+- **Rocks follow the reach rule.** Mining no longer sends a block hit to every
+  rock within the mining range (the server rejected the far ones); rocks out
+  of reach are travelled to in the wood travel mode or skipped with "Move
+  closer".
+- **No silent preference rewrite.** A chosen axe that is briefly out of the
+  backpack is replaced for that hit with a message; the saved choice stays.
+- **Unreachable targets back off longer each time** (1 s, 5 s, 15 s).
+
+Harvest:
+- **No replant while Fishing holds the rod** ("Pause Fishing to replant").
+- **Unripe crops back off.** An accepted request that changed nothing waits
+  2 s, then 4, then 8 (was 0.25 s); a crop whose harvest prompt is disabled is
+  not ready whatever its attributes say. This also removes the second request
+  sent to a slowly confirming crop.
+- **Bait owns the mouse:** a crop batch pauses while Auto Bait clicks.
+- **A prompt out of range** is a visible 3 s skip, not a silent one.
+- **Farm travel has its own owner**, so toggling a farm mode no longer cancels
+  a chest or deposit walk, and vice versa.
+- **PlantType follows the selected crops** after a preferences or profile load.
+- **A crashed farm loop** stops travel and closes the active-time counter like
+  a normal stop.
+
+Report headers now read `Reborn review-169`.

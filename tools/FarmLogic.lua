@@ -114,6 +114,16 @@ function FarmLogic.Confirmed(target, before, prompt)
     end
     return prompt ~= nil and (not prompt.Parent or not prompt.Enabled)
 end
+-- A crop whose harvest prompt exists but is disabled is still growing, whatever its attributes say.
+function FarmLogic.PromptDisabled(target)
+    local ok,result=pcall(function()
+        for _,child in ipairs(target:GetDescendants()) do
+            if child:IsA("ProximityPrompt") and child.Enabled==false then return true end
+        end
+        return false
+    end)
+    return ok and result==true
+end
 function FarmLogic.HarvestPrompt(target)
     for _, child in ipairs(target:GetDescendants()) do
         if child:IsA("ProximityPrompt") and child.Enabled then

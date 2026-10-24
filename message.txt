@@ -498,7 +498,9 @@ local RemoteCatalog = (function()
         if type(layout)~="string" then return nil end
         for slot in string.gmatch(layout,"[^,]+") do
             local name=string.lower(slot)
-            if string.find(name,"axe",1,true) and not string.find(name,"pickaxe",1,true) then return layout end
+            local compact=name:gsub("[%s_%-]","")
+            local combat=string.find(compact,"waraxe",1,true) or string.find(compact,"battleaxe",1,true) or (type(CONFIG)=="table" and type(CONFIG.MobWeapon)=="string" and name==string.lower(CONFIG.MobWeapon))
+            if string.find(name,"axe",1,true) and not string.find(name,"pickaxe",1,true) and not combat then return layout end
         end
     end
     function catalog.OwnedTools()
@@ -1568,6 +1570,16 @@ function FarmLogic.Confirmed(target, before, prompt)
         if before[name] == true and target:GetAttribute(name) == false then return true end
     end
     return prompt ~= nil and (not prompt.Parent or not prompt.Enabled)
+end
+-- A crop whose harvest prompt exists but is disabled is still growing, whatever its attributes say.
+function FarmLogic.PromptDisabled(target)
+    local ok,result=pcall(function()
+        for _,child in ipairs(target:GetDescendants()) do
+            if child:IsA("ProximityPrompt") and child.Enabled==false then return true end
+        end
+        return false
+    end)
+    return ok and result==true
 end
 function FarmLogic.HarvestPrompt(target)
     for _, child in ipairs(target:GetDescendants()) do
@@ -4731,6 +4743,7 @@ local function loadPreferences(supplied)
 end
 local preferencesLoaded = loadPreferences()
 CONFIG.HarvestCrops = FarmLogic.NormalizeCrops(CONFIG.HarvestCrops, CONFIG.HarvestCrop)
+if not CONFIG.HarvestCrops[CONFIG.PlantType] then CONFIG.PlantType = FarmLogic.SelectedCrops(CONFIG.HarvestCrops, CONFIG.HarvestCrop)[1] end
 
 -- Remove previous GUI (this also stops the previous script's loops)
 local old = playerGui:FindFirstChild("AutoFishingGUI")
@@ -5631,7 +5644,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn review-168",
+    return table.concat({"Reborn review-169",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7722,7 +7735,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn review-168 · Propeller loot history (UTC)",
+    return table.concat({"Reborn review-169 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7826,7 +7839,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn review-168 · Propeller tracker",
+    return table.concat({"Reborn review-169 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7862,7 +7875,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn review-168", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn review-169", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -8613,6 +8626,7 @@ local function equipBestResourceTool(category)
         -- Combat axes (the mob farm's ironWarAxe, battle axes) cannot chop and would steal the weapon.
         local compact = name:gsub("[%s_%-]", "")
         if isAxe and (string.find(compact, "waraxe", 1, true) or string.find(compact, "battleaxe", 1, true)) then isAxe = false end
+        if type(CONFIG.MobWeapon)=="string" and name==string.lower(CONFIG.MobWeapon) then isAxe,isPick=false,false end
         if (wantAxe and isAxe) or (not wantAxe and isPick) then
             local score = 1
             if string.find(name, "mythic", 1, true) then score = 100
@@ -8635,31 +8649,27 @@ local function equipBestResourceTool(category)
         end
     end
     if not best and fallback then
+        -- Use the fallback for this hit and say so; the saved preference is the user's choice and a
+        -- tool that is briefly out of the backpack must not rewrite it.
         best=fallback;bestScore=fallbackScore
         if category == "wood" then
-            woodToolPreference="Auto best axe";woodToolIndex=1
-            if woodToolSelect then woodToolSelect.Text="Axe: Auto best axe  ▼" end
-            if woodStatus then woodStatus.Text=preference.." unavailable. Using "..fallback.Name.."." end
+            if woodStatus then woodStatus.Text=preference.." not in the inventory right now. Using "..fallback.Name.."." end
         else
-            mineToolPreference=wantAxe and "Auto best axe" or "Auto best pickaxe";mineToolIndex=table.find(mineToolOptions or {},mineToolPreference) or 1
-            if mineToolSelect then mineToolSelect.Text="Tool: "..mineToolPreference.."  ▼" end
-            if mineInfo then mineInfo.Text=preference.." unavailable. Using "..fallback.Name.."." end
+            if mineInfo then mineInfo.Text=preference.." not in the inventory right now. Using "..fallback.Name.."." end
         end
-        if type(savePreferences)=="function" then savePreferences() end
     end
     if best and bestScore > -math.huge then
         local ok = RemoteCatalog.EquipTool(best)
-        local err = "inventory tool selection unavailable"
         if not ok then
+            local err=player:GetAttribute("ToolsLocked") and "tools are locked by the game" or "inventory tool selection unavailable"
             if setStatus then setStatus("Tool equip failed: " .. tostring(err), COLORS.bad) end
-            return false
+            return false,"Tool equip failed: "..err
         end
         return true
     end
-    if setStatus then
-        setStatus(wantAxe and "No axe found. Put an axe in your inventory." or "No pickaxe found. Put a pickaxe in your inventory.", COLORS.warn)
-    end
-    return false
+    local reason=wantAxe and "No axe found. Put an axe in your inventory"..(type(CONFIG.MobWeapon)=="string" and " (the mob weapon "..CONFIG.MobWeapon.." is never used for chopping)" or "").."." or "No pickaxe found. Put a pickaxe in your inventory."
+    if setStatus then setStatus(reason, COLORS.warn) end
+    return false,reason
 end
 
 local function equipPickaxe()
@@ -8731,6 +8741,7 @@ local function getMineTargets(anyRock)
             end
         end
         if category == "crop" and not FarmLogic.IsReady(obj) then return end
+        if category == "crop" and FarmLogic.PromptDisabled and FarmLogic.PromptDisabled(obj) then return end
         if (FarmState.Cooldowns[obj] or 0) > os.clock() then return end
         local position = getPartPosition(obj)
         if not position then return end
@@ -9003,6 +9014,7 @@ local function resourceInputHit(target)
     local compactTool = toolName:gsub("[%s_%-]", "")
     local axe = string.find(toolName, "axe", 1, true) ~= nil and not pickaxe
         and not string.find(compactTool, "waraxe", 1, true) and not string.find(compactTool, "battleaxe", 1, true)
+        and not (type(CONFIG)=="table" and type(CONFIG.MobWeapon)=="string" and toolName==string.lower(CONFIG.MobWeapon))
     local choice=type(mineToolPreference)=="string" and string.lower(mineToolPreference) or ""
     local miningAxe=string.find(choice,"axe",1,true) and not string.find(choice,"pickaxe",1,true)
     if not root or category == "mine" and not (miningAxe and axe or not miningAxe and pickaxe) or category == "wood" and not axe then
@@ -9133,8 +9145,8 @@ local function harvestLoop(myCycle)
         end
         while #targets > 0 do
             if not active() then break end
-            -- A deposit owns movement; resume the batch on the next scan.
-            if RemoteCatalog.DepositBusy then break end
+            -- A deposit owns movement and bait owns the mouse; resume the batch on the next scan.
+            if RemoteCatalog.DepositBusy or baitBusy then break end
             -- After walking or teleporting, the scan-time order zigzags; pick the nearest from here.
             local here = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
             local target = FarmLogic.TakeNearest(targets, here and here.Position)
@@ -9155,7 +9167,7 @@ local function harvestLoop(myCycle)
                     local reached,reason=false,"Move closer to "..target.name.." (scan range is not interaction range)"
                     if CONFIG.HarvestWalk then
                         setStatus((CONFIG.FarmTravelMode=="Hop" and "TP hops" or CONFIG.FarmTravelMode or "Walk").." to "..target.name,COLORS.muted)
-                        reached,reason=RemoteCatalog.Navigation.Approach(player,obj,reach,function() return active() and CONFIG.HarvestWalk and harvestEnabled and not enabled and not RemoteCatalog.DepositBusy end,getPartPosition,CONFIG.FarmTravelMode)
+                        reached,reason=RemoteCatalog.Navigation.Approach(player,obj,reach,function() return active() and CONFIG.HarvestWalk and harvestEnabled and not enabled and not RemoteCatalog.DepositBusy end,getPartPosition,CONFIG.FarmTravelMode,"Farm")
                     end
                     if not active() then break end
                     if not reached then
@@ -9175,32 +9187,44 @@ local function harvestLoop(myCycle)
                     end
                 end
             end
-            if target.category=="wood" then
-                local reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position)
-                if not reachable and CONFIG.WoodTravelMode~="Normal" then
-                    setStatus((CONFIG.WoodTravelMode=="Hop" and "TP hops" or CONFIG.WoodTravelMode or "Normal").." to "..target.name,COLORS.muted)
-                    reachable,reason=RemoteCatalog.Navigation.Approach(player,obj,8,function() return active() and woodEnabled and not enabled and not RemoteCatalog.DepositBusy end,RemoteCatalog.ResourcePosition,CONFIG.WoodTravelMode)
-                    if not active() then break end
-                    if reachable then reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position) end
-                end
-                if not reachable then
-                    FarmState.LastFailure.wood=reason
-                    woodStatus.Text=reason
-                    setStatus(reason,COLORS.warn)
-                    FarmState.Cooldowns[obj]=os.clock()+1
-                    continue
-                end
-            end
             if (target.category == "wood" or target.category == "mine") and enabled then
-                -- Swapping to an axe/pickaxe would take the rod out of an active cast.
+                -- Swapping to an axe/pickaxe would take the rod out of an active cast. Checked before
+                -- any travel, so the message is the real blocker, not "Travel stopped".
                 FarmState.LastFailure[target.category]="Pause Fishing to use the "..(target.category=="wood" and "axe" or "pickaxe")
                 setStatus(FarmState.LastFailure[target.category],COLORS.warn)
                 FarmState.Cooldowns[obj]=os.clock()+1
                 continue
             end
+            if target.category=="wood" or target.category=="mine" then
+                -- Rocks share the axe reach rule: a block hit from across the island is rejected by the
+                -- server, so a rock out of reach is travelled to or skipped, never requested.
+                local reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position)
+                if not reachable and CONFIG.WoodTravelMode~="Normal" then
+                    setStatus((CONFIG.WoodTravelMode=="Hop" and "TP hops" or CONFIG.WoodTravelMode or "Normal").." to "..target.name,COLORS.muted)
+                    reachable,reason=RemoteCatalog.Navigation.Approach(player,obj,8,function() return active() and (woodEnabled or mineEnabled) and not enabled and not RemoteCatalog.DepositBusy end,RemoteCatalog.ResourcePosition,CONFIG.WoodTravelMode,"Farm")
+                    if not active() then break end
+                    if reachable then reachable,reason=RemoteCatalog.WoodReach(obj,hrp.Position) end
+                end
+                if not reachable then
+                    FarmState.LastFailure[target.category]=reason
+                    if target.category=="wood" then woodStatus.Text=reason end
+                    setStatus(reason,COLORS.warn)
+                    -- A target that cannot be reached backs off longer every time: 1 s, 5 s, 15 s.
+                    FarmState.TravelFails=FarmState.TravelFails or setmetatable({},{__mode="k"})
+                    local fails=(FarmState.TravelFails[obj] or 0)+1;FarmState.TravelFails[obj]=fails
+                    FarmState.Cooldowns[obj]=os.clock()+(fails>=3 and 15 or fails==2 and 5 or 1)
+                    continue
+                end
+                FarmState.TravelFails=FarmState.TravelFails or setmetatable({},{__mode="k"});FarmState.TravelFails[obj]=nil
+            end
             if target.category == "wood" or target.category == "mine" then
                 local previous=char and char:FindFirstChildOfClass("Tool")
-                if not equipBestResourceTool(target.category) then FarmState.Cooldowns[obj] = os.clock() + 2; continue end
+                local equipped,equipReason=equipBestResourceTool(target.category)
+                if not equipped then
+                    -- The blocker stays on the status line across the cooldown scans.
+                    FarmState.LastFailure[target.category]=equipReason or "Tool equip failed"
+                    FarmState.Cooldowns[obj] = os.clock() + 2;continue
+                end
                 if char:FindFirstChildOfClass("Tool")~=previous then task.wait(0.1) end
             end
             if not active() then break end
@@ -9223,7 +9247,11 @@ local function harvestLoop(myCycle)
             local ok, failure
             if prompt then
                 local promptPosition = getPartPosition(prompt.Parent) or position
-                if (promptPosition - hrp.Position).Magnitude > prompt.MaxActivationDistance then continue end
+                if (promptPosition - hrp.Position).Magnitude > prompt.MaxActivationDistance then
+                    FarmState.Cooldowns[obj]=os.clock()+3
+                    FarmState.LastFailure.crop="Prompt out of range for "..target.name.."; move closer"
+                    continue
+                end
                 if stats.resourceAttempts then stats.resourceAttempts[target.category]+=1 end
                 ok = FarmLogic.HoldPrompt(prompt, active, task.wait, os.clock)
                 if not active() then break end
@@ -9262,7 +9290,11 @@ local function harvestLoop(myCycle)
                 setStatus("Confirmed: " .. target.name .. " ×" .. stats.harvests, COLORS.good)
                 -- A plant that regrows in place must never be planted over.
                 if target.category == "crop" and target.kind ~= "fruit" and not obj.Parent and plantedFrame and CONFIG.PlantEnabled and CONFIG.AutoReplant and not (RemoteCatalog.ServerReplantEnabled()) then
-                    if RemoteCatalog.PlacementAvailable() then
+                    if enabled then
+                        -- Equipping the seed tool would take the rod out of an active cast.
+                        FarmState.LastFailure.crop="Pause Fishing to replant"
+                        setStatus("Harvest confirmed; pause Fishing to replant.",COLORS.warn)
+                    elseif RemoteCatalog.PlacementAvailable() then
                         if active() then firePlant(plantedFrame, plantedType) end
                     else
                         setStatus("Harvest confirmed. Place one crop manually to enable replanting.", COLORS.warn)
@@ -9272,7 +9304,29 @@ local function harvestLoop(myCycle)
             if confirmed then RemoteCatalog.CompleteModeGoal(target.category) end
             if not active() then break end
             local quickCrop=target.category=="crop" and (confirmed or persistentBerry and ok)
-            FarmState.Cooldowns[obj] = os.clock() + (persistentBerry and ok and 15 or quickCrop and 0.08 or ok and 0.25 or 2)
+            FarmState.Unconfirmed=FarmState.Unconfirmed or setmetatable({},{__mode="k"})
+            if confirmed then FarmState.Unconfirmed[obj]=nil end
+            if (target.category=="wood" or target.category=="mine") and ok and not confirmed and obj.Parent then
+                -- A tree or rock takes several hits: keep swinging at this one instead of walking to
+                -- the next and back. Thirty unconfirmed hits in a row mean it cannot be damaged here.
+                local swings=(FarmState.Unconfirmed[obj] or 0)+1;FarmState.Unconfirmed[obj]=swings
+                if swings<30 then
+                    FarmState.Cooldowns[obj]=nil
+                    table.insert(targets,target)
+                    task.wait(CONFIG.MineDelay)
+                    continue
+                end
+                FarmState.Unconfirmed[obj]=nil
+                FarmState.LastFailure[target.category]="No damage confirmed on "..target.name.." after 30 hits; trying another"
+                FarmState.Cooldowns[obj]=os.clock()+5
+            elseif target.category=="crop" and ok and not confirmed and not persistentBerry then
+                -- An accepted request that changed nothing: unripe or still regrowing. Back off 2 s,
+                -- then double it, so an unripe field is not requested every third of a second.
+                local tries=(FarmState.Unconfirmed[obj] or 0)+1;FarmState.Unconfirmed[obj]=tries
+                FarmState.Cooldowns[obj]=os.clock()+math.min(8,2^tries)
+            else
+                FarmState.Cooldowns[obj] = os.clock() + (persistentBerry and ok and 15 or quickCrop and 0.08 or ok and 0.25 or 2)
+            end
             task.wait(quickCrop and math.min(CONFIG.MineDelay,0.08) or CONFIG.MineDelay)
         end
         -- All candidates may be out of prompt range; always yield before rescanning.
@@ -9521,7 +9575,7 @@ local function setFarmMode(mode, state)
         return
     end
     if current == state then return end
-    RemoteCatalog.Navigation.Stop()
+    RemoteCatalog.Navigation.Stop("Farm")
     if state then
         RemoteCatalog.ResetModeGoal(mode)
         harvestEnabled,woodEnabled,mineEnabled=false,false,false
@@ -9553,8 +9607,11 @@ local function setFarmMode(mode, state)
             end)
             if not ok and token == harvestCycleId then
                 harvestEnabled, woodEnabled, mineEnabled = false, false, false
+                RemoteCatalog.Navigation.Stop("Farm")
+                if not enabled and stats.onSince then stats.activeTime += os.clock() - stats.onSince;stats.onSince = nil end
                 refreshFarmButtons()
                 refreshModeStatus()
+                updateBoard()
                 setStatus("Farm stopped: " .. tostring(failure), COLORS.bad)
             end
         end, harvestCycleId)
@@ -10632,7 +10689,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn review-168\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn review-169\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10694,7 +10751,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn review-168 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn review-169 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11328,7 +11385,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn review-168\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn review-169\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12446,7 +12503,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn review-168 · Craft diagnostics",
+    return table.concat({"Reborn review-169 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12525,7 +12582,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn review-168 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn review-169 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13198,7 +13255,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn review-168 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn review-169 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13406,7 +13463,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn review-168 · Mobs",
+    return table.concat({"Reborn review-169 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -14275,6 +14332,7 @@ do
         if type(profile)~="table" or type(profile.Data)~="table" then setStatus("Profile "..RemoteCatalog.ProfileSlot.." is empty",COLORS.warn);return false end
         if not loadPreferences(profile.Data) then setStatus("Profile could not be read",COLORS.bad);return false end
         CONFIG.HarvestCrops=FarmLogic.NormalizeCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)
+        if not CONFIG.HarvestCrops[CONFIG.PlantType] then CONFIG.PlantType=FarmLogic.SelectedCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)[1] end
         local farm=RemoteCatalog.Mobs
         if farm then
             farm.Radius=CONFIG.MobRadius or farm.Radius;if CONFIG.MobWalk~=nil then farm.Walk=CONFIG.MobWalk end
