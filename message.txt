@@ -4607,6 +4607,7 @@ local CONFIG = {
 	ToggleKey = Enum.KeyCode.F6,          -- fishing ON/OFF
 	HarvestKey = Enum.KeyCode.F7,         -- mine / harvest ON/OFF
 	MobKey = Enum.KeyCode.F4,             -- Auto Mobs ON/OFF
+	ReportKey = Enum.KeyCode.F2,          -- Copy all reports to the clipboard
 	StopAllKey = Enum.KeyCode.F3,         -- Stop all automation (panic)
 	HopSize = 8,                          -- studs per TP hop (mobs, chests, harvest, wood)
 	RequireTool = true,                   -- only cast while a Tool (rod) is equipped
@@ -4671,7 +4672,8 @@ local function savePreferences(snapshotOnly)
         DepositCategory = CONFIG.DepositCategory, DepositInterval = CONFIG.DepositInterval,
         MobWeapon = CONFIG.MobWeapon, LearnedDefinitions = CONFIG.LearnedDefinitions, MobHitBody = CONFIG.MobHitBody, RememberedChests = CONFIG.RememberedChests,
         AutoRejoin = CONFIG.AutoRejoin,
-        Keybinds = { StopAllKey = CONFIG.StopAllKey.Name, ToggleKey = CONFIG.ToggleKey.Name, HarvestKey = CONFIG.HarvestKey.Name, MobKey = CONFIG.MobKey.Name },
+        Keybinds = { StopAllKey = CONFIG.StopAllKey.Name, ToggleKey = CONFIG.ToggleKey.Name, HarvestKey = CONFIG.HarvestKey.Name, MobKey = CONFIG.MobKey.Name, ReportKey = CONFIG.ReportKey.Name },
+        Lifetime = CONFIG.Lifetime,
     }
     if snapshotOnly then return data end
     local ok = pcall(function() writefile(SETTINGS_FILE, HttpService:JSONEncode(data)) end)
@@ -4711,6 +4713,13 @@ local function loadPreferences(supplied)
     if type(data.MobKind)=="string" and #data.MobKind>0 and #data.MobKind<=60 then CONFIG.MobKind=data.MobKind end
     if type(data.MobAutoEat)=="boolean" then CONFIG.MobAutoEat=data.MobAutoEat end
     if type(data.MobHitRun)=="boolean" then CONFIG.MobHitRun=data.MobHitRun end
+    if type(data.Lifetime)=="table" then
+        CONFIG.Lifetime={}
+        for _,key in ipairs({"Catches","Casts","Harvests","Wood","Mine","Kills","Seconds"}) do
+            local value=data.Lifetime[key]
+            CONFIG.Lifetime[key]=type(value)=="number" and value==value and value>=0 and value<1e12 and value or 0
+        end
+    end
     if type(data.MobKeepBias)=="number" then CONFIG.MobKeepBias=math.clamp(math.floor(data.MobKeepBias),0,3) end
     if type(data.MobCadence)=="number" then CONFIG.MobCadence=math.clamp(data.MobCadence,.4,.9) end
     if type(data.MobRetreatBelow)=="number" then CONFIG.MobRetreatBelow=math.clamp(data.MobRetreatBelow,.45,.6) end
@@ -4727,7 +4736,7 @@ local function loadPreferences(supplied)
     if type(data.AutoRejoin)=="boolean" then CONFIG.AutoRejoin=data.AutoRejoin end
     if type(data.Keybinds)=="table" then
         local used={}
-        for _,key in ipairs({"StopAllKey","ToggleKey","HarvestKey","MobKey"}) do
+        for _,key in ipairs({"StopAllKey","ToggleKey","HarvestKey","MobKey","ReportKey"}) do
             local name=data.Keybinds[key]
             local ok,code=pcall(function() return type(name)=="string" and Enum.KeyCode[name] end)
             -- A colliding or reserved key keeps this action's current key.
@@ -5680,7 +5689,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn guard-174",
+    return table.concat({"Reborn goals-175",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6997,9 +7006,24 @@ track(RemoteCatalog.StopTimerButton.Activated:Connect(function()
     RemoteCatalog.UpdateDashboard()
 end))
 RemoteCatalog.ModeGoals={}
-RemoteCatalog.GoalNames={fishing="Fishing",crop="Harvest",wood="Wood",mine="Mining"}
+RemoteCatalog.GoalNames={fishing="Fishing",crop="Harvest",wood="Wood",mine="Mining",mobs="Mobs"}
+-- Lifetime totals across sessions (saved with the preferences; never part of a profile).
+function RemoteCatalog.Lifetime()
+    if type(CONFIG.Lifetime)~="table" then CONFIG.Lifetime={Catches=0,Casts=0,Harvests=0,Wood=0,Mine=0,Kills=0,Seconds=0} end
+    return CONFIG.Lifetime
+end
+function RemoteCatalog.LifetimeAdd(key,amount)
+    local totals=RemoteCatalog.Lifetime()
+    if totals[key]==nil or type(amount)~="number" or amount<=0 then return end
+    totals[key]+=amount
+end
+function RemoteCatalog.LifetimeText()
+    local t=RemoteCatalog.Lifetime()
+    local seconds=math.floor(t.Seconds)
+    return string.format("Lifetime (all sessions): %d catches · %d harvests · %d wood · %d mined · %d kills · active %dh %02dm",t.Catches,t.Harvests,t.Wood,t.Mine,t.Kills,math.floor(seconds/3600),math.floor(seconds%3600/60))
+end
 pageHeading(statsPage,"MODE GOALS",352)
-for index,mode in ipairs({"fishing","crop","wood","mine"}) do
+for index,mode in ipairs({"fishing","crop","wood","mine","mobs"}) do
     local col=(index-1)%2
     local goal={Progress=0}
     RemoteCatalog.ModeGoals[mode]=goal
@@ -7007,17 +7031,19 @@ for index,mode in ipairs({"fishing","crop","wood","mine"}) do
         Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(col*.5,col==0 and 6 or 3,0,380+math.floor((index-1)/2)*40)})
     track(goal.Button.Activated:Connect(function() RemoteCatalog.CycleModeGoal(mode) end))
 end
-RemoteCatalog.GoalHint=label({Parent=statsPage,Text="Goals start Unlimited. Choose a limit, then start the mode. Each run starts at zero. Harvest goals count confirmed targets, not stack quantities.",TextSize=12,Color=COLORS.muted,
-    Size=UDim2.new(1,-16,0,52),Position=UDim2.fromOffset(8,462)})
+RemoteCatalog.GoalHint=label({Parent=statsPage,Text="Goals start Unlimited. Choose a limit, then start the mode. Each run starts at zero. Harvest goals count confirmed targets; the Mobs goal counts kills.",TextSize=12,Color=COLORS.muted,
+    Size=UDim2.new(1,-16,0,52),Position=UDim2.fromOffset(8,502)})
 RemoteCatalog.GoalHint.TextWrapped=true
 RemoteCatalog.SessionReportButton=button({Parent=statsPage,Text="Copy session report",TextSize=13,
-    Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,526)})
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.fromOffset(6,566)})
 track(RemoteCatalog.SessionReportButton.Activated:Connect(function() RemoteCatalog.CopySessionReport() end))
 RemoteCatalog.SelfTestButton=button({Parent=statsPage,Text="Run self-test",TextSize=13,
-    Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,526)})
+    Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,566)})
 track(RemoteCatalog.SelfTestButton.Activated:Connect(function() RemoteCatalog.CopySelfTest() end))
-RemoteCatalog.CopyAllButton=button({Parent=statsPage,Text="Copy all reports (session + mobs + scoreboard)",TextSize=13,
-    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,566)})
+RemoteCatalog.CopyAllButton=button({Parent=statsPage,Text="Copy all reports (session + mobs + scoreboard)  ["..CONFIG.ReportKey.Name.."]",TextSize=13,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,606)})
+RemoteCatalog.LifetimeLabel=label({Parent=statsPage,Text="",TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-16,0,40),Position=UDim2.fromOffset(8,686)})
+RemoteCatalog.LifetimeLabel.TextWrapped=true
 function RemoteCatalog.AllReports()
     local parts={RemoteCatalog.SessionReport()}
     if RemoteCatalog.MobResultReport then
@@ -7037,7 +7063,7 @@ function RemoteCatalog.CopyAllReports()
 end
 track(RemoteCatalog.CopyAllButton.Activated:Connect(function() RemoteCatalog.CopyAllReports() end))
 RemoteCatalog.ChestContentsButton=button({Parent=statsPage,Text="Copy chest contents (find items)",TextSize=13,
-    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,566)})
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,646)})
 track(RemoteCatalog.ChestContentsButton.Activated:Connect(function() RemoteCatalog.CopyChestContents() end))
 function RemoteCatalog.CycleModeGoal(mode)
     local goal=RemoteCatalog.ModeGoals[mode]
@@ -7066,7 +7092,7 @@ function RemoteCatalog.ResetModeGoal(mode)
 end
 function RemoteCatalog.ProgressModeGoal(mode)
     local goal=RemoteCatalog.ModeGoals[mode]
-    local active=mode=="fishing" and enabled or mode=="crop" and harvestEnabled or mode=="wood" and woodEnabled or mode=="mine" and mineEnabled
+    local active=mode=="fishing" and enabled or mode=="crop" and harvestEnabled or mode=="wood" and woodEnabled or mode=="mine" and mineEnabled or mode=="mobs" and RemoteCatalog.Mobs and RemoteCatalog.Mobs.Enabled
     if goal and active and not goal.Reached then goal.Progress+=1 end
 end
 function RemoteCatalog.CompleteModeGoal(mode)
@@ -7088,6 +7114,12 @@ function RemoteCatalog.UpdateDashboard()
         setStatus("Session timer finished. All automation stopped.",COLORS.warn)
     end
     local remaining=RemoteCatalog.StopTimerDeadline and math.max(0,math.ceil(RemoteCatalog.StopTimerDeadline-os.clock()))
+    -- Lifetime active time follows the session's active time; a session reset starts a new baseline.
+    local activeNow=RemoteCatalog.ActiveTime and RemoteCatalog.ActiveTime() or 0
+    local seen=RemoteCatalog.LifetimeActiveSeen
+    if seen~=nil and activeNow>seen then RemoteCatalog.LifetimeAdd("Seconds",activeNow-seen) end
+    RemoteCatalog.LifetimeActiveSeen=activeNow
+    if RemoteCatalog.LifetimeLabel then RemoteCatalog.LifetimeLabel.Text=RemoteCatalog.LifetimeText() end
     RemoteCatalog.StopTimerButton.Text=remaining and "Cancel stop timer" or "Start stop timer"
     RemoteCatalog.StopTimerButton.BackgroundColor3=remaining and COLORS.on or COLORS.off
     RemoteCatalog.StopTimerHint.Text=remaining and ("Stops all automation in "..math.floor(remaining/60)..":"..string.format("%02d",remaining%60)..". Cancel to keep playing.")
@@ -7665,6 +7697,7 @@ local function getActiveTime()
 	end
 	return t
 end
+RemoteCatalog.ActiveTime=getActiveTime
 
 local function formatTime(seconds)
 	seconds = math.floor(seconds)
@@ -7777,7 +7810,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn guard-174 · Propeller loot history (UTC)",
+    return table.concat({"Reborn goals-175 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7881,7 +7914,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn guard-174 · Propeller tracker",
+    return table.concat({"Reborn goals-175 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7917,12 +7950,13 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn guard-174", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn goals-175", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
         "Resources: harvest "..stats.resourceCounts.crop..", wood "..stats.resourceCounts.wood..", mining "..stats.resourceCounts.mine,
         "Chest run: "..tostring(RemoteCatalog.ChestAutoTotal or 0).." confirmed items",
+        RemoteCatalog.LifetimeText(),
         "Modes: Fishing "..(enabled and "ON" or "OFF")..", Bait "..(baitEnabled and "ON" or "OFF")..", Harvest "..(harvestEnabled and "ON" or "OFF")..", Wood "..(woodEnabled and "ON" or "OFF")..", Mining "..(mineEnabled and "ON" or "OFF")}
     if RemoteCatalog.PlowConfirmed~=nil then table.insert(text,"Plow run: "..(RemoteCatalog.PlowEnabled and "ON" or RemoteCatalog.PlowWorker and "stopping" or "OFF").." · "..RemoteCatalog.PlowConfirmed.." observed soil · "..RemoteCatalog.PlowFailed.." failed") end
     if RemoteCatalog.Mobs then
@@ -8222,6 +8256,7 @@ local function registerCatch(fishName)
 	end
 
 	flash(rows.catches, COLORS.good)
+    RemoteCatalog.LifetimeAdd("Catches",1)
     RemoteCatalog.ProgressModeGoal("fishing")
 	updateBoard()
 end
@@ -8237,6 +8272,7 @@ local function registerHarvest(name, category)
     category=category or FarmLogic.Category(name or "")
     if category and stats.resourceCounts[category]~=nil then
         stats.resourceCounts[category]+=1;stats.resourceLast[category]=name
+        RemoteCatalog.LifetimeAdd(category=="crop" and "Harvests" or category=="wood" and "Wood" or "Mine",1)
         RemoteCatalog.ProgressModeGoal(category)
     end
 	stats.harvests += 1
@@ -9674,7 +9710,9 @@ end
 
 setHarvestEnabled = function(state) setFarmMode("crop", state) end
 function RemoteCatalog.StopGoalMode(mode)
-    if mode=="fishing" then setEnabled(false) else setFarmMode(mode,false) end
+    if mode=="fishing" then setEnabled(false)
+    elseif mode=="mobs" then if RemoteCatalog.Mobs and RemoteCatalog.Mobs.Enabled then RemoteCatalog.Mobs:Stop("Stopped · kill goal reached") end
+    else setFarmMode(mode,false) end
 end
 
 function RemoteCatalog.StopChestLearning()
@@ -10733,7 +10771,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn guard-174\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn goals-175\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10795,7 +10833,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn guard-174 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn goals-175 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11429,7 +11467,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn guard-174\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn goals-175\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12550,7 +12588,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn guard-174 · Craft diagnostics",
+    return table.concat({"Reborn goals-175 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12629,7 +12667,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn guard-174 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn goals-175 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13273,9 +13311,24 @@ function RemoteCatalog.MobScore()
     if CONFIG.MobScoreUnchecked or type(CONFIG.MobScore)~="table" then CONFIG.MobScore=RemoteCatalog.ValidMobScore(CONFIG.MobScore);CONFIG.MobScoreUnchecked=nil end
     return CONFIG.MobScore
 end
+-- Kills reach the Mobs goal and the lifetime totals as they are observed.
+function RemoteCatalog.TrackMobGoal(farm)
+    farm=farm or RemoteCatalog.Mobs
+    if not farm then return end
+    local kills=(farm.Defeats or 0)+(farm.LikelyDefeats or 0)
+    local seen=RemoteCatalog.MobGoalSeen or 0
+    if kills<seen then seen=0 end
+    while seen<kills do
+        seen+=1;RemoteCatalog.MobGoalSeen=seen
+        RemoteCatalog.LifetimeAdd("Kills",1)
+        RemoteCatalog.ProgressModeGoal("mobs");RemoteCatalog.CompleteModeGoal("mobs")
+    end
+    RemoteCatalog.MobGoalSeen=seen
+end
 function RemoteCatalog.RecordMobRun(farm)
     local seconds=farm:RunTime()
     if seconds<=0 then return false end
+    RemoteCatalog.LifetimeAdd("Seconds",seconds)
     local score=RemoteCatalog.MobScore()
     local kills=(farm.Defeats or 0)+(farm.LikelyDefeats or 0)
     score.Runs+=1;score.Seconds+=seconds;score.Swings+=farm.Swings or 0
@@ -13317,7 +13370,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn guard-174 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn goals-175 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13536,7 +13589,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn guard-174 · Mobs",
+    return table.concat({"Reborn goals-175 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -13573,6 +13626,7 @@ function RemoteCatalog.MobResultReport()
         "Observed run: "..farm.Swings.." swings · "..farm.Drops.." HP drops · "..(farm.Loot or 0).." loot items · "..farm.Defeats.." defeats · "..(farm.LikelyDefeats or 0).." likely defeats (vanished within reach right after a swing)",
         "Loot by item: "..(function() local parts={} for name,count in pairs(farm.LootByName or {}) do table.insert(parts,name.." "..count) end table.sort(parts) return #parts>0 and table.concat(parts,", ") or "none yet" end)(),
         "Run time: "..(farm.StartedAt and RemoteCatalog.MobRunText(farm) or "not started"),
+        "Kill goal: "..(function() local goal=RemoteCatalog.ModeGoals and RemoteCatalog.ModeGoals.mobs;return goal and goal.Limit and (goal.Progress.."/"..goal.Limit..(goal.Reached and " · reached, farm stopped" or "")) or "unlimited" end)(),
         "Kills by mob: "..RemoteCatalog.MobKillText(farm),
         "Movement: edge stops "..tostring(farm.EdgeStops or 0).." · last command "..tostring(farm.LastCommand or "none")..(farm.LastCommandAt and string.format(" %.1f s ago",os.clock()-farm.LastCommandAt) or "").." · idle "..string.format("%.1f",farm.IdleFor or 0).." s · stalls "..tostring(farm.Stalls or 0).." · pathfinder "..(RemoteCatalog.Navigation and RemoteCatalog.Navigation.Owner and ("busy for "..tostring(RemoteCatalog.Navigation.Owner)) or "idle"),
         "Efficiency: "..(function()
@@ -13848,7 +13902,7 @@ RemoteCatalog.Mobs=RemoteCatalog.MobFarmModule.new({
         local hit=workspace:Raycast(root.Position,target.Position-root.Position,params)
         return not hit or hit.Instance:IsDescendantOf(model)
     end,
-    Update=function() RemoteCatalog.RefreshMobUI() end,
+    Update=function(farm) RemoteCatalog.TrackMobGoal(farm);RemoteCatalog.RefreshMobUI() end,
 })
 -- Auto-learn rides along with every run: armed at start, disarmed at stop. Manual Learn attack
 -- keeps its own token, so the two never cancel each other.
@@ -13860,6 +13914,7 @@ do
         if self.StartedAt and self.Recorded==false then self.Recorded=true;pcall(RemoteCatalog.RecordMobRun,self);pcall(RemoteCatalog.RefreshMobScore) end
     end
     function farm:Start(...)
+        RemoteCatalog.MobGoalSeen=0;RemoteCatalog.ResetModeGoal("mobs")
         local ok=start(self,...)
         -- The first tick runs inside start(); a run that already ended there is neither armed nor recorded.
         if ok and self.Enabled then self.Recorded=false;pcall(RemoteCatalog.ArmMobLearning) end
@@ -13907,12 +13962,15 @@ do
     end
     local main=card("MobActions",212,8)
     local setup=card("MobSetup",282,232)
-    local board=card("MobScore",176,524)
+    local board=card("MobScore",218,524)
     pageHeading(board,"SCOREBOARD · ALL RUNS",10).Position=UDim2.fromOffset(10,10)
     RemoteCatalog.MobScoreLabel=label({Parent=board,Text="",TextSize=12,Color=COLORS.muted,Size=UDim2.new(1,-20,0,92),Position=UDim2.fromOffset(10,34)})
     RemoteCatalog.MobScoreLabel.TextWrapped=true;RemoteCatalog.MobScoreLabel.TextTruncate=Enum.TextTruncate.None
     RemoteCatalog.MobScoreCopy=button({Parent=board,Text="Copy scoreboard",TextSize=13,Size=UDim2.new(.5,-16,0,34),Position=UDim2.fromOffset(10,132)})
     RemoteCatalog.MobScoreReset=button({Parent=board,Text="Reset scoreboard",TextSize=13,Size=UDim2.new(.5,-16,0,34),Position=UDim2.new(.5,6,0,132)})
+    RemoteCatalog.MobGoalButton=button({Parent=board,Text="Mobs goal: Unlimited",TextSize=13,Size=UDim2.new(1,-20,0,34),Position=UDim2.fromOffset(10,174)})
+    if RemoteCatalog.ModeGoals and RemoteCatalog.ModeGoals.mobs then RemoteCatalog.ModeGoals.mobs.PageButton=RemoteCatalog.MobGoalButton end
+    track(RemoteCatalog.MobGoalButton.Activated:Connect(function() RemoteCatalog.CycleModeGoal("mobs") end))
     function RemoteCatalog.RefreshMobScore()
         if RemoteCatalog.MobScoreLabel and RemoteCatalog.MobScoreLabel.Parent then RemoteCatalog.MobScoreLabel.Text=RemoteCatalog.MobScoreText() end
     end
@@ -14403,7 +14461,7 @@ do
         if farm then CONFIG.MobRadius,CONFIG.MobWalk,CONFIG.MobTravel,CONFIG.MobKind,CONFIG.MobAutoEat,CONFIG.MobWalkSpeed,CONFIG.MobKeep,CONFIG.MobHitRun=farm.Radius,farm.Walk,farm.Travel,farm.Kind,farm.AutoEat,farm.WalkSpeed,farm.KeepDistance,farm.HitAndRun end
         local data=savePreferences(true)
         -- Settings only: learned/remembered data and lifetime statistics belong to the account, not a profile.
-        data.MobWeapon=nil;data.LearnedDefinitions=nil;data.RememberedChests=nil;data.MobScore=nil;data.MobHitBody=nil;data.MobHitsToKill=nil
+        data.MobWeapon=nil;data.LearnedDefinitions=nil;data.RememberedChests=nil;data.MobScore=nil;data.MobHitBody=nil;data.MobHitsToKill=nil;data.Lifetime=nil
         local stamp="saved"
         pcall(function() stamp=os.date("%d/%m %H:%M") end)
         local profiles=RemoteCatalog.ReadProfiles()
@@ -14422,7 +14480,7 @@ do
         end
         local profile=RemoteCatalog.ReadProfiles()[tostring(RemoteCatalog.ProfileSlot)]
         -- A profile written by an older build may still carry account memory; never load it from there.
-        if type(profile)=="table" and type(profile.Data)=="table" then profile.Data.MobScore=nil;profile.Data.MobHitBody=nil;profile.Data.MobHitsToKill=nil;profile.Data.MobWeapon=nil;profile.Data.LearnedDefinitions=nil;profile.Data.RememberedChests=nil end
+        if type(profile)=="table" and type(profile.Data)=="table" then profile.Data.MobScore=nil;profile.Data.MobHitBody=nil;profile.Data.MobHitsToKill=nil;profile.Data.MobWeapon=nil;profile.Data.LearnedDefinitions=nil;profile.Data.RememberedChests=nil;profile.Data.Lifetime=nil end
         if type(profile)~="table" or type(profile.Data)~="table" then setStatus("Profile "..RemoteCatalog.ProfileSlot.." is empty",COLORS.warn);return false end
         if not loadPreferences(profile.Data) then setStatus("Profile could not be read",COLORS.bad);return false end
         CONFIG.HarvestCrops=FarmLogic.NormalizeCrops(CONFIG.HarvestCrops,CONFIG.HarvestCrop)
@@ -14456,7 +14514,7 @@ do
     -- HUB PROFILES END
     RemoteCatalog.SettingsAdvancedBody=Instance.new("Frame")
     RemoteCatalog.SettingsAdvancedBody.Name="AdvancedSettingsBody";RemoteCatalog.SettingsAdvancedBody.BackgroundTransparency=1
-    RemoteCatalog.SettingsAdvancedBody.Position=UDim2.fromOffset(0,44);RemoteCatalog.SettingsAdvancedBody.Size=UDim2.new(1,0,0,322)
+    RemoteCatalog.SettingsAdvancedBody.Position=UDim2.fromOffset(0,44);RemoteCatalog.SettingsAdvancedBody.Size=UDim2.new(1,0,0,366)
     RemoteCatalog.SettingsAdvancedBody.Visible=false;RemoteCatalog.SettingsAdvancedBody.Parent=RemoteCatalog.SettingsAdvancedCard
     place(delayButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(.5,-16,0,36),UDim2.fromOffset(10,0))
     place(scanButton,RemoteCatalog.SettingsAdvancedBody,UDim2.new(.5,-16,0,36),UDim2.new(.5,6,0,0))
@@ -14472,7 +14530,7 @@ do
         RemoteCatalog.HopSizeButton.Text="TP hop size: "..CONFIG.HopSize.." studs  ↻"
         savePreferences()
     end))
-    place(settingsText,RemoteCatalog.SettingsAdvancedBody,UDim2.new(1,-20,0,100),UDim2.fromOffset(10,222))
+    place(settingsText,RemoteCatalog.SettingsAdvancedBody,UDim2.new(1,-20,0,100),UDim2.fromOffset(10,266))
     settingsText.TextTruncate=Enum.TextTruncate.None
     for _,control in ipairs({reset,layoutBtn,plantBtn,smallerUI,largerUI,resetUI,delayButton,scanButton,saveButton}) do
         control.BackgroundColor3=COLORS.off
@@ -14498,7 +14556,7 @@ function RemoteCatalog.LayoutSettings()
     RemoteCatalog.SettingsQuickBody.Visible=RemoteCatalog.SettingsQuickOpen
     RemoteCatalog.SettingsAdvancedBody.Visible=RemoteCatalog.SettingsAdvancedOpen
     RemoteCatalog.SettingsQuickCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsQuickOpen and 184 or 42)
-    RemoteCatalog.SettingsAdvancedCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsAdvancedOpen and 374 or 42)
+    RemoteCatalog.SettingsAdvancedCard.Size=UDim2.new(1,-12,0,RemoteCatalog.SettingsAdvancedOpen and 418 or 42)
     RemoteCatalog.SettingsQuickButton.Text=RemoteCatalog.SettingsQuickOpen and "Quick actions  ▴" or "Quick actions  ▾"
     RemoteCatalog.SettingsAdvancedButton.Text=RemoteCatalog.SettingsAdvancedOpen and "Advanced settings  ▴" or "Advanced settings  ▾"
     local y=8
@@ -14553,7 +14611,7 @@ track(RemoteCatalog.PerformanceButton.Activated:Connect(function() RemoteCatalog
 -- PERFORMANCE MODE END
 -- KEYBINDS BEGIN
 -- Click a row, then press a key; Escape cancels. A key used elsewhere moves to this action.
-RemoteCatalog.KeybindActions={{"StopAllKey","Stop all"},{"ToggleKey","Fishing"},{"HarvestKey","Harvest"},{"MobKey","Mobs"}}
+RemoteCatalog.KeybindActions={{"StopAllKey","Stop all"},{"ToggleKey","Fishing"},{"HarvestKey","Harvest"},{"MobKey","Mobs"},{"ReportKey","Copy reports"}}
 RemoteCatalog.KeybindButtons={}
 function RemoteCatalog.RefreshKeybinds()
     for _,entry in ipairs(RemoteCatalog.KeybindActions) do
@@ -15026,6 +15084,8 @@ track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	elseif input.KeyCode == CONFIG.MobKey and RemoteCatalog.Mobs then
 		if RemoteCatalog.Mobs.Enabled then RemoteCatalog.Mobs:Stop() else RemoteCatalog.Mobs:Start() end
 		RemoteCatalog.RefreshMobUI()
+	elseif input.KeyCode == CONFIG.ReportKey and RemoteCatalog.CopyAllReports then
+		RemoteCatalog.CopyAllReports()
 	end
 end))
 
@@ -15138,6 +15198,7 @@ task.spawn(function()
 end)
 
 gui.Destroying:Connect(function()
+    pcall(savePreferences)
     pcall(RemoteCatalog.SetPerformanceMode,false)
     if RemoteCatalog.SetDepositEnabled then pcall(RemoteCatalog.SetDepositEnabled,false) end
     RemoteCatalog.StopMobLearning()

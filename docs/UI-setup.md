@@ -4348,3 +4348,21 @@ Report headers now read `Reborn polish-173`.
   cadence, retreat threshold, hits per kill and jump rhythm.
 
 Report headers now read `Reborn guard-174`.
+
+## Mobs goal, report hotkey, lifetime totals · v175
+
+- **Mobs goal.** The Stats tab's mode goals gain Mobs (Unlimited, 10, 25, 50,
+  100 kills), also shown on the Mobs tab below the scoreboard. Kills count as
+  they are observed; reaching the goal stops the farm ("Stopped · kill goal
+  reached"). Copy result has a "Kill goal" line.
+- **Copy reports hotkey.** F2 copies all reports (session, Mobs result,
+  scoreboard). It is a normal keybind row in Settings → Advanced and is saved
+  with the other keys.
+- **Lifetime totals.** Catches, harvests, wood, mined, kills and active time
+  are kept across sessions (`Lifetime` in the preferences, saved on hub close
+  and whenever preferences are saved), shown at the bottom of the Stats tab
+  and in the session report. Profiles never carry them.
+- Settings → Advanced grew by one row; the Stats tab's lower buttons moved
+  down so the Chest-contents button no longer sits on top of Copy all reports.
+
+Report headers now read `Reborn goals-175`.

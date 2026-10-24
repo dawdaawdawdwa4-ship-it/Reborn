@@ -540,7 +540,7 @@ do
  RemoteCatalog.ProfileSlot=3;RemoteCatalog.SessionProfiles={}
  assert(RemoteCatalog.SaveHubProfile(),'a profile saves without file access (session only)')
  local stored=RemoteCatalog.ReadProfiles()['3']
- assert(stored and stored.Data and stored.Data.MobScore==nil and stored.Data.MobHitsToKill==nil and stored.Data.MobWeapon==nil,'the profile holds no account memory')
+ assert(stored and stored.Data and stored.Data.MobScore==nil and stored.Data.MobHitsToKill==nil and stored.Data.MobWeapon==nil and stored.Data.Lifetime==nil,'the profile holds no account memory')
  CONFIG.MobScore.Kills=9;CONFIG.MobHitsToKill.slime=7
  stored.Data.MobScore={Kills=1};stored.Data.MobHitsToKill={slime=1} -- an older build's profile
  assert(RemoteCatalog.LoadHubProfile(),'the profile loads')
@@ -1098,6 +1098,26 @@ end)()
  assert(enabled and fish.Progress==9 and not fish.Reached,'fishing must continue below its goal')
  registerCatch('Trout');RemoteCatalog.CompleteModeGoal('fishing')
  assert(not enabled and baitEnabled and fish.Reached and fish.Progress==10,'fishing goal must stop only Fishing and preserve manual Auto Bait')
+ -- The Mobs goal counts kills and stops the farm when reached; kills and catches reach the lifetime totals.
+ do
+  local mobs=RemoteCatalog.ModeGoals.mobs
+  assert(mobs and mobs.PageButton==RemoteCatalog.MobGoalButton,'the Mobs page exposes the Mobs goal')
+  mobs.PageButton.Activated:Fire();assert(mobs.Limit==10 and RemoteCatalog.MobGoalButton.Text:find('Mobs: 0/10',1,true),'the Mobs goal cycles like the others')
+  local farm=RemoteCatalog.Mobs
+  local stopped;local originalStop=farm.Stop;farm.Stop=function(self,reason) stopped=reason or 'stopped';self.Enabled=false;return true end
+  local before=RemoteCatalog.Lifetime().Kills
+  farm.Enabled=true;farm.Defeats=0;farm.LikelyDefeats=0;RemoteCatalog.MobGoalSeen=0;RemoteCatalog.ResetModeGoal('mobs')
+  farm.LikelyDefeats=9;RemoteCatalog.TrackMobGoal(farm)
+  assert(mobs.Progress==9 and not mobs.Reached and stopped==nil and RemoteCatalog.Lifetime().Kills==before+9,'nine kills count without reaching the goal')
+  farm.Defeats=1;RemoteCatalog.TrackMobGoal(farm)
+  assert(mobs.Reached and stopped and tostring(stopped):find('kill goal',1,true) and RemoteCatalog.Lifetime().Kills==before+10,'the tenth kill reaches the goal and stops the farm')
+  farm.Stop=originalStop;farm.Enabled=false;farm.Defeats=0;farm.LikelyDefeats=0;mobs.PageButton.Activated:Fire()
+  for _=1,4 do if mobs.Limit then mobs.PageButton.Activated:Fire() end end
+  assert(not mobs.Limit,'the Mobs goal cycles back to Unlimited')
+  assert(RemoteCatalog.Lifetime().Catches>=10,'catches reached the lifetime totals')
+  assert(RemoteCatalog.KeybindButtons.ReportKey and CONFIG.ReportKey==Enum.KeyCode.F2,'Copy reports has a keybind row and defaults to F2')
+  local snapshot=savePreferences(true);assert(snapshot.Lifetime and snapshot.Keybinds.ReportKey=='F2','lifetime totals and the report key are saved')
+ end
  RemoteCatalog.CompleteModeGoal('fishing')
  assert(fish.Progress==10,'completed goals must not dispatch a second stop')
  setEnabled(true)
@@ -1130,7 +1150,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn guard-174',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn goals-175',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1872,7 +1892,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn guard-174 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn goals-175 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')
