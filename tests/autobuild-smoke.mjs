@@ -1253,6 +1253,20 @@ end)()
  f=fixture(2);b=f.Value;b:Start();b:SetPaused(true);b:Stop()
  assert(not b.Paused and not b:Start());f:Drain()
  assert(f.Calls==1 and not b.WorkerToken and b.History[1].State=='Stopped','Stop from Pause must discard the wait and prevent queued requests')
+ -- Stop freezes work time and removes the ETA, while delayed worker cleanup is recorded separately.
+ f=fixture(3);b=f.Value;b.Cells=cells(3);b:Start();f:Step();f.Clock=12
+ assert(b.Progress.Placed==2 and b:PaceText():find('left',1,true))
+ b:Stop();local stoppedPace=b:PaceText();local stoppedTime=b:BuildTimes()
+ assert(not stoppedPace:find('left',1,true),'stopped builds must not advertise a remaining-time estimate')
+ f.Clock+=90
+ assert(b:PaceText()==stoppedPace and b:BuildTimes()==stoppedTime,'stopped work time and pace must not drift during cleanup')
+ f:Drain()
+ assert(b.History[1].WorkingTime==12 and b.History[1].CleanupTime==90 and b.History[1].Elapsed==102,'history must separate work from delayed worker cleanup')
+ -- An accepted request without a replicated block has its bounded five-second settling wait.
+ f=fixture(1);b=f.Value;b.Cells=cells(1)
+ f.Response=function() coroutine.yield();return true end
+ b:Start();f.Clock=10;b:Stop();f:Drain()
+ assert(f.Calls==1 and b.History[1].WorkingTime==10 and b.History[1].CleanupTime>=5 and b.History[1].CleanupTime<5.1,'settling after Stop must not count as building time or trigger another placement')
  -- An already dispatched request may settle, but may not launch another one.
  f=fixture(2);b=f.Value
  f.Response=function(body)
@@ -1261,9 +1275,13 @@ end)()
  end
  b:Start();assert(f.Calls==1 and b.RequestPending)
  b:SetPaused(true);assert(string.find(b.Status.Text,'Pausing',1,true))
+ f.Clock+=15
+ local requestWork,requestPause=b:BuildTimes()
+ assert(requestWork==15 and requestPause==0,'a manual Pause must not subtract a request that is still in flight')
  for _=1,4 do f:Step() end
  assert(f.Calls==1 and b.Progress.Placed==1 and b.Paused and not b.RequestPending and b.Buttons.Start.Text=='Paused · 1/2','in-flight confirmation must be counted once while new requests remain paused')
  b:SetPaused(false);f:Drain();assert(f.Calls==2 and b.Progress.Placed==2)
+ assert(b.History[1].WorkingTime>=15 and b.History[1].PausedTime>0,'only the actual paused wait may be excluded from the pace')
  f=fixture(2);b=f.Value
  f.Response=function() coroutine.yield();error('transport failed') end
  b:Start();b:SetPaused(true);f:Drain()
@@ -1504,10 +1522,23 @@ end)()
  assert(value:PaceText()=='','the pace needs ten seconds and two confirmed blocks')
  for _=1,400 do if value.Progress.Placed>=3 then break end;step() end
  assert(value:PaceText():find('/min',1,true) and value:PaceText():find('left',1,true) and value.Status.Text:find('/min',1,true),'a running build shows its pace and the time left: '..value:PaceText())
+ local callsBeforePause=#trace
+ assert(value:SetPaused(true));step()
+ local pausedPace,workBeforePause=value:PaceText(),value:BuildTimes()
+ ticks+=60;step()
+ assert(value:PaceText()==pausedPace and value:BuildTimes()==workBeforePause and #trace==callsBeforePause,'an actual manual pause must freeze pace and ETA without sending new placements')
+ assert(value:SetPaused(false))
  drain()
  assert(table.concat(trace,' ')=='3/0 6/0 9/0 9/3 0/3','the run sends blocks in the smart order: '..table.concat(trace,' '))
  assert(lifetime==5 and value.History[1].Rate>0 and value.History[1].Order=='Smart' and value.History[1].SecondPass==0,'confirmed blocks count toward the lifetime total and the history keeps the pace')
+ local working,paused,total=value:BuildTimes()
+ assert(paused>=60 and total>=working+60 and value.History[1].WorkingTime==working and value.History[1].PausedTime==paused and value.History[1].CleanupTime==0,'finished history must retain the same working and paused durations as the live clock')
+ assert(math.abs(value.History[1].Rate-5*60/working)<1e-6 and value:FormatHistory(value.History[1],1,1):find('paused',1,true),'recorded pace must use working time and explain it in the history')
  assert(value:FormatHistory(value.History[1],1,1):find('Pace: ',1,true) and value:DiagnosticReport():find('Build order: Smart',1,true),'reports name the order and pace')
+ local finishedPace,finishedAt=value:PaceText(),ticks
+ ticks+=90
+ assert(value:PaceText()==finishedPace,'completed build pace must freeze instead of declining while the user is idle')
+ ticks=finishedAt
  -- While waiting for materials the island's chests are consulted.
  occupied={};ctx.ItemCount=function() return 0 end
  ctx.MaterialStock=function(material) if material=='grass' then return 40,12.4 end;return 0 end

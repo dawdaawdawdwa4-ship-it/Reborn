@@ -4434,3 +4434,34 @@ The aim case failed on v177 before the fix. Run the full suite, including the
 existing v177 feature tests. Live Roblox behavior remains unverified here.
 
 Report headers now read `Reborn mob-stop-178`.
+
+
+## Auto Build timing across Pause, Stop and completion · v179
+
+Build pace and the remaining-time estimate now use working time. Manual pauses
+no longer lower the measured build speed or stretch the ETA. The clock freezes
+when a build finishes or is stopped; checking the diagnostics or corner stats
+later cannot make a completed run look slower. A stopped build has no remaining-
+time estimate until a new run starts.
+
+Only time spent actually waiting in the manual Pause state is subtracted. A
+placement request or block confirmation already in flight when Pause is pressed
+still consumes working time until it settles. Automatic material waits, walking,
+server cooldowns and confirmation waits stay in the working-time measurement.
+This keeps a long pending request from being hidden by pressing Pause.
+
+Run history retains total elapsed time and separately shows working, paused and
+cleanup time. Cleanup is the interval after Stop while the old worker releases
+ownership, including the bounded settling wait for an accepted placement. It does
+not change the stopped run's pace. The history's blocks/min uses the same working
+time as the live display. No additional placement, retry, resume or persistence
+behavior is introduced.
+
+The regression reproduced a completed pace declining after 90 idle seconds on
+v178. Tests now cover a real 60-second manual pause without new requests, stable
+ETA during Pause, fixed completed/stopped pace, no ETA while stopped, delayed
+cleanup, the five-second accepted-block settling wait, and Pause during a pending
+request. Live and historical timing must agree. The full suite remains required;
+Roblox behavior has not been verified live here.
+
+Report headers now read `Reborn build-time-179`.

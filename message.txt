@@ -2716,6 +2716,26 @@ function AutoBuild.new(ctx)
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
     local now=ctx.Now or os.clock
+    local function closePause(progress,at)
+        if progress and progress.PauseStartedAt then
+            progress.PausedSeconds=(progress.PausedSeconds or 0)+math.max(0,at-progress.PauseStartedAt)
+            progress.PauseStartedAt=nil
+        end
+    end
+    local function finishClock(progress,at)
+        if progress and not progress.EndedAt then
+            closePause(progress,at)
+            progress.EndedAt=at
+        end
+    end
+    function self:BuildTimes(progress)
+        local p=progress or self.Progress
+        if not p or not p.StartedAt then return 0,0,0 end
+        local at=p.EndedAt or now()
+        local elapsed=math.max(0,at-p.StartedAt)
+        local paused=math.min(elapsed,(p.PausedSeconds or 0)+(p.PauseStartedAt and math.max(0,at-p.PauseStartedAt) or 0))
+        return elapsed-paused,paused,elapsed
+    end
     local function refreshProgress()
         local p=self.Progress
         local total=p and math.max(0,p.Total or 0) or 0
@@ -2783,6 +2803,7 @@ function AutoBuild.new(ctx)
         if type(value)~="boolean" or not ctx.Alive() or not self.Running or not self.WorkerToken then return false end
         if self.Paused==value then return true end
         self.Paused=value
+        if not value then closePause(self.Progress,now()) end
         if value then self.PauseEpoch+=1;stopTravel() end
         self:RefreshFailureUI()
         status(value and "Paused" or "Resuming the current build. Reach, material and occupancy checks remain active.")
@@ -2792,6 +2813,7 @@ function AutoBuild.new(ctx)
         local live=self.Running or self.WorkerToken
         -- An idle Stop (Stop All, a teleport) must not invalidate a valid marker/material snapshot.
         if live then self.Token+=1 end
+        if live then finishClock(self.Progress,now()) end
         self.Running=false;self.Paused=false
         stopTravel()
         -- Teleports and Stop All also call this; a finished run must keep its result.
@@ -2840,12 +2862,12 @@ function AutoBuild.new(ctx)
     function self:PaceText(prefix)
         local p=self.Progress
         if not p or not p.StartedAt then return "" end
-        local elapsed=now()-p.StartedAt
+        local elapsed=self:BuildTimes(p)
         if elapsed<10 or (p.Placed or 0)<2 then return "" end
         local rate=p.Placed*60/elapsed
         local remaining=math.max(0,(p.Total or 0)-(p.Checked or 0))
         local text=string.format("%.1f/min",rate)
-        if remaining>0 and p.State~="Finished" and rate>0 then
+        if remaining>0 and not p.EndedAt and p.State~="Finished" and rate>0 then
             local seconds=math.floor(remaining*60/rate+.5)
             text=text..string.format(" · ~%d:%02d left",math.floor(seconds/60),seconds%60)
         end
@@ -3217,7 +3239,8 @@ function AutoBuild.new(ctx)
         if run.NextAction then
             text..="\nNext: "..run.NextAction
             text..="\nSettings: "..run.Speed.." · "..run.Travel.." · order "..tostring(run.Order or "Smart").." · Attempts: "..run.Attempts.." · TOO_FAST: "..run.Cooldowns
-            text..=string.format("\nPace: %.1f blocks/min · second pass: %d cell%s",run.Rate or 0,run.SecondPass or 0,(run.SecondPass or 0)==1 and "" or "s")
+            text..=string.format("\nPace: %.1f blocks/min (working time) · second pass: %d cell%s",run.Rate or 0,run.SecondPass or 0,(run.SecondPass or 0)==1 and "" or "s")
+            text..=string.format("\nTime: %.1fs working · %.1fs paused · %.1fs cleanup",run.WorkingTime or run.Elapsed,run.PausedTime or 0,run.CleanupTime or 0)
             text..="\nLast result: "..run.LastResult.."\nDetail: "..run.Detail
             if run.WaitReason then text..="\nLast wait: "..run.WaitReason end
             text..="\nTracked cells: "..run.Retryable.." rejected · "..run.Review.." need review"
@@ -3261,10 +3284,12 @@ function AutoBuild.new(ctx)
             or retryable>0 and "Fix the recorded rejection cause, then use Retry failed for eligible cells in the current preview."
             or state=="Finished" and progress.Failed==0 and "No unresolved cells in this run."
             or "Check the current preview and setup, then Resume build when ready."
+        local working,paused=self:BuildTimes(progress)
         table.insert(self.History,1,{Name=meta.Name,Layer=meta.Layer,WholeTotal=meta.WholeTotal,Total=progress.Total,
             Placed=progress.Placed,Skipped=progress.Skipped,Failed=progress.Failed,State=state,Elapsed=math.max(0,(meta.Ended or now())-meta.Started),RetryOnly=meta.RetryOnly==true,
             Speed=meta.Speed,Travel=meta.Travel,Order=meta.Order or "Smart",SecondPass=meta.SecondPass or 0,Attempts=meta.Attempts,Cooldowns=meta.Cooldowns,LastResult=meta.LastResult,
-            Rate=progress.Placed>0 and (meta.Ended or now())-meta.Started>0 and progress.Placed*60/((meta.Ended or now())-meta.Started) or 0,
+            Rate=working>0 and progress.Placed*60/working or 0,
+            WorkingTime=working,PausedTime=paused,CleanupTime=math.max(0,(meta.Ended or now())-(progress.EndedAt or now())),
             Detail=reportText(progress.Detail or state),WaitReason=progress.WaitReason and reportText(progress.WaitReason) or nil,
             Failures=failures,Retryable=retryable,Review=review,NextAction=nextAction})
         while #self.History>5 do table.remove(self.History) end
@@ -3412,7 +3437,7 @@ function AutoBuild.new(ctx)
         self.WorkerToken=token
         self.VisualSnapshot=nil
         self.SetupReport=nil;self.SetupResult=nil
-        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true,PreviewRevision=self.PlanRevision,Layer=self.LayerIndex,StartedAt=now()}
+        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true,PreviewRevision=self.PlanRevision,Layer=self.LayerIndex,StartedAt=now(),PausedSeconds=0}
         local progress=self.Progress
         local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now(),RetryOnly=retryFailed==true,
             Speed=self.BuildSpeed,Travel=travelMode,Order=retryFailed==true and "Retry" or self.BuildOrder,Attempts=0,Cooldowns=0,SecondPass=0,LastResult="No placement request sent",Failures={}}
@@ -3423,7 +3448,13 @@ function AutoBuild.new(ctx)
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
         local function awaitResume()
-            while active() and self.Paused do scheduler.wait(.1) end
+            while active() and self.Paused do
+                -- An in-flight placement/confirmation still consumes working time.
+                -- Exclude the pause only once the worker actually reaches this wait.
+                progress.PauseStartedAt=progress.PauseStartedAt or now()
+                scheduler.wait(.1)
+            end
+            closePause(progress,now())
             return active()
         end
         local function ensureMaterials(cell,index)
@@ -3669,6 +3700,7 @@ function AutoBuild.new(ctx)
                 if active() then self.Progress.State="Finished";status(string.format((failed>0 and "Finished with failures: " or "Finished: ").."%d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
             meta.Ended=now()
+            finishClock(progress,meta.Ended)
             if not ok and meta.LastResult=="Request sent; result pending" then meta.LastResult="Transport error: "..reportText(err) end
             stopTravel()
             if self.WorkerToken==token then self.WorkerToken=nil;self.WaitingMaterial=nil;self.RequestPending=false end
@@ -5827,7 +5859,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-stop-178",
+    return table.concat({"Reborn build-time-179",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -7971,7 +8003,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-stop-178 · Propeller loot history (UTC)",
+    return table.concat({"Reborn build-time-179 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -8075,7 +8107,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-stop-178 · Propeller tracker",
+    return table.concat({"Reborn build-time-179 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -8111,7 +8143,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-stop-178", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn build-time-179", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -10932,7 +10964,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-stop-178\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn build-time-179\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10994,7 +11026,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-stop-178 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn build-time-179 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11628,7 +11660,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-stop-178\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn build-time-179\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12749,7 +12781,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-stop-178 · Craft diagnostics",
+    return table.concat({"Reborn build-time-179 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12828,7 +12860,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-stop-178 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn build-time-179 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13565,7 +13597,7 @@ function RemoteCatalog.MobTrendText(score)
     return table.concat(spark).." "..table.concat(numbers," · ")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn mob-stop-178 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn build-time-179 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13809,7 +13841,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-stop-178 · Mobs",
+    return table.concat({"Reborn build-time-179 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),

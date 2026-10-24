@@ -172,6 +172,26 @@ function AutoBuild.new(ctx)
     local space=ctx.Workspace or workspace
     local scheduler=ctx.Scheduler or task
     local now=ctx.Now or os.clock
+    local function closePause(progress,at)
+        if progress and progress.PauseStartedAt then
+            progress.PausedSeconds=(progress.PausedSeconds or 0)+math.max(0,at-progress.PauseStartedAt)
+            progress.PauseStartedAt=nil
+        end
+    end
+    local function finishClock(progress,at)
+        if progress and not progress.EndedAt then
+            closePause(progress,at)
+            progress.EndedAt=at
+        end
+    end
+    function self:BuildTimes(progress)
+        local p=progress or self.Progress
+        if not p or not p.StartedAt then return 0,0,0 end
+        local at=p.EndedAt or now()
+        local elapsed=math.max(0,at-p.StartedAt)
+        local paused=math.min(elapsed,(p.PausedSeconds or 0)+(p.PauseStartedAt and math.max(0,at-p.PauseStartedAt) or 0))
+        return elapsed-paused,paused,elapsed
+    end
     local function refreshProgress()
         local p=self.Progress
         local total=p and math.max(0,p.Total or 0) or 0
@@ -239,6 +259,7 @@ function AutoBuild.new(ctx)
         if type(value)~="boolean" or not ctx.Alive() or not self.Running or not self.WorkerToken then return false end
         if self.Paused==value then return true end
         self.Paused=value
+        if not value then closePause(self.Progress,now()) end
         if value then self.PauseEpoch+=1;stopTravel() end
         self:RefreshFailureUI()
         status(value and "Paused" or "Resuming the current build. Reach, material and occupancy checks remain active.")
@@ -248,6 +269,7 @@ function AutoBuild.new(ctx)
         local live=self.Running or self.WorkerToken
         -- An idle Stop (Stop All, a teleport) must not invalidate a valid marker/material snapshot.
         if live then self.Token+=1 end
+        if live then finishClock(self.Progress,now()) end
         self.Running=false;self.Paused=false
         stopTravel()
         -- Teleports and Stop All also call this; a finished run must keep its result.
@@ -296,12 +318,12 @@ function AutoBuild.new(ctx)
     function self:PaceText(prefix)
         local p=self.Progress
         if not p or not p.StartedAt then return "" end
-        local elapsed=now()-p.StartedAt
+        local elapsed=self:BuildTimes(p)
         if elapsed<10 or (p.Placed or 0)<2 then return "" end
         local rate=p.Placed*60/elapsed
         local remaining=math.max(0,(p.Total or 0)-(p.Checked or 0))
         local text=string.format("%.1f/min",rate)
-        if remaining>0 and p.State~="Finished" and rate>0 then
+        if remaining>0 and not p.EndedAt and p.State~="Finished" and rate>0 then
             local seconds=math.floor(remaining*60/rate+.5)
             text=text..string.format(" · ~%d:%02d left",math.floor(seconds/60),seconds%60)
         end
@@ -673,7 +695,8 @@ function AutoBuild.new(ctx)
         if run.NextAction then
             text..="\nNext: "..run.NextAction
             text..="\nSettings: "..run.Speed.." · "..run.Travel.." · order "..tostring(run.Order or "Smart").." · Attempts: "..run.Attempts.." · TOO_FAST: "..run.Cooldowns
-            text..=string.format("\nPace: %.1f blocks/min · second pass: %d cell%s",run.Rate or 0,run.SecondPass or 0,(run.SecondPass or 0)==1 and "" or "s")
+            text..=string.format("\nPace: %.1f blocks/min (working time) · second pass: %d cell%s",run.Rate or 0,run.SecondPass or 0,(run.SecondPass or 0)==1 and "" or "s")
+            text..=string.format("\nTime: %.1fs working · %.1fs paused · %.1fs cleanup",run.WorkingTime or run.Elapsed,run.PausedTime or 0,run.CleanupTime or 0)
             text..="\nLast result: "..run.LastResult.."\nDetail: "..run.Detail
             if run.WaitReason then text..="\nLast wait: "..run.WaitReason end
             text..="\nTracked cells: "..run.Retryable.." rejected · "..run.Review.." need review"
@@ -717,10 +740,12 @@ function AutoBuild.new(ctx)
             or retryable>0 and "Fix the recorded rejection cause, then use Retry failed for eligible cells in the current preview."
             or state=="Finished" and progress.Failed==0 and "No unresolved cells in this run."
             or "Check the current preview and setup, then Resume build when ready."
+        local working,paused=self:BuildTimes(progress)
         table.insert(self.History,1,{Name=meta.Name,Layer=meta.Layer,WholeTotal=meta.WholeTotal,Total=progress.Total,
             Placed=progress.Placed,Skipped=progress.Skipped,Failed=progress.Failed,State=state,Elapsed=math.max(0,(meta.Ended or now())-meta.Started),RetryOnly=meta.RetryOnly==true,
             Speed=meta.Speed,Travel=meta.Travel,Order=meta.Order or "Smart",SecondPass=meta.SecondPass or 0,Attempts=meta.Attempts,Cooldowns=meta.Cooldowns,LastResult=meta.LastResult,
-            Rate=progress.Placed>0 and (meta.Ended or now())-meta.Started>0 and progress.Placed*60/((meta.Ended or now())-meta.Started) or 0,
+            Rate=working>0 and progress.Placed*60/working or 0,
+            WorkingTime=working,PausedTime=paused,CleanupTime=math.max(0,(meta.Ended or now())-(progress.EndedAt or now())),
             Detail=reportText(progress.Detail or state),WaitReason=progress.WaitReason and reportText(progress.WaitReason) or nil,
             Failures=failures,Retryable=retryable,Review=review,NextAction=nextAction})
         while #self.History>5 do table.remove(self.History) end
@@ -868,7 +893,7 @@ function AutoBuild.new(ctx)
         self.WorkerToken=token
         self.VisualSnapshot=nil
         self.SetupReport=nil;self.SetupResult=nil
-        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true,PreviewRevision=self.PlanRevision,Layer=self.LayerIndex,StartedAt=now()}
+        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true,PreviewRevision=self.PlanRevision,Layer=self.LayerIndex,StartedAt=now(),PausedSeconds=0}
         local progress=self.Progress
         local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now(),RetryOnly=retryFailed==true,
             Speed=self.BuildSpeed,Travel=travelMode,Order=retryFailed==true and "Retry" or self.BuildOrder,Attempts=0,Cooldowns=0,SecondPass=0,LastResult="No placement request sent",Failures={}}
@@ -879,7 +904,13 @@ function AutoBuild.new(ctx)
         if self.MoveMenu then self.MoveMenu.Visible=false end
         local function active() return self.Running and self.Token==token and ctx.Alive() end
         local function awaitResume()
-            while active() and self.Paused do scheduler.wait(.1) end
+            while active() and self.Paused do
+                -- An in-flight placement/confirmation still consumes working time.
+                -- Exclude the pause only once the worker actually reaches this wait.
+                progress.PauseStartedAt=progress.PauseStartedAt or now()
+                scheduler.wait(.1)
+            end
+            closePause(progress,now())
             return active()
         end
         local function ensureMaterials(cell,index)
@@ -1125,6 +1156,7 @@ function AutoBuild.new(ctx)
                 if active() then self.Progress.State="Finished";status(string.format((failed>0 and "Finished with failures: " or "Finished: ").."%d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
             meta.Ended=now()
+            finishClock(progress,meta.Ended)
             if not ok and meta.LastResult=="Request sent; result pending" then meta.LastResult="Transport error: "..reportText(err) end
             stopTravel()
             if self.WorkerToken==token then self.WorkerToken=nil;self.WaitingMaterial=nil;self.RequestPending=false end
