@@ -85,7 +85,7 @@ assert(RemoteCatalog.ChestIncludeConveyor,"explicit Include must restore legacy 
   updateBoard();assert(b.VisualSnapshot==checks and b.Cells[1].SetupState=='Occupied','periodic color refresh must reuse the snapshot')
   b.Buttons.SetupMarkers.Activated:Fire()
   assert(not b.SetupMarkers and b.Cells[1].Preview.Color==base and not b.Cells[1].SetupState,'real OFF control must restore source preview colors')
-  assert(b.Buttons.SetupMarkers.Position.Y.Offset==b.Buttons.ResetOffset.Position.Y.Offset and b.MoveMenu.Size.Y.Offset==256,'diagnostic toggle must share the reset row above the new Auto Walk row')
+  assert(b.Buttons.SetupMarkers.Position.Y.Offset==b.Buttons.ResetOffset.Position.Y.Offset and b.MoveMenu.Size.Y.Offset==292 and b.Buttons.Order.Position.Y.Offset==256,'diagnostic toggle must share the reset row above the Auto Walk and Order rows')
 
   r.ModuleCache,b.Cells,b.LayerIndex,player.Character,r.CarrotCount=cache,cells,layer,character,count
   b.SetupReport=nil;b.SetupResult=nil;b.VisualSnapshot=nil;b.VisualCounts=nil;b.SetupMarkers=markerOn;b.RangeMarkers=rangeOn
@@ -530,6 +530,22 @@ do
  player.Character={FindFirstChild=function() return nil end}
  t.r.UpdateDashboard()
  assert(overlayValues.mobsHp.Text:find('HP –',1,true),'a character without a humanoid lookup does not break the dashboard')
+ -- The Build row follows the build controller's progress.
+ assert(overlayValues.build and overlayValues.build.Text=='off','without a preview the Build row reads off')
+ t.build=buildController
+ t.buildState={t.build.Cells,t.build.Progress,t.build.Running,t.build.PlanRevision}
+ t.build.Cells={{},{},{},{}};t.build.PlanRevision=(t.build.PlanRevision or 0)+1
+ t.build.Progress={Placed=2,Skipped=1,Failed=0,Total=4,State='Building',PreviewRevision=t.build.PlanRevision,StartedAt=os.clock()-30}
+ t.build.Running=true;t.r.UpdateDashboard()
+ assert(overlayValues.build.Text:find('3/4',1,true) and overlayValues.build.Text:find('/min',1,true),'a running build shows checked cells and pace: '..overlayValues.build.Text)
+ t.build.Running=false;t.build.Progress.State='Finished';t.build.Progress.Placed=3;t.r.UpdateDashboard()
+ assert(overlayValues.build.Text=='done 4/4','a finished build reads done: '..overlayValues.build.Text)
+ t.build.Cells,t.build.Progress,t.build.Running,t.build.PlanRevision=t.buildState[1],t.buildState[2],t.buildState[3],t.buildState[4]
+ t.r.UpdateDashboard()
+ -- Lifetime blocks come from confirmed placements, also for totals saved before the key existed.
+ CONFIG.Lifetime={Catches=1,Casts=0,Harvests=0,Wood=0,Mine=0,Kills=0,Seconds=0}
+ assert(t.r.Lifetime().Blocks==0,'older lifetime totals gain the blocks key')
+ t.r.LifetimeAdd('Blocks',3);assert(t.r.Lifetime().Blocks==3 and t.r.LifetimeText():find('3 blocks',1,true),'blocks are counted and shown')
  player.Character=t.character
  t.farm.StartedAt,t.farm.EndedAt,t.farm.Defeats,t.farm.LikelyDefeats,t.farm.Enabled=t.state[1],t.state[2],t.state[3],t.state[4],t.state[5]
  -- Craft food when none is in the inventory.
@@ -1204,7 +1220,7 @@ end)()
  local copied
  setclipboard=function(value) copied=value end
  RemoteCatalog.SessionReportButton.Activated:Fire()
- assert(copied and string.find(copied,'Reborn rates-176',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
+ assert(copied and string.find(copied,'Reborn build-177',1,true) and string.find(copied,'Resources:',1,true) and string.find(copied,'Harvest goal: 1/10',1,true),'report must include session counters and independent mode goals')
  assert(string.find(copied,'Fishing input:',1,true),'session report must include the fishing input backend/result without requiring a cast')
  assert(string.find(copied,'Fishing status:',1,true),'session report must include the persistent fishing status')
  assert(not enabled and not harvestEnabled and not woodEnabled and not mineEnabled,'copying a report must never start gameplay')
@@ -1946,7 +1962,7 @@ end)()
  local report
  setclipboard=function(value) report=value end
  r.CraftMaterialsCopy.Activated:Fire()
- assert(report and string.find(report,'Reborn rates-176 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
+ assert(report and string.find(report,'Reborn build-177 · Materials',1,true) and string.find(report,'missing 170',1,true),'Copy materials must use current quantities')
  setclipboard=function() error('unavailable') end
  r.CraftMaterialsCopy.Activated:Fire()
  assert(string.find(status.Text,'printed to the console',1,true),'materials copy must provide a console fallback')

@@ -163,7 +163,7 @@ function AutoBuild.RayBox(cf,origin,direction,half,limit)
     return near
 end
 function AutoBuild.new(ctx)
-    local self={Paused=false,PauseEpoch=0,BuildSpeed="Standard",RepeatScope="Entire layout",RepeatCopies=2,RepeatGap=0,TravelMode="Stay",Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
+    local self={Paused=false,PauseEpoch=0,BuildSpeed="Standard",RepeatScope="Entire layout",RepeatCopies=2,RepeatGap=0,TravelMode="Stay",BuildOrder="Smart",Preset="Farm plots",Width=5,Length=6,Height=3,Rotation=0,Token=0,Running=false,Cells=nil,PreviewFolder=nil,OffsetX=0,OffsetY=0,OffsetZ=0,Library={},Slot=1,CaptureRange=30,Persistence={}}
     local inputs,buttons,commits={},{},{}
     self.Favorites={};self.History={};self.UndoStack={};self.RedoStack={}
     self.Failures=setmetatable({}, {__mode="k"})
@@ -197,7 +197,7 @@ function AutoBuild.new(ctx)
         refreshProgress()
         local p=self.Progress
         if p and self.WorkerToken then p.Detail=tostring(message):sub(1,1024) end
-        local counts=self.Running and p and p.State~="Finished" and string.format("\nRun: %d confirmed · %d skipped · %d failed",p.Placed,p.Skipped,p.Failed) or ""
+        local counts=self.Running and p and p.State~="Finished" and string.format("\nRun: %d confirmed · %d skipped · %d failed",p.Placed,p.Skipped,p.Failed)..self:PaceText(" · ") or ""
         if self.Running and self.Paused then
             message=self.RequestPending and "Pausing · waiting for the current server request. Resume keeps this run."
                 or "Paused · Resume continues this run; Stop ends it."
@@ -282,6 +282,73 @@ function AutoBuild.new(ctx)
             if part.CanCollide then return true end
         end
         return false
+    end
+    function self:SetBuildOrder(order)
+        if order~="Smart" and order~="Blueprint" then return false end
+        if self.Running or self.WorkerToken then status("Stop building and wait for cleanup before changing the build order.");return false end
+        self.BuildOrder=order
+        if buttons.Order then buttons.Order.Text="Order: "..order end
+        status(order=="Smart" and "Smart order: lowest layer first, then the nearest block to you and onward along the shortest hops, so support exists and walking stays short."
+            or "Blueprint order: blocks are sent in the blueprint's own sequence.")
+        return true
+    end
+    -- Build pace from the current run: blocks per minute and the time the remaining cells need at that pace.
+    function self:PaceText(prefix)
+        local p=self.Progress
+        if not p or not p.StartedAt then return "" end
+        local elapsed=now()-p.StartedAt
+        if elapsed<10 or (p.Placed or 0)<2 then return "" end
+        local rate=p.Placed*60/elapsed
+        local remaining=math.max(0,(p.Total or 0)-(p.Checked or 0))
+        local text=string.format("%.1f/min",rate)
+        if remaining>0 and p.State~="Finished" and rate>0 then
+            local seconds=math.floor(remaining*60/rate+.5)
+            text=text..string.format(" · ~%d:%02d left",math.floor(seconds/60),seconds%60)
+        end
+        return (prefix or "")..text
+    end
+    -- Smart order: layers from the bottom up (support first), inside a layer the nearest block to the
+    -- character, then the nearest unbuilt neighbour of the last block (short hops for Auto Walk).
+    -- Any cell whose position cannot be measured keeps the blueprint order for the whole run.
+    function self:OrderCells(cells)
+        if self.BuildOrder~="Smart" or #cells<3 then return cells end
+        local _,root=characterRoot()
+        if not root then return cells end
+        local function distance(a,b)
+            local ok,value=pcall(function() return (a-b).Magnitude end)
+            if not ok or type(value)~="number" or value~=value then return nil end
+            return value
+        end
+        local layers,byLayer={},{}
+        for index,cell in ipairs(cells) do
+            local y=cell.LayerY
+            if y==nil then
+                local ok,value=pcall(function() return cell.CFrame.Position.Y end)
+                y=ok and value or 0
+            end
+            if type(y)~="number" or y~=y then y=0 end
+            local key=math.round(y*1000)/1000
+            if not byLayer[key] then byLayer[key]={};table.insert(layers,key) end
+            table.insert(byLayer[key],{Index=index,Cell=cell})
+        end
+        table.sort(layers)
+        local ordered={}
+        local cursor=root.Position
+        for _,key in ipairs(layers) do
+            local pending=byLayer[key]
+            while #pending>0 do
+                local bestAt,best
+                for at,entry in ipairs(pending) do
+                    local d=distance(entry.Cell.CFrame.Position,cursor)
+                    if d==nil then return cells end
+                    if not best or d<best-1e-6 then best,bestAt=d,at end
+                end
+                local entry=table.remove(pending,bestAt)
+                table.insert(ordered,entry.Cell)
+                cursor=entry.Cell.CFrame.Position
+            end
+        end
+        return ordered
     end
     function self:Layers()
         local heights,seen={},{}
@@ -605,7 +672,8 @@ function AutoBuild.new(ctx)
         text..=run.RetryOnly and "\nRun type: Retry failed (explicitly rejected cells only)" or "\nRun type: Normal Start/Resume"
         if run.NextAction then
             text..="\nNext: "..run.NextAction
-            text..="\nSettings: "..run.Speed.." · "..run.Travel.." · Attempts: "..run.Attempts.." · TOO_FAST: "..run.Cooldowns
+            text..="\nSettings: "..run.Speed.." · "..run.Travel.." · order "..tostring(run.Order or "Smart").." · Attempts: "..run.Attempts.." · TOO_FAST: "..run.Cooldowns
+            text..=string.format("\nPace: %.1f blocks/min · second pass: %d cell%s",run.Rate or 0,run.SecondPass or 0,(run.SecondPass or 0)==1 and "" or "s")
             text..="\nLast result: "..run.LastResult.."\nDetail: "..run.Detail
             if run.WaitReason then text..="\nLast wait: "..run.WaitReason end
             text..="\nTracked cells: "..run.Retryable.." rejected · "..run.Review.." need review"
@@ -651,7 +719,8 @@ function AutoBuild.new(ctx)
             or "Check the current preview and setup, then Resume build when ready."
         table.insert(self.History,1,{Name=meta.Name,Layer=meta.Layer,WholeTotal=meta.WholeTotal,Total=progress.Total,
             Placed=progress.Placed,Skipped=progress.Skipped,Failed=progress.Failed,State=state,Elapsed=math.max(0,(meta.Ended or now())-meta.Started),RetryOnly=meta.RetryOnly==true,
-            Speed=meta.Speed,Travel=meta.Travel,Attempts=meta.Attempts,Cooldowns=meta.Cooldowns,LastResult=meta.LastResult,
+            Speed=meta.Speed,Travel=meta.Travel,Order=meta.Order or "Smart",SecondPass=meta.SecondPass or 0,Attempts=meta.Attempts,Cooldowns=meta.Cooldowns,LastResult=meta.LastResult,
+            Rate=progress.Placed>0 and (meta.Ended or now())-meta.Started>0 and progress.Placed*60/((meta.Ended or now())-meta.Started) or 0,
             Detail=reportText(progress.Detail or state),WaitReason=progress.WaitReason and reportText(progress.WaitReason) or nil,
             Failures=failures,Retryable=retryable,Review=review,NextAction=nextAction})
         while #self.History>5 do table.remove(self.History) end
@@ -733,6 +802,7 @@ function AutoBuild.new(ctx)
             "Waiting for material: "..tostring(self.WaitingMaterial or "none"),
             "Build speed: "..self.BuildSpeed.."; current request gap: "..tostring(self.CurrentBuildGap or (self.BuildSpeed=="Fast" and .05 or .2)).."; cooldowns: "..tostring(self.BuildCooldowns or 0),
             "Build movement: "..self.TravelMode.."; last walk: "..tostring(self.LastTravelResult or "none"),
+            "Build order: "..tostring(self.BuildOrder).."; pace: "..(self:PaceText()~="" and self:PaceText() or "needs 10 s and two confirmed blocks"),
             "Preview cells: "..tostring(self.Cells and #self.Cells or 0).."; selected: "..#self:SelectedCells(),
             "State: "..tostring(p.State or "not started").."; cell: "..tostring(p.Index or 0).." / "..tostring(p.Total or 0),
             "Confirmed: "..tostring(p.Placed or 0).."; skipped: "..tostring(p.Skipped or 0).."; failed: "..tostring(p.Failed or 0),
@@ -786,6 +856,7 @@ function AutoBuild.new(ctx)
             if #cells==0 then status("No eligible rejected cells in this layer. Uncertain requests need island review; use normal Resume after inspecting them.");return false end
         end
         if #cells==0 then status("No blocks selected. Choose All layers or create a new preview.");return false end
+        if retryFailed~=true then cells=self:OrderCells(cells) end
         if self.Running or self.WorkerToken then return false end
         if self.TravelMode~=travelMode then status("Build movement changed during setup. Press Start again.");return false end
         self:CloseMenus()
@@ -797,10 +868,10 @@ function AutoBuild.new(ctx)
         self.WorkerToken=token
         self.VisualSnapshot=nil
         self.SetupReport=nil;self.SetupResult=nil
-        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true,PreviewRevision=self.PlanRevision,Layer=self.LayerIndex}
+        self.Progress={Placed=0,Skipped=0,Failed=0,Total=#cells,Index=0,State="Building",RetryOnly=retryFailed==true,PreviewRevision=self.PlanRevision,Layer=self.LayerIndex,StartedAt=now()}
         local progress=self.Progress
         local meta={Name=self.SavedPlan and self.SavedPlan.Name or self.Preset,Layer=self.LayerIndex and "Layer "..self.LayerIndex or "All layers",WholeTotal=#self.Cells,Started=now(),RetryOnly=retryFailed==true,
-            Speed=self.BuildSpeed,Travel=travelMode,Attempts=0,Cooldowns=0,LastResult="No placement request sent",Failures={}}
+            Speed=self.BuildSpeed,Travel=travelMode,Order=retryFailed==true and "Retry" or self.BuildOrder,Attempts=0,Cooldowns=0,SecondPass=0,LastResult="No placement request sent",Failures={}}
         self.Picking=false;self.SelectedCell=nil;self:RefreshSelection()
         if buttons.Pick then buttons.Pick.Text="Pick block: OFF" end
         self.Running=true;buttons.Start.Text="Building…"
@@ -833,8 +904,16 @@ function AutoBuild.new(ctx)
                 waited=true;self.WaitingMaterial=cell.Material
                 progress.State="Waiting for materials"
                 progress.WaitReason="Material: "..cell.Material
+                -- Where to restock: the island's chests are read every two seconds while waiting.
+                if type(ctx.MaterialStock)=="function" and (not self.StockCheckedAt or now()-self.StockCheckedAt>=2) then
+                    self.StockCheckedAt=now()
+                    local ok,total,nearest=pcall(ctx.MaterialStock,cell.Material)
+                    if ok and type(total)=="number" then
+                        self.StockHint=total>0 and string.format(" · chests hold %d%s",total,type(nearest)=="number" and string.format(" (nearest %d studs away)",math.floor(nearest+.5)) or "") or " · no chest on the island holds it"
+                    else self.StockHint=nil end
+                end
                 status("Waiting for "..cell.Material.." · block "..index.."/"..#cells
-                    ..(valid and " · inventory is empty. Restock to continue, or press Stop." or " · waiting for a readable quantity after empty stock. Stop cancels."))
+                    ..(valid and " · inventory is empty. Restock to continue, or press Stop." or " · waiting for a readable quantity after empty stock. Stop cancels.")..(self.StockHint or ""))
                 scheduler.wait(.25)
             end
             return false
@@ -898,9 +977,10 @@ function AutoBuild.new(ctx)
         end
         scheduler.spawn(function()
             local placed,skipped,failed,streak=0,0,0,0
-            local ok,err=pcall(function()
-                for index,cell in ipairs(cells) do
-                    if not awaitResume() then return end
+            -- One cell of the run; returns false when the run must end.
+            local function processCell(index,cell)
+                do
+                    if not awaitResume() then return false end
                     local cycleAt=now()
                     self.Progress.Index=index
                     local existing=occupied(cell.CFrame,self.BlockSize)
@@ -910,9 +990,9 @@ function AutoBuild.new(ctx)
                     else
                         local reach=ctx.GameModule("ReplicatedStorage.Shared.SharedConfig","CLIENT_REACH")
                         if type(reach)~="number" or not (reach>0 and reach<math.huge) then reach=20 end
-                        if not ensureMaterials(cell,index) then return end
-                        if not ensureReach(cell,reach,index) then return end
-                        if not active() then return end
+                        if not ensureMaterials(cell,index) then return false end
+                        if not ensureReach(cell,reach,index) then return false end
+                        if not active() then return false end
                         existing=existing or occupied(cell.CFrame,self.BlockSize)
                         if existing then
                             skipped+=1
@@ -920,13 +1000,13 @@ function AutoBuild.new(ctx)
                             local sent,reason,origin
                             local retries=0
                             repeat
-                                if not awaitResume() then return end
+                                if not awaitResume() then return false end
                                 local epoch=self.PauseEpoch
-                                if not ensureMaterials(cell,index) then return end
-                                if not ensureReach(cell,reach,index) then return end
-                                if not active() then return end
+                                if not ensureMaterials(cell,index) then return false end
+                                if not ensureReach(cell,reach,index) then return false end
+                                if not active() then return false end
                                 local alreadyPlaced=occupied(cell.CFrame,self.BlockSize)
-                                if not active() then return end
+                                if not active() then return false end
                                 if self.PauseEpoch~=epoch then continue end
                                 if alreadyPlaced then existing=true;sent=true;break end
                                 progress.State="Building"
@@ -955,22 +1035,22 @@ function AutoBuild.new(ctx)
                                 if retries>5 then
                                     progress.Failed+=1;progress.State="Paused after cooldown"
                                     status("Server cooldown persisted after 5 retries. Preview kept; wait, then Resume build.")
-                                    return
+                                    return false
                                 end
                                 progress.State="Waiting for server cooldown"
                                 progress.WaitReason="Server cooldown at run cell #"..index.." · retry "..retries.."/5"
                                 status("Server cooldown · retrying block "..index.." / "..#cells.." ("..retries.."/5)")
                                 for _=1,math.ceil(math.min(4,.5*2^(retries-1))/.1) do
-                                    if not awaitResume() then return end
+                                    if not awaitResume() then return false end
                                     scheduler.wait(.1)
                                 end
-                                if not active() then return end
+                                if not active() then return false end
                                 if occupied(cell.CFrame,self.BlockSize) then existing=true;sent=true;break end
-                                if not ensureReach(cell,reach,index) then return end
-                                if not active() then return end
+                                if not ensureReach(cell,reach,index) then return false end
+                                if not active() then return false end
                                 if occupied(cell.CFrame,self.BlockSize) then existing=true;sent=true;break end
                             until not active()
-                            if not active() then return end
+                            if not active() then return false end
                             if origin=="transport" or origin=="unavailable" then
                                 progress.Failed+=1;progress.State="Placement needs review"
                                 if origin=="unavailable" then
@@ -978,7 +1058,7 @@ function AutoBuild.new(ctx)
                                 else
                                     status("Placement stopped: "..resultText(reason)..". Check the island before resuming; no further blocks sent.")
                                 end
-                                return
+                                return false
                             end
                             if sent then
                                 progress.State="Confirming block"
@@ -995,13 +1075,14 @@ function AutoBuild.new(ctx)
                             if existing then skipped+=1;streak=0
                             elseif confirmed then
                                 placed+=1;streak=0;successes+=1
+                                if type(ctx.OnPlaced)=="function" then pcall(ctx.OnPlaced,1) end
                                 if successes>=5 then gap=math.max(minimumGap,gap*.85);self.CurrentBuildGap=gap;successes=0 end
                             else failed+=1;streak+=1 end
                             self.Progress.Placed=placed;self.Progress.Skipped=skipped;self.Progress.Failed=failed
                             if streak>=3 then
                                 self.Progress.State="Paused after failures"
                                 status("Build paused after 3 failures: "..resultText(reason or "no block appeared")..". Check materials, support and island access.")
-                                return
+                                return false
                             end
                         end
                     end
@@ -1013,6 +1094,33 @@ function AutoBuild.new(ctx)
                     -- interval. Existing cells only need a short cancellation yield.
                     local elapsed=math.max(0,now()-cycleAt)
                     scheduler.wait(existing and .01 or math.max(.01,gap-elapsed))
+                end
+                return true
+            end
+            local ok,err=pcall(function()
+                for index,cell in ipairs(cells) do
+                    if not processCell(index,cell) then return end
+                end
+                -- Second pass: a cell the server rejected (not a cooldown, not for missing materials) is tried
+                -- once more after the rest of the run, since its neighbours may now give it support.
+                if retryFailed~=true and placed>0 and active() then
+                    local deferred={}
+                    for index,cell in ipairs(cells) do
+                        local failure=meta.Failures[index]
+                        if failure and failure.Retryable and not string.find(string.upper(failure.Reason or ""),"MATERIAL",1,true) and not occupied(cell.CFrame,self.BlockSize) then
+                            table.insert(deferred,{Index=index,Cell=cell})
+                        end
+                    end
+                    if #deferred>0 then
+                        meta.SecondPass=#deferred
+                        progress.State="Second pass"
+                        status("Second pass: "..#deferred.." rejected block"..(#deferred==1 and "" or "s").." tried once more now that neighbours are placed.")
+                        for _,entry in ipairs(deferred) do
+                            failed=math.max(0,failed-1);streak=0
+                            self.Progress.Failed=failed
+                            if not processCell(entry.Index,entry.Cell) then return end
+                        end
+                    end
                 end
                 if active() then self.Progress.State="Finished";status(string.format((failed>0 and "Finished with failures: " or "Finished: ").."%d confirmed, %d occupied/skipped, %d failed.",placed,skipped,failed)) end
             end)
@@ -1741,7 +1849,7 @@ function AutoBuild.new(ctx)
         end
     end)
     local moveMenu=Instance.new("Frame")
-    moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,256);moveMenu.Position=UDim2.fromOffset(6,84)
+    moveMenu.Name="MoveBlueprint";moveMenu.Size=UDim2.new(1,-12,0,292);moveMenu.Position=UDim2.fromOffset(6,84)
     moveMenu.BackgroundColor3=Color3.fromRGB(21,27,44);moveMenu.BorderSizePixel=0;moveMenu.ZIndex=35;moveMenu.Visible=false;moveMenu.Parent=ctx.Parent
     button("Movement","Move / Auto Walk  ▼",.5,48,.5,function()
         local open=not moveMenu.Visible;self:CloseMenus();moveMenu.Visible=open
@@ -1776,6 +1884,9 @@ function AutoBuild.new(ctx)
     buttons.Travel=ctx.Button({Parent=moveMenu,Text="Auto Walk: OFF",TextSize=12,Size=UDim2.new(1,-6,0,30),Position=UDim2.fromOffset(3,220)})
     buttons.Travel.ZIndex=36
     ctx.Track(buttons.Travel.Activated:Connect(function() self:SetTravelMode(self.TravelMode=="Walk" and "Stay" or "Walk") end))
+    buttons.Order=ctx.Button({Parent=moveMenu,Text="Order: Smart",TextSize=12,Size=UDim2.new(1,-6,0,30),Position=UDim2.fromOffset(3,256)})
+    buttons.Order.ZIndex=36
+    ctx.Track(buttons.Order.Activated:Connect(function() self:SetBuildOrder(self.BuildOrder=="Smart" and "Blueprint" or "Smart") end))
     for index,preset in ipairs(presets) do
         local option=ctx.Button({Parent=presetMenu,Text=preset,Size=UDim2.new(.5,-4,0,34),Position=UDim2.new((index-1)%2*.5,2,0,math.floor((index-1)/2)*36)})
         option.ZIndex=36

@@ -4385,3 +4385,28 @@ Report headers now read `Reborn goals-175`.
   reach, craft rejected, no learned food recipe).
 
 Report headers now read `Reborn rates-176`.
+
+## Auto Build: smart order, second pass, pace, chest hints · v177
+
+- **Smart order.** Start build sends the lowest layer first (support before
+  the blocks above it) and, inside a layer, the block nearest to you and then
+  the nearest unbuilt block from the last one, so Auto Walk makes short hops.
+  The Move menu's "Order: Smart" button switches to the blueprint's own
+  sequence. Retry failed keeps its own order; cells whose position cannot be
+  measured keep the blueprint order for the whole run.
+- **Second pass.** A block the server rejected (not a cooldown, not a missing
+  material) is tried once more at the end of the run, after its neighbours
+  were placed. The history line "second pass: N cells" counts them; Retry
+  failed runs never add a pass.
+- **Pace.** The status, the diagnostics and the corner stats show blocks per
+  minute and the time the remaining cells need at that pace, after ten
+  seconds and two confirmed blocks. Build history keeps the pace and the
+  order used.
+- **Chest hints.** While a build waits for materials, the island's chests are
+  read every two seconds and the status says how much they hold and how far
+  the nearest one is ("chests hold 40 (nearest 12 studs away)"), or that no
+  chest holds the material.
+- **Corner stats** gain a "Build" row (checked/total with pace, paused,
+  stopped or done). **Lifetime totals** count confirmed blocks.
+
+Report headers now read `Reborn build-177`.

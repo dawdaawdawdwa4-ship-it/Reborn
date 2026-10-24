@@ -1331,7 +1331,7 @@ end)()
   if body.cframe.Position%2==0 then return false,{success=false,error='NO_SUPPORT'..string.char(10)..string.rep('x',800)},'rejected' end
   occupied[body.cframe.Position]=true;return true
  end)
- assert(rejected.State=='Finished' and rejected.Failed==9 and rejected.Retryable==9 and rejected.Review==0 and #rejected.Failures==8 and rejected.Attempts==18,'mixed failures must preserve completed-run behavior and bound the historical cell list')
+ assert(rejected.State=='Finished' and rejected.Failed==9 and rejected.Retryable==9 and rejected.Review==0 and #rejected.Failures==8 and rejected.Attempts==27 and rejected.SecondPass==9,'mixed failures must preserve completed-run behavior, retry support rejections once and bound the historical cell list')
  assert(rejected.Failures[1].Index==2 and rejected.Failures[8].Index==16 and #rejected.Failures[1].Reason<=512 and not rejected.Failures[1].Reason:find('[%c]'),'failure snapshots must be ordered and contain bounded plain reasons')
  assert(not rejected.Failures[1].CFrame and not rejected.Failures[1].Cell and not rejected.Failures[1].Remote,'historical failures must exclude live instances and request bindings')
  assert(string.find(h:ShowHistory(),'Finished with unresolved cells',1,true) and string.find(h.HistoryReport,'More tracked cells: 1',1,true) and string.find(rejected.NextAction,'Retry failed',1,true),'partial completion must expose failures and a concrete next step')
@@ -1393,7 +1393,7 @@ end)()
  segment('Placed',0,0);segment('Skipped',1/3,0);segment('Failed',0,1/3)
  assert(value:SetPaused(true) and value.Buttons.Stop.Active and not value.Buttons.Start.Active)
  segment('Skipped',1/3,0);value:SetPaused(false);drain()
- assert(calls==2 and value.Progress.Checked==3 and value.Progress.Placed==1 and value.Progress.Failed==1 and value.Progress.Skipped==1)
+ assert(calls==3 and value.Progress.Checked==3 and value.Progress.Placed==1 and value.Progress.Failed==1 and value.Progress.Skipped==1,'the support rejection is tried once more in the second pass')
  segment('Placed',1/3,0);segment('Skipped',1/3,1/3);segment('Failed',1/3,2/3)
  assert(value.Buttons.Start.Active and not value.Buttons.Stop.Active and not value.Buttons.Pause.Active,'completed run must restore idle actions')
  value.LayerIndex=99;value:RefreshFailureUI()
@@ -1478,6 +1478,69 @@ end)()
  ctx.GameModule=baseModule;ctx.CopyReport=nil
  assert(not value:CopyMissingMaterials(),'missing copy adapter must be reported without throwing')
  ctx.ItemCount,ctx.GameModule,ctx.CopyReport,ctx.Alive,occupied,root.Position,ctx.Player.Character=saved.Count,saved.Module,saved.Copy,saved.Alive,saved.World,saved.Root,saved.Character
+end)()
+-- Smart order builds the lowest layer first and hops to the nearest block; the pace and the chest
+-- hint describe the run; a support rejection gets one second pass once its neighbours exist.
+;(function()
+ local saved={Place=ctx.Place,Count=ctx.ItemCount,Root=root.Position,World=occupied,Stock=ctx.MaterialStock,Placed=ctx.OnPlaced}
+ local function vec(x,y) return setmetatable({X=x,Y=y},{__sub=function(a,b) return {Magnitude=math.sqrt((a.X-b.X)^2+(a.Y-b.Y)^2)} end}) end
+ local function plan() local out={} for _,spec in ipairs({{9,3},{3,0},{9,0},{0,3},{6,0}}) do table.insert(out,{CFrame={Position=vec(spec[1],spec[2])},Material='grass'}) end return out end
+ local function keys(list) local out={} for _,cell in ipairs(list) do table.insert(out,cell.CFrame.Position.X..'/'..cell.CFrame.Position.Y) end return table.concat(out,' ') end
+ local function drain() for _=1,3000 do if coroutine.status(worker)=='dead' then return end;step() end;error('order test did not settle') end
+ root.Position=vec(0,0)
+ local value=A.new(ctx);value.BlockSize=3
+ local source=plan()
+ assert(keys(value:OrderCells(source))=='3/0 6/0 9/0 9/3 0/3','smart order: bottom layer first, nearest block to the character, then the nearest hop: '..keys(value:OrderCells(source)))
+ assert(keys(source)=='9/3 3/0 9/0 0/3 6/0','ordering must not rearrange the plan itself')
+ value.BuildOrder='Blueprint';assert(keys(value:OrderCells(source))==keys(source),'blueprint order keeps the plan sequence')
+ assert(value:SetBuildOrder('Smart') and value.Buttons.Order.Text=='Order: Smart' and not value:SetBuildOrder('Random'),'the order toggle accepts Smart and Blueprint only')
+ local broken={{CFrame={Position=1},Material='grass'},{CFrame={Position=2},Material='grass'},{CFrame={Position=3},Material='grass'}}
+ assert(value:OrderCells(broken)==broken,'unmeasurable positions keep the blueprint order')
+ -- The run follows the smart order; the pace and the lifetime count come from confirmed blocks.
+ occupied={};local trace,lifetime={},0
+ ctx.OnPlaced=function(n) lifetime+=n end
+ ctx.Place=function(body) table.insert(trace,body.cframe.Position.X..'/'..body.cframe.Position.Y);ctx.Scheduler.wait(4);occupied[body.cframe.Position]=true;return true end
+ value.Cells=plan();assert(value:Start())
+ assert(value:PaceText()=='','the pace needs ten seconds and two confirmed blocks')
+ for _=1,400 do if value.Progress.Placed>=3 then break end;step() end
+ assert(value:PaceText():find('/min',1,true) and value:PaceText():find('left',1,true) and value.Status.Text:find('/min',1,true),'a running build shows its pace and the time left: '..value:PaceText())
+ drain()
+ assert(table.concat(trace,' ')=='3/0 6/0 9/0 9/3 0/3','the run sends blocks in the smart order: '..table.concat(trace,' '))
+ assert(lifetime==5 and value.History[1].Rate>0 and value.History[1].Order=='Smart' and value.History[1].SecondPass==0,'confirmed blocks count toward the lifetime total and the history keeps the pace')
+ assert(value:FormatHistory(value.History[1],1,1):find('Pace: ',1,true) and value:DiagnosticReport():find('Build order: Smart',1,true),'reports name the order and pace')
+ -- While waiting for materials the island's chests are consulted.
+ occupied={};ctx.ItemCount=function() return 0 end
+ ctx.MaterialStock=function(material) if material=='grass' then return 40,12.4 end;return 0 end
+ value.Cells=plan();value.StockCheckedAt=nil;assert(value:Start());step();step()
+ assert(value.Status.Text:find('chests hold 40 (nearest 12 studs away)',1,true),'the restock wait names the chest stock: '..value.Status.Text)
+ value:Stop();drain()
+ ctx.MaterialStock=function() return 0 end
+ value.Cells=plan();value.StockCheckedAt=nil;assert(value:Start());step();step()
+ assert(value.Status.Text:find('no chest on the island holds it',1,true),'an empty chest stock is said plainly')
+ value:Stop();drain()
+ ctx.MaterialStock=function() error('chests unreadable') end
+ value.Cells=plan();value.StockCheckedAt=nil;assert(value:Start());step();step()
+ assert(value.Status.Text:find('inventory is empty',1,true) and not value.Status.Text:find('chests hold',1,true),'an unreadable chest list does not break the wait')
+ value:Stop();drain()
+ -- Second pass: a support rejection is retried once after the rest; material rejections are not.
+ ctx.ItemCount=nil;ctx.MaterialStock=nil;occupied={}
+ local attempts={}
+ ctx.Place=function(body)
+  local key=body.cframe.Position.X..'/'..body.cframe.Position.Y
+  attempts[key]=(attempts[key] or 0)+1
+  if key=='9/3' and attempts[key]==1 then return false,{success=false,error='NO_SUPPORT'},'rejected' end
+  if key=='6/0' then return false,{success=false,error='MISSING_MATERIALS'},'rejected' end
+  occupied[body.cframe.Position]=true;return true
+ end
+ value.Cells=plan();assert(value:Start());drain()
+ assert(attempts['9/3']==2 and attempts['6/0']==1,'the support rejection is sent again once, the material rejection is not: '..tostring(attempts['9/3'])..'/'..tostring(attempts['6/0']))
+ assert(value.Progress.Placed==4 and value.Progress.Failed==1 and value.Progress.State=='Finished' and value.History[1].SecondPass==1,'the second pass moves the cell from failed to confirmed')
+ assert(value:FailureCounts().Retryable==1 and value.Status.Text:find('4 confirmed, 0 occupied/skipped, 1 failed',1,true),'only the material rejection remains for Retry failed')
+ -- A retry-only run never adds a second pass.
+ attempts={};ctx.Place=function(body) local key=body.cframe.Position.X..'/'..body.cframe.Position.Y;attempts[key]=(attempts[key] or 0)+1;return false,{success=false,error='NO_SUPPORT'},'rejected' end
+ assert(value:RetryFailures());drain()
+ assert(attempts['6/0']==1 and value.History[1].SecondPass==0,'Retry failed sends each eligible cell once')
+ ctx.Place,ctx.ItemCount,root.Position,occupied,ctx.MaterialStock,ctx.OnPlaced=saved.Place,saved.Count,saved.Root,saved.World,saved.Stock,saved.Placed
 end)()
 return 'Auto Build blueprints, paths, placement confirmation, result snapshots/export, pause/resume, restock waits, live progress, adaptive speed, occupied skip, plan edit guards, single worker, cancellation and failure stop passed'
 `;
