@@ -4564,3 +4564,36 @@ The batch regression failed on v181 before the fix. Run the full suite; live
 Roblox behavior remains unverified here.
 
 Report headers now read `Reborn chest-resume-182`.
+
+
+## Auto Take handles every matching Contents stack · v183
+
+Two separate Contents stacks of the same item in one chest were being collapsed
+into one target. One pass could finish after collecting only the first stack;
+Repeat needed another scan and probe before it could reach the second. Distinct
+Contents stacks now retain separate targets, while repeated discovery of the same
+stack stays deduplicated. Existing learned/remembered bindings still take
+precedence over Contents targets for the same chest and item.
+
+A selected Contents item continues to match by chest and item across refills.
+All its matching stacks in that chest can therefore be collected in one pass,
+while other items/chests remain filtered out. Each withdrawal still respects the
+chosen batch, actual stack amount, inventory target, cumulative goal and existing
+server pacing. Repeat retains its one-item probe for a newly discovered stack.
+
+Stack validation now checks the live Contents folder and item name. Moving a
+stack to another chest, changing its item, or replacing the Contents folder makes
+an old Contents binding unusable. The direct transport resolves an invalid supplied
+stack only against a nonempty matching stack inside the requested chest; if none
+remains, it skips without sending. Looking up an item also skips zero-amount stacks
+so an empty first stack cannot conceal another nonempty stack of that item.
+
+Regressions reproduce the same-item deduplication and moved-stack failures on
+v182. Tests cover distinct/repeated targets, learned binding precedence, selection
+filters, moved/renamed stacks, replaced Contents folders, empty-first-stack lookup,
+and the actual discovery → transport → Auto Take worker path. One pass collects
+20 + 40 items with requests of 20, 30 and 10; Repeat then recognizes a new stack,
+probes one and collects 29 to finish a cumulative goal of 90. These are simulated
+regressions; live Roblox behavior remains unverified. Run the full test suite.
+
+Report headers now read `Reborn chest-stacks-183`.

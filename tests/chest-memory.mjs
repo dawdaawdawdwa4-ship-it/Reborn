@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import {LuauState} from 'luau-web';
 const main=fs.readFileSync(new URL('../message.txt',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const source=main.slice(main.indexOf('-- REMEMBERED CHESTS BEGIN'),main.indexOf('-- REMEMBERED CHESTS END'));
+const targetSource=main.slice(main.indexOf('-- CHEST TARGETS BEGIN'),main.indexOf('-- CHEST TARGETS END'));
+const autoSource=main.slice(main.indexOf('-- CHEST AUTO BEGIN'),main.indexOf('-- CHEST AUTO END'));
 const code=`
 local mt={}
 local function vec(x,y,z) return setmetatable({X=x,Y=y,Z=z},mt) end
@@ -94,14 +96,95 @@ do
  salad.Parent=nil
  assert(not recorder:CanUseChestBinding(bindings[1]),'an emptied stack is no longer a target')
  local carrotSlot=bindings[2].Slot
- io.FindFirstChild=function(_,child) return child=='Contents' and {GetChildren=function() return {carrots,stack('stone',0)} end} or nil end
+ local contents=io:FindFirstChild('Contents')
+ local empty=stack('stone',0);empty.Parent=contents
+ contents.children={carrots,empty}
  RemoteCatalog.ContentsChestCache=nil
  local again=RemoteCatalog.ContentsChestRecorder():GetChestBindings()
  assert(#again==1 and again[1].Item=='carrotHarvested' and again[1].Slot==carrotSlot,'a stack keeps its slot id when another stack empties, and zero-amount stacks are skipped')
+ local foreign=chest('chestSmall',8,{carrots})
+ assert(not recorder:CanUseChestBinding(bindings[2]),'a stack moved to another chest must invalidate the old binding')
+ local requests=#invoked
+ local accepted,why,origin=RemoteCatalog.SendChestWithdraw(io,'carrotHarvested',5,0,carrots)
+ assert(not accepted and origin=='skip' and #invoked==requests,'a stale stack must never be sent with its former chest')
+ local zero,fresh=stack('potatoSalad',0),stack('potatoSalad',11)
+ local current=chest('chestSmall',9,{zero,fresh})
+ assert(RemoteCatalog.SendChestWithdraw(current,'potatoSalad',30,0))
+ assert(#invoked==requests+1 and invoked[#invoked].tool==fresh and invoked[#invoked].amount==11,'a zero stack must not hide a later nonempty stack of the same item')
+ assert(RemoteCatalog.SendChestWithdraw(current,'potatoSalad',3,0,carrots))
+ assert(invoked[#invoked].chest==current and invoked[#invoked].tool==fresh and invoked[#invoked].amount==3,'a stale supplied stack must resolve only to the matching item in the requested chest')
+ local currentBinding={Chest=current,Stack=fresh,Item='potatoSalad'}
+ assert(recorder:CanUseChestBinding(currentBinding))
+ fresh.Name='wood'
+ assert(not recorder:CanUseChestBinding(currentBinding),'a stack whose item changes must invalidate its former item binding')
+ fresh.Name='potatoSalad'
+ local folder=current:FindFirstChild('Contents')
+ current.FindFirstChild=function(_,name) return name=='Contents' and {GetChildren=function() return {} end} or nil end
+ assert(not recorder:CanUseChestBinding(currentBinding),'replacing Contents invalidates stacks in the old folder')
+ current.FindFirstChild=function(_,name) return name=='Contents' and folder or nil end
  RemoteCatalog.FindNamed=nil;RemoteCatalog.ContentsChestCache=nil
  assert(RemoteCatalog.ContentsChestRecorder()==nil,'without the chest remote nothing is offered')
 end
-return 'Chest memory: offset snapshot, new-server rediscovery, stable request body, invalid/rejected sends and missing endpoint passed'
+-- Exercise discovery, actual per-stack transport and the collector together.
+do
+ local gui={Parent=true}
+ local COLORS={on=1,off=2,muted=3,good=4,warn=5}
+ local function setStatus() end
+ local task={}
+ local worker,quantity,transfers
+ task.wait=function(dt) coroutine.yield(dt) end
+ task.spawn=function(fn) worker=coroutine.create(fn);local ok,e=coroutine.resume(worker);assert(ok,e) end
+ local function step() local ok,e=coroutine.resume(worker);assert(ok,e) end
+ local function drain()
+  for _=1,200 do if coroutine.status(worker)=='dead' then return end;step() end
+  error('multi-stack collector did not settle')
+ end
+ player.Character={FindFirstChild=function() return {Position=vec(0,0,0)} end}
+ CONFIG.RememberedChests={}
+ RemoteCatalog.ChestAutoButton={};RemoteCatalog.ChestResultLabel={};RemoteCatalog.ChestIntro={}
+ RemoteCatalog.Navigation={Stop=function() end}
+ RemoteCatalog.LiveRecorder=function() return nil end
+ RemoteCatalog.ChestTravel='Stay';RemoteCatalog.ChestWhole=false;RemoteCatalog.ChestDiscover=false
+ RemoteCatalog.ChestAutoBatch=30;RemoteCatalog.ChestItems={potatoSalad=true}
+ RemoteCatalog.ChestResultText=function(value) return tostring(value) end
+ RemoteCatalog.ApproachChest=function() return true end
+ RemoteCatalog.OwnedTools=function() return {{Name='potatoSalad'}} end
+ RemoteCatalog.BaitCount=function() return quantity end
+ RemoteCatalog.WithdrawCarrots=function(amount,recorder,binding) return recorder:WithdrawItems(amount,binding) end
+ local remote={InvokeServer=function(_,body)
+  assert(body.tool.Parent==body.chest:FindFirstChild('Contents') and body.tool.Name=='potatoSalad','the real request must stay on the selected chest and item')
+  local value=body.tool:FindFirstChild('Amount');assert(body.amount>0 and body.amount<=value.Value)
+  table.insert(transfers,body.amount);value.Value-=body.amount;quantity+=body.amount;return true
+ end}
+ RemoteCatalog.FindNamed=function() return remote end
+
+ ${targetSource}
+ ${autoSource}
+ local function prepare(repeatRun)
+  quantity=0;transfers={}
+  local selected=chest('chestSmall',12,{stack('potatoSalad',0),stack('potatoSalad',20),stack('wood',99),stack('potatoSalad',40)})
+  children={selected,chest('chestSmall',15,{stack('potatoSalad',50)})}
+  RemoteCatalog.ContentsChestCache=nil;RemoteCatalog.ChestRequestAt=nil;RemoteCatalog.ChestRateDelay=nil
+  RemoteCatalog.ChestSelection={Chest=selected,Item='potatoSalad',Slot=-1,FromContents=true}
+  RemoteCatalog.ChestRepeat=repeatRun;RemoteCatalog.ChestGoal=repeatRun and 90 or nil
+  return selected
+ end
+ prepare(false)
+ assert(RemoteCatalog.SetChestAuto(true));drain()
+ assert(quantity==60 and RemoteCatalog.ChestAutoTotal==60 and #transfers==3 and transfers[1]==20 and transfers[2]==30 and transfers[3]==10,'One pass must drain both salad stacks without waiting for Repeat or taking another chest/item')
+ assert(RemoteCatalog.ChestHistory[1].Requests==3 and RemoteCatalog.ChestHistory[1].Outcome=='Pass finished')
+ local selected=prepare(true)
+ assert(RemoteCatalog.SetChestAuto(true))
+ for _=1,100 do if RemoteCatalog.ChestRepeatWaiting then break end;step() end
+ assert(RemoteCatalog.ChestRepeatWaiting and quantity==60 and #transfers==3,'Repeat must finish both stacks before waiting for refill')
+ local contents=selected:FindFirstChild('Contents')
+ local refill=stack('potatoSalad',30);refill.Parent=contents;contents.children={refill}
+ RemoteCatalog.ContentsChestCache=nil
+ drain()
+ assert(quantity==90 and RemoteCatalog.ChestAutoTotal==90 and #transfers==5 and transfers[4]==1 and transfers[5]==29,'Repeat must discover the replacement stack and preserve its probe, cumulative goal and item selection')
+ assert(not RemoteCatalog.ChestBusy and not RemoteCatalog.ChestAutoWorker and RemoteCatalog.ChestHistory[1].Outcome=='Goal reached')
+end
+return 'Chest memory: new-server rediscovery, live stack ownership/item checks, nonempty lookup, multi-stack One pass, selected refill Repeat and confirmed totals passed'
 `;
 const state=await LuauState.createAsync();
 try {console.log(await state.loadstring(code,'chest-memory',true)());}

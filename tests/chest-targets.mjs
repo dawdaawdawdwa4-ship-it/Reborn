@@ -129,6 +129,22 @@ do
  assert(found[fresh],'Contents stacks need no learning and stay available in Learned only scope')
  RemoteCatalog.ContentsChestRecorder=nil;RemoteCatalog.ChestDiscover=true
 end
+-- Distinct Contents stacks of one item must all be available in the same pass.
+do
+ local first={Chest=a,Slot=1010,Item='potatoSalad',FromContents=true}
+ local second={Chest=a,Slot=1011,Item='potatoSalad',FromContents=true}
+ local wood={Chest=a,Slot=1012,Item='wood',FromContents=true}
+ local contents={GetChestBindings=function() return {first,second,wood,first} end,CanUseChestBinding=function() return true end}
+ RemoteCatalog.ContentsChestRecorder=function() return contents end
+ valid=true;learned={};RemoteCatalog.ChestDiscover=false;RemoteCatalog.ChestWhole=false;RemoteCatalog.ChestSelection=nil
+ local savedConveyor=RemoteCatalog.ChestIncludeConveyor;RemoteCatalog.ChestIncludeConveyor=true
+ local available=RemoteCatalog.SelectedChestTargets()
+ assert(#available==3 and available[1].Binding==first and available[2].Binding==second,'same-item stacks need distinct targets; the same stack must still be deduplicated')
+ RemoteCatalog.ChestSelection={Chest=a,Slot=first.Slot,Item=first.Item,FromContents=true}
+ available=RemoteCatalog.SelectedChestTargets()
+ assert(#available==2 and available[1].Binding==first and available[2].Binding==second,'a selected Contents item includes both stacks in its own chest without including other items')
+ RemoteCatalog.ChestSelection=nil;RemoteCatalog.ContentsChestRecorder=nil;RemoteCatalog.ChestDiscover=true;RemoteCatalog.ChestWhole=true;RemoteCatalog.ChestIncludeConveyor=savedConveyor
+end
 -- A selected Contents stack keeps matching after a refill gives the stack a new slot id.
 do
  local first={Chest=a,Slot=1005,Item='potatoSalad',FromContents=true}
