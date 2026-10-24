@@ -4149,3 +4149,19 @@ Requested as "keep improving".
 - **Cadence floor 0.40 s** (was 0.45).
 
 Report headers now read `Reborn mob-multi-165`.
+
+## Scan rocks and copy-all · v166
+
+Asked "what else can we improve".
+
+- **Mining → Scan rocks (no mining).** Lists every rock and ore within the
+  mining range by block name with counts, nearest first, and marks kinds the
+  Rocks filter skips. Works while Mining is OFF and sends nothing, so the real
+  name of the aquamarine block can be read off the tab.
+- **Stats → Copy all reports.** One clipboard paste with the session report,
+  the Mobs result and the scoreboard.
+- The Learned hit line now says plainly when a server exposes no request
+  definitions (the packet cannot be remembered across servers there; auto-learn
+  covers it) instead of "body not remembered".
+
+Report headers now read `Reborn scan-166`.

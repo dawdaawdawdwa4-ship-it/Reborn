@@ -5593,7 +5593,7 @@ function RemoteCatalog.BaitDiagnosticReport()
         local ok,value=pcall(function() return bait[name] end)
         return ok and tostring(value) or "unavailable"
     end
-    return table.concat({"Reborn mob-multi-165",
+    return table.concat({"Reborn scan-166",
         "Report scope: bait use. For crafting, open Crafting > Copy craft diagnostics.",
         "Food API: "..tostring(RemoteCatalog.BaitNativeStatus or "not checked"),
         "Last transport: "..tostring(RemoteCatalog.BaitTransport or "none"),
@@ -6776,6 +6776,15 @@ track(RemoteCatalog.MineRocksButton.Activated:Connect(function()
     RemoteCatalog.MineRocksButton.Text = "Rocks: " .. CONFIG.MineRocks .. "  ↻"
     savePreferences()
 end))
+RemoteCatalog.MineScanButton = button({ Parent = minePage, Text = "Scan rocks (no mining)", TextSize = 12,
+    Size = UDim2.new(1, -12, 0, 32), Position = UDim2.fromOffset(6, 244) })
+RemoteCatalog.MineScanLabel = label({ Parent = minePage, Text = "Scan lists every rock and ore in range by its block name, so a kind the Rocks filter skips is visible.", Color = COLORS.muted,
+    TextSize = 11, Size = UDim2.new(1, -16, 0, 56), Position = UDim2.fromOffset(8, 282) })
+RemoteCatalog.MineScanLabel.TextWrapped = true
+track(RemoteCatalog.MineScanButton.Activated:Connect(function()
+    local ok,text=pcall(function() return RemoteCatalog.MineScanText() end)
+    RemoteCatalog.MineScanLabel.Text=ok and text or ("Scan failed: "..tostring(text))
+end))
 pageHeading(minePage, "TOOL PREFERENCE", 144)
 local mineToolOptions = {"Auto best pickaxe", "Iron pickaxe", "Stone pickaxe", "Wooden pickaxe", "Auto best axe", "Iron axe", "Stone axe", "Wooden axe"}
 local mineToolIndex = table.find(mineToolOptions, mineToolPreference) or 1
@@ -6920,6 +6929,26 @@ track(RemoteCatalog.SessionReportButton.Activated:Connect(function() RemoteCatal
 RemoteCatalog.SelfTestButton=button({Parent=statsPage,Text="Run self-test",TextSize=13,
     Size=UDim2.new(.5,-9,0,34),Position=UDim2.new(.5,3,0,526)})
 track(RemoteCatalog.SelfTestButton.Activated:Connect(function() RemoteCatalog.CopySelfTest() end))
+RemoteCatalog.CopyAllButton=button({Parent=statsPage,Text="Copy all reports (session + mobs + scoreboard)",TextSize=13,
+    Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,566)})
+function RemoteCatalog.AllReports()
+    local parts={RemoteCatalog.SessionReport()}
+    if RemoteCatalog.MobResultReport then
+        local ok,text=pcall(RemoteCatalog.MobResultReport);table.insert(parts,ok and text or ("Mob report failed: "..tostring(text)))
+    end
+    if RemoteCatalog.MobScoreText then
+        local ok,text=pcall(RemoteCatalog.MobScoreText);table.insert(parts,"Mobs scoreboard\n"..(ok and text or tostring(text)))
+    end
+    return table.concat(parts,"\n\n")
+end
+function RemoteCatalog.CopyAllReports()
+    local report=RemoteCatalog.AllReports()
+    local copy=setclipboard or toclipboard
+    if type(copy)=="function" and pcall(copy,report) then setStatus("All reports copied",COLORS.good)
+    else print(report);setStatus("All reports printed to console",COLORS.warn) end
+    return report
+end
+track(RemoteCatalog.CopyAllButton.Activated:Connect(function() RemoteCatalog.CopyAllReports() end))
 RemoteCatalog.ChestContentsButton=button({Parent=statsPage,Text="Copy chest contents (find items)",TextSize=13,
     Size=UDim2.new(1,-12,0,34),Position=UDim2.fromOffset(6,566)})
 track(RemoteCatalog.ChestContentsButton.Activated:Connect(function() RemoteCatalog.CopyChestContents() end))
@@ -7655,7 +7684,7 @@ function RemoteCatalog.PropellerHistoryText()
 end
 function RemoteCatalog.PropellerHistoryReport()
     RemoteCatalog.PollPropellers()
-    return table.concat({"Reborn mob-multi-165 · Propeller loot history (UTC)",
+    return table.concat({"Reborn scan-166 · Propeller loot history (UTC)",
         "Session total: "..RemoteCatalog.PropellerTotal,"Last propeller: "..RemoteCatalog.PropellerLastText(),
         RemoteCatalog.PropellerGoalText(),RemoteCatalog.PropellerStatisticsText(),"Retained entries: "..#RemoteCatalog.PropellerHistory.." / 50 (newest first)",
         RemoteCatalog.PropellerHistoryText(),"Observed inventory gains in confirmed fishing windows; one catch may replicate in several gains."},"\n")
@@ -7759,7 +7788,7 @@ function RemoteCatalog.PropellerReport()
     RemoteCatalog.PollPropellers()
     local count=RemoteCatalog.PropellerCount()
     local window=RemoteCatalog.PropellerWindow
-    return table.concat({"Reborn mob-multi-165 · Propeller tracker",
+    return table.concat({"Reborn scan-166 · Propeller tracker",
         "Propellers this session: "..RemoteCatalog.PropellerTotal,
         "Last propeller: "..RemoteCatalog.PropellerLastText(),
         "Inventory quantity: "..tostring(count or "unreadable"),
@@ -7795,7 +7824,7 @@ function RemoteCatalog.RefreshPropellers()
 end
 -- PROPELLER TRACKER END
 function RemoteCatalog.SessionReport()
-    local text={"Reborn mob-multi-165", "Active time: "..formatTime(getActiveTime()),
+    local text={"Reborn scan-166", "Active time: "..formatTime(getActiveTime()),
         "Fishing: "..stats.catches.." catches, "..stats.casts.." casts, "..stats.bites.." bites, "..stats.missed.." missed",
         "Fishing input: "..tostring(RemoteCatalog.FishingInputAction or "not tried").." · "..tostring(RemoteCatalog.FishingInputTransport or "none").." · "..tostring(RemoteCatalog.FishingInputResult or "none"),
         "Fishing status: "..(RemoteCatalog.FishingStatusText and RemoteCatalog.FishingStatusText() or "not started"),
@@ -8638,6 +8667,7 @@ local function modeAllows(name)
 end
 local FarmState = { Cooldowns = setmetatable({}, { __mode = "k" }), FruitTrees = setmetatable({}, { __mode = "k" }) }
 -- anyRock: list every rock/ore in range regardless of the Rocks filter (diagnostics only).
+-- anyRock "scan": every rock/ore in range even while Mining is OFF (read-only listing).
 local function getMineTargets(anyRock)
     local targets, seen = {}, {}
     local char = player.Character
@@ -8648,7 +8678,7 @@ local function getMineTargets(anyRock)
         seen[obj] = true
         local category = targetCategory(obj.Name)
         if not category then return end
-        if not (anyRock and category == "mine" and mineEnabled or modeAllows(obj.Name)) then return end
+        if not (anyRock=="scan" and category == "mine" or anyRock and category == "mine" and mineEnabled or modeAllows(obj.Name)) then return end
         if category == "crop" and not allowCrops then return end
         -- Wood and Harvest never run together, so protection follows the saved fruit setting.
         if category == "wood" and allowCrops and CONFIG.FruitEnabled then
@@ -9007,6 +9037,20 @@ function RemoteCatalog.WoodReach(target,origin)
 end
 -- RESOURCE INPUT END
 
+-- Mining → Scan rocks: names and counts of rocks/ores within the mining range, nearest first; no requests.
+function RemoteCatalog.MineScanText()
+    local counts,names,nearest={}, {},nil
+    for _,entry in ipairs(getMineTargets("scan")) do
+        if not counts[entry.name] then counts[entry.name]=0;table.insert(names,entry.name) end
+        counts[entry.name]+=1
+        if not nearest or entry.distance<nearest.distance then nearest=entry end
+    end
+    table.sort(names,function(a,b) return counts[a]>counts[b] or counts[a]==counts[b] and a<b end)
+    local parts={}
+    for _,name in ipairs(names) do table.insert(parts,name.." ×"..counts[name]..(FarmLogic.RockMatches(name,CONFIG.MineRocks) and "" or " (skipped by Rocks filter)")) end
+    if #parts==0 then return "No rocks or ores within "..CONFIG.MineRange.." studs. Blocks are matched by name (rock, stone, ore, iron, coal, gold, aquamarine …)." end
+    return "Within "..CONFIG.MineRange.." studs: "..table.concat(parts,", ")..string.format(" · nearest %s at %d studs",nearest.name,nearest.distance)
+end
 local function fireBlockMine(block)
     return RemoteCatalog.CallMine(block, targetCategory(block.Name))
 end
@@ -10530,7 +10574,7 @@ function RemoteCatalog.WaitChestInventory(item,active,previous,timeout)
 end
 function RemoteCatalog.ChestAutoMessage(text,color)
     if not gui.Parent then return end
-    RemoteCatalog.ChestLastDetail="Reborn mob-multi-165\n"..text
+    RemoteCatalog.ChestLastDetail="Reborn scan-166\n"..text
     if RemoteCatalog.ChestRunMetrics then RemoteCatalog.ChestRunMetrics.Detail=tostring(text):sub(1,1200) end
     RemoteCatalog.ChestResultLabel.Text=text
     RemoteCatalog.ChestResultLabel.TextColor3=color or COLORS.muted
@@ -10592,7 +10636,7 @@ end
 function RemoteCatalog.ChestHistoryReport()
     local history=RemoteCatalog.ChestHistory or {}
     if #history==0 then return nil end
-    local lines={"Reborn mob-multi-165 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
+    local lines={"Reborn scan-166 · Chest run history", "Newest first · "..#history.." / 5 retained · current hub session only",
         "Confirmed inventory gains only. Elapsed includes waits and cleanup; rate excludes explicit pauses, and includes server cooldown/walking."}
     for index,entry in ipairs(history) do table.insert(lines,"\nRun "..index.." / "..#history.."\n"..entry.Text) end
     return table.concat(lines,"\n")
@@ -11225,7 +11269,7 @@ track(RemoteCatalog.ChestWithdrawButton.Activated:Connect(function()
         if RemoteCatalog.ChestManualGeneration~=generation then return end
         local detail=ran and ok and "Withdrawal request sent. Check inventory; server response: "..RemoteCatalog.ChestResultText(reason)
             or "Withdrawal failed: "..RemoteCatalog.ChestResultText(ran and reason or ok)
-        RemoteCatalog.ChestLastDetail="Reborn mob-multi-165\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
+        RemoteCatalog.ChestLastDetail="Reborn scan-166\nAmount: "..tostring(RemoteCatalog.ChestAmount).."\n"..detail
         RemoteCatalog.ChestResultLabel.Text=detail
         RemoteCatalog.ChestResultView.CanvasPosition=Vector2.zero
         RemoteCatalog.ChestResultLabel.TextColor3=ran and ok and COLORS.good or COLORS.warn
@@ -12343,7 +12387,7 @@ function RemoteCatalog.CraftDiagnosticReport()
     elseif learning then action="Craft the item once manually (not Use item), choose it in Recipe, then press Start crafting."
     elseif not recorder then action="Press Learn recipe, craft the item once manually at your own workbench, then select it in Recipe."
     else action="Press Start crafting; remain within 20 studs of the learned workbench." end
-    return table.concat({"Reborn mob-multi-165 · Craft diagnostics",
+    return table.concat({"Reborn scan-166 · Craft diagnostics",
         "Recipe: "..tostring(RemoteCatalog.CraftItem),
         "Craft mode: "..tostring(RemoteCatalog.CraftMode),
         "Batch: "..tostring(RemoteCatalog.CraftBatch),
@@ -12422,7 +12466,7 @@ RemoteCatalog.CraftMaterialsLabel.TextWrapped=true;RemoteCatalog.CraftMaterialsL
 track(RemoteCatalog.CraftMaterialsRefresh.Activated:Connect(RemoteCatalog.RefreshCraftMaterials))
 track(RemoteCatalog.CraftMaterialsCopy.Activated:Connect(function()
     RemoteCatalog.RefreshCraftMaterials()
-    local report="Reborn mob-multi-165 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
+    local report="Reborn scan-166 · Materials\n"..RemoteCatalog.CraftMaterialsLabel.Text
     local copy=setclipboard or toclipboard
     if type(copy)=="function" and pcall(copy,report) then setStatus("Craft materials copied",COLORS.good)
     else print(report);setStatus("Craft materials printed to the console",COLORS.warn) end
@@ -13095,7 +13139,7 @@ function RemoteCatalog.MobScoreText()
     return table.concat(lines,"\n")
 end
 function RemoteCatalog.CopyMobScore()
-    local report="Reborn mob-multi-165 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
+    local report="Reborn scan-166 · Mobs scoreboard\n"..RemoteCatalog.MobScoreText()
     local function copyWith(fn)
         if type(fn)~="function" then return false end
         local ok,result=pcall(fn,report);return ok and result~=false
@@ -13303,7 +13347,7 @@ function RemoteCatalog.MobResultReport()
     local char=player.Character
     local health=char and char:FindFirstChildOfClass("Humanoid")
     local ok,targets=pcall(function() return farm:Scan() end)
-    return table.concat({"Reborn mob-multi-165 · Mobs",
+    return table.concat({"Reborn scan-166 · Mobs",
         "Mode: "..(farm.Enabled and "ON" or farm.Worker and "finishing" or "OFF"),
         "Status: "..farm.Message,
         "Start blocker: "..(RemoteCatalog.MobBusy() or "none"),
@@ -13314,7 +13358,10 @@ function RemoteCatalog.MobResultReport()
             local name=type(CONFIG.LearnedDefinitions)=="table" and CONFIG.LearnedDefinitions.MobBinding
             return (source=="live" and "learned on this server" or source=="remembered" and ("remembered via "..tostring(name)) or "none")
                 ..(name and source~="remembered" and (" · definition "..tostring(name)) or "")
-                ..(CONFIG.MobHitBody and " · body remembered" or " · body not remembered")
+                ..(CONFIG.MobHitBody and " · remembered for other servers" or (function()
+                    local names={};pcall(function() names=RemoteCatalog.RequestDefinitionNames() end)
+                    return #names==0 and " · cannot be remembered across servers here (no request definitions exposed; auto-learn covers it)" or " · not remembered yet"
+                end)())
                 ..(RemoteCatalog.MobAutoLearnToken and " · auto-learn armed" or "")
                 .." · multi-hit extras: "..tostring(farm.MultiHits or 0).." accepted, "..tostring(farm.MultiHitRejections or 0).." rejected"..(farm.MultiHitOff and " (off for this run)" or "")
                 .." · packets sent this run: "..tostring(farm.LearnedHits or 0).." · rejected: "..tostring(farm.LearnedHitRejections or 0)..(farm.LastRejection and (" (last: "..tostring(farm.LastRejection)..")") or "")
